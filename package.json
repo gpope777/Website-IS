@@ -1,5 +1,5 @@
 {
-  "name": "virtual-velocity",
+  "name": "innovational-tms-website",
   "type": "module",
   "version": "0.0.1",
   "engines": {
@@ -9,6 +9,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "check": "astro check",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "astro": "astro"
   },
   "dependencies": {
