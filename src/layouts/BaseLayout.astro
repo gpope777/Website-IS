@@ -1,0 +1,68 @@
+---
+import "@/styles/global.css";
+
+export interface Props {
+  title: string;
+  description: string;
+  ogImage?: string;
+  canonical?: string;
+  lang?: "es" | "en";
+}
+
+const { title, description, ogImage = "/og/default.jpg", canonical, lang = "es" } = Astro.props;
+const canonicalUrl = canonical ?? new URL(Astro.url.pathname, Astro.site).toString();
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0E1A20" />
+    <link rel="canonical" href={canonicalUrl} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL(ogImage, Astro.site).toString()} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:site_name" content="Innovational TMS" />
+    <meta property="og:locale" content={lang === "es" ? "es_PR" : "en_US"} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={new URL(ogImage, Astro.site).toString()} />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" hreflang="es" href={new URL(Astro.url.pathname.replace(/^\/en/, ""), Astro.site).toString()} />
+    <link rel="alternate" hreflang="en" href={new URL(Astro.url.pathname.startsWith("/en") ? Astro.url.pathname : `/en${Astro.url.pathname}`, Astro.site).toString()} />
+
+    <slot name="head" />
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Saltar al contenido principal</a>
+    <slot name="nav" />
+    <main id="main">
+      <slot />
+    </main>
+    <slot name="footer" />
+  </body>
+</html>
+
+<style is:global>
+  .skip-link {
+    position: absolute;
+    left: -10000px;
+    top: 12px;
+    background: var(--ink);
+    color: var(--white);
+    padding: var(--space-sm) var(--space);
+    border-radius: var(--radius);
+    z-index: 9999;
+  }
+  .skip-link:focus { left: 12px; }
+</style>
