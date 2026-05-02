@@ -1,0 +1,72 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/source-serif-4/wght-italic.css";
+@import "./reset.css";
+@import "./typography.css";
+
+:root {
+  /* Color tokens */
+  --orange: #EF5A21;
+  --orange-soft: #FAC5B1;
+  --orange-cream: #FCDED3;
+  --slate: #405F6E;
+  --slate-deep: #1F2D34;
+  --ink: #0E1A20;
+  --ink-deeper: #0a1418;
+  --cream: #FAFAF7;
+  --white: #FFFFFF;
+  --border: #E5E9EB;
+  --border-dark: rgba(255, 255, 255, 0.08);
+  --error: #C0392B;
+  --success: #27AE60;
+
+  /* Typography */
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-h1: clamp(36px, 5vw, 56px);
+  --font-h2: clamp(28px, 3.6vw, 40px);
+  --font-h3: 22px;
+  --font-h4: 18px;
+  --font-body: 16px;
+  --font-small: 14px;
+  --font-label: 11px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+  --space-2xl: 80px;
+  --space-3xl: 120px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(15, 26, 32, 0.06);
+  --shadow: 0 12px 30px rgba(15, 26, 32, 0.08);
+  --shadow-lg: 0 30px 80px rgba(15, 26, 32, 0.18);
+
+  /* Layout */
+  --container: 1180px;
+  --container-tight: 720px;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-body);
+  line-height: 1.65;
+  color: var(--slate-deep);
+  background: var(--cream);
+}
+
+a { color: var(--orange); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
