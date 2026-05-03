@@ -45,7 +45,7 @@ const summaryPicks = variant === "summary"
   <div class="services-grid">
     {summaryPicks.map((s, i) => (
       <ServiceCard
-        numero={String(i + 1).padStart(2, "0")}
+        numero={String(i + 1)}
         territorio={TERRITORIOS[s.data.territorio][lang]}
         titulo={lang === "es" ? s.data.titulo_es : s.data.titulo_en}
         resumen={lang === "es" ? s.data.resumen_es : s.data.resumen_en}
@@ -60,7 +60,7 @@ const summaryPicks = variant === "summary"
       <div class="services-grid">
         {grouped[terr]?.map((s, i) => (
           <ServiceCard
-            numero={String(i + 1).padStart(2, "0")}
+            numero={String(i + 1)}
             territorio={TERRITORIOS[terr][lang]}
             titulo={lang === "es" ? s.data.titulo_es : s.data.titulo_en}
             resumen={lang === "es" ? s.data.resumen_es : s.data.resumen_en}

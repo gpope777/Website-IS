@@ -71,7 +71,7 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
       <div class="values-grid">
         {valores.map((v) => (
           <ValueCard
-            numero={String(v.data.orden).padStart(2, "0")}
+            numero={String(v.data.orden)}
             nombre={v.data.nombre_en}
             descripcion={v.data.descripcion_en}
           />
