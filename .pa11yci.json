@@ -1,0 +1,15 @@
+{
+  "defaults": {
+    "standard": "WCAG2AA",
+    "timeout": 30000,
+    "wait": 500
+  },
+  "urls": [
+    "http://localhost:4321/",
+    "http://localhost:4321/servicios",
+    "http://localhost:4321/sobre-nosotros",
+    "http://localhost:4321/contacto",
+    "http://localhost:4321/la-gran-pregunta",
+    "http://localhost:4321/la-gran-pregunta/el-primer-ano-tambien-se-disena"
+  ]
+}
