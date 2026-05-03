@@ -1,0 +1,129 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import Hero from "@/components/sections/Hero.astro";
+import StatsBand from "@/components/sections/StatsBand.astro";
+import ServicesGrid from "@/components/sections/ServicesGrid.astro";
+import FounderCard from "@/components/sections/FounderCard.astro";
+import ArticleCard from "@/components/ui/ArticleCard.astro";
+import ContactForm from "@/components/sections/ContactForm.astro";
+import CalendlyButton from "@/components/ui/CalendlyButton.astro";
+import Button from "@/components/ui/Button.astro";
+import { getCollection } from "astro:content";
+import { t } from "@/lib/i18n";
+
+const lang = "en";
+const path = Astro.url.pathname;
+
+const articulos = (await getCollection("articulos", (e) => e.data.publicado !== false))
+  .sort((a, b) => b.data.fecha.getTime() - a.data.fecha.getTime())
+  .slice(0, 3);
+---
+
+<BaseLayout
+  title="Innovational TMS · Industrial-Organizational Psychology Consulting"
+  description="Good people don't quit because of money. They quit because of decisions made months earlier. I-O psychology consulting with 15+ years of experience."
+  lang={lang}
+>
+  <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
+
+  <Hero
+    eyebrow="Consulting · Industrial-Organizational Psychology"
+    headlineHtml="Good people don't <em>quit because of money.</em><br>They quit because of decisions made months earlier."
+    lede="After fifteen years working with organizations, one thing keeps showing up: the problem is rarely 'lack of talent'. It's that decisions about people are still being made on intuition. What I offer is methodology, evidence, and a couple of uncomfortable questions."
+    signoff="Dr. Alejandro J. Gómez Betancourt"
+    ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/en/contact" }}
+    ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
+    photoSrc="/dr-gomez.jpg"
+    photoAlt="Dr. Alejandro J. Gómez Betancourt"
+    photoLabelName="Dr. Alejandro J. Gómez Betancourt"
+    photoLabelRole="PhD · I-O Psychologist · President & Senior Consultant"
+  />
+
+  <StatsBand
+    stats={[
+      { num: "15", label: t("stats.anos_hr", lang) },
+      { num: "20", label: t("stats.anos_posgrado", lang) },
+      { num: "4", label: t("stats.certificaciones", lang) },
+      { num: "1", label: t("stats.phd", lang) },
+    ]}
+  />
+
+  <section class="services-summary">
+    <div class="container">
+      <p class="eyebrow">How we work</p>
+      <h2 class="h2">Diagnosis before prescription. <em>Always with evidence.</em></h2>
+      <p class="lede" style="margin-top:14px;margin-bottom:32px;">
+        Every organization has its own culture, its own friction, and its own history.
+        We don't bring a pre-packaged solution: we start by understanding what's happening, then we design.
+      </p>
+      <ServicesGrid lang={lang} variant="summary" />
+      <div style="margin-top:32px;">
+        <Button variant="outline-dark" href="/en/services">See all 14 services →</Button>
+      </div>
+    </div>
+  </section>
+
+  <FounderCard
+    photoSrc="/dr-gomez.jpg"
+    photoAlt="Dr. Alejandro J. Gómez Betancourt"
+    nombre="Dr. Alejandro J. Gómez Betancourt"
+    rol="PhD · Industrial-Organizational Psychologist · President & Senior Consultant"
+    bio="Doctorate in Psychology from Albizu University in Puerto Rico, specialized in applying scientific method and psychological principles to the workplace. Fifteen years leading initiatives in organizational development, leadership programs, performance management, post-merger cultural transformation, and organizational design. Twenty years teaching at the graduate level at universities in Puerto Rico."
+    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC", "Other personality assessment tools"]}
+    ctaLabel="Learn more about the firm"
+    ctaHref="/en/about"
+  />
+
+  <section class="articles-preview">
+    <div class="container">
+      <p class="eyebrow">The Big Question</p>
+      <h2 class="h2">A series of <em>uncomfortable questions</em><br>for leaders who don't settle. <span style="font-family:var(--font-serif);font-style:italic;font-weight:400;font-size:.6em;color:var(--slate);">(Articles in Spanish)</span></h2>
+      <div class="articles-grid">
+        {articulos.map((a) => (
+          <ArticleCard
+            href={`/la-gran-pregunta/${a.id}`}
+            titulo={a.data.title}
+            resumen={a.data.resumen}
+            fecha={a.data.fecha}
+            tiempoLectura={a.data.tiempoLectura}
+            tags={a.data.tags}
+            lang={lang}
+          />
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="contact-preview">
+    <div class="container contact-grid">
+      <div>
+        <p class="eyebrow" style="color:var(--orange-cream);">Let's talk</p>
+        <h2 class="h2" style="color:var(--white);">Tell me what's happening in your organization.</h2>
+        <p class="lede" style="color:rgba(255,255,255,.78);max-width:480px;">
+          If you want a quick conversation, book 30 minutes.
+          If you'd rather write, fill out the form.
+        </p>
+        <div style="margin-top:24px;">
+          <CalendlyButton label="Book 30 minutes →" variant="outline-light" />
+        </div>
+      </div>
+      <div class="form-wrap">
+        <ContactForm lang={lang} variant="compact" />
+      </div>
+    </div>
+  </section>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
+</BaseLayout>
+
+<style>
+  .services-summary { background: var(--cream); padding: 96px 0; }
+  .articles-preview { background: var(--cream); padding: 96px 0; border-top: 1px solid var(--border); }
+  .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 32px; }
+  .contact-preview { background: var(--ink); padding: 96px 0; }
+  .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+  @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 32px; } }
+  .form-wrap { background: var(--cream); padding: 32px; border-radius: var(--radius-md); }
+</style>
