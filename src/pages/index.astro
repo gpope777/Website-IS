@@ -25,15 +25,15 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
 <BaseLayout
   title="Innovational TMS · Consultoría en Psicología I-O"
-  description="La gente buena no renuncia por dinero. Renuncia por decisiones que se tomaron meses antes. Consultoría en psicología industrial-organizacional con quince años de experiencia."
+  description="Las decisiones sobre las personas se siguen tomando por corazonada. La psicología industrial-organizacional existe para reemplazar el feeling con método. Consultoría con más de quince años de experiencia."
   lang={lang}
 >
   <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
 
   <Logo3DHero
     eyebrow="Consultoría · Psicología Industrial-Organizacional"
-    headlineHtml="La gente buena no <em>renuncia por dinero.</em><br>Renuncia por decisiones que se tomaron meses antes."
-    lede="Después de quince años acompañando organizaciones, hay algo que se repite: el problema casi nunca es 'falta de talento'. Es que las decisiones sobre la gente se siguen tomando por intuición. Yo ofrezco metodología, evidencia y un par de preguntas incómodas."
+    headlineHtml="Las decisiones sobre las personas se siguen tomando por <em>corazonada.</em><br>La psicología I-O existe para reemplazar el feeling con método."
+    lede="La rotación, el ausentismo y el burnout no son problemas de 'falta de talento'. Son consecuencias de decisiones que se tomaron sin método: descripciones de puesto improvisadas, entrevistas por intuición, primeros días sin diseñar. Aquí ofrezco rigor donde casi siempre hay corazonada."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/contacto" }}
     ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
@@ -44,7 +44,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     stats={[
       { num: "15", label: t("stats.anos_hr", lang) },
       { num: "20", label: t("stats.anos_posgrado", lang) },
-      { num: "4", label: t("stats.certificaciones", lang) },
+      { num: "3", label: t("stats.certificaciones", lang) },
       { num: "1", label: t("stats.phd", lang) },
     ]}
   />
@@ -69,8 +69,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     photoAlt="Dr. Alejandro J. Gómez Betancourt"
     nombre="Dr. Alejandro J. Gómez Betancourt"
     rol="PhD · Psicólogo Industrial-Organizacional · Presidente y Senior Consultant"
-    bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, transformación cultural post-fusiones, y diseño organizacional. Veinte años enseñando posgrado en universidades de Puerto Rico."
-    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC", "Otras herramientas de evaluación"]}
+    bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Más de quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, seguridad ocupacional, cambio organizacional, reclutamiento y selección, capacitación, gestión del talento, planificación de sucesión, diseño organizacional, y transformación cultural post-fusiones. Su enfoque holístico combina ciencia, estrategia y liderazgo para entregar soluciones que transforman organizaciones y mejoran la experiencia del empleado. Más de veinte años enseñando posgrado en universidades de Puerto Rico."
+    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
     ctaLabel="Conoce más sobre la firma"
     ctaHref="/sobre-nosotros"
   />

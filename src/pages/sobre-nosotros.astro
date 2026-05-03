@@ -37,7 +37,7 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
     photoAlt="Dr. Alejandro J. Gómez Betancourt"
     nombre="Dr. Alejandro J. Gómez Betancourt"
     rol="PhD · Psicólogo Industrial-Organizacional · Presidente y Senior Consultant"
-    bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, seguridad ocupacional, transformación cultural post-fusiones, y diseño organizacional. Veinte años enseñando posgrado en universidades de Puerto Rico, donde también supervisa académicamente disertaciones doctorales. Mantiene certificaciones internacionales en assessments de personalidad y liderazgo."
+    bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Más de quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, seguridad ocupacional, cambio organizacional, reclutamiento y selección, capacitación, gestión del talento, planificación de sucesión, diseño organizacional, y transformación cultural post-fusiones. Su enfoque holístico combina ciencia, estrategia y liderazgo para entregar soluciones que transforman organizaciones y mejoran la experiencia del empleado. Más de veinte años enseñando posgrado en universidades de Puerto Rico, donde también supervisa académicamente disertaciones doctorales. Mantiene certificaciones internacionales en McKinsey Leadership, Hogan Assessment, DISC y otras herramientas de evaluación que aplica en procesos de selección y desarrollo organizacional."
     certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
   />
 
@@ -64,10 +64,34 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
     </div>
   </section>
 
+  <section class="focus">
+    <div class="container">
+      <div class="identity-grid">
+        <div>
+          <p class="eyebrow" data-reveal>Nuestro foco</p>
+          <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Empoderar organizaciones <em>a través de la gestión efectiva del talento.</em></h2>
+        </div>
+        <div>
+          <p class="lede">
+            Trabajamos para que las organizaciones alcancen sus objetivos estratégicos a través de
+            prácticas efectivas de gestión del talento. Diseñamos soluciones a medida — apoyadas en
+            la investigación más reciente y en las mejores prácticas de la psicología
+            industrial-organizacional — para impulsar crecimiento sostenible y excelencia.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="values-section">
     <div class="container">
       <p class="eyebrow" data-reveal>Personalidad</p>
       <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Cinco palabras<br><em>que describen cómo trabajamos.</em></h2>
+      <p class="lede" style="margin-top:14px; max-width: 720px;" data-reveal data-reveal-delay="2">
+        Incorporamos la esencia de la innovación en cada aspecto de nuestra práctica. Guiados por los
+        principios de creatividad, adaptabilidad, pensamiento prospectivo y mente abierta, nuestra
+        personalidad refleja:
+      </p>
       <div class="values-grid">
         {valores.map((v) => (
           <ValueCard
@@ -97,12 +121,13 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
   .identity { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .identity-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 48px; }
   @media (max-width: 768px) { .identity-grid { grid-template-columns: 1fr; gap: 24px; } }
+  .focus { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .values-section { background: var(--canvas); padding: 80px 0; border-top: 1px solid var(--hairline); }
   .values-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 40px; }
   .cta-block { background: var(--canvas); padding: 80px 0 120px; border-top: 1px solid var(--hairline); }
   @media (max-width: 600px) {
     .page-header { padding: 56px 0 36px; }
-    .identity { padding: 48px 0; }
+    .identity, .focus { padding: 48px 0; }
     .values-section { padding: 48px 0; }
     .values-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 28px; }
     .cta-block { padding: 56px 0 80px; }

@@ -25,15 +25,15 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
 <BaseLayout
   title="Innovational TMS · Industrial-Organizational Psychology Consulting"
-  description="Good people don't quit because of money. They quit because of decisions made months earlier. I-O psychology consulting with 15+ years of experience."
+  description="Decisions about people are still being made on gut feeling. Industrial-Organizational psychology exists to replace feeling with method. Consulting with 15+ years of experience."
   lang={lang}
 >
   <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
 
   <Logo3DHero
     eyebrow="Consulting · Industrial-Organizational Psychology"
-    headlineHtml="Good people don't <em>quit because of money.</em><br>They quit because of decisions made months earlier."
-    lede="After fifteen years working with organizations, one thing keeps showing up: the problem is rarely 'lack of talent'. It's that decisions about people are still being made on intuition. What I offer is methodology, evidence, and a couple of uncomfortable questions."
+    headlineHtml="Decisions about people are still being made on <em>gut feeling.</em><br>I-O psychology exists to replace feeling with method."
+    lede="Turnover, absenteeism, and burnout aren't 'lack of talent' problems. They're consequences of decisions made without method: improvised job descriptions, intuition-based interviews, undesigned first days. Here I offer rigor where there's almost always guesswork."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/en/contact" }}
     ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
@@ -44,7 +44,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     stats={[
       { num: "15", label: t("stats.anos_hr", lang) },
       { num: "20", label: t("stats.anos_posgrado", lang) },
-      { num: "4", label: t("stats.certificaciones", lang) },
+      { num: "3", label: t("stats.certificaciones", lang) },
       { num: "1", label: t("stats.phd", lang) },
     ]}
   />
@@ -69,8 +69,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     photoAlt="Dr. Alejandro J. Gómez Betancourt"
     nombre="Dr. Alejandro J. Gómez Betancourt"
     rol="PhD · Industrial-Organizational Psychologist · President & Senior Consultant"
-    bio="Doctorate in Psychology from Albizu University in Puerto Rico, specialized in applying scientific method and psychological principles to the workplace. Fifteen years leading initiatives in organizational development, leadership programs, performance management, post-merger cultural transformation, and organizational design. Twenty years teaching at the graduate level at universities in Puerto Rico."
-    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC", "Other personality assessment tools"]}
+    bio="Doctorate in Psychology from Albizu University in Puerto Rico, specialized in applying scientific method and psychological principles to the workplace. Over fifteen years leading initiatives in organizational development, leadership programs, performance management, occupational safety, organizational change, recruitment and selection, training, talent management, succession planning, organizational design, and post-merger cultural transformation. His holistic approach combines science, strategy, and leadership to deliver solutions that transform organizations and enhance the employee experience. Over twenty years teaching at the graduate level at universities in Puerto Rico."
+    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
     ctaLabel="Learn more about the firm"
     ctaHref="/en/about"
   />
