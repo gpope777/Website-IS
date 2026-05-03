@@ -160,4 +160,22 @@ const articleSchema = {
     letter-spacing: 1.5px;
   }
   .btn-primary-inline:hover { background: var(--orange-hover); color: var(--white); }
+
+  @media (max-width: 600px) {
+    .article-page { padding: 48px 0 64px; }
+    .article-body { font-size: 16px; line-height: 1.7; }
+    .article-body :global(h2) { font-size: 22px; margin: 36px 0 14px; padding-top: 24px; }
+    .article-body :global(h3) { font-size: 19px; margin: 28px 0 10px; }
+    .article-hero { margin: 32px 0; }
+    .article-cta { margin-top: 48px; padding: 22px 18px; }
+    .article-cta p { font-size: 17px; }
+    .btn-primary-inline { padding: 14px 22px; font-size: 13px; }
+    .linkedin-link {
+      padding: 10px 14px;
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      gap: 6px;
+    }
+    .meta { font-size: 12px; gap: 6px; }
+  }
 </style>

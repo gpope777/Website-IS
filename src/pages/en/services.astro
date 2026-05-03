@@ -50,4 +50,9 @@ const path = Astro.url.pathname;
   .page-header .lede { margin-top: 20px; }
   .services-page { background: var(--canvas); padding: 64px 0 96px; }
   .cta-block { background: var(--canvas); padding: 80px 0 120px; border-top: 1px solid var(--hairline); }
+  @media (max-width: 600px) {
+    .page-header { padding: 56px 0 36px; }
+    .services-page { padding: 40px 0 56px; }
+    .cta-block { padding: 56px 0 80px; }
+  }
 </style>

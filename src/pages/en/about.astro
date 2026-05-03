@@ -100,4 +100,11 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
   .values-section { background: var(--canvas); padding: 80px 0; border-top: 1px solid var(--hairline); }
   .values-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 40px; }
   .cta-block { background: var(--canvas); padding: 80px 0 120px; border-top: 1px solid var(--hairline); }
+  @media (max-width: 600px) {
+    .page-header { padding: 56px 0 36px; }
+    .identity { padding: 48px 0; }
+    .values-section { padding: 48px 0; }
+    .values-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 28px; }
+    .cta-block { padding: 56px 0 80px; }
+  }
 </style>

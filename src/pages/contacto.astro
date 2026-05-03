@@ -58,4 +58,9 @@ const path = Astro.url.pathname;
   .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
   @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 40px; } }
   .form-side h2, .calendar-side h2 { color: var(--on-dark); margin-bottom: 8px; }
+  @media (max-width: 600px) {
+    .page-header { padding: 56px 0 36px; }
+    .contact-page { padding: 48px 0 72px; }
+    .contact-grid { gap: 32px; }
+  }
 </style>

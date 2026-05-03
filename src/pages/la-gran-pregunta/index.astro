@@ -64,4 +64,9 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   .page-header .lede { margin-top: 20px; }
   .articles-list { background: var(--canvas); padding: 64px 0 120px; border-top: 1px solid var(--hairline); }
   .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  @media (max-width: 600px) {
+    .page-header { padding: 56px 0 40px; }
+    .articles-list { padding: 40px 0 80px; }
+    .articles-grid { grid-template-columns: 1fr; gap: 16px; }
+  }
 </style>

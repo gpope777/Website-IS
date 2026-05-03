@@ -130,4 +130,9 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
   @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 32px; } }
   .form-wrap { background: var(--surface-card); padding: 40px; border-radius: 0; border: 1px solid var(--hairline); }
+  @media (max-width: 600px) {
+    .services-summary, .articles-preview, .contact-preview { padding: 56px 0; }
+    .articles-grid { grid-template-columns: 1fr; gap: 16px; margin-top: 24px; }
+    .form-wrap { padding: 24px; }
+  }
 </style>
