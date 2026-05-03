@@ -56,7 +56,10 @@ const articleSchema = {
           <span class="dot">·</span>
           <span>{tiempoLectura} {t("tiempoLectura.mins", lang)}</span>
         </div>
-        <a href={linkedinUrl} target="_blank" rel="noopener" class="linkedin-link">Lee la versión original en LinkedIn →</a>
+        <a href={linkedinUrl} target="_blank" rel="noopener noreferrer" class="linkedin-link">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14zM8.339 18.338v-7.16H5.96v7.16h2.379zM7.158 10.107a1.378 1.378 0 1 0 0-2.755 1.378 1.378 0 0 0 0 2.755zm11.183 8.232v-3.926c0-2.058-.439-3.64-2.842-3.64-1.155 0-1.93.633-2.247 1.234h-.032V10.95H11.78v7.388h2.378v-3.658c0-.964.183-1.897 1.376-1.897 1.176 0 1.193 1.1 1.193 1.959v3.596h2.378z"/></svg>
+          <span>Lee la versión original en LinkedIn →</span>
+        </a>
       </div>
 
       {imagenSrc && (
@@ -119,17 +122,21 @@ const articleSchema = {
   .series-marker .series-name::before { content: ""; display: inline-block; width: 32px; height: 1px; background: var(--hairline); margin-right: 12px; vertical-align: middle; }
 
   .linkedin-link {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     margin-top: 24px;
+    padding: 12px 20px;
     font-size: 13px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    color: var(--orange);
-    border-bottom: 1px solid var(--orange);
-    padding-bottom: 4px;
+    color: var(--on-dark);
+    background: var(--surface-card);
+    border: 1px solid var(--orange);
   }
-  .linkedin-link:hover { color: var(--orange-hover); border-bottom-color: var(--orange-hover); }
+  .linkedin-link:hover { background: var(--orange); color: var(--canvas); }
+  .linkedin-link svg { flex-shrink: 0; }
 
   .article-cta {
     margin-top: 64px;
