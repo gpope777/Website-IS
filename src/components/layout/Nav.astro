@@ -68,8 +68,8 @@ const homeHref = lang === "es" ? "/" : "/en";
     color: var(--white);
     transition: background 0.2s ease;
   }
-  .site-nav--transparent { background: transparent; }
-  .site-nav--transparent.site-nav--solid { background: rgba(14, 26, 32, 0.92); backdrop-filter: blur(10px); }
+  .site-nav--transparent { background: var(--ink); }
+  .site-nav--transparent.site-nav--solid { background: rgba(14, 26, 32, 0.85); backdrop-filter: blur(10px); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; gap: 24px; }
   .brand { display: inline-flex; align-items: baseline; gap: 6px; font-weight: 700; letter-spacing: -0.02em; font-size: 16px; }
   .brand-dot { color: var(--orange); }

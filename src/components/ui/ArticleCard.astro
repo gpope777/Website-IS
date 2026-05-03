@@ -14,7 +14,7 @@ export interface Props {
 }
 
 const { href, titulo, resumen, fecha, tiempoLectura, tags = [], imagenSrc, imagenAlt = "", lang } = Astro.props;
-const fechaStr = fecha.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { year: "numeric", month: "long", day: "numeric" });
+const fechaStr = fecha.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 const lecturaLabel = tiempoLectura === 1 ? t("tiempoLectura.min", lang) : t("tiempoLectura.mins", lang);
 ---
 

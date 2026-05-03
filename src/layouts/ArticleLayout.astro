@@ -19,7 +19,7 @@ export interface Props {
 const { title, resumen, fecha, autor, tiempoLectura, tags, imagenSrc, imagenAlt } = Astro.props;
 const lang: Lang = "es";
 const path = Astro.url.pathname;
-const fechaStr = fecha.toLocaleDateString("es-PR", { year: "numeric", month: "long", day: "numeric" });
+const fechaStr = fecha.toLocaleDateString("es-PR", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 
 const articleSchema = {
   "@context": "https://schema.org",
