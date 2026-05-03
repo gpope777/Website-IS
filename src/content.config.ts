@@ -6,13 +6,15 @@ const articulos = defineCollection({
   loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/articulos" }),
   schema: ({ image }) => z.object({
     title: z.string(),
+    entrega: z.number().int().positive(),
     fecha: z.date(),
     autor: z.string().default("Dr. Alejandro J. Gómez Betancourt"),
-    resumen: z.string().min(80).max(400),
+    resumen: z.string().min(80).max(500),
     imagen: image().optional(),
     imagenAlt: z.string(),
     tiempoLectura: z.number().int().positive(),
     tags: z.array(z.string()),
+    linkedinUrl: z.string().url(),
     publicado: z.boolean().default(true),
   }),
 });

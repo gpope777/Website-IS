@@ -18,8 +18,9 @@ const lang = "es";
 const path = Astro.url.pathname;
 
 const articulos = (await getCollection("articulos", (e) => e.data.publicado !== false))
-  .sort((a, b) => b.data.entrega - a.data.entrega)
-  .slice(0, 3);
+  .sort((a, b) => a.data.entrega - b.data.entrega)
+  .slice(-3)
+  .reverse();
 ---
 
 <BaseLayout
