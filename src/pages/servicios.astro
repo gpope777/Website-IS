@@ -1,0 +1,52 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import ServicesGrid from "@/components/sections/ServicesGrid.astro";
+import Button from "@/components/ui/Button.astro";
+
+const lang = "es";
+const path = Astro.url.pathname;
+---
+
+<BaseLayout
+  title="Servicios · Innovational TMS"
+  description="Catorce servicios agrupados en cuatro territorios: Talent Acquisition, Experiencia del Empleado, Liderazgo, y Cultura & Cambio."
+  lang={lang}
+>
+  <Nav slot="nav" lang={lang} currentPath={path} />
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Servicios</p>
+      <h1 class="h1">Catorce servicios.<br><em>Cuatro territorios.</em><br>Una sola filosofía: evidencia.</h1>
+      <p class="lede">
+        No vendemos paquetes. Cada engagement empieza por entender qué está pasando en tu
+        organización y termina con algo medible y específico.
+      </p>
+    </div>
+  </header>
+
+  <main class="services-page">
+    <div class="container">
+      <ServicesGrid lang={lang} variant="full" />
+    </div>
+  </main>
+
+  <section class="cta-block">
+    <div class="container" style="text-align:center;">
+      <h2 class="h2">¿Cuál es el tema en tu organización?</h2>
+      <p class="lede" style="margin: 16px auto 28px;">Cuéntame en una frase y respondo en uno o dos días hábiles.</p>
+      <Button variant="primary" size="lg" href="/contacto">Cuéntame de tu organización →</Button>
+    </div>
+  </section>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
+</BaseLayout>
+
+<style>
+  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 56px; }
+  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
+  .services-page { background: var(--cream); padding: 64px 0 96px; }
+  .cta-block { background: var(--cream); padding: 80px 0 120px; border-top: 1px solid var(--border); }
+</style>
