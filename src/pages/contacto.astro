@@ -1,0 +1,60 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import ContactForm from "@/components/sections/ContactForm.astro";
+import CalendlyButton from "@/components/ui/CalendlyButton.astro";
+
+const lang = "es";
+const path = Astro.url.pathname;
+---
+
+<BaseLayout
+  title="Contacto · Innovational TMS"
+  description="Cuéntame qué pasa en tu organización. O reserva 30 minutos directo en mi calendario."
+  lang={lang}
+>
+  <Nav slot="nav" lang={lang} currentPath={path} />
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Contacto</p>
+      <h1 class="h1">¿Cuál es la <em>pregunta</em><br>que te trajo aquí?</h1>
+      <p class="lede">
+        Si quieres una conversación rápida, agenda 30 minutos directo en mi calendario.
+        Si prefieres escribir primero, llena el formulario.
+      </p>
+    </div>
+  </header>
+
+  <section class="contact-page">
+    <div class="container contact-grid">
+      <div class="form-side">
+        <h2 class="h2" style="font-size:24px;">Escríbenos</h2>
+        <p class="lede" style="margin-bottom:24px;">
+          Mientras más concreto sea tu mensaje, más útil será mi respuesta.
+        </p>
+        <ContactForm lang={lang} />
+      </div>
+
+      <aside class="calendar-side">
+        <h2 class="h2" style="font-size:24px;">O agenda 30 minutos</h2>
+        <p class="lede" style="margin-bottom:24px;">
+          Treinta minutos suelen alcanzar para entender si puedo ayudar.
+        </p>
+        <CalendlyButton inline={true} label="Reserva 30 minutos" />
+      </aside>
+    </div>
+  </section>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
+</BaseLayout>
+
+<style>
+  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 64px; }
+  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; max-width: 540px; }
+  .contact-page { background: var(--cream); padding: 80px 0 120px; }
+  .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
+  @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 40px; } }
+  .form-side h2, .calendar-side h2 { color: var(--slate-deep); margin-bottom: 8px; }
+</style>
