@@ -11,9 +11,11 @@ export interface Props {
   imagenSrc?: string;
   imagenAlt?: string;
   lang: Lang;
+  entrega: number;
+  linkedinUrl?: string;
 }
 
-const { href, titulo, resumen, fecha, tiempoLectura, tags = [], imagenSrc, imagenAlt = "", lang } = Astro.props;
+const { href, titulo, resumen, fecha, tiempoLectura, tags = [], imagenSrc, imagenAlt = "", lang, entrega } = Astro.props;
 const fechaStr = fecha.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 const lecturaLabel = tiempoLectura === 1 ? t("tiempoLectura.min", lang) : t("tiempoLectura.mins", lang);
 ---
@@ -25,6 +27,7 @@ const lecturaLabel = tiempoLectura === 1 ? t("tiempoLectura.min", lang) : t("tie
     </div>
   )}
   <div class="article-body">
+    <div class="entrega-tag">Entrega {String(entrega).padStart(2, "0")} <span>·</span> La Gran Pregunta</div>
     {tags.length > 0 && <div class="article-tags">{tags.slice(0, 2).map((tag) => <span>{tag}</span>)}</div>}
     <h3>{titulo}</h3>
     <p>{resumen}</p>
@@ -67,4 +70,12 @@ const lecturaLabel = tiempoLectura === 1 ? t("tiempoLectura.min", lang) : t("tie
   .article-card p { font-size: 14px; color: var(--body-text); line-height: 1.6; font-weight: 300; }
   .article-meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; margin-top: auto; padding-top: 12px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
   .dot { opacity: 0.4; }
+  .entrega-tag {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--orange);
+    font-weight: 700;
+  }
+  .entrega-tag span { opacity: 0.5; margin: 0 4px; }
 </style>

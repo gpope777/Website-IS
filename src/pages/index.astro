@@ -18,7 +18,7 @@ const lang = "es";
 const path = Astro.url.pathname;
 
 const articulos = (await getCollection("articulos", (e) => e.data.publicado !== false))
-  .sort((a, b) => b.data.fecha.getTime() - a.data.fecha.getTime())
+  .sort((a, b) => b.data.entrega - a.data.entrega)
   .slice(0, 3);
 ---
 
@@ -91,6 +91,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
             tiempoLectura={a.data.tiempoLectura}
             tags={a.data.tags}
             lang={lang}
+            entrega={a.data.entrega}
+            linkedinUrl={a.data.linkedinUrl}
           />
         ))}
       </div>

@@ -14,9 +14,11 @@ export interface Props {
   tags: string[];
   imagenSrc?: string;
   imagenAlt?: string;
+  entrega: number;
+  linkedinUrl: string;
 }
 
-const { title, resumen, fecha, autor, tiempoLectura, tags, imagenSrc, imagenAlt } = Astro.props;
+const { title, resumen, fecha, autor, tiempoLectura, tags, imagenSrc, imagenAlt, entrega, linkedinUrl } = Astro.props;
 const lang: Lang = "es";
 const path = Astro.url.pathname;
 const fechaStr = fecha.toLocaleDateString("es-PR", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
@@ -40,6 +42,10 @@ const articleSchema = {
     <div class="container-tight">
       <div class="article-header">
         <a href="/la-gran-pregunta" class="back-link">← La Gran Pregunta</a>
+        <div class="series-marker">
+          <span class="entrega">Entrega {String(entrega).padStart(2, "0")}</span>
+          <span class="series-name">La Gran Pregunta</span>
+        </div>
         <div class="tags">{tags.map((tag) => <span>{tag}</span>)}</div>
         <h1 class="h1">{title}</h1>
         <p class="lede">{resumen}</p>
@@ -50,6 +56,7 @@ const articleSchema = {
           <span class="dot">·</span>
           <span>{tiempoLectura} {t("tiempoLectura.mins", lang)}</span>
         </div>
+        <a href={linkedinUrl} target="_blank" rel="noopener" class="linkedin-link">Lee la versión original en LinkedIn →</a>
       </div>
 
       {imagenSrc && (
@@ -105,6 +112,24 @@ const articleSchema = {
   .article-body :global(ol) { list-style: decimal; }
   .article-body :global(li) { margin-bottom: 8px; }
   .article-body :global(a) { color: var(--orange); }
+
+  .series-marker { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
+  .series-marker .entrega { color: var(--orange); }
+  .series-marker .series-name { color: var(--muted); }
+  .series-marker .series-name::before { content: ""; display: inline-block; width: 32px; height: 1px; background: var(--hairline); margin-right: 12px; vertical-align: middle; }
+
+  .linkedin-link {
+    display: inline-block;
+    margin-top: 24px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--orange);
+    border-bottom: 1px solid var(--orange);
+    padding-bottom: 4px;
+  }
+  .linkedin-link:hover { color: var(--orange-hover); border-bottom-color: var(--orange-hover); }
 
   .article-cta {
     margin-top: 64px;
