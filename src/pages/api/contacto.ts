@@ -10,7 +10,7 @@ const ContactSchema = z.object({
   email: z.string().email(),
   organizacion: z.string().min(2).max(120),
   mensaje: z.string().min(20).max(2000),
-  _website: z.string().max(0),
+  _website: z.string().max(0).optional(),
 });
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
@@ -28,17 +28,17 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return new Response(JSON.stringify({ ok: false, error: "invalid_json" }), { status: 400 });
   }
 
+  // Honeypot check — happens BEFORE Zod so bots see a 200 not a 400
+  if (body && typeof body === "object" && "_website" in body && (body as { _website?: unknown })._website) {
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+
   const parsed = ContactSchema.safeParse(body);
   if (!parsed.success) {
     return new Response(JSON.stringify({ ok: false, error: "validation", details: parsed.error.flatten() }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
-  }
-
-  // Honeypot triggered → silent success
-  if ((parsed.data as { _website?: string })._website) {
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 
   const apiKey = import.meta.env.RESEND_API_KEY;
