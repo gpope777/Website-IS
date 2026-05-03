@@ -1,0 +1,83 @@
+---
+import LangToggle from "./LangToggle.astro";
+import { t, type Lang } from "@/lib/i18n";
+
+export interface Props {
+  lang: Lang;
+  currentPath: string;
+  transparent?: boolean;
+}
+
+const { lang, currentPath, transparent = false } = Astro.props;
+const linksEs = [
+  { href: "/servicios", key: "nav.servicios" },
+  { href: "/sobre-nosotros", key: "nav.sobre" },
+  { href: "/la-gran-pregunta", key: "nav.articulos" },
+  { href: "/contacto", key: "nav.contacto" },
+];
+const linksEn = [
+  { href: "/en/services", key: "nav.servicios" },
+  { href: "/en/about", key: "nav.sobre" },
+  { href: "/la-gran-pregunta", key: "nav.articulos" },
+  { href: "/en/contact", key: "nav.contacto" },
+];
+const links = lang === "es" ? linksEs : linksEn;
+const homeHref = lang === "es" ? "/" : "/en/";
+---
+
+<nav class={`site-nav ${transparent ? "site-nav--transparent" : ""}`} data-transparent={transparent ? "true" : "false"}>
+  <div class="container nav-inner">
+    <a href={homeHref} class="brand" aria-label="Innovational TMS home">
+      <span class="brand-mark">innovational</span>
+      <span class="brand-dot">·</span>
+      <span class="brand-name">TMS</span>
+    </a>
+
+    <ul class="nav-links">
+      {links.map((link) => (
+        <li>
+          <a href={link.href} class={currentPath === link.href ? "active" : ""}>
+            {t(link.key, lang)}
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <LangToggle currentLang={lang} currentPath={currentPath} />
+  </div>
+</nav>
+
+<script>
+  const nav = document.querySelector(".site-nav");
+  if (nav?.getAttribute("data-transparent") === "true") {
+    const onScroll = () => {
+      if (window.scrollY > 60) nav.classList.add("site-nav--solid");
+      else nav.classList.remove("site-nav--solid");
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  }
+</script>
+
+<style>
+  .site-nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--ink);
+    color: var(--white);
+    transition: background 0.2s ease;
+  }
+  .site-nav--transparent { background: transparent; }
+  .site-nav--transparent.site-nav--solid { background: rgba(14, 26, 32, 0.92); backdrop-filter: blur(10px); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; gap: 24px; }
+  .brand { display: inline-flex; align-items: baseline; gap: 6px; font-weight: 700; letter-spacing: -0.02em; font-size: 16px; }
+  .brand-dot { color: var(--orange); }
+  .brand-name { font-weight: 600; opacity: 0.9; }
+  .nav-links { display: flex; gap: 22px; flex: 1; justify-content: center; }
+  .nav-links a { color: var(--white); opacity: 0.78; font-size: 14px; font-weight: 500; transition: opacity 0.15s; }
+  .nav-links a:hover, .nav-links a.active { opacity: 1; color: var(--orange); }
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+  }
+</style>
