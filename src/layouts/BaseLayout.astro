@@ -1,5 +1,6 @@
 ---
 import "@/styles/global.css";
+import JsonLd from "@/components/seo/JsonLd.astro";
 
 export interface Props {
   title: string;
@@ -9,8 +10,23 @@ export interface Props {
   lang?: "es" | "en";
 }
 
-const { title, description, ogImage = "/og/default.jpg", canonical, lang = "es" } = Astro.props;
+const { title, description, ogImage = "/og/default.svg", canonical, lang = "es" } = Astro.props;
 const canonicalUrl = canonical ?? new URL(Astro.url.pathname, Astro.site).toString();
+
+const orgSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Innovational TMS",
+  description: "Industrial-Organizational Psychology consulting firm.",
+  url: Astro.site?.toString(),
+  founder: {
+    "@type": "Person",
+    name: "Dr. Alejandro J. Gómez Betancourt",
+    jobTitle: "President & Senior Consultant",
+    alumniOf: { "@type": "EducationalOrganization", name: "Albizu University, Puerto Rico" },
+  },
+  address: { "@type": "PostalAddress", addressCountry: "PR" },
+};
 ---
 
 <!doctype html>
@@ -41,6 +57,7 @@ const canonicalUrl = canonical ?? new URL(Astro.url.pathname, Astro.site).toStri
     <link rel="alternate" hreflang="es" href={new URL(Astro.url.pathname.replace(/^\/en/, ""), Astro.site).toString()} />
     <link rel="alternate" hreflang="en" href={new URL(Astro.url.pathname.startsWith("/en") ? Astro.url.pathname : `/en${Astro.url.pathname}`, Astro.site).toString()} />
 
+    <JsonLd data={orgSchema} />
     <slot name="head" />
   </head>
   <body>

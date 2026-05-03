@@ -2,6 +2,7 @@
 import BaseLayout from "./BaseLayout.astro";
 import Nav from "@/components/layout/Nav.astro";
 import Footer from "@/components/layout/Footer.astro";
+import JsonLd from "@/components/seo/JsonLd.astro";
 import { t, type Lang } from "@/lib/i18n";
 
 export interface Props {
@@ -19,9 +20,20 @@ const { title, resumen, fecha, autor, tiempoLectura, tags, imagenSrc, imagenAlt 
 const lang: Lang = "es";
 const path = Astro.url.pathname;
 const fechaStr = fecha.toLocaleDateString("es-PR", { year: "numeric", month: "long", day: "numeric" });
+
+const articleSchema = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  headline: title,
+  description: resumen,
+  datePublished: fecha.toISOString(),
+  author: { "@type": "Person", name: autor },
+  publisher: { "@type": "Organization", name: "Innovational TMS" },
+};
 ---
 
 <BaseLayout title={`${title} · La Gran Pregunta`} description={resumen} lang={lang}>
+  <JsonLd data={articleSchema} slot="head" />
   <Nav slot="nav" lang={lang} currentPath={path} />
 
   <article class="article-page">
