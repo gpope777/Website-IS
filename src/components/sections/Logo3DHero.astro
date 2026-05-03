@@ -61,10 +61,15 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
         <span class="drag-hint" aria-hidden="true">{dragHint}</span>
       </div>
 
-      <div class="values-inline">
+      <div class="values-line">
         <span class="values-label">{valoresLabel}</span>
-        <ul class="values-pills">
-          {valuesList.map((v) => <li>{v}</li>)}
+        <ul>
+          {valuesList.map((v, i) => (
+            <li>
+              <span class="num">{String(i + 1).padStart(2, "0")}</span>
+              <span class="name">{v}</span>
+            </li>
+          ))}
         </ul>
       </div>
     </div>
@@ -97,44 +102,24 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       renderer.setSize(w, h, false);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      // Shadows turned off — the canvas is transparent against the dark page
+      // surface, so any cast shadow would render as invisible on top of #000.
 
       // Brand palette
       const ORANGE = 0xef5a21;
       const NAVY = 0x2c4a5b;
 
-      // Lighting — softer key + warm rim + cool fill, matches the logo
-      // mockup the user shared
-      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-
-      const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+      // Lighting — three-point setup that pops the alternating letters
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
       keyLight.position.set(2.5, 5, 5);
-      keyLight.castShadow = true;
-      keyLight.shadow.mapSize.set(1024, 1024);
-      keyLight.shadow.camera.left = -4;
-      keyLight.shadow.camera.right = 4;
-      keyLight.shadow.camera.top = 4;
-      keyLight.shadow.camera.bottom = -4;
-      keyLight.shadow.bias = -0.0005;
       scene.add(keyLight);
-
-      const rimLight = new THREE.DirectionalLight(0xff7740, 0.6);
+      const rimLight = new THREE.DirectionalLight(0xff7740, 0.65);
       rimLight.position.set(-3, 2, -2);
       scene.add(rimLight);
-
-      const fillLight = new THREE.DirectionalLight(0x6090ff, 0.3);
+      const fillLight = new THREE.DirectionalLight(0x6090ff, 0.32);
       fillLight.position.set(-2, -2, 3);
       scene.add(fillLight);
-
-      // Invisible ground plane that catches shadows
-      const groundGeo = new THREE.PlaneGeometry(20, 20);
-      const groundMat = new THREE.ShadowMaterial({ opacity: 0.42 });
-      const ground = new THREE.Mesh(groundGeo, groundMat);
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -2.0;
-      ground.receiveShadow = true;
-      scene.add(ground);
 
       // Master rotation group
       const group = new THREE.Group();
@@ -171,10 +156,6 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
           [ORANGE, NAVY,   ORANGE, NAVY  ],
         ];
 
-        const cellW = 0.92;
-        const cellH = 1.05;
-        const blockYOffset = 0.45; // shift up to make room for tagline below
-
         const letterTextOpts = {
           font,
           size: 0.85,
@@ -186,22 +167,42 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
           bevelSegments: 10,
         };
 
-        const letterCenters: { x: number; y: number }[] = [];
+        // Cursor-based packing — measure each letter's actual width and lay
+        // them out so the block looks like the brand mark (letters touching)
+        // instead of a uniform grid with awkward gaps for narrow letters.
+        const gap = 0.06;
+        const rowHeight = 0.8;
+        const blockYOffset = 0.4;
+
+        // Build all geometries up front so we can measure widths
+        const rowGeos = grid.map((row) =>
+          row.map((letter) => {
+            const geo = new TextGeometry(letter, letterTextOpts);
+            geo.computeBoundingBox();
+            const bb = geo.boundingBox!;
+            const width = bb.max.x - bb.min.x;
+            geo.center();
+            return { geo, width };
+          })
+        );
 
         grid.forEach((row, ri) => {
-          row.forEach((letter, ci) => {
-            const geo = new TextGeometry(letter, letterTextOpts);
-            geo.center();
-            const mesh = new THREE.Mesh(
-              geo,
-              colorGrid[ri][ci] === ORANGE ? orangeMat : navyMat
+          const totalRowW =
+            rowGeos[ri].reduce((sum, g) => sum + g.width, 0) +
+            (row.length - 1) * gap;
+          let xCursor = -totalRowW / 2;
+
+          row.forEach((_letter, ci) => {
+            const { geo, width } = rowGeos[ri][ci];
+            const mat = colorGrid[ri][ci] === ORANGE ? orangeMat : navyMat;
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(
+              xCursor + width / 2,
+              ((grid.length - 1) / 2 - ri) * rowHeight + blockYOffset,
+              0
             );
-            mesh.castShadow = true;
-            const x = (ci - (row.length - 1) / 2) * cellW;
-            const y = ((grid.length - 1) / 2 - ri) * cellH + blockYOffset;
-            mesh.position.set(x, y, 0);
             group.add(mesh);
-            letterCenters.push({ x, y });
+            xCursor += width + gap;
           });
         });
 
@@ -251,7 +252,6 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
         anchors.forEach(([x, y]) => {
           const outer = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 20), dotMat);
           outer.position.set(x, y, dotZ);
-          outer.castShadow = true;
           group.add(outer);
 
           const inner = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), dotWhiteMat);
@@ -284,23 +284,20 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
         const space = 0.16;
         const totalTagW = w1.w + w2.w + w3.w + space * 2;
         let xCursor = -totalTagW / 2;
-        const tagY = -1.78;
+        const tagY = -1.5;
 
         const word1 = new THREE.Mesh(w1.geo, navyMat);
         word1.position.set(xCursor, tagY, 0);
-        word1.castShadow = true;
         group.add(word1);
         xCursor += w1.w + space;
 
         const word2 = new THREE.Mesh(w2.geo, orangeMat);
         word2.position.set(xCursor, tagY, 0);
-        word2.castShadow = true;
         group.add(word2);
         xCursor += w2.w + space;
 
         const word3 = new THREE.Mesh(w3.geo, navyMat);
         word3.position.set(xCursor, tagY, 0);
-        word3.castShadow = true;
         group.add(word3);
 
         // 3-quarter starting view — never edge-on
@@ -419,12 +416,10 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
   .logo-3d-stage {
     position: relative;
     aspect-ratio: 1 / 1;
-    background:
-      radial-gradient(ellipse at 50% 35%, rgba(239, 90, 33, 0.07) 0%, transparent 60%),
-      linear-gradient(135deg, #0e0e0e 0%, #1d1d1d 100%);
-    border: 1px solid var(--hairline);
+    background: transparent;
+    border: 0;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
   }
   #logo-3d-canvas {
     display: block;
@@ -490,43 +485,63 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     z-index: 2;
   }
 
-  .values-inline {
+  /* Editorial values line — no boxes, no pills.
+     Inspired by Linear's near-zero chrome plus the BMW M editorial
+     index-+-letter-spaced label pairing. */
+  .values-line {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    align-items: center;
-    padding: 6px 0 0;
+    gap: 14px;
+    padding: 8px 0 0;
+    border-top: 1px solid var(--hairline);
+    margin-top: 8px;
   }
   .values-label {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 1.8px;
     color: var(--muted);
-    font-weight: 700;
+    font-weight: 500;
   }
-  .values-pills {
+  .values-line ul {
     list-style: none;
     margin: 0;
     padding: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 18px 22px;
+  }
+  .values-line li {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
   }
-  .values-pills li {
+  .values-line .num {
     font-size: 10px;
-    text-transform: uppercase;
+    color: var(--orange);
+    font-weight: 500;
     letter-spacing: 1.4px;
-    color: var(--body-strong);
-    padding: 6px 12px;
-    border: 1px solid var(--orange);
-    background: transparent;
-    font-weight: 700;
-    transition: background 0.18s ease, color 0.18s ease;
+    font-variant-numeric: tabular-nums;
   }
-  .values-pills li:hover {
-    background: var(--orange);
-    color: var(--white);
+  .values-line .name {
+    font-size: 11px;
+    color: var(--body-strong);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+  @media (max-width: 900px) {
+    .values-line ul {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  @media (max-width: 600px) {
+    .values-line ul {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px 18px;
+    }
+    .values-line .name { font-size: 12px; }
   }
 
   @media (max-width: 600px) {
@@ -537,6 +552,5 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     .lede { margin-top: 16px; }
     .cta-row { margin-top: 22px; gap: 10px; }
     .drag-hint { font-size: 9px; padding: 4px 8px; }
-    .values-pills li { font-size: 9px; padding: 5px 10px; }
   }
 </style>
