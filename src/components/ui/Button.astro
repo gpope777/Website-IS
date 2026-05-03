@@ -1,0 +1,56 @@
+---
+export interface Props {
+  variant?: "primary" | "ghost" | "outline-light" | "outline-dark";
+  size?: "md" | "lg";
+  href?: string;
+  type?: "button" | "submit";
+  class?: string;
+  disabled?: boolean;
+}
+
+const { variant = "primary", size = "md", href, type = "button", class: className, disabled } = Astro.props;
+const Tag = href ? "a" : "button";
+const classes = ["btn", `btn--${variant}`, `btn--${size}`, className].filter(Boolean).join(" ");
+---
+
+<Tag
+  class={classes}
+  href={href}
+  type={!href ? type : undefined}
+  disabled={!href && disabled ? true : undefined}
+  aria-disabled={disabled ? "true" : undefined}
+>
+  <slot />
+</Tag>
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 600;
+    border-radius: var(--radius);
+    transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn[disabled], .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn--md { padding: 12px 20px; font-size: 14px; }
+  .btn--lg { padding: 14px 26px; font-size: 15px; }
+
+  .btn--primary { background: var(--orange); color: var(--white); }
+  .btn--primary:hover { background: #d94f1d; }
+
+  .btn--ghost { color: var(--white); padding-left: 4px; padding-right: 4px; text-decoration: underline; text-decoration-color: rgba(239, 90, 33, 0.6); text-underline-offset: 6px; }
+  .btn--ghost:hover { text-decoration-color: var(--orange); }
+
+  .btn--outline-light { background: transparent; color: var(--white); border: 1.5px solid rgba(255, 255, 255, 0.3); }
+  .btn--outline-light:hover { border-color: var(--white); }
+
+  .btn--outline-dark { background: transparent; color: var(--slate-deep); border: 1.5px solid var(--slate); }
+  .btn--outline-dark:hover { background: var(--slate-deep); color: var(--white); }
+</style>
