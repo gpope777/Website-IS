@@ -1,0 +1,102 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import FounderCard from "@/components/sections/FounderCard.astro";
+import ValueCard from "@/components/ui/ValueCard.astro";
+import Button from "@/components/ui/Button.astro";
+import { getCollection } from "astro:content";
+
+const lang = "es";
+const path = Astro.url.pathname;
+
+const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b.data.orden);
+---
+
+<BaseLayout
+  title="Sobre nosotros · Innovational TMS"
+  description="Una firma de consultoría liderada por el Dr. Alejandro J. Gómez Betancourt, PhD en Psicología Industrial-Organizacional."
+  lang={lang}
+>
+  <Nav slot="nav" lang={lang} currentPath={path} />
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Sobre nosotros</p>
+      <h1 class="h1">Una firma <em>boutique de psicología I-O</em><br>con base en Puerto Rico.</h1>
+      <p class="lede">
+        Trabajamos con líderes que entienden que las decisiones sobre las personas son las decisiones más
+        estratégicas que toma una organización — y que esas decisiones merecen método, no improvisación.
+      </p>
+    </div>
+  </header>
+
+  <FounderCard
+    photoSrc="/dr-gomez.jpg"
+    photoAlt="Dr. Alejandro J. Gómez Betancourt"
+    nombre="Dr. Alejandro J. Gómez Betancourt"
+    rol="PhD · Psicólogo Industrial-Organizacional · Presidente y Senior Consultant"
+    bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, seguridad ocupacional, transformación cultural post-fusiones, y diseño organizacional. Veinte años enseñando posgrado en universidades de Puerto Rico, donde también supervisa académicamente disertaciones doctorales. Mantiene certificaciones internacionales en assessments de personalidad y liderazgo."
+    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
+  />
+
+  <section class="identity">
+    <div class="container">
+      <div class="identity-grid">
+        <div>
+          <p class="eyebrow">Identidad</p>
+          <h2 class="h2">Empatía, rigor analítico, <em>liderazgo transformacional.</em></h2>
+        </div>
+        <div>
+          <p class="lede">
+            Nuestra identidad refleja los principios de la psicología industrial-organizacional —
+            pero también algo personal: la convicción de que las personas no son recursos para administrar,
+            sino la decisión más estratégica que toma una organización cada día.
+          </p>
+          <p class="lede" style="margin-top:14px;">
+            Combinamos investigación científica de frontera con experiencia práctica para revolucionar las
+            prácticas de gestión de talento. Nuestro enfoque es rigurosamente científico, basado en datos,
+            y siempre — siempre — basado en evidencia.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="values-section">
+    <div class="container">
+      <p class="eyebrow">Personalidad</p>
+      <h2 class="h2">Cinco palabras<br><em>que describen cómo trabajamos.</em></h2>
+      <div class="values-grid">
+        {valores.map((v) => (
+          <ValueCard
+            numero={String(v.data.orden).padStart(2, "0")}
+            nombre={v.data.nombre_es}
+            descripcion={v.data.descripcion_es}
+          />
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-block">
+    <div class="container" style="text-align:center;">
+      <h2 class="h2">¿Conversamos?</h2>
+      <p class="lede" style="margin: 16px auto 28px;">Treinta minutos suelen alcanzar para entender si podemos ayudar.</p>
+      <Button variant="primary" size="lg" href="/contacto">Reserva 30 minutos →</Button>
+    </div>
+  </section>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
+</BaseLayout>
+
+<style>
+  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 64px; }
+  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
+  .identity { background: var(--cream); padding: 96px 0; }
+  .identity-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 48px; }
+  @media (max-width: 768px) { .identity-grid { grid-template-columns: 1fr; gap: 24px; } }
+  .values-section { background: var(--cream); padding: 80px 0; border-top: 1px solid var(--border); }
+  .values-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 40px; }
+  .cta-block { background: var(--cream); padding: 80px 0 120px; border-top: 1px solid var(--border); }
+</style>
