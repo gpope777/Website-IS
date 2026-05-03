@@ -27,7 +27,7 @@ describe("getLangFromUrl()", () => {
 
 describe("translateRoute()", () => {
   it("maps ES home to EN home", () => {
-    expect(translateRoute("/", "en")).toBe("/en/");
+    expect(translateRoute("/", "en")).toBe("/en");
   });
 
   it("maps EN services to ES services", () => {
@@ -39,6 +39,6 @@ describe("translateRoute()", () => {
   });
 
   it("falls back to home for unknown routes", () => {
-    expect(translateRoute("/unknown", "en")).toBe("/en/");
+    expect(translateRoute("/unknown", "en")).toBe("/en");
   });
 });

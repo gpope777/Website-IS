@@ -8,7 +8,7 @@ export interface Props {
 }
 
 const { lang, currentPath } = Astro.props;
-const homeHref = lang === "es" ? "/" : "/en/";
+const homeHref = lang === "es" ? "/" : "/en";
 const year = new Date().getFullYear();
 ---
 

@@ -26,7 +26,7 @@ export interface RouteMapping {
 }
 
 const ROUTE_MAP: RouteMapping[] = [
-  { es: "/", en: "/en/" },
+  { es: "/", en: "/en" },
   { es: "/servicios", en: "/en/services" },
   { es: "/sobre-nosotros", en: "/en/about" },
   { es: "/contacto", en: "/en/contact" },
@@ -35,6 +35,6 @@ const ROUTE_MAP: RouteMapping[] = [
 export function translateRoute(currentPath: string, targetLang: Lang): string {
   if (currentPath.startsWith("/la-gran-pregunta")) return currentPath;
   const match = ROUTE_MAP.find((r) => r.es === currentPath || r.en === currentPath);
-  if (!match) return targetLang === "en" ? "/en/" : "/";
+  if (!match) return targetLang === "en" ? "/en" : "/";
   return targetLang === "es" ? match.es : match.en;
 }

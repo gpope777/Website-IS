@@ -6,9 +6,11 @@
 :root {
   /* Color tokens */
   --orange: #EF5A21;
+  --orange-hover: #d94f1d;
   --orange-soft: #FAC5B1;
   --orange-cream: #FCDED3;
   --slate: #405F6E;
+  --slate-muted: #7A8F9A;
   --slate-deep: #1F2D34;
   --ink: #0E1A20;
   --ink-deeper: #0a1418;
