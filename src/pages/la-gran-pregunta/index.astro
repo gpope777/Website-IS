@@ -1,0 +1,59 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import ArticleCard from "@/components/ui/ArticleCard.astro";
+import { getCollection } from "astro:content";
+
+const lang = "es";
+const path = Astro.url.pathname;
+
+const articulos = (await getCollection("articulos", (e) => e.data.publicado !== false))
+  .sort((a, b) => b.data.fecha.getTime() - a.data.fecha.getTime());
+---
+
+<BaseLayout
+  title="La Gran Pregunta · Innovational TMS"
+  description="Una serie de preguntas incómodas para líderes que no se conforman. Por el Dr. Alejandro J. Gómez Betancourt."
+  lang={lang}
+>
+  <Nav slot="nav" lang={lang} currentPath={path} />
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">La Gran Pregunta</p>
+      <h1 class="h1">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h1>
+      <p class="lede">
+        Cada entrega revisa una práctica común de gestión de talento desde la psicología industrial-organizacional —
+        y termina con una pregunta para que la lleves a tu próxima reunión.
+      </p>
+    </div>
+  </header>
+
+  <main class="articles-list">
+    <div class="container">
+      <div class="articles-grid">
+        {articulos.map((a) => (
+          <ArticleCard
+            href={`/la-gran-pregunta/${a.id}`}
+            titulo={a.data.title}
+            resumen={a.data.resumen}
+            fecha={a.data.fecha}
+            tiempoLectura={a.data.tiempoLectura}
+            tags={a.data.tags}
+            lang={lang}
+          />
+        ))}
+      </div>
+    </div>
+  </main>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
+</BaseLayout>
+
+<style>
+  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 64px; }
+  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
+  .articles-list { background: var(--cream); padding: 64px 0 120px; }
+  .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+</style>
