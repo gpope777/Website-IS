@@ -1,0 +1,7 @@
+---
+import type { Lang } from "@/lib/i18n";
+export interface Props { currentLang: Lang; currentPath: string; variant?: "dark" | "light"; }
+const { currentLang } = Astro.props;
+---
+<span class="lang-stub">{currentLang.toUpperCase()}</span>
+<style>.lang-stub { font-size: 11px; opacity: 0.6; }</style>
