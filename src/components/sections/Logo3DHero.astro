@@ -61,16 +61,16 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
         <span class="drag-hint" aria-hidden="true">{dragHint}</span>
       </div>
 
-      <div class="values-line">
-        <span class="values-label">{valoresLabel}</span>
-        <ul>
+      <div class="values-thread" aria-label={valoresLabel}>
+        <ol>
           {valuesList.map((v, i) => (
             <li>
+              <span class="node" aria-hidden="true"></span>
               <span class="num">{String(i + 1).padStart(2, "0")}</span>
               <span class="name">{v}</span>
             </li>
           ))}
-        </ul>
+        </ol>
       </div>
     </div>
   </div>
@@ -485,63 +485,123 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     z-index: 2;
   }
 
-  /* Editorial values line — no boxes, no pills.
-     Inspired by Linear's near-zero chrome plus the BMW M editorial
-     index-+-letter-spaced label pairing. */
-  .values-line {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 8px 0 0;
-    border-top: 1px solid var(--hairline);
-    margin-top: 8px;
+  /* Values thread — visually a continuation of the logo's network graph.
+     A hairline runs through 5 two-tone nodes (orange ring + white core)
+     that mirror the network dots inside the 3D mark, with the value
+     index + name typeset below each node in editorial style. */
+  .values-thread {
+    margin-top: 4px;
+    padding-top: 4px;
   }
-  .values-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1.8px;
-    color: var(--muted);
-    font-weight: 500;
-  }
-  .values-line ul {
+  .values-thread ol {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 18px 22px;
+    column-gap: 12px;
+    position: relative;
   }
-  .values-line li {
+  /* Hairline threading through the centers of the 5 nodes */
+  .values-thread ol::before {
+    content: "";
+    position: absolute;
+    top: 5px;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: var(--hairline);
+    z-index: 0;
+  }
+  .values-thread li {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    position: relative;
+    z-index: 1;
     min-width: 0;
   }
-  .values-line .num {
+  /* Two-tone network node — same motif as the 3D logo's network dots */
+  .values-thread .node {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--orange);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 0 12px rgba(239, 90, 33, 0.35);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .values-thread .node::after {
+    content: "";
+    position: absolute;
+    inset: 50%;
+    width: 3px;
+    height: 3px;
+    margin: -1.5px;
+    background: #fff;
+    border-radius: 50%;
+  }
+  .values-thread .num {
     font-size: 10px;
     color: var(--orange);
     font-weight: 500;
     letter-spacing: 1.4px;
     font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin-top: -2px;
   }
-  .values-line .name {
+  .values-thread .name {
     font-size: 11px;
     color: var(--body-strong);
     font-weight: 500;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.005em;
     line-height: 1.3;
+    text-wrap: balance;
   }
+
+  /* Tablet — relax columns but keep horizontal thread */
   @media (max-width: 900px) {
-    .values-line ul {
-      grid-template-columns: repeat(3, 1fr);
-    }
+    .values-thread ol { column-gap: 10px; }
   }
+
+  /* Mobile — flip to vertical thread: hairline runs vertical on the
+     left, nodes stack down the side, value names align left */
   @media (max-width: 600px) {
-    .values-line ul {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px 18px;
+    .values-thread ol {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding-left: 24px;
     }
-    .values-line .name { font-size: 12px; }
+    .values-thread ol::before {
+      top: 5px;
+      bottom: 5px;
+      left: 4px;
+      right: auto;
+      width: 1px;
+      height: auto;
+    }
+    .values-thread li {
+      flex-direction: row;
+      align-items: baseline;
+      text-align: left;
+      gap: 10px;
+    }
+    .values-thread .node {
+      position: absolute;
+      left: -24px;
+      top: 4px;
+    }
+    .values-thread .num {
+      margin-top: 0;
+    }
+    .values-thread .name {
+      font-size: 13px;
+    }
   }
 
   @media (max-width: 600px) {
