@@ -53,8 +53,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <section class="services-summary">
     <div class="container">
-      <p class="eyebrow">Cómo trabajamos</p>
-      <h2 class="h2">Diagnóstico antes que receta. <em>Y siempre con evidencia.</em></h2>
+      <p class="eyebrow" data-reveal>Cómo trabajamos</p>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Diagnóstico antes que receta. <em>Y siempre con evidencia.</em></h2>
       <p class="lede" style="margin-top:14px;margin-bottom:32px;">
         Cada organización tiene su propia cultura, sus propias fricciones y su propia historia.
         No traemos un paquete prearmado: empezamos por entender qué está pasando, y desde ahí diseñamos.
@@ -79,8 +79,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <section class="articles-preview">
     <div class="container">
-      <p class="eyebrow">La Gran Pregunta</p>
-      <h2 class="h2">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h2>
+      <p class="eyebrow" data-reveal>La Gran Pregunta</p>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h2>
       <div class="articles-grid">
         {articulos.map((a) => (
           <ArticleCard
@@ -103,9 +103,9 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <section class="contact-preview">
     <div class="container contact-grid">
       <div>
-        <p class="eyebrow" style="color:var(--orange-cream);">Hablemos</p>
-        <h2 class="h2" style="color:var(--white);">Cuéntame qué pasa en tu organización.</h2>
-        <p class="lede" style="color:rgba(255,255,255,.78);max-width:480px;">
+        <p class="eyebrow" data-reveal>Hablemos</p>
+        <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Cuéntame qué pasa en tu organización.</h2>
+        <p class="lede" data-reveal data-reveal-delay="2" style="max-width:480px;">
           Si lo que necesitas es una conversación rápida, agenda 30 minutos.
           Si prefieres escribir, llena el formulario.
         </p>
@@ -123,11 +123,11 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 </BaseLayout>
 
 <style>
-  .services-summary { background: var(--cream); padding: 96px 0; }
-  .articles-preview { background: var(--cream); padding: 96px 0; border-top: 1px solid var(--border); }
+  .services-summary { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
+  .articles-preview { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 32px; }
-  .contact-preview { background: var(--ink); padding: 96px 0; }
+  .contact-preview { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
   @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 32px; } }
-  .form-wrap { background: var(--cream); padding: 32px; border-radius: var(--radius-md); }
+  .form-wrap { background: var(--surface-card); padding: 40px; border-radius: 0; border: 1px solid var(--hairline); }
 </style>

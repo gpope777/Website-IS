@@ -99,41 +99,44 @@ const { lang, variant = "full" } = Astro.props;
   .contact-form { display: flex; flex-direction: column; gap: 18px; }
   .honeypot { position: absolute; left: -10000px; opacity: 0; pointer-events: none; }
   .field { display: flex; flex-direction: column; gap: 6px; }
-  label { font-size: 13px; font-weight: 600; color: var(--slate); letter-spacing: 0.02em; }
+  label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; }
   input, textarea {
-    background: var(--white);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: 0;
     padding: 12px 14px;
     font-size: 15px;
-    color: var(--slate-deep);
+    color: var(--on-dark);
     font-family: inherit;
     transition: border-color 0.15s;
   }
-  input:focus, textarea:focus { border-color: var(--orange); outline: none; box-shadow: 0 0 0 3px rgba(239, 90, 33, 0.15); }
+  input:focus, textarea:focus { border-color: var(--orange); outline: none; box-shadow: none; }
   textarea { resize: vertical; min-height: 120px; }
   .error { font-size: 12px; color: var(--error); min-height: 1.2em; }
   .submit {
     background: var(--orange);
     color: var(--white);
-    padding: 14px 22px;
-    border-radius: var(--radius);
-    font-weight: 600;
-    font-size: 15px;
+    padding: 16px 32px;
+    border-radius: 0;
+    font-weight: 700;
+    font-size: 14px;
+    height: 52px;
     align-self: flex-start;
     margin-top: 6px;
     cursor: pointer;
-    transition: background 0.15s, transform 0.15s;
+    transition: background 0.15s;
     border: 0;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
   }
-  .submit:hover { background: var(--orange-hover); transform: translateY(-1px); }
-  .submit:disabled { opacity: 0.7; cursor: wait; transform: none; }
+  .submit:hover { background: var(--orange-hover); }
+  .submit:disabled { opacity: 0.7; cursor: wait; }
   .submit-loading { display: none; }
   .submit.is-loading .submit-label { display: none; }
   .submit.is-loading .submit-loading { display: inline; }
 
   .form-result { font-size: 14px; }
-  .result-success { background: rgba(39, 174, 96, 0.1); color: var(--success); padding: 12px 16px; border-radius: var(--radius); }
-  .result-error { background: rgba(192, 57, 43, 0.1); color: var(--error); padding: 12px 16px; border-radius: var(--radius); }
+  .result-success { background: rgba(39, 174, 96, 0.1); color: var(--success); padding: 12px 16px; border-radius: 0; border: 1px solid var(--hairline); }
+  .result-error { background: rgba(192, 57, 43, 0.1); color: var(--error); padding: 12px 16px; border-radius: 0; border: 1px solid var(--hairline); }
   .result-error a { color: var(--error); font-weight: 600; text-decoration: underline; margin-left: 6px; }
 </style>

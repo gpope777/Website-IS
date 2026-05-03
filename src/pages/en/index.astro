@@ -53,8 +53,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <section class="services-summary">
     <div class="container">
-      <p class="eyebrow">How we work</p>
-      <h2 class="h2">Diagnosis before prescription. <em>Always with evidence.</em></h2>
+      <p class="eyebrow" data-reveal>How we work</p>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Diagnosis before prescription. <em>Always with evidence.</em></h2>
       <p class="lede" style="margin-top:14px;margin-bottom:32px;">
         Every organization has its own culture, its own friction, and its own history.
         We don't bring a pre-packaged solution: we start by understanding what's happening, then we design.
@@ -79,8 +79,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <section class="articles-preview">
     <div class="container">
-      <p class="eyebrow">The Big Question</p>
-      <h2 class="h2">A series of <em>uncomfortable questions</em><br>for leaders who don't settle. <span style="font-family:var(--font-serif);font-style:italic;font-weight:400;font-size:.6em;color:var(--slate);">(Articles in Spanish)</span></h2>
+      <p class="eyebrow" data-reveal>The Big Question</p>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">A series of <em>uncomfortable questions</em><br>for leaders who don't settle. <span style="font-weight:300;font-size:.6em;color:var(--muted);">(Articles in Spanish)</span></h2>
       <div class="articles-grid">
         {articulos.map((a) => (
           <ArticleCard
@@ -100,9 +100,9 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <section class="contact-preview">
     <div class="container contact-grid">
       <div>
-        <p class="eyebrow" style="color:var(--orange-cream);">Let's talk</p>
-        <h2 class="h2" style="color:var(--white);">Tell me what's happening in your organization.</h2>
-        <p class="lede" style="color:rgba(255,255,255,.78);max-width:480px;">
+        <p class="eyebrow" data-reveal>Let's talk</p>
+        <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Tell me what's happening in your organization.</h2>
+        <p class="lede" data-reveal data-reveal-delay="2" style="max-width:480px;">
           If you want a quick conversation, book 30 minutes.
           If you'd rather write, fill out the form.
         </p>
@@ -120,11 +120,11 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 </BaseLayout>
 
 <style>
-  .services-summary { background: var(--cream); padding: 96px 0; }
-  .articles-preview { background: var(--cream); padding: 96px 0; border-top: 1px solid var(--border); }
+  .services-summary { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
+  .articles-preview { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 32px; }
-  .contact-preview { background: var(--ink); padding: 96px 0; }
+  .contact-preview { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
   @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 32px; } }
-  .form-wrap { background: var(--cream); padding: 32px; border-radius: var(--radius-md); }
+  .form-wrap { background: var(--surface-card); padding: 40px; border-radius: 0; border: 1px solid var(--hairline); }
 </style>

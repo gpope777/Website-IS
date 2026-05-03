@@ -19,9 +19,9 @@ const path = Astro.url.pathname;
 
   <header class="page-header">
     <div class="container">
-      <p class="eyebrow">Services</p>
-      <h1 class="h1">Fourteen services.<br><em>Four territories.</em><br>One philosophy: evidence.</h1>
-      <p class="lede">
+      <p class="eyebrow" data-reveal>Services</p>
+      <h1 class="h1" data-reveal data-reveal-delay="1">Fourteen services.<br><em>Four territories.</em><br>One philosophy: evidence.</h1>
+      <p class="lede" data-reveal data-reveal-delay="2">
         We don't sell packages. Every engagement starts by understanding what's happening in your
         organization and ends with something measurable and specific.
       </p>
@@ -46,8 +46,8 @@ const path = Astro.url.pathname;
 </BaseLayout>
 
 <style>
-  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 56px; }
-  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
-  .services-page { background: var(--cream); padding: 64px 0 96px; }
-  .cta-block { background: var(--cream); padding: 80px 0 120px; border-top: 1px solid var(--border); }
+  .page-header { background: var(--canvas); color: var(--on-dark); padding: 96px 0 56px; border-bottom: 1px solid var(--hairline); }
+  .page-header .lede { margin-top: 20px; }
+  .services-page { background: var(--canvas); padding: 64px 0 96px; }
+  .cta-block { background: var(--canvas); padding: 80px 0 120px; border-top: 1px solid var(--hairline); }
 </style>

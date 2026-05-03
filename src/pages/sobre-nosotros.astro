@@ -23,9 +23,9 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
 
   <header class="page-header">
     <div class="container">
-      <p class="eyebrow">Sobre nosotros</p>
-      <h1 class="h1">Una firma <em>boutique de psicología I-O</em><br>con base en Puerto Rico.</h1>
-      <p class="lede">
+      <p class="eyebrow" data-reveal>Sobre nosotros</p>
+      <h1 class="h1" data-reveal data-reveal-delay="1">Una firma <em>boutique de psicología I-O</em><br>con base en Puerto Rico.</h1>
+      <p class="lede" data-reveal data-reveal-delay="2">
         Trabajamos con líderes que entienden que las decisiones sobre las personas son las decisiones más
         estratégicas que toma una organización — y que esas decisiones merecen método, no improvisación.
       </p>
@@ -45,8 +45,8 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
     <div class="container">
       <div class="identity-grid">
         <div>
-          <p class="eyebrow">Identidad</p>
-          <h2 class="h2">Empatía, rigor analítico, <em>liderazgo transformacional.</em></h2>
+          <p class="eyebrow" data-reveal>Identidad</p>
+          <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Empatía, rigor analítico, <em>liderazgo transformacional.</em></h2>
         </div>
         <div>
           <p class="lede">
@@ -66,8 +66,8 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
 
   <section class="values-section">
     <div class="container">
-      <p class="eyebrow">Personalidad</p>
-      <h2 class="h2">Cinco palabras<br><em>que describen cómo trabajamos.</em></h2>
+      <p class="eyebrow" data-reveal>Personalidad</p>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Cinco palabras<br><em>que describen cómo trabajamos.</em></h2>
       <div class="values-grid">
         {valores.map((v) => (
           <ValueCard
@@ -92,12 +92,12 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
 </BaseLayout>
 
 <style>
-  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 64px; }
-  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
-  .identity { background: var(--cream); padding: 96px 0; }
+  .page-header { background: var(--canvas); color: var(--on-dark); padding: 96px 0 64px; border-bottom: 1px solid var(--hairline); }
+  .page-header .lede { margin-top: 20px; }
+  .identity { background: var(--canvas); padding: 96px 0; border-top: 1px solid var(--hairline); }
   .identity-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 48px; }
   @media (max-width: 768px) { .identity-grid { grid-template-columns: 1fr; gap: 24px; } }
-  .values-section { background: var(--cream); padding: 80px 0; border-top: 1px solid var(--border); }
+  .values-section { background: var(--canvas); padding: 80px 0; border-top: 1px solid var(--hairline); }
   .values-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 40px; }
-  .cta-block { background: var(--cream); padding: 80px 0 120px; border-top: 1px solid var(--border); }
+  .cta-block { background: var(--canvas); padding: 80px 0 120px; border-top: 1px solid var(--hairline); }
 </style>

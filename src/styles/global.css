@@ -1,36 +1,60 @@
 @import "@fontsource-variable/inter";
-@import "@fontsource-variable/source-serif-4/wght-italic.css";
 @import "./reset.css";
 @import "./typography.css";
 
 :root {
-  /* Color tokens */
+  /* Brand accent (single — orange replaces M-red) */
   --orange: #EF5A21;
-  --orange-hover: #d94f1d;
   --orange-soft: #FAC5B1;
   --orange-cream: #FCDED3;
-  --slate: #405F6E;
-  --slate-muted: #7A8F9A;
-  --slate-deep: #1F2D34;
-  --ink: #0E1A20;
-  --ink-deeper: #0a1418;
-  --cream: #FAFAF7;
-  --white: #FFFFFF;
-  --border: #E5E9EB;
-  --border-dark: rgba(255, 255, 255, 0.08);
+  --orange-hover: #d94f1d;
+
+  /* Surface tones (BMW M editorial dark) */
+  --canvas: #000000;
+  --surface-soft: #0d0d0d;
+  --surface-card: #1a1a1a;
+  --surface-elevated: #262626;
+  --carbon-gray: #2b2b2b;
+
+  /* Hairlines */
+  --hairline: #3c3c3c;
+  --hairline-strong: #262626;
+
+  /* Text */
+  --on-dark: #ffffff;
+  --body-text: #bbbbbb;
+  --body-strong: #e6e6e6;
+  --muted: #7e7e7e;
+
+  /* Legacy aliases (mapped onto new dark system so existing component code keeps working) */
+  --slate: #bbbbbb;          /* mapped to body-text */
+  --slate-deep: #ffffff;     /* mapped to on-dark — display copy was using this */
+  --slate-muted: #7e7e7e;
+  --ink: #000000;            /* mapped to canvas */
+  --ink-deeper: #000000;
+  --cream: #000000;          /* CRUCIAL: any "cream" section becomes black */
+  --white: #ffffff;
+  --border: #3c3c3c;         /* mapped to hairline */
+  --border-dark: #3c3c3c;
+
   --error: #C0392B;
   --success: #27AE60;
 
   /* Typography */
-  --font-sans: "Inter Variable", system-ui, sans-serif;
-  --font-serif: "Source Serif 4 Variable", Georgia, serif;
-  --font-h1: clamp(36px, 5vw, 56px);
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Inter Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 16px;
+
+  --font-display-xl: clamp(56px, 7vw, 80px);
+  --font-display-lg: clamp(40px, 5.5vw, 56px);
+  --font-display-md: clamp(32px, 4vw, 40px);
+  --font-display-sm: 32px;
+  --font-h1: clamp(40px, 5.5vw, 64px);
   --font-h2: clamp(28px, 3.6vw, 40px);
   --font-h3: 22px;
   --font-h4: 18px;
-  --font-body: 16px;
   --font-small: 14px;
-  --font-label: 11px;
+  --font-label: 14px;
 
   /* Spacing */
   --space-xs: 4px;
@@ -39,36 +63,52 @@
   --space-md: 24px;
   --space-lg: 32px;
   --space-xl: 48px;
-  --space-2xl: 80px;
-  --space-3xl: 120px;
+  --space-2xl: 64px;
+  --space-3xl: 96px;
+  --space-section: 96px;
 
-  /* Radii */
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  /* Radii — overwhelmingly 0 */
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
   --radius-pill: 999px;
 
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(15, 26, 32, 0.06);
-  --shadow: 0 12px 30px rgba(15, 26, 32, 0.08);
-  --shadow-lg: 0 30px 80px rgba(15, 26, 32, 0.18);
-
   /* Layout */
-  --container: 1180px;
+  --container: 1440px;
   --container-tight: 720px;
 }
 
 body {
   font-family: var(--font-sans);
   font-size: var(--font-body);
-  line-height: 1.65;
-  color: var(--slate-deep);
-  background: var(--cream);
+  line-height: 1.5;
+  color: var(--body-text);
+  background: var(--canvas);
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--orange); }
+a { color: var(--on-dark); text-decoration: none; }
+a:hover { color: var(--orange); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Scroll-reveal — entries animate when they enter the viewport */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+[data-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+[data-reveal-delay="1"] { transition-delay: 80ms; }
+[data-reveal-delay="2"] { transition-delay: 160ms; }
+[data-reveal-delay="3"] { transition-delay: 240ms; }
+[data-reveal-delay="4"] { transition-delay: 320ms; }
+[data-reveal-delay="5"] { transition-delay: 400ms; }
+[data-reveal-delay="6"] { transition-delay: 480ms; }

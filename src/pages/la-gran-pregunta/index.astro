@@ -22,9 +22,9 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <header class="page-header">
     <div class="container">
-      <p class="eyebrow">La Gran Pregunta</p>
-      <h1 class="h1">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h1>
-      <p class="lede">
+      <p class="eyebrow" data-reveal>La Gran Pregunta</p>
+      <h1 class="h1" data-reveal data-reveal-delay="1">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h1>
+      <p class="lede" data-reveal data-reveal-delay="2">
         Cada entrega revisa una práctica común de gestión de talento desde la psicología industrial-organizacional —
         y termina con una pregunta para que la lleves a tu próxima reunión.
       </p>
@@ -53,8 +53,8 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 </BaseLayout>
 
 <style>
-  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 64px; }
-  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
-  .articles-list { background: var(--cream); padding: 64px 0 120px; }
+  .page-header { background: var(--canvas); color: var(--on-dark); padding: 96px 0 64px; border-bottom: 1px solid var(--hairline); }
+  .page-header .lede { margin-top: 20px; }
+  .articles-list { background: var(--canvas); padding: 64px 0 120px; border-top: 1px solid var(--hairline); }
   .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
 </style>

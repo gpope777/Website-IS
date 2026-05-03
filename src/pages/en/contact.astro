@@ -19,9 +19,9 @@ const path = Astro.url.pathname;
 
   <header class="page-header">
     <div class="container">
-      <p class="eyebrow">Contact</p>
-      <h1 class="h1">What's the <em>question</em><br>that brought you here?</h1>
-      <p class="lede">
+      <p class="eyebrow" data-reveal>Contact</p>
+      <h1 class="h1" data-reveal data-reveal-delay="1">What's the <em>question</em><br>that brought you here?</h1>
+      <p class="lede" data-reveal data-reveal-delay="2">
         If you want a quick conversation, book 30 minutes directly on my calendar.
         If you'd rather write first, fill out the form.
       </p>
@@ -48,10 +48,10 @@ const path = Astro.url.pathname;
 </BaseLayout>
 
 <style>
-  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 64px; }
-  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; max-width: 540px; }
-  .contact-page { background: var(--cream); padding: 80px 0 120px; }
+  .page-header { background: var(--canvas); color: var(--on-dark); padding: 96px 0 64px; border-bottom: 1px solid var(--hairline); }
+  .page-header .lede { margin-top: 20px; max-width: 540px; }
+  .contact-page { background: var(--canvas); padding: 80px 0 120px; border-top: 1px solid var(--hairline); }
   .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
   @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 40px; } }
-  .form-side h2, .calendar-side h2 { color: var(--slate-deep); margin-bottom: 8px; }
+  .form-side h2, .calendar-side h2 { color: var(--on-dark); margin-bottom: 8px; }
 </style>

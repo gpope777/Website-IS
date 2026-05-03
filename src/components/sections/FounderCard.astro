@@ -17,24 +17,24 @@ const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref
 
 <section class="founder">
   <div class="container founder-grid">
-    <figure class="founder-photo">
+    <figure class="founder-photo" data-reveal>
       <img src={photoSrc} alt={photoAlt} loading="lazy" decoding="async" width="500" height="600" />
     </figure>
     <div class="founder-text">
-      <p class="eyebrow" style="color: var(--orange-cream);">Sobre el founder</p>
-      <h2 class="h2" style="margin-top: 8px;">{nombre}</h2>
-      <p class="role">{rol}</p>
-      <p class="bio">{bio}</p>
+      <p class="eyebrow" data-reveal>Sobre el founder</p>
+      <h2 class="h2" style="margin-top: 8px;" data-reveal data-reveal-delay="1">{nombre}</h2>
+      <p class="role" data-reveal data-reveal-delay="2">{rol}</p>
+      <p class="bio" data-reveal data-reveal-delay="3">{bio}</p>
       {certificaciones.length > 0 && (
-        <div class="certs">
-          <span class="label" style="color: var(--orange-cream); display:block; margin-bottom: 8px;">Certificaciones</span>
+        <div class="certs" data-reveal data-reveal-delay="4">
+          <span class="label" style="display:block; margin-bottom: 8px;">Certificaciones</span>
           <ul>
             {certificaciones.map((c) => <li>{c}</li>)}
           </ul>
         </div>
       )}
       {ctaLabel && ctaHref && (
-        <div style="margin-top: 28px;">
+        <div style="margin-top: 28px;" data-reveal data-reveal-delay="5">
           <Button variant="outline-light" href={ctaHref}>{ctaLabel}</Button>
         </div>
       )}
@@ -43,21 +43,22 @@ const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref
 </section>
 
 <style>
-  .founder { background: var(--ink); color: var(--white); padding: 96px 0; }
+  .founder { background: var(--canvas); padding: 96px 0; color: var(--on-dark); }
   .founder-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 64px; align-items: center; }
   @media (max-width: 900px) { .founder-grid { grid-template-columns: 1fr; gap: 32px; } }
-  .founder-photo { border-radius: var(--radius-md); overflow: hidden; aspect-ratio: 4 / 5; background: var(--slate); }
+  .founder-photo { border: 1px solid var(--hairline); border-radius: 0; overflow: hidden; aspect-ratio: 4 / 5; background: var(--surface-card); }
   .founder-photo img { width: 100%; height: 100%; object-fit: cover; }
-  .role { font-family: var(--font-serif); font-style: italic; color: var(--orange-cream); margin-top: 6px; }
-  .bio { color: rgba(255, 255, 255, 0.82); margin-top: 18px; max-width: 60ch; line-height: 1.7; }
+  .founder-text .h2 { text-transform: uppercase; }
+  .role { font-style: normal; font-weight: 400; color: var(--orange); margin-top: 8px; text-transform: uppercase; letter-spacing: 1.5px; font-size: 13px; }
+  .bio { color: var(--body-text); font-weight: 300; margin-top: 18px; max-width: 60ch; line-height: 1.7; }
   .certs { margin-top: 24px; }
   .certs ul { display: flex; flex-wrap: wrap; gap: 8px; }
   .certs li {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0;
+    border: 1px solid var(--hairline);
+    background: transparent;
     padding: 6px 12px;
-    border-radius: var(--radius-pill);
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--body-text);
   }
 </style>
