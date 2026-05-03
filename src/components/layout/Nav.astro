@@ -28,10 +28,13 @@ const menuLabel = lang === "es" ? "Menú" : "Menu";
 
 <nav class={`site-nav ${transparent ? "site-nav--transparent" : ""}`} data-transparent={transparent ? "true" : "false"}>
   <div class="container nav-inner">
-    <a href={homeHref} class="brand" aria-label="Innovational TMS home">
-      <span class="brand-mark">innovational</span>
-      <span class="brand-dot">·</span>
-      <span class="brand-name">TMS</span>
+    <a href={homeHref} class="brand" aria-label="Innovational TMS · Talent Management Solutions home">
+      <span class="brand-row">
+        <span class="brand-mark">innovational</span>
+        <span class="brand-dot">·</span>
+        <span class="brand-name">TMS</span>
+      </span>
+      <span class="brand-expansion">Talent Management Solutions</span>
     </a>
 
     <ul class="nav-links">
@@ -123,9 +126,17 @@ const menuLabel = lang === "es" ? "Menú" : "Menu";
   .site-nav--transparent { background: var(--canvas); }
   .site-nav--transparent.site-nav--solid { background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(10px); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; gap: 24px; }
-  .brand { display: inline-flex; align-items: baseline; gap: 6px; font-weight: 700; letter-spacing: -0.02em; font-size: 16px; }
+  .brand { display: inline-flex; flex-direction: column; gap: 2px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .brand-row { display: inline-flex; align-items: baseline; gap: 6px; font-size: 16px; }
   .brand-dot { color: var(--orange); }
   .brand-name { font-weight: 700; }
+  .brand-expansion {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+  }
   .nav-links { display: flex; gap: 22px; flex: 1; justify-content: center; }
   .nav-links a { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; transition: color 0.15s; }
   .nav-links a:hover, .nav-links a.active { color: var(--orange); }
@@ -221,7 +232,8 @@ const menuLabel = lang === "es" ? "Menú" : "Menu";
   }
 
   @media (max-width: 600px) {
-    .brand { font-size: 14px; }
-    .mobile-menu { top: 65px; }
+    .brand-row { font-size: 14px; }
+    .brand-expansion { font-size: 8px; letter-spacing: 1.2px; }
+    .mobile-menu { top: 70px; }
   }
 </style>

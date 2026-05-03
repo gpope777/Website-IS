@@ -20,8 +20,10 @@
     "@astrojs/vercel": "^10.0.6",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/source-serif-4": "^5.2.9",
+    "@types/three": "^0.184.0",
     "astro": "^6.2.1",
     "resend": "^6.12.2",
+    "three": "^0.184.0",
     "zod": "^4.4.2"
   },
   "devDependencies": {

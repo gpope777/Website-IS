@@ -3,7 +3,7 @@ export const prerender = true;
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Nav from "@/components/layout/Nav.astro";
 import Footer from "@/components/layout/Footer.astro";
-import Hero from "@/components/sections/Hero.astro";
+import Logo3DHero from "@/components/sections/Logo3DHero.astro";
 import StatsBand from "@/components/sections/StatsBand.astro";
 import ServicesGrid from "@/components/sections/ServicesGrid.astro";
 import FounderCard from "@/components/sections/FounderCard.astro";
@@ -30,17 +30,14 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 >
   <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
 
-  <Hero
+  <Logo3DHero
     eyebrow="Consulting · Industrial-Organizational Psychology"
     headlineHtml="Good people don't <em>quit because of money.</em><br>They quit because of decisions made months earlier."
     lede="After fifteen years working with organizations, one thing keeps showing up: the problem is rarely 'lack of talent'. It's that decisions about people are still being made on intuition. What I offer is methodology, evidence, and a couple of uncomfortable questions."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/en/contact" }}
     ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
-    photoSrc="/dr-gomez.jpg"
-    photoAlt="Dr. Alejandro J. Gómez Betancourt"
-    photoLabelName="Dr. Alejandro J. Gómez Betancourt"
-    photoLabelRole="PhD · I-O Psychologist · President & Senior Consultant"
+    lang={lang}
   />
 
   <StatsBand

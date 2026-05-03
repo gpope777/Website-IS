@@ -79,11 +79,6 @@
   --container-tight: 720px;
 }
 
-html, body {
-  overflow-x: hidden;
-  max-width: 100%;
-}
-
 body {
   font-family: var(--font-sans);
   font-size: var(--font-body);
@@ -92,6 +87,8 @@ body {
   background: var(--canvas);
   font-weight: 300;
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+  max-width: 100%;
 }
 
 img, video, svg {
