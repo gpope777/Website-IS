@@ -1,10 +1,132 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import Hero from "@/components/sections/Hero.astro";
+import StatsBand from "@/components/sections/StatsBand.astro";
+import ServicesGrid from "@/components/sections/ServicesGrid.astro";
+import FounderCard from "@/components/sections/FounderCard.astro";
+import ArticleCard from "@/components/ui/ArticleCard.astro";
+import ContactForm from "@/components/sections/ContactForm.astro";
+import CalendlyButton from "@/components/ui/CalendlyButton.astro";
+import Button from "@/components/ui/Button.astro";
+import { getCollection } from "astro:content";
+import { t } from "@/lib/i18n";
+
+const lang = "es";
+const path = Astro.url.pathname;
+
+const articulos = (await getCollection("articulos", (e) => e.data.publicado !== false))
+  .sort((a, b) => b.data.fecha.getTime() - a.data.fecha.getTime())
+  .slice(0, 3);
 ---
+
 <BaseLayout
   title="Innovational TMS · Consultoría en Psicología I-O"
-  description="Diseñamos las decisiones que hacen o rompen una organización. Consultoría en psicología industrial-organizacional."
-  lang="es"
+  description="La gente buena no renuncia por dinero. Renuncia por decisiones que se tomaron meses antes. Consultoría en psicología industrial-organizacional con quince años de experiencia."
+  lang={lang}
 >
-  <h1 class="h1">Hola desde BaseLayout</h1>
+  <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
+
+  <Hero
+    eyebrow="Consultoría · Psicología Industrial-Organizacional"
+    headlineHtml="La gente buena no <em>renuncia por dinero.</em><br>Renuncia por decisiones que se tomaron meses antes."
+    lede="Después de quince años acompañando organizaciones, hay algo que se repite: el problema casi nunca es 'falta de talento'. Es que las decisiones sobre la gente se siguen tomando por intuición. Yo ofrezco metodología, evidencia y un par de preguntas incómodas."
+    signoff="Dr. Alejandro J. Gómez Betancourt"
+    ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/contacto" }}
+    ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
+    photoSrc="/dr-gomez.jpg"
+    photoAlt="Dr. Alejandro J. Gómez Betancourt"
+    photoLabelName="Dr. Alejandro J. Gómez Betancourt"
+    photoLabelRole="PhD · Psicólogo I-O · Presidente y Senior Consultant"
+  />
+
+  <StatsBand
+    stats={[
+      { num: "15", label: t("stats.anos_hr", lang) },
+      { num: "20", label: t("stats.anos_posgrado", lang) },
+      { num: "4", label: t("stats.certificaciones", lang) },
+      { num: "1", label: t("stats.phd", lang) },
+    ]}
+  />
+
+  <section class="services-summary">
+    <div class="container">
+      <p class="eyebrow">Cómo trabajamos</p>
+      <h2 class="h2">Diagnóstico antes que receta. <em>Y siempre con evidencia.</em></h2>
+      <p class="lede" style="margin-top:14px;margin-bottom:32px;">
+        Cada organización tiene su propia cultura, sus propias fricciones y su propia historia.
+        No traemos un paquete prearmado: empezamos por entender qué está pasando, y desde ahí diseñamos.
+      </p>
+      <ServicesGrid lang={lang} variant="summary" />
+      <div style="margin-top:32px;">
+        <Button variant="outline-dark" href="/servicios">Ver los 14 servicios →</Button>
+      </div>
+    </div>
+  </section>
+
+  <FounderCard
+    photoSrc="/dr-gomez.jpg"
+    photoAlt="Dr. Alejandro J. Gómez Betancourt"
+    nombre="Dr. Alejandro J. Gómez Betancourt"
+    rol="PhD · Psicólogo Industrial-Organizacional · Presidente y Senior Consultant"
+    bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, transformación cultural post-fusiones, y diseño organizacional. Veinte años enseñando posgrado en universidades de Puerto Rico."
+    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC", "Otras herramientas de evaluación"]}
+    ctaLabel="Conoce más sobre la firma"
+    ctaHref="/sobre-nosotros"
+  />
+
+  <section class="articles-preview">
+    <div class="container">
+      <p class="eyebrow">La Gran Pregunta</p>
+      <h2 class="h2">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h2>
+      <div class="articles-grid">
+        {articulos.map((a) => (
+          <ArticleCard
+            href={`/la-gran-pregunta/${a.id}`}
+            titulo={a.data.title}
+            resumen={a.data.resumen}
+            fecha={a.data.fecha}
+            tiempoLectura={a.data.tiempoLectura}
+            tags={a.data.tags}
+            lang={lang}
+          />
+        ))}
+      </div>
+      <div style="margin-top:32px;">
+        <Button variant="outline-dark" href="/la-gran-pregunta">Ver todos los artículos →</Button>
+      </div>
+    </div>
+  </section>
+
+  <section class="contact-preview">
+    <div class="container contact-grid">
+      <div>
+        <p class="eyebrow" style="color:var(--orange-cream);">Hablemos</p>
+        <h2 class="h2" style="color:var(--white);">Cuéntame qué pasa en tu organización.</h2>
+        <p class="lede" style="color:rgba(255,255,255,.78);max-width:480px;">
+          Si lo que necesitas es una conversación rápida, agenda 30 minutos.
+          Si prefieres escribir, llena el formulario.
+        </p>
+        <div style="margin-top:24px;">
+          <CalendlyButton label="Reserva 30 minutos →" variant="outline-light" />
+        </div>
+      </div>
+      <div class="form-wrap">
+        <ContactForm lang={lang} variant="compact" />
+      </div>
+    </div>
+  </section>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
 </BaseLayout>
+
+<style>
+  .services-summary { background: var(--cream); padding: 96px 0; }
+  .articles-preview { background: var(--cream); padding: 96px 0; border-top: 1px solid var(--border); }
+  .articles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 32px; }
+  .contact-preview { background: var(--ink); padding: 96px 0; }
+  .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+  @media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; gap: 32px; } }
+  .form-wrap { background: var(--cream); padding: 32px; border-radius: var(--radius-md); }
+</style>
