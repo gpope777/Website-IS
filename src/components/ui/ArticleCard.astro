@@ -1,0 +1,70 @@
+---
+import { t, type Lang } from "@/lib/i18n";
+
+export interface Props {
+  href: string;
+  titulo: string;
+  resumen: string;
+  fecha: Date;
+  tiempoLectura: number;
+  tags?: string[];
+  imagenSrc?: string;
+  imagenAlt?: string;
+  lang: Lang;
+}
+
+const { href, titulo, resumen, fecha, tiempoLectura, tags = [], imagenSrc, imagenAlt = "", lang } = Astro.props;
+const fechaStr = fecha.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { year: "numeric", month: "long", day: "numeric" });
+const lecturaLabel = tiempoLectura === 1 ? t("tiempoLectura.min", lang) : t("tiempoLectura.mins", lang);
+---
+
+<a href={href} class="article-card">
+  {imagenSrc && (
+    <div class="article-image">
+      <img src={imagenSrc} alt={imagenAlt} loading="lazy" decoding="async" width="600" height="400" />
+    </div>
+  )}
+  <div class="article-body">
+    {tags.length > 0 && <div class="article-tags">{tags.slice(0, 2).map((tag) => <span>{tag}</span>)}</div>}
+    <h3>{titulo}</h3>
+    <p>{resumen}</p>
+    <div class="article-meta">
+      <span>{fechaStr}</span>
+      <span class="dot">·</span>
+      <span>{tiempoLectura} {lecturaLabel}</span>
+    </div>
+  </div>
+</a>
+
+<style>
+  .article-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+  }
+  .article-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+  .article-image { aspect-ratio: 16 / 10; background: var(--orange-cream); }
+  .article-image img { width: 100%; height: 100%; object-fit: cover; }
+  .article-body { padding: 24px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+  .article-tags { display: flex; gap: 8px; }
+  .article-tags span {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--orange-cream);
+    color: var(--orange);
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+  }
+  .article-card h3 { font-size: 21px; line-height: 1.25; color: var(--slate-deep); font-weight: 700; letter-spacing: -0.01em; }
+  .article-card p { font-size: 14px; color: var(--slate); line-height: 1.6; }
+  .article-meta { font-size: 12px; color: var(--slate); display: flex; gap: 8px; margin-top: auto; padding-top: 8px; }
+  .dot { opacity: 0.4; }
+</style>
