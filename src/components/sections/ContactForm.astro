@@ -1,0 +1,139 @@
+---
+import { t, type Lang } from "@/lib/i18n";
+
+export interface Props {
+  lang: Lang;
+  variant?: "compact" | "full";
+}
+
+const { lang, variant = "full" } = Astro.props;
+---
+
+<form class={`contact-form contact-form--${variant}`} novalidate>
+  <input type="text" name="_website" tabindex="-1" autocomplete="off" aria-hidden="true" class="honeypot" />
+
+  <div class="field">
+    <label for="cf-nombre">{t("form.nombre", lang)}</label>
+    <input id="cf-nombre" name="nombre" type="text" required minlength="2" maxlength="80" placeholder={t("form.placeholder_nombre", lang)} />
+    <span class="error" data-error-for="nombre" role="alert" aria-live="polite"></span>
+  </div>
+
+  <div class="field">
+    <label for="cf-email">{t("form.email", lang)}</label>
+    <input id="cf-email" name="email" type="email" required placeholder={t("form.placeholder_email", lang)} />
+    <span class="error" data-error-for="email" role="alert" aria-live="polite"></span>
+  </div>
+
+  <div class="field">
+    <label for="cf-org">{t("form.organizacion", lang)}</label>
+    <input id="cf-org" name="organizacion" type="text" required minlength="2" maxlength="120" placeholder={t("form.placeholder_organizacion", lang)} />
+    <span class="error" data-error-for="organizacion" role="alert" aria-live="polite"></span>
+  </div>
+
+  <div class="field">
+    <label for="cf-msg">{t("form.mensaje", lang)}</label>
+    <textarea id="cf-msg" name="mensaje" required minlength="20" maxlength="2000" rows="5" placeholder={t("form.placeholder_mensaje", lang)}></textarea>
+    <span class="error" data-error-for="mensaje" role="alert" aria-live="polite"></span>
+  </div>
+
+  <button type="submit" class="submit">
+    <span class="submit-label">{t("form.enviar", lang)}</span>
+    <span class="submit-loading">{t("form.enviando", lang)}</span>
+  </button>
+
+  <div class="form-result" role="status" aria-live="polite"></div>
+</form>
+
+<script define:vars={{ lang, errMsgs: { reqd: t("form.error_requerido", lang), email: t("form.error_email_invalido", lang), msg: t("form.error_min_mensaje", lang), gracias: t("form.gracias", lang), error: t("form.error", lang), abrir: t("form.error_email_directo", lang) } }}>
+  document.querySelectorAll(".contact-form").forEach((form) => {
+    const errors = form.querySelectorAll("[data-error-for]");
+    const result = form.querySelector(".form-result");
+    const submit = form.querySelector(".submit");
+
+    function setError(name, msg) {
+      const el = form.querySelector(`[data-error-for="${name}"]`);
+      if (el) el.textContent = msg ?? "";
+    }
+
+    function clearErrors() { errors.forEach((e) => (e.textContent = "")); if (result) result.innerHTML = ""; }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearErrors();
+
+      const data = Object.fromEntries(new FormData(form));
+      let ok = true;
+      if (!data.nombre || String(data.nombre).length < 2) { setError("nombre", errMsgs.reqd); ok = false; }
+      if (!data.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(data.email))) { setError("email", errMsgs.email); ok = false; }
+      if (!data.organizacion || String(data.organizacion).length < 2) { setError("organizacion", errMsgs.reqd); ok = false; }
+      if (!data.mensaje || String(data.mensaje).length < 20) { setError("mensaje", errMsgs.msg); ok = false; }
+      if (!ok) return;
+
+      submit.classList.add("is-loading");
+      submit.disabled = true;
+      try {
+        const res = await fetch("/api/contacto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (json.ok) {
+          form.reset();
+          if (result) result.innerHTML = `<div class="result-success">${errMsgs.gracias}</div>`;
+        } else {
+          throw new Error("send_failed");
+        }
+      } catch (err) {
+        const mailto = `mailto:?subject=${encodeURIComponent("Mensaje desde innovationaltms.com")}&body=${encodeURIComponent(`${data.nombre} (${data.organizacion}, ${data.email})\n\n${data.mensaje}`)}`;
+        if (result) result.innerHTML = `<div class="result-error">${errMsgs.error} <a href="${mailto}">${errMsgs.abrir}</a></div>`;
+      } finally {
+        submit.classList.remove("is-loading");
+        submit.disabled = false;
+      }
+    });
+  });
+</script>
+
+<style>
+  .contact-form { display: flex; flex-direction: column; gap: 18px; }
+  .honeypot { position: absolute; left: -10000px; opacity: 0; pointer-events: none; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  label { font-size: 13px; font-weight: 600; color: var(--slate); letter-spacing: 0.02em; }
+  input, textarea {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 15px;
+    color: var(--slate-deep);
+    font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  input:focus, textarea:focus { border-color: var(--orange); outline: none; box-shadow: 0 0 0 3px rgba(239, 90, 33, 0.15); }
+  textarea { resize: vertical; min-height: 120px; }
+  .error { font-size: 12px; color: var(--error); min-height: 1.2em; }
+  .submit {
+    background: var(--orange);
+    color: var(--white);
+    padding: 14px 22px;
+    border-radius: var(--radius);
+    font-weight: 600;
+    font-size: 15px;
+    align-self: flex-start;
+    margin-top: 6px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s;
+    border: 0;
+  }
+  .submit:hover { background: #d94f1d; transform: translateY(-1px); }
+  .submit:disabled { opacity: 0.7; cursor: wait; transform: none; }
+  .submit-loading { display: none; }
+  .submit.is-loading .submit-label { display: none; }
+  .submit.is-loading .submit-loading { display: inline; }
+
+  .form-result { font-size: 14px; }
+  .result-success { background: rgba(39, 174, 96, 0.1); color: var(--success); padding: 12px 16px; border-radius: var(--radius); }
+  .result-error { background: rgba(192, 57, 43, 0.1); color: var(--error); padding: 12px 16px; border-radius: var(--radius); }
+  .result-error a { color: var(--error); font-weight: 600; text-decoration: underline; margin-left: 6px; }
+</style>
