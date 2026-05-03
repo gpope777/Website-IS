@@ -1,0 +1,52 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Nav from "@/components/layout/Nav.astro";
+import Footer from "@/components/layout/Footer.astro";
+import ServicesGrid from "@/components/sections/ServicesGrid.astro";
+import Button from "@/components/ui/Button.astro";
+
+const lang = "en";
+const path = Astro.url.pathname;
+---
+
+<BaseLayout
+  title="Services · Innovational TMS"
+  description="Fourteen services across four territories: Talent Acquisition, Employee Experience, Leadership, and Culture & Change."
+  lang={lang}
+>
+  <Nav slot="nav" lang={lang} currentPath={path} />
+
+  <header class="page-header">
+    <div class="container">
+      <p class="eyebrow">Services</p>
+      <h1 class="h1">Fourteen services.<br><em>Four territories.</em><br>One philosophy: evidence.</h1>
+      <p class="lede">
+        We don't sell packages. Every engagement starts by understanding what's happening in your
+        organization and ends with something measurable and specific.
+      </p>
+    </div>
+  </header>
+
+  <main class="services-page">
+    <div class="container">
+      <ServicesGrid lang={lang} variant="full" />
+    </div>
+  </main>
+
+  <section class="cta-block">
+    <div class="container" style="text-align:center;">
+      <h2 class="h2">What's the topic in your organization?</h2>
+      <p class="lede" style="margin: 16px auto 28px;">Tell me in one sentence and I'll reply within one or two business days.</p>
+      <Button variant="primary" size="lg" href="/en/contact">Tell me about your organization →</Button>
+    </div>
+  </section>
+
+  <Footer slot="footer" lang={lang} currentPath={path} />
+</BaseLayout>
+
+<style>
+  .page-header { background: var(--ink); color: var(--white); padding: 96px 0 56px; }
+  .page-header .lede { color: rgba(255,255,255,.78); margin-top: 20px; }
+  .services-page { background: var(--cream); padding: 64px 0 96px; }
+  .cta-block { background: var(--cream); padding: 80px 0 120px; border-top: 1px solid var(--border); }
+</style>
