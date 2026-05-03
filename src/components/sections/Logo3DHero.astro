@@ -16,9 +16,9 @@ export interface Props {
 const { eyebrow, headlineHtml, lede, signoff, ctaPrimary, ctaSecondary, lang } = Astro.props;
 
 const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b.data.orden);
-const valoresLabel = lang === "es" ? "Cinco valores que orbitan la firma" : "Five values orbiting the firm";
+const valoresLabel = lang === "es" ? "Cinco valores" : "Five values";
 const dragHint = lang === "es" ? "Arrastra para girar" : "Drag to rotate";
-const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data.nombre_en));
+const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data.nombre_en));
 ---
 
 <section class="hero-3d">
@@ -38,42 +38,43 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       <div class="logo-3d-stage">
         <canvas
           id="logo-3d-canvas"
-          aria-label="Innovational TMS · Talent Management Solutions — interactive 3D logo with orbiting values"
-          data-values={JSON.stringify(valuesData)}
+          aria-label="Innovational · Talent Management Solutions — interactive 3D logo"
         ></canvas>
         <noscript>
           <div class="logo-3d-fallback">
-            <ul class="fallback-letters">
-              {"INNOVATIONAL".split("").map((l, i) => (
-                <li class={i % 2 === 0 ? "tile tile-orange" : "tile tile-navy"}>{l}</li>
+            <div class="fallback-grid">
+              {[
+                ["i","n","n","o"],
+                ["v","a","t","i"],
+                ["o","n","a","l"],
+              ].map((row, ri) => (
+                <div class="fallback-row">
+                  {row.map((l, ci) => (
+                    <span class={`fallback-cell ${(ri + ci) % 2 === 0 ? "fc-orange" : "fc-navy"}`}>{l}</span>
+                  ))}
+                </div>
               ))}
-            </ul>
-            <p class="brand-expansion">Talent Management Solutions</p>
-            <ul class="fallback-values">
-              {valuesData.map((v) => <li>{v}</li>)}
-            </ul>
+            </div>
+            <p class="brand-expansion"><span>talent</span> <em>management</em> <span>solutions</span></p>
           </div>
         </noscript>
         <span class="drag-hint" aria-hidden="true">{dragHint}</span>
-        <span class="logo-tag" aria-hidden="true">talent management solutions</span>
       </div>
 
-      <p class="values-caption">{valoresLabel}</p>
+      <div class="values-inline">
+        <span class="values-label">{valoresLabel}</span>
+        <ul class="values-pills">
+          {valuesList.map((v) => <li>{v}</li>)}
+        </ul>
+      </div>
     </div>
   </div>
 </section>
 
 <script>
-  // Lazy-load three.js only when the canvas is in viewport
   const canvas = document.getElementById("logo-3d-canvas") as HTMLCanvasElement | null;
   if (canvas) {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let valuesList: string[] = [];
-    try {
-      valuesList = JSON.parse(canvas.dataset.values || "[]");
-    } catch (e) {
-      valuesList = [];
-    }
 
     const init = async () => {
       const THREE = await import("three");
@@ -89,221 +90,226 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       };
       const { w, h } = getSize();
 
-      const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
-      camera.position.set(0.6, 0.3, 7.6);
+      const camera = new THREE.PerspectiveCamera(36, w / h, 0.1, 100);
+      camera.position.set(0.4, 0.5, 7.6);
+      camera.lookAt(0, 0, 0);
 
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       renderer.setSize(w, h, false);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       // Brand palette
       const ORANGE = 0xef5a21;
       const NAVY = 0x2c4a5b;
 
-      // Lighting — three-point setup that pops the alternating discs
+      // Lighting — softer key + warm rim + cool fill, matches the logo
+      // mockup the user shared
       scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-      const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
-      keyLight.position.set(3, 4, 5);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+      keyLight.position.set(2.5, 5, 5);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(1024, 1024);
+      keyLight.shadow.camera.left = -4;
+      keyLight.shadow.camera.right = 4;
+      keyLight.shadow.camera.top = 4;
+      keyLight.shadow.camera.bottom = -4;
+      keyLight.shadow.bias = -0.0005;
       scene.add(keyLight);
-      const rimLight = new THREE.DirectionalLight(0xff7740, 0.75);
-      rimLight.position.set(-4, 2, -3);
+
+      const rimLight = new THREE.DirectionalLight(0xff7740, 0.6);
+      rimLight.position.set(-3, 2, -2);
       scene.add(rimLight);
+
       const fillLight = new THREE.DirectionalLight(0x6090ff, 0.3);
-      fillLight.position.set(-2, -3, 2);
+      fillLight.position.set(-2, -2, 3);
       scene.add(fillLight);
 
-      // Master group — the user rotates this with OrbitControls
+      // Invisible ground plane that catches shadows
+      const groundGeo = new THREE.PlaneGeometry(20, 20);
+      const groundMat = new THREE.ShadowMaterial({ opacity: 0.42 });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -2.0;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // Master rotation group
       const group = new THREE.Group();
       scene.add(group);
 
-      // Sub-group for value labels orbiting around the column
-      const valuesOrbit = new THREE.Group();
-      group.add(valuesOrbit);
-
-      // Track text labels for per-frame billboarding (always face camera)
-      const labelMeshes: any[] = [];
-
       const loader = new FontLoader();
       loader.load("/fonts/helvetiker_bold.typeface.json", (font) => {
+        // Material factory — chunky semi-matte with a hint of metalness
+        const makeMat = (color: number) =>
+          new THREE.MeshStandardMaterial({
+            color,
+            metalness: 0.28,
+            roughness: 0.5,
+          });
+
+        const orangeMat = makeMat(ORANGE);
+        const navyMat = makeMat(NAVY);
+
         // ----------------------------------------------------------------
-        // STACKED COLUMN: "INNOVATIONAL" as alternating discs + letters
+        // INNOVATIONAL — letters arranged in a 4×3 block, lowercase,
+        // each letter extruded individually with heavy bevels for the
+        // chunky brand look. Color pattern hand-tuned to feel like the
+        // 2D mark.
         // ----------------------------------------------------------------
-        const letters = "INNOVATIONAL".split("");
-        const tokenRadius = 0.44;
-        const tokenDepth = 0.22;
-        const tokenSpacing = 0.34;
-        const totalH = (letters.length - 1) * tokenSpacing;
+        const grid: string[][] = [
+          ["i", "n", "n", "o"],
+          ["v", "a", "t", "i"],
+          ["o", "n", "a", "l"],
+        ];
+        // Mirrors the actual logo's color rhythm, not a strict checkerboard
+        const colorGrid: number[][] = [
+          [ORANGE, NAVY,   NAVY,   ORANGE],
+          [NAVY,   ORANGE, NAVY,   ORANGE],
+          [ORANGE, NAVY,   ORANGE, NAVY  ],
+        ];
 
-        const tokenWorldPositions: { vec: any; isOrange: boolean }[] = [];
-        const letterMat = new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          metalness: 0.15,
-          roughness: 0.38,
-        });
+        const cellW = 0.92;
+        const cellH = 1.05;
+        const blockYOffset = 0.45; // shift up to make room for tagline below
 
-        letters.forEach((letter, i) => {
-          const isOrange = i % 2 === 0;
-          const yPos = totalH / 2 - i * tokenSpacing;
+        const letterTextOpts = {
+          font,
+          size: 0.85,
+          depth: 0.32,
+          curveSegments: 14,
+          bevelEnabled: true,
+          bevelThickness: 0.08,
+          bevelSize: 0.06,
+          bevelSegments: 10,
+        };
 
-          // Disc (cylinder rotated to face camera)
-          const discGeo = new THREE.CylinderGeometry(tokenRadius, tokenRadius, tokenDepth, 48);
-          const discMat = new THREE.MeshStandardMaterial({
-            color: isOrange ? ORANGE : NAVY,
-            metalness: 0.45,
-            roughness: 0.42,
-          });
-          const disc = new THREE.Mesh(discGeo, discMat);
-          disc.rotation.x = Math.PI / 2; // face +Z
-          disc.position.set(0, yPos, 0);
-          group.add(disc);
+        const letterCenters: { x: number; y: number }[] = [];
 
-          // Front letter — slightly raised
-          const letterGeoFront = new TextGeometry(letter, {
-            font,
-            size: 0.32,
-            depth: 0.05,
-            curveSegments: 8,
-            bevelEnabled: true,
-            bevelThickness: 0.012,
-            bevelSize: 0.01,
-            bevelSegments: 3,
-          });
-          letterGeoFront.center();
-          const letterFront = new THREE.Mesh(letterGeoFront, letterMat);
-          letterFront.position.set(0, yPos, tokenDepth / 2 + 0.025);
-          group.add(letterFront);
-
-          // Back letter — also visible from behind
-          const letterGeoBack = new TextGeometry(letter, {
-            font,
-            size: 0.32,
-            depth: 0.05,
-            curveSegments: 8,
-            bevelEnabled: true,
-            bevelThickness: 0.012,
-            bevelSize: 0.01,
-            bevelSegments: 3,
-          });
-          letterGeoBack.center();
-          const letterBack = new THREE.Mesh(letterGeoBack, letterMat);
-          letterBack.position.set(0, yPos, -(tokenDepth / 2 + 0.025));
-          letterBack.rotation.y = Math.PI; // face -Z
-          group.add(letterBack);
-
-          tokenWorldPositions.push({
-            vec: new THREE.Vector3(0, yPos, tokenDepth / 2),
-            isOrange,
+        grid.forEach((row, ri) => {
+          row.forEach((letter, ci) => {
+            const geo = new TextGeometry(letter, letterTextOpts);
+            geo.center();
+            const mesh = new THREE.Mesh(
+              geo,
+              colorGrid[ri][ci] === ORANGE ? orangeMat : navyMat
+            );
+            mesh.castShadow = true;
+            const x = (ci - (row.length - 1) / 2) * cellW;
+            const y = ((grid.length - 1) / 2 - ri) * cellH + blockYOffset;
+            mesh.position.set(x, y, 0);
+            group.add(mesh);
+            letterCenters.push({ x, y });
           });
         });
 
         // ----------------------------------------------------------------
-        // NETWORK LINES — graph-like connections between tokens (right side)
+        // NETWORK OVERLAY — thin lines + accent dots threading through
+        // the letters, evoking the graph in the 2D mark
         // ----------------------------------------------------------------
         const lineMat = new THREE.LineBasicMaterial({
-          color: ORANGE,
+          color: NAVY,
           transparent: true,
-          opacity: 0.55,
+          opacity: 0.85,
         });
+        const dotMat = new THREE.MeshStandardMaterial({
+          color: ORANGE,
+          metalness: 0.3,
+          roughness: 0.4,
+          emissive: ORANGE,
+          emissiveIntensity: 0.35,
+        });
+        const dotWhiteMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          metalness: 0.1,
+          roughness: 0.4,
+        });
+        const dotZ = 0.42; // sit on top of the letter faces
 
-        // Pairs designed to look like a hand-drawn network
-        const connections: [number, number][] = [
-          [0, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7],
-          [6, 8], [7, 9], [8, 10], [9, 11],
-          [0, 5], [3, 8], [6, 11],
+        // 4 anchor points and 3 lines connecting them — placed to thread
+        // through the inside of the o's and across the block diagonally
+        const anchors: [number, number][] = [
+          [-0.6,  1.55],   // upper-left over the first n
+          [ 1.4,  1.4 ],   // upper-right inside the o
+          [ 1.4, -0.5 ],   // middle-right inside the i body
+          [-0.7, -1.0 ],   // lower-left over o on bottom row
         ];
-        connections.forEach(([a, b]) => {
-          const start = tokenWorldPositions[a].vec.clone();
-          const end = tokenWorldPositions[b].vec.clone();
-          start.x = tokenRadius + 0.05;
-          end.x = tokenRadius + 0.05;
+        const lineRoutes: [number, number][] = [
+          [0, 2],
+          [1, 3],
+          [0, 3],
+        ];
+        lineRoutes.forEach(([a, b]) => {
+          const start = new THREE.Vector3(anchors[a][0], anchors[a][1], dotZ);
+          const end = new THREE.Vector3(anchors[b][0], anchors[b][1], dotZ);
           const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
           group.add(new THREE.Line(geo, lineMat));
         });
+        // Two-tone dots — outer orange ring + inner white core for depth
+        anchors.forEach(([x, y]) => {
+          const outer = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 20), dotMat);
+          outer.position.set(x, y, dotZ);
+          outer.castShadow = true;
+          group.add(outer);
 
-        // Endpoint dots — small glowing orange spheres at each token's edge
-        const dotGeo = new THREE.SphereGeometry(0.058, 16, 16);
-        const dotMat = new THREE.MeshStandardMaterial({
-          color: ORANGE,
-          emissive: ORANGE,
-          emissiveIntensity: 0.75,
-          metalness: 0.2,
-          roughness: 0.3,
-        });
-        tokenWorldPositions.forEach((t) => {
-          const dot = new THREE.Mesh(dotGeo, dotMat);
-          dot.position.copy(t.vec);
-          dot.position.x = tokenRadius + 0.05;
-          group.add(dot);
+          const inner = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), dotWhiteMat);
+          inner.position.set(x, y, dotZ + 0.07);
+          group.add(inner);
         });
 
         // ----------------------------------------------------------------
-        // ORBITING VALUE LABELS — billboarded so text always reads
+        // TAGLINE — "talent management solutions" in three colored words
         // ----------------------------------------------------------------
-        const orbitRadius = 1.95;
-        const valueMat = new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          metalness: 0.25,
-          roughness: 0.55,
-        });
-        const valueAccentMat = new THREE.MeshStandardMaterial({
-          color: ORANGE,
-          emissive: ORANGE,
-          emissiveIntensity: 0.5,
-          metalness: 0.3,
-          roughness: 0.5,
-        });
-
-        // Label sizing helper — long values get smaller text so they fit
-        const sizeFor = (s: string) => {
-          if (s.length > 20) return 0.105;
-          if (s.length > 14) return 0.12;
-          return 0.135;
+        const tagOpts = {
+          font,
+          size: 0.2,
+          depth: 0.07,
+          curveSegments: 8,
+          bevelEnabled: true,
+          bevelThickness: 0.012,
+          bevelSize: 0.008,
+          bevelSegments: 3,
         };
+        const buildWord = (text: string) => {
+          const geo = new TextGeometry(text, tagOpts);
+          geo.computeBoundingBox();
+          const bb = geo.boundingBox!;
+          return { geo, w: bb.max.x - bb.min.x };
+        };
+        const w1 = buildWord("talent");
+        const w2 = buildWord("management");
+        const w3 = buildWord("solutions");
+        const space = 0.16;
+        const totalTagW = w1.w + w2.w + w3.w + space * 2;
+        let xCursor = -totalTagW / 2;
+        const tagY = -1.78;
 
-        valuesList.forEach((value, i) => {
-          const n = valuesList.length;
-          const angle = (i / n) * Math.PI * 2 + Math.PI / 2;
-          const yOffset = ((i - (n - 1) / 2) * 0.55);
+        const word1 = new THREE.Mesh(w1.geo, navyMat);
+        word1.position.set(xCursor, tagY, 0);
+        word1.castShadow = true;
+        group.add(word1);
+        xCursor += w1.w + space;
 
-          const upper = value.toUpperCase();
-          const valueGeo = new TextGeometry(upper, {
-            font,
-            size: sizeFor(upper),
-            depth: 0.018,
-            curveSegments: 6,
-            bevelEnabled: false,
-          });
-          valueGeo.center();
-          const valueMesh = new THREE.Mesh(valueGeo, valueMat);
-          valueMesh.userData.isLabel = true;
-          valueMesh.position.set(
-            Math.cos(angle) * orbitRadius,
-            yOffset,
-            Math.sin(angle) * orbitRadius
-          );
-          valuesOrbit.add(valueMesh);
-          labelMeshes.push(valueMesh);
+        const word2 = new THREE.Mesh(w2.geo, orangeMat);
+        word2.position.set(xCursor, tagY, 0);
+        word2.castShadow = true;
+        group.add(word2);
+        xCursor += w2.w + space;
 
-          // Tiny orange accent dot beside each label (slightly inside orbit)
-          const accentDot = new THREE.Mesh(
-            new THREE.SphereGeometry(0.045, 12, 12),
-            valueAccentMat
-          );
-          accentDot.position.set(
-            Math.cos(angle) * (orbitRadius - 0.18),
-            yOffset,
-            Math.sin(angle) * (orbitRadius - 0.18)
-          );
-          valuesOrbit.add(accentDot);
-        });
+        const word3 = new THREE.Mesh(w3.geo, navyMat);
+        word3.position.set(xCursor, tagY, 0);
+        word3.castShadow = true;
+        group.add(word3);
 
-        // Slight initial 3-quarter tilt
-        group.rotation.y = -0.22;
-        group.rotation.x = -0.04;
+        // 3-quarter starting view — never edge-on
+        group.rotation.y = -0.18;
+        group.rotation.x = -0.05;
       });
 
       // ----------------------------------------------------------------
-      // CONTROLS — drag/touch rotation with damping
+      // CONTROLS — drag/touch to rotate, with damping + slow autorotate
       // ----------------------------------------------------------------
       const controls = new OrbitControls(camera, canvas);
       controls.enableDamping = true;
@@ -312,9 +318,11 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       controls.enablePan = false;
       controls.rotateSpeed = 0.7;
       controls.autoRotate = !reduced;
-      controls.autoRotateSpeed = 0.4; // slow + stately
-      controls.minPolarAngle = Math.PI * 0.32;
-      controls.maxPolarAngle = Math.PI * 0.68;
+      controls.autoRotateSpeed = 0.35;
+      controls.minPolarAngle = Math.PI * 0.34;
+      controls.maxPolarAngle = Math.PI * 0.66;
+      controls.minAzimuthAngle = -Math.PI * 0.5;
+      controls.maxAzimuthAngle = Math.PI * 0.5;
 
       controls.addEventListener("start", () => { controls.autoRotate = false; });
       let resumeTimer: number | undefined;
@@ -332,23 +340,7 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       };
       window.addEventListener("resize", onResize);
 
-      // Reusable vectors for billboarding
-      const labelWorldPos = new THREE.Vector3();
-      const billboardTarget = new THREE.Vector3();
-
       const animate = () => {
-        // Values orbit independently around the column
-        if (!reduced) {
-          valuesOrbit.rotation.y += 0.003;
-        }
-        // Billboard: every value label faces the camera (Y-axis-locked
-        // so text stays upright). This kills any mirroring as labels
-        // travel around the orbit.
-        for (const label of labelMeshes) {
-          label.getWorldPosition(labelWorldPos);
-          billboardTarget.set(camera.position.x, labelWorldPos.y, camera.position.z);
-          label.lookAt(billboardTarget);
-        }
         controls.update();
         renderer.render(scene, camera);
         requestAnimationFrame(animate);
@@ -421,15 +413,15 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
   .hero-3d-side {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
   }
 
   .logo-3d-stage {
     position: relative;
     aspect-ratio: 1 / 1;
     background:
-      radial-gradient(ellipse at center, rgba(239, 90, 33, 0.06) 0%, transparent 60%),
-      linear-gradient(135deg, #050505 0%, #161616 100%);
+      radial-gradient(ellipse at 50% 35%, rgba(239, 90, 33, 0.07) 0%, transparent 60%),
+      linear-gradient(135deg, #0e0e0e 0%, #1d1d1d 100%);
     border: 1px solid var(--hairline);
     border-radius: 0;
     overflow: hidden;
@@ -454,50 +446,32 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     gap: 16px;
     color: var(--on-dark);
   }
-  .fallback-letters {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+  .fallback-grid {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
-  .fallback-letters .tile {
+  .fallback-row { display: flex; gap: 6px; }
+  .fallback-cell {
     width: 38px;
     height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    border-radius: 999px;
-    font-size: 16px;
+    font-size: 18px;
   }
-  .fallback-letters .tile-orange { background: var(--orange); color: #fff; }
-  .fallback-letters .tile-navy { background: #2c4a5b; color: #fff; }
-  .fallback-values {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-  }
-  .fallback-values li {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: var(--muted);
-    border: 1px solid var(--hairline);
-    padding: 4px 10px;
-  }
+  .fallback-cell.fc-orange { background: var(--orange); color: #fff; }
+  .fallback-cell.fc-navy { background: #2c4a5b; color: #fff; }
   .logo-3d-fallback .brand-expansion {
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
+    font-size: 13px;
+    margin: 0;
+    color: var(--muted);
+  }
+  .logo-3d-fallback .brand-expansion em {
+    font-style: normal;
     color: var(--orange);
     font-weight: 700;
-    margin: 0;
   }
 
   .drag-hint {
@@ -516,27 +490,43 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     z-index: 2;
   }
 
-  .logo-tag {
-    position: absolute;
-    left: 14px;
-    bottom: 14px;
+  .values-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0 0;
+  }
+  .values-label {
     font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    color: var(--orange);
-    font-weight: 700;
-    pointer-events: none;
-    z-index: 2;
-  }
-
-  .values-caption {
-    margin: 0;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.8px;
     color: var(--muted);
     font-weight: 700;
-    text-align: center;
+  }
+  .values-pills {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+  .values-pills li {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--body-strong);
+    padding: 6px 12px;
+    border: 1px solid var(--orange);
+    background: transparent;
+    font-weight: 700;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+  .values-pills li:hover {
+    background: var(--orange);
+    color: var(--white);
   }
 
   @media (max-width: 600px) {
@@ -547,6 +537,6 @@ const valuesData = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     .lede { margin-top: 16px; }
     .cta-row { margin-top: 22px; gap: 10px; }
     .drag-hint { font-size: 9px; padding: 4px 8px; }
-    .logo-tag { font-size: 9px; letter-spacing: 1.5px; }
+    .values-pills li { font-size: 9px; padding: 5px 10px; }
   }
 </style>
