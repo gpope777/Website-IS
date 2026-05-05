@@ -685,7 +685,7 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     z-index: 0;
   }
 
-  /* Static blurred gradient — aurora colors peeking through black bands */
+  /* Static blurred gradient — very subtle aurora tint in the corner */
   .aurora-layer::before {
     content: "";
     position: absolute;
@@ -695,14 +695,14 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       repeating-linear-gradient(100deg, #3b82f6 10%, #a5b4fc 15%, #93c5fd 20%, #ddd6fe 25%, #60a5fa 30%);
     background-size: 300%, 200%;
     background-position: 50% 50%, 50% 50%;
-    filter: blur(10px);
-    opacity: 0.5;
+    filter: blur(14px);
+    opacity: 0.15;
     will-change: transform;
-    mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
-    -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+    mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 60%);
+    -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 60%);
   }
 
-  /* Animated overlay with mix-blend-difference for the shimmer */
+  /* Animated overlay — barely-there shimmer */
   .aurora-layer::after {
     content: "";
     position: absolute;
@@ -713,6 +713,7 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     background-size: 200%, 100%;
     background-attachment: fixed;
     mix-blend-mode: difference;
+    opacity: 0.12;
     animation: aurora 60s linear infinite;
   }
 
