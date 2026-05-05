@@ -32,7 +32,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <Logo3DHero
     eyebrow="Consulting · Industrial-Organizational Psychology"
-    headlineHtml={`Decisions about people are still being made on <em data-words="gut feeling.|impulse.|emotions.|leaders without a plan.|intuition.">gut feeling.</em><br>I-O psychology exists to replace feeling with method.`}
+    headlineHtml={`Decisions about people are still being made on <em data-words="gut feeling.|impulse.|intuition.|inertia.|habit.|bias.|urgency.|convenience.|pressure.|routine.|prejudice.|opinion.|trend.">gut feeling.</em><br>I-O psychology exists to replace feeling with method.`}
     lede="Turnover, absenteeism, and burnout aren't 'lack of talent' problems. They're consequences of decisions made without method: improvised job descriptions, intuition-based interviews, undesigned first days. Here I offer rigor where there's almost always guesswork."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/en/contact" }}
@@ -52,7 +52,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <section class="services-summary">
     <div class="container">
       <p class="eyebrow" data-reveal>How we work</p>
-      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Diagnosis before prescription. <em data-words="Always with evidence.|Always with data.|Always with science.|Always with rigor.|Always with method.">Always with evidence.</em></h2>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Diagnosis before prescription. <em data-words="Always with evidence.|No shortcuts.|Data before opinions.|Backed by research.">Always with evidence.</em></h2>
       <p class="lede" style="margin-top:14px;margin-bottom:32px;">
         Every organization has its own culture, its own friction, and its own history.
         We don't bring a pre-packaged solution: we start by understanding what's happening, then we design.
@@ -78,7 +78,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <section class="articles-preview">
     <div class="container">
       <p class="eyebrow" data-reveal>The Big Question</p>
-      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">A series of <em data-words="uncomfortable questions|necessary questions|questions that transform|data-driven questions|questions that challenge">uncomfortable questions</em><br>for leaders who don't settle. <span style="font-weight:300;font-size:.6em;color:var(--muted);">(Articles in Spanish)</span></h2>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">A series of <em data-words="uncomfortable questions|questions that transform|necessary challenges|topics others avoid">uncomfortable questions</em><br>for leaders who don't settle. <span style="font-weight:300;font-size:.6em;color:var(--muted);">(Articles in Spanish)</span></h2>
       <div class="articles-grid">
         {articulos.map((a) => (
           <ArticleCard
