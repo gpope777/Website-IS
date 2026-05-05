@@ -79,7 +79,34 @@
   --container-tight: 720px;
 }
 
-html { background: #000; }
+/* ── Light mode palette ────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --canvas: #f4f3f0;
+  --surface-soft: #ece9e4;
+  --surface-card: #ffffff;
+  --surface-elevated: #f0eeea;
+  --carbon-gray: #dedad4;
+
+  --hairline: #ccc9c2;
+  --hairline-strong: #b5b2aa;
+
+  --on-dark: #0d0c0a;
+  --body-text: #48453f;
+  --body-strong: #1a1916;
+  --muted: #898780;
+
+  --slate: #48453f;
+  --slate-deep: #0d0c0a;
+  --slate-muted: #898780;
+  --ink: #f4f3f0;
+  --ink-deeper: #ece9e4;
+  --cream: #f4f3f0;
+  --white: #ffffff;
+  --border: #ccc9c2;
+  --border-dark: #b5b2aa;
+}
+
+html { background: var(--canvas); }
 
 body {
   font-family: var(--font-sans);

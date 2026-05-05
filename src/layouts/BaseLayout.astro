@@ -59,6 +59,18 @@ const orgSchema = {
 
     <JsonLd data={orgSchema} />
     <slot name="head" />
+    <!-- Must run before first paint to avoid flash of wrong theme -->
+    <script is:inline>
+      (function () {
+        try {
+          var s = localStorage.getItem('theme');
+          var sys = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', s || sys);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div class="aurora-global" aria-hidden="true"></div>
@@ -95,6 +107,8 @@ const orgSchema = {
     from { background-position: 50% 50%, 50% 50%; }
     to   { background-position: 350% 50%, 350% 50%; }
   }
+
+  [data-theme="light"] .aurora-global { display: none; }
 
   .aurora-global {
     position: fixed;

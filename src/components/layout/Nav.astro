@@ -1,5 +1,6 @@
 ---
 import LangToggle from "./LangToggle.astro";
+import ThemeToggle from "./ThemeToggle.astro";
 import { t, type Lang } from "@/lib/i18n";
 
 export interface Props {
@@ -48,6 +49,7 @@ const menuLabel = lang === "es" ? "Menú" : "Menu";
     </ul>
 
     <div class="nav-right">
+      <ThemeToggle />
       <LangToggle currentLang={lang} currentPath={currentPath} />
       <button class="nav-toggle" aria-label={menuLabel} aria-expanded="false" aria-controls="mobile-menu" type="button">
         <span class="nav-toggle-bar"></span>
@@ -125,6 +127,7 @@ const menuLabel = lang === "es" ? "Menú" : "Menu";
   }
   .site-nav--transparent { background: var(--canvas); }
   .site-nav--transparent.site-nav--solid { background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(10px); }
+  :global([data-theme="light"]) .site-nav--transparent.site-nav--solid { background: rgba(244, 243, 240, 0.93); backdrop-filter: blur(10px); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; gap: 24px; }
   .brand { display: inline-flex; flex-direction: column; gap: 2px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
   .brand-row { display: inline-flex; align-items: baseline; gap: 6px; font-size: 16px; }
