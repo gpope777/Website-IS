@@ -79,12 +79,14 @@
   --container-tight: 720px;
 }
 
+html { background: #000; }
+
 body {
   font-family: var(--font-sans);
   font-size: var(--font-body);
   line-height: 1.5;
   color: var(--body-text);
-  background: var(--canvas);
+  background: transparent;
   font-weight: 300;
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
