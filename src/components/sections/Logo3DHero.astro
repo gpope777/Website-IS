@@ -22,6 +22,7 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
 ---
 
 <section class="hero-3d">
+  <div class="aurora-layer" aria-hidden="true"></div>
   <div class="container hero-3d-grid">
     <div class="hero-3d-text">
       <p class="eyebrow" data-reveal>{eyebrow}</p>
@@ -362,6 +363,62 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
   }
 </script>
 
+<script>
+  // ── Word-cycling animation ────────────────────────────────────────────
+  // Reads <em data-words="w1.|w2.|w3."> and rotates through the list.
+  // Uses an inline-grid stack so the container width stays stable.
+  (function () {
+    const headline = document.querySelector(".hero-headline");
+    if (!headline) return;
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    (headline.querySelectorAll("em[data-words]") as NodeListOf<HTMLElement>).forEach((em) => {
+      const words = (em.dataset.words ?? "").split("|").filter(Boolean);
+      if (words.length < 2) return;
+
+      // Build stacked grid of word spans
+      const wrap = document.createElement("span");
+      wrap.className = "word-rotate";
+      wrap.setAttribute("aria-live", "polite");
+
+      words.forEach((word, i) => {
+        const span = document.createElement("span");
+        span.className = "wri" + (i === 0 ? " wri-active" : "");
+        span.textContent = word;
+        if (i === 0) span.setAttribute("aria-current", "true");
+        wrap.appendChild(span);
+      });
+
+      em.textContent = "";
+      em.appendChild(wrap);
+
+      if (reduced) return; // honour prefers-reduced-motion
+
+      let current = 0;
+      const INTERVAL = 2200; // ms per word
+
+      setInterval(() => {
+        const items = wrap.querySelectorAll<HTMLElement>(".wri");
+
+        // Exit: current word slides down + fades
+        items[current].classList.remove("wri-active");
+        items[current].classList.add("wri-exit");
+        items[current].removeAttribute("aria-current");
+        const exitIdx = current;
+        setTimeout(() => items[exitIdx].classList.remove("wri-exit"), 500);
+
+        // Advance
+        current = (current + 1) % words.length;
+
+        // Enter: next word slides in from above
+        items[current].classList.add("wri-active");
+        items[current].setAttribute("aria-current", "true");
+      }, INTERVAL);
+    });
+  })();
+</script>
+
 <style>
   .hero-3d {
     background: var(--ink);
@@ -612,5 +669,75 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     .lede { margin-top: 16px; }
     .cta-row { margin-top: 22px; gap: 10px; }
     .drag-hint { font-size: 9px; padding: 4px 8px; }
+  }
+
+  /* ── Aurora background ─────────────────────────────────────────── */
+  @keyframes aurora {
+    from { background-position: 50% 50%, 50% 50%; }
+    to   { background-position: 350% 50%, 350% 50%; }
+  }
+
+  .aurora-layer {
+    position: absolute;
+    inset: -10px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Static blurred gradient — aurora colors peeking through black bands */
+  .aurora-layer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(100deg, #000 0%, #000 7%, transparent 10%, transparent 12%, #000 16%),
+      repeating-linear-gradient(100deg, #3b82f6 10%, #a5b4fc 15%, #93c5fd 20%, #ddd6fe 25%, #60a5fa 30%);
+    background-size: 300%, 200%;
+    background-position: 50% 50%, 50% 50%;
+    filter: blur(10px);
+    opacity: 0.5;
+    will-change: transform;
+    mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+  }
+
+  /* Animated overlay with mix-blend-difference for the shimmer */
+  .aurora-layer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(100deg, #000 0%, #000 7%, transparent 10%, transparent 12%, #000 16%),
+      repeating-linear-gradient(100deg, #3b82f6 10%, #a5b4fc 15%, #93c5fd 20%, #ddd6fe 25%, #60a5fa 30%);
+    background-size: 200%, 100%;
+    background-attachment: fixed;
+    mix-blend-mode: difference;
+    animation: aurora 60s linear infinite;
+  }
+
+  /* ── Word-cycling animation ─────────────────────────────────────────── */
+  /* :global() needed because these elements are created by JS at runtime,
+     so Astro's scope hash isn't applied to them. */
+  .hero-headline :global(.word-rotate) {
+    display: inline-grid;
+    vertical-align: baseline;
+    overflow: hidden;
+  }
+  .hero-headline :global(.wri) {
+    grid-column: 1;
+    grid-row: 1;
+    opacity: 0;
+    transform: translateY(-0.45em);
+    transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .hero-headline :global(.wri.wri-active) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .hero-headline :global(.wri.wri-exit) {
+    opacity: 0;
+    transform: translateY(0.45em);
+    transition: opacity 0.4s ease, transform 0.4s ease;
   }
 </style>

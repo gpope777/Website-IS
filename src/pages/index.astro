@@ -32,7 +32,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
   <Logo3DHero
     eyebrow="Consultoría · Psicología Industrial-Organizacional"
-    headlineHtml="Las decisiones sobre las personas se siguen tomando por <em>corazonada.</em><br>La psicología I-O existe para reemplazar el feeling con método."
+    headlineHtml={`Las decisiones sobre las personas se siguen tomando por <em data-words="corazonada.|impulso.|emociones.|sin plan.|intuición.">corazonada.</em><br>La psicología I-O existe para reemplazar el feeling con método.`}
     lede="La rotación, el ausentismo y el burnout no son problemas de 'falta de talento'. Son consecuencias de decisiones que se tomaron sin método: descripciones de puesto improvisadas, entrevistas por intuición, primeros días sin diseñar. Aquí ofrezco rigor donde casi siempre hay corazonada."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/contacto" }}
