@@ -91,6 +91,10 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
   max-width: 100%;
+  hyphens: none;
+  -webkit-hyphens: none;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 img, video, svg {

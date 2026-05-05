@@ -46,8 +46,8 @@ const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref
   .founder { background: var(--canvas); padding: 96px 0; color: var(--on-dark); }
   .founder-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 64px; align-items: center; }
   @media (max-width: 900px) { .founder-grid { grid-template-columns: 1fr; gap: 32px; } }
-  .founder-photo { border: 1px solid var(--hairline); border-radius: 0; overflow: hidden; aspect-ratio: 4 / 5; background: var(--surface-card); }
-  .founder-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .founder-photo { border: 3px solid var(--orange); border-radius: 50%; overflow: hidden; aspect-ratio: 1 / 1; background: var(--surface-card); width: min(320px, 80vw); margin: 0 auto; }
+  .founder-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
   .founder-text .h2 { text-transform: uppercase; }
   .role { font-style: normal; font-weight: 400; color: var(--orange); margin-top: 8px; text-transform: uppercase; letter-spacing: 1.5px; font-size: 13px; }
   .bio { color: var(--body-text); font-weight: 300; margin-top: 18px; max-width: 60ch; line-height: 1.7; }
