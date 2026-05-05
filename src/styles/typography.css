@@ -16,7 +16,9 @@
   text-transform: uppercase;
   overflow-wrap: break-word;
   word-break: normal;
-  hyphens: auto;
+  hyphens: none !important;
+  -webkit-hyphens: none !important;
+  -ms-hyphens: none !important;
 }
 
 .h1.h1-mixed-case {
@@ -34,7 +36,9 @@
   text-transform: uppercase;
   overflow-wrap: break-word;
   word-break: normal;
-  hyphens: auto;
+  hyphens: none !important;
+  -webkit-hyphens: none !important;
+  -ms-hyphens: none !important;
 }
 
 .h2.h2-mixed-case {
