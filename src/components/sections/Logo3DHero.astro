@@ -474,7 +474,7 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     padding: 0;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    column-gap: 12px;
+    column-gap: 16px;
     position: relative;
   }
   /* Hairline threading through the centers of the 5 nodes */
@@ -514,8 +514,8 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
 
   /* Two-tone network node — pulsing glow */
   .values-thread .node {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--orange);
     box-shadow:
@@ -530,6 +530,24 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     0%, 100% { box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 0 14px rgba(239,90,33,0.5), 0 0 28px rgba(239,90,33,0.15); }
     50% { box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 0 20px rgba(239,90,33,0.7), 0 0 40px rgba(239,90,33,0.25); }
   }
+  /* Shiny gradient sweep — orange highlight band across white text */
+  @keyframes shimmer-text {
+    0% { background-position: 100% center; }
+    100% { background-position: 0% center; }
+  }
+  /* Stagger shimmer per value for a wave effect */
+  .values-thread li:nth-child(1) .name { animation-delay: 0s; }
+  .values-thread li:nth-child(2) .name { animation-delay: 0.35s; }
+  .values-thread li:nth-child(3) .name { animation-delay: 0.7s; }
+  .values-thread li:nth-child(4) .name { animation-delay: 1.05s; }
+  .values-thread li:nth-child(5) .name { animation-delay: 1.4s; }
+  @media (prefers-reduced-motion: reduce) {
+    .values-thread .name {
+      animation: none;
+      background: none;
+      -webkit-text-fill-color: var(--on-dark);
+    }
+  }
   .values-thread .node::after {
     content: "";
     position: absolute;
@@ -541,7 +559,7 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     border-radius: 50%;
   }
   .values-thread .num {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--orange);
     font-weight: 700;
     letter-spacing: 1.4px;
@@ -550,12 +568,17 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     margin-top: -2px;
   }
   .values-thread .name {
-    font-size: 14px;
-    color: var(--on-dark);
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 700;
     letter-spacing: -0.01em;
-    line-height: 1.3;
+    line-height: 1.2;
     text-wrap: balance;
+    background: linear-gradient(120deg, #d8d8d8 30%, #ffffff 44%, #ef5a21 50%, #ffffff 56%, #d8d8d8 70%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer-text 3.5s ease-in-out infinite alternate;
   }
 
   /* Tablet — relax columns but keep horizontal thread */
@@ -595,7 +618,7 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
       margin-top: 0;
     }
     .values-thread .name {
-      font-size: 15px;
+      font-size: 20px;
     }
   }
 
