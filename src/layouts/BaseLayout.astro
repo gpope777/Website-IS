@@ -143,25 +143,22 @@ const orgSchema = {
   }
 
   /* ── Word-cycling animation ─────────────────────────────────────────── */
+  /* display:inline — no reserved width; surrounding text reflows naturally */
   .word-rotate {
-    display: inline-grid;
-    vertical-align: baseline;
-    overflow: hidden;
+    display: inline;
   }
   .wri {
-    grid-column: 1;
-    grid-row: 1;
-    opacity: 0;
-    transform: translateY(-0.45em);
-    transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    display: none;
+  }
+  @keyframes wri-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
   .wri.wri-active {
-    opacity: 1;
-    transform: translateY(0);
+    display: inline;
+    animation: wri-in 0.35s ease;
   }
   .wri.wri-exit {
-    opacity: 0;
-    transform: translateY(0.45em);
-    transition: opacity 0.4s ease, transform 0.4s ease;
+    display: none;
   }
 </style>
