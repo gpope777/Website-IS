@@ -586,6 +586,14 @@ const valuesList = valores.map((v) => (lang === "es" ? v.data.nombre_es : v.data
     -webkit-text-fill-color: transparent;
     animation: shimmer-text 3.5s ease-in-out infinite alternate;
   }
+  /* Light mode: swap white/gray shimmer stops for dark equivalents */
+  :global([data-theme="light"]) .values-thread .name {
+    background: linear-gradient(120deg, #3a3830 30%, #0d0c0a 44%, #ef5a21 50%, #0d0c0a 56%, #3a3830 70%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
 
   /* Tablet — tighten gap but keep 3+2 stagger */
   @media (max-width: 900px) {
