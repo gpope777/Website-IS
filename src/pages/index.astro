@@ -52,7 +52,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <section class="services-summary">
     <div class="container">
       <p class="eyebrow" data-reveal>Cómo trabajamos</p>
-      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Diagnóstico antes que receta. <em>Y siempre con evidencia.</em></h2>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Diagnóstico antes que receta. <em data-words="Y siempre con evidencia.|Y siempre con datos.|Y siempre con ciencia.|Y siempre con rigor.|Y siempre con método.">Y siempre con evidencia.</em></h2>
       <p class="lede" style="margin-top:14px;margin-bottom:32px;">
         Cada organización tiene su propia cultura, sus propias fricciones y su propia historia.
         No traemos un paquete prearmado: empezamos por entender qué está pasando, y desde ahí diseñamos.
@@ -78,7 +78,7 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <section class="articles-preview">
     <div class="container">
       <p class="eyebrow" data-reveal>La Gran Pregunta</p>
-      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Una serie de <em>preguntas incómodas</em><br>para líderes que no se conforman.</h2>
+      <h2 class="h2 h2-mixed-case" data-reveal data-reveal-delay="1">Una serie de <em data-words="preguntas incómodas|preguntas necesarias|preguntas que transforman|preguntas basadas en datos|preguntas que desafían">preguntas incómodas</em><br>para líderes que no se conforman.</h2>
       <div class="articles-grid">
         {articulos.map((a) => (
           <ArticleCard

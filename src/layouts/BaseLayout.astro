@@ -70,6 +70,7 @@ const orgSchema = {
     <slot name="footer" />
     <script>
       import "@/scripts/scroll-reveal.ts";
+      import "@/scripts/word-cycle.ts";
     </script>
   </body>
 </html>
@@ -139,5 +140,28 @@ const orgSchema = {
     background: transparent !important;
     border-top: none !important;
     border-bottom: none !important;
+  }
+
+  /* ── Word-cycling animation ─────────────────────────────────────────── */
+  .word-rotate {
+    display: inline-grid;
+    vertical-align: baseline;
+    overflow: hidden;
+  }
+  .wri {
+    grid-column: 1;
+    grid-row: 1;
+    opacity: 0;
+    transform: translateY(-0.45em);
+    transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .wri.wri-active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .wri.wri-exit {
+    opacity: 0;
+    transform: translateY(0.45em);
+    transition: opacity 0.4s ease, transform 0.4s ease;
   }
 </style>
