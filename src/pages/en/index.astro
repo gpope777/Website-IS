@@ -40,15 +40,6 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     lang={lang}
   />
 
-  <StatsBand
-    stats={[
-      { num: "15", label: t("stats.anos_hr", lang) },
-      { num: "20", label: t("stats.anos_posgrado", lang) },
-      { num: "3", label: t("stats.certificaciones", lang) },
-      { num: "1", label: t("stats.phd", lang) },
-    ]}
-  />
-
   <section class="services-summary">
     <div class="container">
       <p class="eyebrow" data-reveal>How we work</p>
@@ -73,6 +64,15 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
     ctaLabel="Learn more about the firm"
     ctaHref="/en/about"
+  />
+
+  <StatsBand
+    stats={[
+      { num: "15", label: t("stats.anos_hr", lang) },
+      { num: "20", label: t("stats.anos_posgrado", lang) },
+      { num: "3", label: t("stats.certificaciones", lang) },
+      { num: "1", label: t("stats.phd", lang) },
+    ]}
   />
 
   <section class="articles-preview">
