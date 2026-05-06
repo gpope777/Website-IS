@@ -101,6 +101,8 @@ const { lang, variant = "full" } = Astro.props;
   .field { display: flex; flex-direction: column; gap: 6px; }
   label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; }
   input, textarea {
+    display: block;
+    width: 100%;
     background: var(--surface-card);
     border: 1px solid var(--hairline);
     border-radius: 0;

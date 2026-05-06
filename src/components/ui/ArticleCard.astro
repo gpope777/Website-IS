@@ -20,7 +20,7 @@ const fechaStr = fecha.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { y
 const lecturaLabel = tiempoLectura === 1 ? t("tiempoLectura.min", lang) : t("tiempoLectura.mins", lang);
 ---
 
-<a href={href} class="article-card" data-reveal>
+<a href={href} class="article-card" data-reveal data-spotlight>
   {imagenSrc && (
     <div class="article-image">
       <img src={imagenSrc} alt={imagenAlt} loading="lazy" decoding="async" width="600" height="400" />

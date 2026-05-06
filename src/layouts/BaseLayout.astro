@@ -76,6 +76,7 @@ const orgSchema = {
     <script>
       import "@/scripts/scroll-reveal.ts";
       import "@/scripts/word-cycle.ts";
+      import "@/scripts/spotlight-cards.ts";
     </script>
   </body>
 </html>
@@ -160,6 +161,34 @@ const orgSchema = {
     background: transparent !important;
     border-top: none !important;
     border-bottom: none !important;
+  }
+
+  /* ── Spotlight card glow ──────────────────────────────────────────────
+     Cards with [data-spotlight] get a radial orange gradient that
+     follows the pointer position via --spot-x / --spot-y set by JS. */
+  [data-spotlight] {
+    --spot-x: -999px;
+    --spot-y: -999px;
+    position: relative;
+    overflow: hidden;
+  }
+  [data-spotlight]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      350px circle at var(--spot-x) var(--spot-y),
+      rgba(239, 90, 33, 0.12),
+      transparent 60%
+    );
+    pointer-events: none;
+    z-index: 1;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+  }
+  [data-spotlight]:hover::after {
+    opacity: 1;
   }
 
   /* ── Word-cycling animation ─────────────────────────────────────────── */

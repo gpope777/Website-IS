@@ -10,7 +10,7 @@ export interface Props {
 const { numero, territorio, titulo, resumen, herramientas } = Astro.props;
 ---
 
-<article class="service-card" data-reveal>
+<article class="service-card" data-reveal data-spotlight>
   <div class="service-num">{numero} <span class="separator">/</span> {territorio}</div>
   <h4>{titulo}</h4>
   <p>{resumen}</p>
