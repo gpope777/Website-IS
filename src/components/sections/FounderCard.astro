@@ -13,11 +13,12 @@ export interface Props {
   rol: string;
   bio: string;
   certificaciones: Cert[];
+  eyebrow?: string;
   ctaLabel?: string;
   ctaHref?: string;
 }
 
-const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref } = Astro.props;
+const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, eyebrow = "Sobre el fundador", ctaLabel, ctaHref } = Astro.props;
 ---
 
 <section class="founder">
@@ -26,7 +27,7 @@ const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref
       <img src={photoSrc} alt={photoAlt} loading="lazy" decoding="async" width="500" height="600" />
     </figure>
     <div class="founder-text">
-      <p class="eyebrow" data-reveal>Sobre el founder</p>
+      <p class="eyebrow" data-reveal>{eyebrow}</p>
       <h2 class="h2" style="margin-top: 8px;" data-reveal data-reveal-delay="1">{nombre}</h2>
       <p class="role" data-reveal data-reveal-delay="2">{rol}</p>
       <p class="bio" data-reveal data-reveal-delay="3">{bio}</p>
