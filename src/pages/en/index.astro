@@ -76,7 +76,11 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     nombre="Dr. Alejandro J. Gómez Betancourt"
     rol="PhD · Industrial-Organizational Psychologist · President & Senior Consultant"
     bio="Doctorate in Psychology from Albizu University in Puerto Rico, specialized in applying scientific method and psychological principles to the workplace. Over fifteen years leading initiatives in organizational development, leadership programs, performance management, occupational safety, organizational change, recruitment and selection, training, talent management, succession planning, organizational design, and post-merger cultural transformation. His holistic approach combines science, strategy, and leadership to deliver solutions that transform organizations and enhance the employee experience. Over twenty years teaching at the graduate level at universities in Puerto Rico."
-    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
+    certificaciones={[
+      { name: "McKinsey Leadership", img: "https://images.credly.com/images/8c655bf0-3852-455d-a6f2-d39dd1dd1162/image.png" },
+      { name: "Hogan Assessment", img: "https://images.credly.com/images/56294884-167b-4102-9eaf-c1b34ca93db6/image.png" },
+      { name: "DISC", img: "https://images.credly.com/images/f851233d-fca7-41f4-a6bd-32bb19128ce8/image.png" },
+    ]}
     ctaLabel="Learn more about the firm"
     ctaHref="/en/about"
   />

@@ -1,13 +1,18 @@
 ---
 import Button from "@/components/ui/Button.astro";
 
+export interface Cert {
+  name: string;
+  img: string;
+}
+
 export interface Props {
   photoSrc: string;
   photoAlt: string;
   nombre: string;
   rol: string;
   bio: string;
-  certificaciones: string[];
+  certificaciones: Cert[];
   ctaLabel?: string;
   ctaHref?: string;
 }
@@ -27,10 +32,15 @@ const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref
       <p class="bio" data-reveal data-reveal-delay="3">{bio}</p>
       {certificaciones.length > 0 && (
         <div class="certs" data-reveal data-reveal-delay="4">
-          <span class="label" style="display:block; margin-bottom: 8px;">Certificaciones</span>
-          <ul>
-            {certificaciones.map((c) => <li>{c}</li>)}
-          </ul>
+          <span class="certs-label">Certificaciones</span>
+          <div class="certs-grid">
+            {certificaciones.map((c) => (
+              <div class="cert-card" data-spotlight>
+                <img src={c.img} alt={c.name} loading="lazy" width="100" height="100" />
+                <span class="cert-name">{c.name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {ctaLabel && ctaHref && (
@@ -51,20 +61,57 @@ const { photoSrc, photoAlt, nombre, rol, bio, certificaciones, ctaLabel, ctaHref
   .founder-text .h2 { text-transform: uppercase; }
   .role { font-style: normal; font-weight: 400; color: var(--orange); margin-top: 8px; text-transform: uppercase; letter-spacing: 1.5px; font-size: 13px; }
   .bio { color: var(--body-text); font-weight: 300; margin-top: 18px; max-width: 60ch; line-height: 1.7; }
-  .certs { margin-top: 24px; }
-  .certs ul { display: flex; flex-wrap: wrap; gap: 8px; }
-  .certs li {
-    border-radius: 0;
-    border: 1px solid var(--hairline);
-    background: transparent;
-    padding: 6px 12px;
+  .certs { margin-top: 32px; }
+  .certs-label {
+    display: block;
     font-size: 12px;
-    color: var(--body-text);
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .certs-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .cert-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 28px 16px 20px;
+    border: 1px solid var(--hairline);
+    background: var(--surface-card);
+    transition: border-color 0.2s ease, transform 0.3s ease;
+  }
+  .cert-card:hover {
+    border-color: var(--orange);
+    transform: translateY(-3px);
+  }
+  .cert-card img {
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+  }
+  .cert-name {
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--on-dark);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    line-height: 1.3;
   }
   @media (max-width: 600px) {
     .founder { padding: 56px 0; }
     .founder-grid { gap: 24px; }
     .bio { font-size: 15px; line-height: 1.65; margin-top: 14px; }
     .role { font-size: 11px; }
+    .certs-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .cert-card { padding: 18px 8px 14px; gap: 10px; }
+    .cert-card img { width: 64px; height: 64px; }
+    .cert-name { font-size: 9px; letter-spacing: 0.5px; }
   }
 </style>

@@ -76,7 +76,11 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     nombre="Dr. Alejandro J. Gómez Betancourt"
     rol="PhD · Psicólogo Industrial-Organizacional · Presidente y Senior Consultant"
     bio="Doctor en Psicología por la Universidad Albizu en Puerto Rico, especializado en la aplicación de método científico y principios psicológicos al ámbito laboral. Más de quince años liderando iniciativas de desarrollo organizacional, programas de liderazgo, gestión del desempeño, seguridad ocupacional, cambio organizacional, reclutamiento y selección, capacitación, gestión del talento, planificación de sucesión, diseño organizacional, y transformación cultural post-fusiones. Su enfoque holístico combina ciencia, estrategia y liderazgo para entregar soluciones que transforman organizaciones y mejoran la experiencia del empleado. Más de veinte años enseñando posgrado en universidades de Puerto Rico."
-    certificaciones={["McKinsey Leadership", "Hogan Assessment", "DISC"]}
+    certificaciones={[
+      { name: "McKinsey Leadership", img: "https://images.credly.com/images/8c655bf0-3852-455d-a6f2-d39dd1dd1162/image.png" },
+      { name: "Hogan Assessment", img: "https://images.credly.com/images/56294884-167b-4102-9eaf-c1b34ca93db6/image.png" },
+      { name: "DISC", img: "https://images.credly.com/images/f851233d-fca7-41f4-a6bd-32bb19128ce8/image.png" },
+    ]}
     ctaLabel="Conoce más sobre la firma"
     ctaHref="/sobre-nosotros"
   />
