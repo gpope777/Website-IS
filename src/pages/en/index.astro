@@ -26,15 +26,15 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
 <BaseLayout
   title="Innovational TMS · Industrial-Organizational Psychology Consulting"
-  description="Decisions about people are still being made on gut feeling. Industrial-Organizational psychology exists to replace feeling with method. Consulting with 15+ years of experience."
+  description="Decisions about people are still being made on improvisation. Industrial-Organizational psychology exists to replace feeling with method. Consulting with 15+ years of experience."
   lang={lang}
 >
   <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
 
   <Logo3DHero
     eyebrow="Consulting · Industrial-Organizational Psychology"
-    headlineHtml={`Decisions about people are still being made on <em data-words="gut feeling.|impulse.|intuition.|inertia.|habit.|bias.|urgency.|convenience.|pressure.|routine.|prejudice.|opinion.|trend.">gut feeling.</em><br>Our firm was created to replace feeling with method.`}
-    lede="Turnover, absenteeism, and burnout aren't 'lack of talent' problems. They're consequences of decisions made without method: improvised job descriptions, intuition-based interviews, undesigned first days. Here I offer rigor where there's almost always guesswork."
+    headlineHtml={`Decisions about people are still being made on <em data-words="improvisation.|impulse.|intuition.|inertia.|habit.|bias.|urgency.|convenience.|pressure.|routine.|prejudice.|opinion.|trend.">improvisation.</em><br>Our firm was created to replace feeling with method.`}
+    lede="Turnover, absenteeism, and burnout aren't 'lack of talent' problems. They're consequences of decisions made without method: improvised job descriptions, intuition-based interviews, undesigned first days. Here I offer rigor where there's almost always improvisation."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/en/contact" }}
     ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
@@ -44,6 +44,10 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <ClientLogos
     heading="Trusted by industry leaders"
     logos={[
+      { name: "Triple S" },
+      { name: "Sheraton" },
+      { name: "Provider Network Solutions PR" },
+      { name: "Buena Vibra" },
       { name: "Meridian Group" },
       { name: "Atlas Industries" },
       { name: "Vertex Health" },

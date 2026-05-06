@@ -26,15 +26,15 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
 
 <BaseLayout
   title="Innovational TMS · Consultoría en Psicología I-O"
-  description="Las decisiones sobre las personas se siguen tomando por corazonada. La psicología industrial-organizacional existe para reemplazar el feeling con método. Consultoría con más de quince años de experiencia."
+  description="Las decisiones sobre las personas se siguen tomando por improvisación. La psicología industrial-organizacional existe para reemplazar el feeling con método. Consultoría con más de quince años de experiencia."
   lang={lang}
 >
   <Nav slot="nav" lang={lang} currentPath={path} transparent={true} />
 
   <Logo3DHero
     eyebrow="Consultoría · Psicología Industrial-Organizacional"
-    headlineHtml={`Las decisiones sobre las personas se siguen tomando por <em data-words="corazonada.|impulso.|intuición.|inercia.|costumbre.|sesgo.|urgencia.|conveniencia.|presión.|rutina.|prejuicio.|opinión.|moda.">corazonada.</em><br>Nuestra firma se creó para reemplazar el feeling con método.`}
-    lede="La rotación, el ausentismo y el burnout no son problemas de 'falta de talento'. Son consecuencias de decisiones que se tomaron sin método: descripciones de puesto improvisadas, entrevistas por intuición, primeros días sin diseñar. Aquí ofrezco rigor donde casi siempre hay corazonada."
+    headlineHtml={`Las decisiones sobre las personas se siguen tomando por <em data-words="improvisación.|impulso.|intuición.|inercia.|costumbre.|sesgo.|urgencia.|conveniencia.|presión.|rutina.|prejuicio.|opinión.|moda.">improvisación.</em><br>Nuestra firma se creó para reemplazar el feeling con método.`}
+    lede="La rotación, el ausentismo y el burnout no son problemas de 'falta de talento'. Son consecuencias de decisiones que se tomaron sin método: descripciones de puesto improvisadas, entrevistas por intuición, primeros días sin diseñar. Aquí ofrezco rigor donde casi siempre hay improvisación."
     signoff="Dr. Alejandro J. Gómez Betancourt"
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/contacto" }}
     ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
@@ -44,6 +44,10 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
   <ClientLogos
     heading="Confían en nosotros"
     logos={[
+      { name: "Triple S" },
+      { name: "Sheraton" },
+      { name: "Provider Network Solutions PR" },
+      { name: "Buena Vibra" },
       { name: "Meridian Group" },
       { name: "Atlas Industries" },
       { name: "Vertex Health" },
