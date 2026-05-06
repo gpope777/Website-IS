@@ -5,6 +5,7 @@ import Nav from "@/components/layout/Nav.astro";
 import Footer from "@/components/layout/Footer.astro";
 import Logo3DHero from "@/components/sections/Logo3DHero.astro";
 import StatsBand from "@/components/sections/StatsBand.astro";
+import ClientLogos from "@/components/sections/ClientLogos.astro";
 import ServicesGrid from "@/components/sections/ServicesGrid.astro";
 import FounderCard from "@/components/sections/FounderCard.astro";
 import ArticleCard from "@/components/ui/ArticleCard.astro";
@@ -38,6 +39,20 @@ const articulos = (await getCollection("articulos", (e) => e.data.publicado !== 
     ctaPrimary={{ label: t("cta.cuentame", lang) + " →", href: "/en/contact" }}
     ctaSecondary={{ label: t("cta.lee_articulos", lang), href: "/la-gran-pregunta" }}
     lang={lang}
+  />
+
+  <ClientLogos
+    heading="Trusted by industry leaders"
+    logos={[
+      { name: "Meridian Group" },
+      { name: "Atlas Industries" },
+      { name: "Vertex Health" },
+      { name: "Pinnacle Financial" },
+      { name: "NovaTech" },
+      { name: "Sterling Partners" },
+      { name: "Pacific Dynamics" },
+      { name: "Summit Corp" },
+    ]}
   />
 
   <section class="services-summary">

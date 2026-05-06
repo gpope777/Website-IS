@@ -1,0 +1,114 @@
+---
+export interface Logo {
+  name: string;
+  img?: string;
+}
+
+export interface Props {
+  heading?: string;
+  logos: Logo[];
+}
+
+const { heading, logos } = Astro.props;
+const doubled = [...logos, ...logos];
+---
+
+<section class="client-logos">
+  {heading && (
+    <div class="container">
+      <p class="eyebrow" data-reveal>{heading}</p>
+    </div>
+  )}
+  <div class="logos-scroll">
+    <div class="logos-track">
+      {doubled.map((logo, i) => (
+        <div class="logo-item" aria-hidden={i >= logos.length ? "true" : undefined}>
+          {logo.img
+            ? <img src={logo.img} alt={logo.name} loading="lazy" />
+            : <span class="logo-wordmark">{logo.name}</span>
+          }
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .client-logos {
+    padding: 56px 0;
+    overflow: hidden;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .logos-scroll {
+    position: relative;
+    overflow: hidden;
+    margin-top: 24px;
+    mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+  }
+
+  .logos-track {
+    display: flex;
+    width: max-content;
+    will-change: transform;
+    animation: scroll-logos 35s linear infinite;
+  }
+
+  .logos-track:hover { animation-play-state: paused; }
+
+  @keyframes scroll-logos {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .logos-track { animation-play-state: paused; }
+  }
+
+  .logo-item {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 36px;
+    height: 40px;
+  }
+
+  .logo-item img {
+    height: 28px;
+    width: auto;
+    object-fit: contain;
+    filter: grayscale(100%);
+    opacity: 0.45;
+    transition: opacity 0.3s ease, filter 0.3s ease;
+  }
+
+  .logo-item:hover img {
+    filter: grayscale(0%);
+    opacity: 0.9;
+  }
+
+  .logo-wordmark {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--on-dark);
+    opacity: 0.5;
+    white-space: nowrap;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: opacity 0.3s ease;
+  }
+
+  .logo-item:hover .logo-wordmark {
+    opacity: 1;
+  }
+
+  @media (max-width: 600px) {
+    .client-logos { padding: 40px 0; }
+    .logos-scroll { margin-top: 18px; }
+    .logo-item { padding: 0 24px; }
+    .logo-wordmark { font-size: 14px; letter-spacing: 1.5px; }
+    .logo-item img { height: 22px; }
+  }
+</style>
