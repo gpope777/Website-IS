@@ -117,18 +117,30 @@ const { lang, variant = "full" } = Astro.props;
     background: var(--orange);
     color: var(--white);
     padding: 16px 32px;
-    border-radius: 0;
+    border-radius: 9999px;
     font-weight: 700;
     font-size: 14px;
     height: 52px;
     align-self: flex-start;
     margin-top: 6px;
     cursor: pointer;
-    transition: background 0.15s;
-    border: 0;
+    transition: background 0.2s;
+    border: 1px solid var(--orange);
     text-transform: uppercase;
     letter-spacing: 1.5px;
+    position: relative;
+    overflow: hidden;
   }
+  .submit::before,
+  .submit::after {
+    content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+    width: 75%; height: 1px; pointer-events: none; transition: opacity 0.5s ease;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
+  }
+  .submit::before { top: 0; opacity: 0; }
+  .submit::after  { bottom: 0; opacity: 0; }
+  .submit:hover::before { opacity: 1; }
+  .submit:hover::after  { opacity: 0.4; }
   .submit:hover { background: var(--orange-hover); }
   .submit:disabled { opacity: 0.7; cursor: wait; }
   .submit-loading { display: none; }

@@ -30,15 +30,44 @@ const classes = ["btn", `btn--${variant}`, `btn--${size}`, className].filter(Boo
     justify-content: center;
     gap: 8px;
     font-weight: 700;
-    border-radius: 0;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    border-radius: 9999px;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
     cursor: pointer;
     text-decoration: none;
     text-transform: uppercase;
     letter-spacing: 1.5px;
     font-family: var(--font-sans);
+    position: relative;
+    overflow: hidden;
   }
   .btn[disabled], .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+
+  /* Neon glow — gradient stripes at top & bottom edges */
+  .btn::before,
+  .btn::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 75%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--orange), transparent);
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+  }
+  .btn::before { top: 0; opacity: 0; }
+  .btn::after  { bottom: 0; opacity: 0; }
+  .btn:hover::before { opacity: 1; }
+  .btn:hover::after  { opacity: 0.4; }
+
+  /* Primary — white glow on orange bg */
+  .btn--primary::before,
+  .btn--primary::after {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  }
+  /* Ghost — text-only, no neon lines */
+  .btn--ghost::before,
+  .btn--ghost::after { display: none; }
 
   .btn--md { padding: 14px 28px; font-size: 13px; height: 48px; }
   .btn--lg { padding: 16px 32px; font-size: 14px; height: 52px; }
