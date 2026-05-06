@@ -16,7 +16,7 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
 
 <BaseLayout
   title="About · Innovational TMS"
-  description="A boutique consulting firm led by Dr. Alejandro J. Gómez Betancourt, PhD in Industrial-Organizational Psychology."
+  description="Science, strategy, and leadership applied to talent. I-O psychology firm led by Dr. Alejandro J. Gómez Betancourt, based in Puerto Rico."
   lang={lang}
 >
   <Nav slot="nav" lang={lang} currentPath={path} />
@@ -24,7 +24,7 @@ const valores = (await getCollection("valores")).sort((a, b) => a.data.orden - b
   <header class="page-header">
     <div class="container">
       <p class="eyebrow" data-reveal>About</p>
-      <h1 class="h1" data-reveal data-reveal-delay="1">A <em>boutique I-O psychology firm</em><br>based in Puerto Rico.</h1>
+      <h1 class="h1" data-reveal data-reveal-delay="1"><em data-words="Science, strategy, and leadership applied to talent.|Scientific rigor applied to decisions about people.|Empathy, analytical rigor, and transformational leadership.|Evidence-based I-O psychology.">Science, strategy, and leadership applied to talent.</em><br>Based in Puerto Rico.</h1>
       <p class="lede" data-reveal data-reveal-delay="2">
         We work with leaders who understand that decisions about people are the most strategic
         decisions an organization makes — and those decisions deserve method, not improvisation.
