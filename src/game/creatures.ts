@@ -27,7 +27,9 @@ export class Creature {
   readonly object: THREE.Sprite;
   readonly position: THREE.Vector3;
   hp = 30;
-  private readonly maxHp = 30;
+  private readonly maxHp: number;
+  /** The Gate Guardian: huge, slow, tough, always hunting, never respawns. */
+  readonly boss: boolean;
   private target = new THREE.Vector3();
   private retarget = 0;
   private attackCooldown = 0;
@@ -36,13 +38,19 @@ export class Creature {
   private rng: () => number;
   private readonly size: number;
 
-  constructor(private readonly world: World, seed: number, readonly kind: number) {
+  constructor(private readonly world: World, seed: number, readonly kind: number, boss = false, at?: THREE.Vector3) {
     this.rng = createRng(seed);
-    this.size = 1.6 + this.rng() * 1.2;
+    this.boss = boss;
+    this.maxHp = boss ? 220 : 30;
+    this.hp = this.maxHp;
+    this.size = boss ? 7 : 1.6 + this.rng() * 1.2;
     this.object = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureFor(kind), transparent: true, alphaTest: 0.2 }));
     this.object.scale.set(this.size, this.size, 1);
     this.position = this.object.position;
-    this.spawn(new THREE.Vector3());
+    if (at) {
+      this.position.copy(at);
+      this.pickTarget();
+    } else this.spawn(new THREE.Vector3());
     world.scene.add(this.object);
   }
 
@@ -89,7 +97,7 @@ export class Creature {
     if (away.lengthSq() > 0.001) this.position.addScaledVector(away.normalize(), 1.2);
     if (this.hp <= 0) {
       this.object.visible = false;
-      this.respawn = 20 + this.rng() * 20;
+      this.respawn = this.boss ? Infinity : 20 + this.rng() * 20;
       return true;
     }
     return false;
@@ -113,7 +121,7 @@ export class Creature {
     const dist = toPlayer.length();
     const inSafe = safe !== null && Math.hypot(this.position.x - safe.pos.x, this.position.z - safe.pos.z) < safe.r;
     const playerSafe = safe !== null && Math.hypot(player.x - safe.pos.x, player.z - safe.pos.z) < safe.r;
-    const hunting = dist < (night ? 40 : 12) && !playerSafe;
+    const hunting = (this.boss ? dist < 60 : dist < (night ? 40 : 12)) && !playerSafe;
 
     let speed = 2;
     let dir: THREE.Vector3;
@@ -123,7 +131,7 @@ export class Creature {
       speed = 5;
     } else if (hunting) {
       dir = toPlayer;
-      speed = night ? 4.2 : 3.2;
+      speed = this.boss ? 2.6 : night ? 4.2 : 3.2;
     } else {
       if (this.retarget <= 0 || this.position.distanceTo(this.target) < 2) this.pickTarget();
       dir = new THREE.Vector3().subVectors(this.target, this.position);
@@ -139,9 +147,9 @@ export class Creature {
     const ground = this.world.heightAt(this.position.x, this.position.z);
     this.position.y = Math.max(ground, -3.0) + this.size / 2 + Math.abs(Math.sin(t * 6 + this.kind)) * 0.15;
 
-    if (hunting && !inSafe && dist < 2 && this.attackCooldown <= 0) {
-      this.attackCooldown = 1.6;
-      return 8;
+    if (hunting && !inSafe && dist < (this.boss ? 4.5 : 2) && this.attackCooldown <= 0) {
+      this.attackCooldown = this.boss ? 2.2 : 1.6;
+      return this.boss ? 20 : 8;
     }
     return 0;
   }

@@ -83,6 +83,8 @@ export class World {
   readonly landmarks: Landmark[] = [];
   readonly relics: Relic[] = [];
   readonly placed: Placed[] = [];
+  private rain: THREE.Points | null = null;
+  raining = false;
   readonly terrain: THREE.Mesh;
   readonly sun = new THREE.DirectionalLight(0xfff2d8, 2.2);
   readonly moon = new THREE.DirectionalLight(0x8fa8ff, 0.25);
@@ -663,6 +665,35 @@ export class World {
     return l;
   }
 
+  /** Rain is a cloud of falling points that follows the player. */
+  setRain(on: boolean, playerPos: THREE.Vector3, dt: number): void {
+    if (on && !this.rain) {
+      const n = 1800;
+      const pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        pos[i * 3] = (Math.random() - 0.5) * 60;
+        pos[i * 3 + 1] = Math.random() * 30;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.rain = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xcfe3f5, size: 0.12, transparent: true, opacity: 0.6 }));
+      this.scene.add(this.rain);
+    }
+    this.raining = on;
+    if (!this.rain) return;
+    this.rain.visible = on;
+    if (!on) return;
+    this.rain.position.set(playerPos.x, playerPos.y, playerPos.z);
+    const arr = this.rain.geometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < arr.count; i++) {
+      let y = arr.getY(i) - 22 * dt;
+      if (y < -2) y += 30;
+      arr.setY(i, y);
+    }
+    arr.needsUpdate = true;
+  }
+
   /** Landmark whose centre is within `r` of a point, or null. */
   landmarkNear(pos: THREE.Vector3, r: number): Landmark | null {
     for (const l of this.landmarks) if (Math.hypot(l.position.x - pos.x, l.position.z - pos.z) < r) return l;
@@ -874,8 +905,11 @@ export class World {
     const sky = night.clone().lerp(day, daylight).lerp(orange, Math.min(1, dusk * 4) * 0.6);
     (this.scene.background as THREE.Color).copy(sky);
     this.fog.color.copy(sky);
-    this.fog.near = 20 + 20 * daylight;
-    this.fog.far = 60 + 100 * daylight;
+    const rainMul = this.raining ? 0.55 : 1;
+    this.fog.near = (20 + 20 * daylight) * rainMul;
+    this.fog.far = (60 + 100 * daylight) * rainMul;
+    if (this.raining) (this.scene.background as THREE.Color).multiplyScalar(0.75);
+    this.fog.color.copy(this.scene.background as THREE.Color);
     this.sun.color.set(daylight > 0.6 ? 0xfff2d8 : 0xffb070);
   }
 

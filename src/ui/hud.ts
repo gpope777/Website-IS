@@ -164,6 +164,42 @@ const TOUCH_KEYS = `
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
         <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
 
+export interface ScoreEntry {
+  seed: string;
+  score: number;
+  days: number;
+  escaped: boolean;
+  date: string;
+}
+
+const SCORES_KEY = 'bosque.scores';
+
+export function loadScores(): ScoreEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(SCORES_KEY) ?? '[]') as ScoreEntry[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveScore(e: ScoreEntry): ScoreEntry[] {
+  const all = [...loadScores(), e].sort((a, b) => b.score - a.score).slice(0, 10);
+  try {
+    localStorage.setItem(SCORES_KEY, JSON.stringify(all));
+  } catch {
+    // Private mode or storage disabled: scores just don't persist.
+  }
+  return all;
+}
+
+function scoresHtml(list: ScoreEntry[], highlight?: ScoreEntry): string {
+  if (list.length === 0) return '';
+  return `<div class="scores"><h4>Mejores partidas</h4><ol>${list
+    .slice(0, 5)
+    .map((s) => `<li class="${s === highlight ? 'me' : ''}"><span>${s.escaped ? '🚪' : '💀'} ${s.days.toFixed(1)} días · semilla <code>${s.seed}</code></span><b>${s.score}</b></li>`)
+    .join('')}</ol></div>`;
+}
+
 export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: (seed: string) => void): HTMLElement {
   const o = el('div', 'overlay');
   o.innerHTML = `
@@ -175,6 +211,7 @@ export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: 
       <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.</p>
       <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${defaultSeed}" /></div>
       <button id="start">Entrar al bosque</button>
+      ${scoresHtml(loadScores())}
     </div>`;
   parent.appendChild(o);
   const input = o.querySelector<HTMLInputElement>('#seed')!;
@@ -229,16 +266,18 @@ export function craftOverlay(parent: HTMLElement, onCraft: (r: Recipe) => void, 
   return { el: o, refresh };
 }
 
-export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: HTMLElement; show: (cause: string, rows: [string, string][], title?: string) => void } {
+export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: HTMLElement; show: (cause: string, rows: [string, string][], title?: string, entry?: ScoreEntry) => void } {
   const o = el('div', 'overlay');
   o.hidden = true;
   parent.appendChild(o);
-  const show = (cause: string, rows: [string, string][], title = 'El bosque te ha vencido') => {
+  const show = (cause: string, rows: [string, string][], title = 'El bosque te ha vencido', entry?: ScoreEntry) => {
+    const list = entry ? saveScore(entry) : loadScores();
     o.innerHTML = `
       <div class="panel">
         <h2>${title}</h2>
         <p>${cause}</p>
         <div class="stats-final">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>
+        ${scoresHtml(list, entry)}
         <button id="restart">Volver a intentarlo</button>
       </div>`;
     o.hidden = false;

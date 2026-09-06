@@ -21,7 +21,7 @@ import { HARVEST, World, type Landmark, type Resource } from './world';
 import { Wolf } from './wolves';
 import { Creature, CREATURE_COUNT, CREATURE_KINDS } from './creatures';
 import { Audio } from './audio';
-import { Hud, LANDMARK_ICONS, craftOverlay, deathOverlay, journalOverlay, pauseOverlay, type CompassMarker } from '../ui/hud';
+import { Hud, LANDMARK_ICONS, craftOverlay, deathOverlay, journalOverlay, pauseOverlay, type CompassMarker, type ScoreEntry } from '../ui/hud';
 import { TouchControls, isTouchDevice } from '../ui/touch';
 
 /** Real seconds per in-game day. */
@@ -39,6 +39,10 @@ export class Game {
   private readonly audio = new Audio();
   private relicsFound = 0;
   private howlTimer = 20;
+  private rainTimer = 120 + Math.random() * 120;
+  private raining = false;
+  private thunderTimer = 0;
+  private boss: Creature | null = null;
   private attackCooldown = 0;
   private kills = 0;
   private readonly torchLight: THREE.PointLight;
@@ -70,7 +74,7 @@ export class Game {
   private escaped = false;
   private touch: TouchControls | null = null;
 
-  constructor(private readonly container: HTMLElement, seed: string, private readonly onRestart: () => void) {
+  constructor(private readonly container: HTMLElement, private readonly seed: string, private readonly onRestart: () => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -392,11 +396,16 @@ export class Game {
       if (c.hit(damage, from)) {
         this.kills++;
         this.audio.kill();
+        if (c.boss) {
+          this.hud.notify('🏆 El Guardián de la Puerta ha caído. El camino está libre.', 'discover');
+          for (const l of this.world.landmarks) if (l.id === 'exit') l.discovered = false;
+        }
         this.stats.energy = Math.min(100, this.stats.energy + 5);
         this.hud.notify('¡Has derrotado a la criatura!');
       } else {
         this.audio.hitCreature();
-        this.hud.notify(`Golpeas a la criatura (${Math.max(0, c.hp)} PV)`);
+        if (c.boss) this.audio.roar();
+        this.hud.notify(c.boss ? `Golpeas al Guardián (${Math.max(0, c.hp)} PV)` : `Golpeas a la criatura (${Math.max(0, c.hp)} PV)`);
       }
       return;
     }
@@ -546,7 +555,7 @@ export class Game {
       if (dmg > 0) {
         this.stats.health = Math.max(0, this.stats.health - dmg);
         this.audio.hurt();
-        this.lastCause = 'Una criatura del bosque te devoró.';
+        this.lastCause = c.boss ? 'El Guardián de la Puerta te aplastó.' : 'Una criatura del bosque te devoró.';
         this.hud.notify('¡Una criatura te ataca! Golpéala (X o clic).');
       }
     }
@@ -562,7 +571,8 @@ export class Game {
     this.checkLandmarks();
     this.updateFocus();
     this.updateCompass();
-    this.audio.ambient(night, move.sprinting);
+    this.updateWeather(dt, pos, night);
+    this.audio.ambient(night, move.sprinting, this.raining);
     this.howlTimer -= dt;
     if (this.howlTimer <= 0) {
       this.howlTimer = 25 + Math.random() * 30;
@@ -586,6 +596,27 @@ export class Game {
     if (isDead(this.stats)) this.die();
   }
 
+  /** Showers roll in every few minutes: darker sky, closer fog, thunder, and you get cold faster unless sheltered. */
+  private updateWeather(dt: number, pos: THREE.Vector3, night: boolean): void {
+    this.rainTimer -= dt;
+    if (this.rainTimer <= 0) {
+      this.raining = !this.raining;
+      this.rainTimer = this.raining ? 60 + Math.random() * 60 : 150 + Math.random() * 150;
+      this.hud.notify(this.raining ? '🌧️ Empieza a llover. Busca refugio o una fogata.' : 'Deja de llover.');
+      if (this.raining) this.audio.thunder();
+    }
+    this.world.setRain(this.raining, pos, dt);
+    if (!this.raining) return;
+    const at = this.world.landmarkNear(pos, 7);
+    const covered = (at?.id === 'cave' && at.discovered) || this.world.nearPlaced('shelter', pos, 2.5) || this.world.nearPlaced('campfire', pos, 5);
+    if (!covered) this.stats.warmth = Math.max(0, this.stats.warmth - (night ? 1.2 : 0.7) * dt);
+    this.thunderTimer -= dt;
+    if (this.thunderTimer <= 0) {
+      this.thunderTimer = 15 + Math.random() * 25;
+      this.audio.thunder();
+    }
+  }
+
   private checkLandmarks(): void {
     const pos = this.player.position;
     for (const l of this.world.landmarks) {
@@ -600,6 +631,12 @@ export class Game {
   private discoverLandmark(l: Landmark): void {
     this.world.discover(l);
     if (l.id === 'exit') {
+      if (this.boss && this.boss.alive) {
+        // Not yet: the guardian must fall first. Undo the discovery so the beacon stays.
+        l.discovered = false;
+        (l.beacon.material as THREE.MeshBasicMaterial).opacity = 0.35;
+        return;
+      }
       this.win();
       return;
     }
@@ -629,8 +666,14 @@ export class Game {
     if (n >= total && !this.exitRevealed) {
       this.exitRevealed = true;
       setTimeout(() => {
-        this.world.revealExit();
+        const exit = this.world.revealExit();
         this.audio.exitRevealed();
+        const guardPos = exit.position.clone();
+        guardPos.x -= Math.sin(exit.object.rotation.y) * 6;
+        guardPos.z -= Math.cos(exit.object.rotation.y) * 6;
+        this.boss = new Creature(this.world, hashSeed(this.seed + ':boss'), 0, true, guardPos);
+        this.creatures.push(this.boss);
+        setTimeout(() => this.hud.notify('Algo enorme custodia la Puerta. Tendrás que derrotarlo.', 'discover'), 2500);
         this.hud.notify('🚪 Una luz blanca se alza al borde del bosque. La Puerta del Bosque ha aparecido en tu brújula.', 'discover');
       }, 7000);
     }
@@ -679,7 +722,7 @@ export class Game {
       ['Enemigos derrotados', String(this.kills)],
       ['Reliquias', `${this.relicsFound} / ${this.world.relics.length}`],
       ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, true, this.relicsFound))],
-    ], 'Has salido del bosque');
+    ], 'Has salido del bosque', this.scoreEntry(true, days));
   }
 
   private updateFocus(): void {
@@ -724,7 +767,12 @@ export class Game {
       ['Enemigos derrotados', String(this.kills)],
       ['Reliquias', `${this.relicsFound} / ${this.world.relics.length}`],
       ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, this.escaped, this.relicsFound))],
-    ]);
+    ], undefined, this.scoreEntry(false, days));
+  }
+
+  private scoreEntry(escaped: boolean, days: number): ScoreEntry {
+    const discovered = this.world.landmarks.filter((l) => l.discovered && l.id !== 'exit').length;
+    return { seed: this.seed, score: scoreFor(this.elapsed, discovered, this.craftedCount, escaped, this.relicsFound), days, escaped, date: new Date().toISOString().slice(0, 10) };
   }
 
   private render(): void {

@@ -49,11 +49,12 @@ export class Audio {
   }
 
   /** Night is quieter and deeper; wind swells with sprinting. */
-  ambient(night: boolean, sprinting: boolean): void {
+  ambient(night: boolean, sprinting: boolean, raining = false): void {
     if (!this.wind || !this.ctx) return;
     const t = this.ctx.currentTime;
-    this.wind.gain.gain.setTargetAtTime(night ? 0.035 : sprinting ? 0.12 : 0.06, t, 0.5);
-    this.wind.filter.frequency.setTargetAtTime(night ? 250 : sprinting ? 900 : 450, t, 0.5);
+    const base = night ? 0.035 : sprinting ? 0.12 : 0.06;
+    this.wind.gain.gain.setTargetAtTime(raining ? base + 0.1 : base, t, 0.5);
+    this.wind.filter.frequency.setTargetAtTime(raining ? 2200 : night ? 250 : sprinting ? 900 : 450, t, 0.5);
   }
 
   private tone(freq: number, dur: number, type: OscillatorType, vol: number, slideTo?: number): void {
@@ -153,6 +154,16 @@ export class Audio {
 
   wolfHowl(): void {
     this.tone(330, 1.4, 'sine', 0.12, 520);
+  }
+
+  thunder(): void {
+    this.noise(1.4, 0.7, 180);
+    this.tone(50, 1.2, 'sine', 0.3, 30);
+  }
+
+  roar(): void {
+    this.tone(90, 1.1, 'sawtooth', 0.35, 45);
+    this.noise(0.8, 0.4, 600);
   }
 
   splash(): void {

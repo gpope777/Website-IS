@@ -245,3 +245,11 @@ canvas { display: block; }
 .relics li { margin-bottom: 6px; }
 .relics li small { color: var(--muted); }
 @media (max-width: 600px) { .map-row { grid-template-columns: 1fr; } .minimap { width: 100%; height: auto; } }
+
+.scores { margin-top: 18px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; }
+.scores h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.scores ol { margin: 0; padding-left: 20px; font-size: 13px; }
+.scores li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.scores li b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.scores li.me { color: var(--accent); }
+.scores code { background: rgba(255,255,255,0.08); padding: 0 5px; border-radius: 4px; }
