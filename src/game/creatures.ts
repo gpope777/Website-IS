@@ -96,7 +96,7 @@ export class Creature {
   }
 
   /** Returns damage dealt to the player this frame. */
-  update(dt: number, player: THREE.Vector3, night: boolean, t: number): number {
+  update(dt: number, player: THREE.Vector3, night: boolean, t: number, safe: { pos: THREE.Vector3; r: number } | null = null): number {
     if (!this.alive) {
       this.respawn -= dt;
       if (this.respawn <= 0) this.spawn(player);
@@ -111,11 +111,17 @@ export class Creature {
     const toPlayer = new THREE.Vector3().subVectors(player, this.position);
     toPlayer.y = 0;
     const dist = toPlayer.length();
-    const hunting = dist < (night ? 40 : 12);
+    const inSafe = safe !== null && Math.hypot(this.position.x - safe.pos.x, this.position.z - safe.pos.z) < safe.r;
+    const playerSafe = safe !== null && Math.hypot(player.x - safe.pos.x, player.z - safe.pos.z) < safe.r;
+    const hunting = dist < (night ? 40 : 12) && !playerSafe;
 
     let speed = 2;
     let dir: THREE.Vector3;
-    if (hunting) {
+    if (inSafe) {
+      dir = new THREE.Vector3().subVectors(this.position, safe!.pos);
+      dir.y = 0;
+      speed = 5;
+    } else if (hunting) {
       dir = toPlayer;
       speed = night ? 4.2 : 3.2;
     } else {
@@ -133,7 +139,7 @@ export class Creature {
     const ground = this.world.heightAt(this.position.x, this.position.z);
     this.position.y = Math.max(ground, -3.0) + this.size / 2 + Math.abs(Math.sin(t * 6 + this.kind)) * 0.15;
 
-    if (hunting && dist < 2 && this.attackCooldown <= 0) {
+    if (hunting && !inSafe && dist < 2 && this.attackCooldown <= 0) {
       this.attackCooldown = 1.6;
       return 8;
     }

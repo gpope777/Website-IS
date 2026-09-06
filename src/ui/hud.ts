@@ -1,7 +1,18 @@
 import { ITEM_LABELS, RECIPES, canCraft, type Inventory, type ItemId, type Recipe, type Stats } from '../game/survival';
+import type { Landmark, LandmarkId } from '../game/world';
 import { isTouchDevice } from './touch';
 
-const CONSUME_KEYS: Partial<Record<ItemId, string>> = { berries: '1', mushroom: '2', water: '3', torch: 'T' };
+const CONSUME_KEYS: Partial<Record<ItemId, string>> = { berries: '1', mushroom: '2', water: '3', torch: 'T', fish: '4' };
+
+export const LANDMARK_ICONS: Record<LandmarkId, string> = { rock: '🗿', cabin: '🏚️', circle: '⭕', tree: '🌳', pier: '🛶', cave: '🕳️', exit: '🚪' };
+
+export interface CompassMarker {
+  /** Angle relative to the view direction, radians, negative = left. */
+  rel: number;
+  icon: string;
+  dim: boolean;
+  label: string;
+}
 
 export class Hud {
   readonly root: HTMLElement;
@@ -13,6 +24,8 @@ export class Hud {
   private log: HTMLElement;
   private vignette: HTMLElement;
   private hand: HTMLElement;
+  private compass: HTMLElement;
+  private compassMarks: HTMLElement;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud');
@@ -50,8 +63,11 @@ export class Hud {
     this.log = el('div', 'log');
     this.vignette = el('div', 'vignette');
     this.hand = el('div', 'hand');
+    this.compass = el('div', 'compass');
+    this.compassMarks = el('div', 'marks');
+    this.compass.append(this.compassMarks, el('i', 'needle'));
 
-    this.root.append(this.vignette, clock, stats, this.inv, el('div', 'crosshair'), this.prompt, this.log, this.hand);
+    this.root.append(this.vignette, clock, stats, this.inv, el('div', 'crosshair'), this.prompt, this.log, this.hand, this.compass);
   }
 
   setStats(s: Stats): void {
@@ -72,6 +88,18 @@ export class Hud {
     const mm = String(minutes % 60).padStart(2, '0');
     this.clock.innerHTML = `Día <b>${day}</b> · ${hh}:${mm}`;
     this.clockSub.textContent = night ? `${phaseLabel} — cuidado con los lobos` : phaseLabel;
+  }
+
+  /** Redraw the compass strip. Markers beyond ±100° are hidden. */
+  setCompass(markers: CompassMarker[]): void {
+    const span = (100 * Math.PI) / 180;
+    let html = '';
+    for (const m of markers) {
+      if (Math.abs(m.rel) > span) continue;
+      const x = 50 + (m.rel / span) * 50;
+      html += `<span class="${m.dim ? 'dim' : ''}" style="left:${x.toFixed(1)}%" title="${m.label}">${m.icon}<small>${m.label}</small></span>`;
+    }
+    this.compassMarks.innerHTML = html;
   }
 
   /** Flash a punch/axe swing at the bottom of the screen. */
@@ -122,7 +150,7 @@ const DESKTOP_KEYS = `
         <div><kbd>WASD</kbd> moverse</div><div><kbd>Ratón</kbd> mirar</div>
         <div><kbd>Shift</kbd> correr</div><div><kbd>Espacio</kbd> saltar</div>
         <div><kbd>E</kbd> interactuar</div><div><kbd>C</kbd> crear</div>
-        <div><kbd>X / clic</kbd> golpear (puño, o hacha)</div>
+        <div><kbd>X / clic</kbd> golpear (puño, o hacha)</div><div><kbd>J</kbd> diario de exploración</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
         <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
 
@@ -130,7 +158,7 @@ const TOUCH_KEYS = `
         <div><kbd>Joystick</kbd> moverse</div><div><kbd>Arrastrar</kbd> mirar</div>
         <div><kbd>Joystick al borde</kbd> correr</div><div><kbd>B</kbd> saltar</div>
         <div><kbd>A</kbd> interactuar</div><div><kbd>CREAR</kbd> crear objetos</div>
-        <div><kbd>X</kbd> golpear (puño, o hacha)</div>
+        <div><kbd>X</kbd> golpear (puño, o hacha)</div><div><kbd>DIARIO</kbd> lugares e historia</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
         <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
 
@@ -140,7 +168,7 @@ export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: 
     <div class="panel">
       <h1>Bosque</h1>
       <p>Te has despertado en medio de un bosque sin recordar cómo llegaste. Explora, recoge recursos, mantente caliente
-      y sobrevive tantos días como puedas. Hay cinco lugares que descubrir.</p>
+      y sobrevive tantos días como puedas. Sigue las columnas de luz: seis lugares guardan la historia de quien estuvo aquí antes, y la salida del bosque.</p>
       <div class="keys">${isTouchDevice() ? TOUCH_KEYS : DESKTOP_KEYS}</div>
       <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.</p>
       <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${defaultSeed}" /></div>
@@ -199,14 +227,14 @@ export function craftOverlay(parent: HTMLElement, onCraft: (r: Recipe) => void, 
   return { el: o, refresh };
 }
 
-export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: HTMLElement; show: (cause: string, rows: [string, string][]) => void } {
+export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: HTMLElement; show: (cause: string, rows: [string, string][], title?: string) => void } {
   const o = el('div', 'overlay');
   o.hidden = true;
   parent.appendChild(o);
-  const show = (cause: string, rows: [string, string][]) => {
+  const show = (cause: string, rows: [string, string][], title = 'El bosque te ha vencido') => {
     o.innerHTML = `
       <div class="panel">
-        <h2>El bosque te ha vencido</h2>
+        <h2>${title}</h2>
         <p>${cause}</p>
         <div class="stats-final">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>
         <button id="restart">Volver a intentarlo</button>
@@ -215,6 +243,45 @@ export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: 
     o.querySelector('#restart')!.addEventListener('click', onRestart);
   };
   return { el: o, show };
+}
+
+export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: HTMLElement; refresh: (landmarks: Landmark[]) => void } {
+  const o = el('div', 'overlay');
+  o.hidden = true;
+  o.innerHTML = `
+    <div class="panel journal">
+      <h2>Diario de exploración</h2>
+      <p class="progress"></p>
+      <ul class="places"></ul>
+      <button class="secondary" id="close">Cerrar</button>
+    </div>`;
+  parent.appendChild(o);
+  const list = o.querySelector('ul')!;
+  const progress = o.querySelector('.progress')!;
+  o.querySelector('#close')!.addEventListener('click', onClose);
+  const refresh = (landmarks: Landmark[]) => {
+    const found = landmarks.filter((l) => l.discovered).length;
+    const total = landmarks.filter((l) => l.id !== 'exit').length;
+    progress.textContent = found >= total
+      ? 'Conoces todos los lugares. La Puerta del Bosque te espera.'
+      : `${found} de ${total} lugares descubiertos. Cada uno guarda una página del diario del ermitaño.`;
+    list.innerHTML = '';
+    for (const l of landmarks) {
+      const li = document.createElement('li');
+      if (l.discovered) {
+        li.className = 'found';
+        li.innerHTML = `<b>${LANDMARK_ICONS[l.id]} ${l.name}</b><p>${l.description}</p><blockquote>${l.story}</blockquote><small>${l.reward}</small>`;
+      } else if (l.revealed) {
+        li.className = 'known';
+        li.innerHTML = `<b>${LANDMARK_ICONS[l.id]} ${l.name}</b><p>Marcado en la brújula. Aún no lo has visitado.</p>`;
+      } else {
+        li.className = 'unknown';
+        li.innerHTML = `<b>❔ Lugar desconocido</b><p>Busca una columna de luz en el horizonte.</p>`;
+      }
+      list.appendChild(li);
+    }
+  };
+  return { el: o, refresh };
 }
 
 function el(tag: string, cls = ''): HTMLElement {

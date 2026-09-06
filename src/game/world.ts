@@ -22,12 +22,23 @@ export interface Resource {
   saved?: THREE.Matrix4;
 }
 
+export type LandmarkId = 'rock' | 'cabin' | 'circle' | 'tree' | 'pier' | 'cave' | 'exit';
+
 export interface Landmark {
+  id: LandmarkId;
   name: string;
   description: string;
+  /** Diary fragment left by the forest's previous inhabitant. Shown in the journal. */
+  story: string;
+  /** One line telling the player what this place does for them. */
+  reward: string;
   position: THREE.Vector3;
   discovered: boolean;
   object: THREE.Object3D;
+  /** Tall light column that marks the place from afar until it is discovered. */
+  beacon: THREE.Mesh;
+  /** Visible on the compass. Undiscovered places show only once revealed (Roca del Guardián) or when close. */
+  revealed: boolean;
 }
 
 export interface Placed {
@@ -373,11 +384,23 @@ export class World {
 
   // ---------------------------------------------------------------- landmarks
 
+  private static beacon(color: number): THREE.Mesh {
+    const geo = new THREE.CylinderGeometry(0.35, 1.2, 90, 8, 1, true);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.y = 45;
+    m.renderOrder = 5;
+    return m;
+  }
+
   private buildLandmarks(): void {
-    const defs: { name: string; description: string; build: () => THREE.Object3D }[] = [
+    const defs: { id: LandmarkId; name: string; description: string; story: string; reward: string; build: () => THREE.Object3D }[] = [
       {
+        id: 'rock',
         name: 'Roca del Guardián',
         description: 'Un monolito gris que se alza sobre las copas. Desde aquí se ve casi todo el bosque.',
+        story: '«Día 3. Subí a la roca. Desde arriba conté los lugares: una cabaña, un anillo de piedras, un árbol enorme, el muelle y una boca negra en la ladera. Los apunté todos.»',
+        reward: 'El mapa mental del explorador: todos los lugares aparecen en tu brújula.',
         build: () => {
           const g = new THREE.Group();
           const mat = new THREE.MeshLambertMaterial({ color: 0x6d6f6a, flatShading: true });
@@ -390,8 +413,11 @@ export class World {
         },
       },
       {
+        id: 'cabin',
         name: 'Cabaña abandonada',
         description: 'Las paredes aún aguantan. Alguien vivió aquí hace mucho tiempo.',
+        story: '«Día 1. Me desperté igual que tú, sin recordar nada. Levanté estas paredes con un hacha que encontré en el musgo. Dejo la caja para el próximo.»',
+        reward: 'Una caja con provisiones: hacha, madera, fibra y una antorcha.',
         build: () => {
           const g = new THREE.Group();
           const wood = new THREE.MeshLambertMaterial({ color: 0x5a3f2a });
@@ -405,8 +431,11 @@ export class World {
         },
       },
       {
+        id: 'circle',
         name: 'Círculo de piedras',
         description: 'Siete piedras clavadas en un anillo perfecto. Nadie recuerda quién las puso.',
+        story: '«Día 9. Dentro del anillo las heridas cierran solas y los bichos no entran. No sé qué es. No pregunto.»',
+        reward: 'Dentro del anillo recuperas salud y las criaturas no se atreven a entrar.',
         build: () => {
           const g = new THREE.Group();
           const mat = new THREE.MeshLambertMaterial({ color: 0x8a8c86, flatShading: true });
@@ -421,8 +450,11 @@ export class World {
         },
       },
       {
+        id: 'tree',
         name: 'Árbol Anciano',
         description: 'Un tronco tan ancho que cinco personas no lo abrazarían. El bosque nació aquí.',
+        story: '«Día 14. Los frutos del árbol grande no se acaban nunca. Con esto aguanto. Pero cada noche hay más ojos entre los troncos.»',
+        reward: 'Frutos que vuelven a crecer: pulsa E junto al tronco.',
         build: () => {
           const g = new THREE.Group();
           const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 2.4, 12, 9), new THREE.MeshLambertMaterial({ color: 0x4a3120 }));
@@ -434,8 +466,11 @@ export class World {
         },
       },
       {
+        id: 'pier',
         name: 'Mirador del Lago',
         description: 'Una plataforma de madera sobre el agua. Buen sitio para pescar, si supieras cómo.',
+        story: '«Día 20. Con fibra y paciencia se pesca. Desde el muelle vi la salida: al borde del bosque, donde las colinas se abren. Solo la ves cuando conoces todo lo demás.»',
+        reward: 'Pesca desde el muelle: pulsa E mirando al agua.',
         build: () => {
           const g = new THREE.Group();
           const wood = new THREE.MeshLambertMaterial({ color: 0x7a5a3a });
@@ -450,6 +485,25 @@ export class World {
           return g;
         },
       },
+      {
+        id: 'cave',
+        name: 'Cueva del Ermitaño',
+        description: 'Una boca negra en la ladera. Dentro no llueve, no hace viento y no llega la noche.',
+        story: '«Día 27. Llevo días sin salir de la cueva. Aquí no hace frío. Si lees esto, no cometas mi error: no te quedes. Encuentra los cinco lugares y busca la puerta.»',
+        reward: 'Refugio natural: dentro no pierdes calor y descansas rápido.',
+        build: () => {
+          const g = new THREE.Group();
+          const rock = new THREE.MeshLambertMaterial({ color: 0x55534f, flatShading: true });
+          const mound = new THREE.Mesh(new THREE.SphereGeometry(6, 9, 7), rock);
+          mound.position.y = 1;
+          mound.scale.set(1.3, 0.8, 1);
+          const mouth = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 5, 10), new THREE.MeshBasicMaterial({ color: 0x050505 }));
+          mouth.rotation.z = Math.PI / 2;
+          mouth.position.set(6, 1.6, 0);
+          g.add(mound, mouth);
+          return g;
+        },
+      },
     ];
 
     for (const def of defs) {
@@ -460,8 +514,8 @@ export class World {
         x = (this.rng() - 0.5) * WORLD_SIZE * 0.8;
         z = (this.rng() - 0.5) * WORLD_SIZE * 0.8;
         h = this.heightAt(x, z);
-        const wantWater = def.name === 'Mirador del Lago';
-        const okHeight = wantWater ? h < -2.5 && h > -4.5 : h > -2.5 && h < 15;
+        const wantWater = def.id === 'pier';
+        const okHeight = wantWater ? h < -2.5 && h > -4.5 : def.id === 'cave' ? h > 4 && h < 18 : h > -2.5 && h < 15;
         const farFromSpawn = Math.hypot(x, z) > 40;
         const farFromOthers = this.landmarks.every((l) => l.position.distanceTo(new THREE.Vector3(x, h, z)) > 50);
         if (okHeight && farFromSpawn && farFromOthers) break;
@@ -471,10 +525,71 @@ export class World {
       obj.traverse((o) => {
         if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true;
       });
+      const beacon = World.beacon(def.id === 'cave' ? 0x9fd8ff : 0xffe9a0);
+      obj.add(beacon);
       this.scene.add(obj);
       this.clearResourcesNear(x, z, 8);
-      this.landmarks.push({ name: def.name, description: def.description, position: obj.position.clone(), discovered: false, object: obj });
+      this.landmarks.push({ ...def, position: obj.position.clone(), discovered: false, object: obj, beacon, revealed: false });
     }
+  }
+
+  /** Mark a landmark as found: the beacon fades out over a few seconds (see animate). */
+  discover(l: Landmark): void {
+    l.discovered = true;
+    l.revealed = true;
+  }
+
+  /** The exit appears at the edge of the forest once every other place is known. */
+  revealExit(): Landmark {
+    const g = new THREE.Group();
+    const stone = new THREE.MeshLambertMaterial({ color: 0xbfb9a8, flatShading: true });
+    for (const dx of [-3, 3]) {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 9, 1.2), stone);
+      pillar.position.set(dx, 4.5, 0);
+      g.add(pillar);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(8.4, 1.2, 1.4), stone);
+    lintel.position.y = 9.4;
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 8.6), new THREE.MeshBasicMaterial({ color: 0xfff4c0, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false }));
+    glow.position.y = 4.4;
+    glow.name = 'glow';
+    g.add(lintel, glow);
+    let x = 0;
+    let z = 0;
+    let h = -99;
+    for (let attempt = 0; attempt < 80 && h < -2; attempt++) {
+      const a = this.rng() * Math.PI * 2;
+      const r = WORLD_SIZE * 0.42;
+      x = Math.cos(a) * r;
+      z = Math.sin(a) * r;
+      h = this.heightAt(x, z);
+    }
+    g.position.set(x, Math.max(h, -3.2), z);
+    g.rotation.y = Math.atan2(x, z);
+    const beacon = World.beacon(0xffffff);
+    g.add(beacon);
+    this.scene.add(g);
+    this.clearResourcesNear(x, z, 8);
+    const l: Landmark = {
+      id: 'exit',
+      name: 'Puerta del Bosque',
+      description: 'Dos pilares de piedra al borde de las colinas. Detrás, el camino a casa.',
+      story: '«Si has llegado hasta aquí, ya sabes más del bosque que yo. Cruza. No mires atrás.»',
+      reward: 'La salida. Cruzarla termina tu aventura con la máxima puntuación.',
+      position: g.position.clone(),
+      discovered: false,
+      object: g,
+      beacon,
+      revealed: true,
+    };
+    this.landmarks.push(l);
+    return l;
+  }
+
+  /** Landmark whose centre is within `r` of a point, or null. */
+  landmarkNear(pos: THREE.Vector3, r: number): Landmark | null {
+    for (const l of this.landmarks) if (Math.hypot(l.position.x - pos.x, l.position.z - pos.z) < r) return l;
+    return null;
   }
 
   private clearResourcesNear(x: number, z: number, r: number): void {
@@ -688,6 +803,16 @@ export class World {
   }
 
   animate(t: number): void {
+    for (const l of this.landmarks) {
+      const mat = l.beacon.material as THREE.MeshBasicMaterial;
+      if (l.discovered) {
+        if (mat.opacity > 0) mat.opacity = Math.max(0, mat.opacity - 0.004);
+        l.beacon.visible = mat.opacity > 0;
+      } else {
+        mat.opacity = 0.28 + Math.sin(t * 1.5 + l.position.x) * 0.1;
+        l.beacon.rotation.y = t * 0.3;
+      }
+    }
     for (const p of this.placed) {
       if (p.kind !== 'campfire') continue;
       const flame = p.object.getObjectByName('flame');

@@ -93,6 +93,7 @@ export class TouchControls {
     for (const b of PILL_BUTTONS) pills.appendChild(this.button(b));
 
     const system = div('touch-system');
+    system.appendChild(this.button({ code: 'KeyJ', label: 'DIARIO', cls: 'sys' }));
     system.appendChild(this.button({ code: 'KeyC', label: 'CREAR', cls: 'sys' }));
     const pause = this.button({ code: '', label: 'PAUSA', cls: 'sys' });
     pause.addEventListener('pointerup', (e) => {

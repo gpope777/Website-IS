@@ -107,7 +107,8 @@ export type ItemId =
   | 'axe'
   | 'campfire'
   | 'shelter'
-  | 'torch';
+  | 'torch'
+  | 'fish';
 
 export const ITEM_LABELS: Record<ItemId, string> = {
   wood: 'Madera',
@@ -120,6 +121,7 @@ export const ITEM_LABELS: Record<ItemId, string> = {
   campfire: 'Fogata',
   shelter: 'Refugio',
   torch: 'Antorcha',
+  fish: 'Pescado',
 };
 
 export type Inventory = Partial<Record<ItemId, number>>;
@@ -183,6 +185,7 @@ export const CONSUMABLES: Partial<Record<ItemId, ConsumeEffect>> = {
   berries: { hunger: 18, thirst: 4 },
   mushroom: { hunger: 30, health: -5 },
   water: { thirst: 45 },
+  fish: { hunger: 45, energy: 10 },
 };
 
 export function consume(stats: Stats, inv: Inventory, id: ItemId): { stats: Stats; inv: Inventory } | null {
@@ -200,6 +203,6 @@ export function consume(stats: Stats, inv: Inventory, id: ItemId): { stats: Stat
 
 // ---------------------------------------------------------------- Score
 
-export function scoreFor(secondsSurvived: number, discovered: number, crafted: number): number {
-  return Math.round(secondsSurvived * 2 + discovered * 150 + crafted * 100);
+export function scoreFor(secondsSurvived: number, discovered: number, crafted: number, escaped = false): number {
+  return Math.round(secondsSurvived * 2 + discovered * 150 + crafted * 100 + (escaped ? 2000 : 0));
 }

@@ -17,10 +17,10 @@ import {
   type Recipe,
   type Stats,
 } from './survival';
-import { HARVEST, World, type Resource } from './world';
+import { HARVEST, World, type Landmark, type Resource } from './world';
 import { Wolf } from './wolves';
 import { Creature, CREATURE_COUNT, CREATURE_KINDS } from './creatures';
-import { Hud, craftOverlay, deathOverlay, pauseOverlay } from '../ui/hud';
+import { Hud, LANDMARK_ICONS, craftOverlay, deathOverlay, journalOverlay, pauseOverlay, type CompassMarker } from '../ui/hud';
 import { TouchControls, isTouchDevice } from '../ui/touch';
 
 /** Real seconds per in-game day. */
@@ -58,6 +58,12 @@ export class Game {
   private readonly pauseEl: HTMLElement;
   private readonly craftUi: ReturnType<typeof craftOverlay>;
   private readonly deathUi: ReturnType<typeof deathOverlay>;
+  private readonly journalUi: ReturnType<typeof journalOverlay>;
+  private journal = false;
+  private treeCooldown = 0;
+  private fishCooldown = 0;
+  private exitRevealed = false;
+  private escaped = false;
   private touch: TouchControls | null = null;
 
   constructor(private readonly container: HTMLElement, seed: string, private readonly onRestart: () => void) {
@@ -94,11 +100,13 @@ export class Game {
       () => this.toggleCraft(false),
     );
     this.deathUi = deathOverlay(container, onRestart);
+    this.journalUi = journalOverlay(container, () => this.toggleJournal(false));
 
     this.bindInput();
     window.addEventListener('resize', this.onResize);
     this.requestPointerLock();
     this.hud.notify('Te despiertas en el bosque. Busca agua y comida antes de que anochezca.');
+    setTimeout(() => this.hud.notify('Las columnas de luz marcan lugares que explorar. Pulsa J para abrir el diario.', 'discover'), 4000);
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
@@ -108,7 +116,7 @@ export class Game {
     this.container.classList.add('touch');
     this.touch = new TouchControls(this.container, this.input, {
       onLook: (dx, dy) => {
-        if (!this.paused && !this.crafting && !this.dead) this.player.look(dx, dy);
+        if (!this.paused && !this.crafting && !this.journal && !this.dead) this.player.look(dx, dy);
       },
       onAction: (code) => this.handleAction(code),
       onPause: () => this.pause(),
@@ -157,7 +165,7 @@ export class Game {
   }
 
   private pause(): void {
-    if (this.dead || this.crafting) return;
+    if (this.dead || this.crafting || this.journal) return;
     this.paused = true;
     this.pauseEl.hidden = false;
     this.touch?.release();
@@ -188,16 +196,20 @@ export class Game {
     if (this.touch) return;
     const locked = document.pointerLockElement === this.renderer.domElement;
     if (locked) this.resume();
-    else if (!this.crafting && !this.dead) this.pause();
+    else if (!this.crafting && !this.journal && !this.dead) this.pause();
   };
 
   private onMouseMove = (e: MouseEvent): void => {
-    if (this.paused || this.crafting) return;
+    if (this.paused || this.crafting || this.journal) return;
     this.player.look(e.movementX, e.movementY);
   };
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (this.dead) return;
+    if (this.journal) {
+      if (e.code === 'KeyJ' || e.code === 'Escape') this.toggleJournal(false);
+      return;
+    }
     if (this.crafting) {
       if (e.code === 'KeyC' || e.code === 'Escape') this.toggleCraft(false);
       const idx = Number(e.key) - 1;
@@ -220,6 +232,10 @@ export class Game {
   /** Momentary actions shared by the keyboard and the touch buttons. */
   private handleAction(code: string): void {
     if (this.dead) return;
+    if (this.journal) {
+      if (code === 'KeyJ' || code === 'Escape') this.toggleJournal(false);
+      return;
+    }
     if (this.crafting) {
       if (code === 'KeyC' || code === 'Escape') this.toggleCraft(false);
       return;
@@ -229,6 +245,8 @@ export class Game {
       case 'KeyE': this.interact(); break;
       case 'KeyX': this.attack(); break;
       case 'KeyC': this.toggleCraft(true); break;
+      case 'KeyJ': this.toggleJournal(true); break;
+      case 'Digit4': this.eat('fish'); break;
       case 'Digit1': this.eat('berries'); break;
       case 'Digit2': this.eat('mushroom'); break;
       case 'Digit3': this.eat('water'); break;
@@ -262,6 +280,18 @@ export class Game {
     this.craftUi.el.hidden = !open;
     if (open) {
       this.craftUi.refresh(this.inventory);
+      this.touch?.release();
+      if (!this.touch) document.exitPointerLock();
+    } else {
+      this.requestPointerLock();
+    }
+  }
+
+  private toggleJournal(open: boolean): void {
+    this.journal = open;
+    this.journalUi.el.hidden = !open;
+    if (open) {
+      this.journalUi.refresh(this.world.landmarks);
       this.touch?.release();
       if (!this.touch) document.exitPointerLock();
     } else {
@@ -367,6 +397,27 @@ export class Game {
 
   private interact(): void {
     if (this.harvestCooldown > 0) return;
+    const near = this.world.landmarkNear(this.player.position, 9);
+    if (near?.id === 'tree' && near.discovered && this.treeCooldown <= 0) {
+      this.treeCooldown = 45;
+      this.inventory = add(this.inventory, 'berries', 3);
+      this.hud.setInventory(this.inventory);
+      this.hud.notify('+3 frutos del Árbol Anciano. Volverán a crecer.');
+      this.harvestCooldown = 0.6;
+      return;
+    }
+    if (near?.id === 'pier' && near.discovered && this.focused?.kind === 'water') {
+      if (this.fishCooldown > 0) {
+        this.hud.notify('Los peces se han espantado. Espera un poco.');
+        return;
+      }
+      this.fishCooldown = 15;
+      this.inventory = add(this.inventory, 'fish', 1);
+      this.hud.setInventory(this.inventory);
+      this.hud.notify('+1 pescado. Pulsa 4 para comerlo.');
+      this.harvestCooldown = 0.8;
+      return;
+    }
     const res = this.focused;
     if (res) {
       const info = HARVEST[res.kind];
@@ -401,7 +452,7 @@ export class Game {
   private frame(): void {
     this.timer.update();
     const dt = Math.min(this.timer.getDelta(), 0.1);
-    if (!this.paused && !this.crafting && !this.dead) this.step(dt);
+    if (!this.paused && !this.crafting && !this.journal && !this.dead) this.step(dt);
     this.render();
   }
 
@@ -410,6 +461,8 @@ export class Game {
     this.time += dt;
     this.harvestCooldown = Math.max(0, this.harvestCooldown - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    this.treeCooldown = Math.max(0, this.treeCooldown - dt);
+    this.fishCooldown = Math.max(0, this.fishCooldown - dt);
     if (this.torchTime > 0) this.torchTime = Math.max(0, this.torchTime - dt);
 
     const move = this.player.update(this.input, dt, this.stats.energy);
@@ -419,11 +472,16 @@ export class Game {
     const night = isNight(dayFraction);
     const pos = this.player.position;
     const nearFire = this.world.nearPlaced('campfire', pos, 5);
-    const sheltered = this.world.nearPlaced('shelter', pos, 2.5);
+    const at = this.world.landmarkNear(pos, 7);
+    const inCave = at?.id === 'cave' && at.discovered;
+    const inCircle = at?.id === 'circle' && at.discovered && Math.hypot(at.position.x - pos.x, at.position.z - pos.z) < 4.5;
+    const sheltered = inCave || this.world.nearPlaced('shelter', pos, 2.5);
 
     const before = this.stats;
     this.stats = tick(this.stats, { dayFraction, nearFire, sheltered, moving: move.moving, sprinting: move.sprinting }, dt);
     if (sheltered && !move.moving) this.stats.energy = Math.min(100, this.stats.energy + 3 * dt);
+    if (inCave) this.stats.warmth = Math.min(100, this.stats.warmth + 2 * dt);
+    if (inCircle) this.stats.health = Math.min(100, this.stats.health + 2.5 * dt);
     if (move.swimming) {
       this.stats.warmth = Math.max(0, this.stats.warmth - 1.5 * dt);
       this.stats.energy = Math.max(0, this.stats.energy - 1.5 * dt);
@@ -442,8 +500,10 @@ export class Game {
       }
     }
 
+    const circle = this.world.landmarks.find((l) => l.id === 'circle' && l.discovered);
+    const safe = circle ? { pos: circle.position, r: 6 } : null;
     for (const c of this.creatures) {
-      const dmg = c.update(dt, pos, night, this.elapsed);
+      const dmg = c.update(dt, pos, night, this.elapsed, safe);
       if (dmg > 0) {
         this.stats.health = Math.max(0, this.stats.health - dmg);
         this.lastCause = 'Una criatura del bosque te devoró.';
@@ -461,6 +521,7 @@ export class Game {
 
     this.checkLandmarks();
     this.updateFocus();
+    this.updateCompass();
 
     // Warnings only on threshold crossings so they don't spam.
     for (const [key, msg] of [
@@ -480,22 +541,103 @@ export class Game {
   }
 
   private checkLandmarks(): void {
+    const pos = this.player.position;
     for (const l of this.world.landmarks) {
       if (l.discovered) continue;
-      if (l.position.distanceTo(this.player.position) < 14) {
-        l.discovered = true;
-        const n = this.world.landmarks.filter((x) => x.discovered).length;
-        this.hud.notify(`Has descubierto: ${l.name} (${n}/${this.world.landmarks.length})`, 'discover');
-        setTimeout(() => this.hud.notify(l.description, 'discover'), 1200);
-        this.stats.energy = Math.min(100, this.stats.energy + 10);
-      }
+      // Nearby places show on the compass before you reach them.
+      const d = Math.hypot(l.position.x - pos.x, l.position.z - pos.z);
+      if (d < 70) l.revealed = true;
+      if (d < 14) this.discoverLandmark(l);
     }
+  }
+
+  private discoverLandmark(l: Landmark): void {
+    this.world.discover(l);
+    if (l.id === 'exit') {
+      this.win();
+      return;
+    }
+    const total = this.world.landmarks.filter((x) => x.id !== 'exit').length;
+    const n = this.world.landmarks.filter((x) => x.discovered).length;
+    this.hud.notify(`${LANDMARK_ICONS[l.id]} Has descubierto: ${l.name} (${n}/${total})`, 'discover');
+    setTimeout(() => this.hud.notify(l.story, 'discover'), 1500);
+    setTimeout(() => this.hud.notify(l.reward, 'discover'), 5000);
+    this.stats.energy = Math.min(100, this.stats.energy + 15);
+
+    switch (l.id) {
+      case 'rock':
+        for (const x of this.world.landmarks) x.revealed = true;
+        break;
+      case 'cabin':
+        this.inventory = add(this.inventory, 'axe', 1);
+        this.inventory = add(this.inventory, 'wood', 4);
+        this.inventory = add(this.inventory, 'fiber', 3);
+        this.inventory = add(this.inventory, 'torch', 1);
+        this.hud.setInventory(this.inventory);
+        break;
+      case 'tree':
+        this.treeCooldown = 0;
+        break;
+    }
+    if (n >= total && !this.exitRevealed) {
+      this.exitRevealed = true;
+      setTimeout(() => {
+        this.world.revealExit();
+        this.hud.notify('🚪 Una luz blanca se alza al borde del bosque. La Puerta del Bosque ha aparecido en tu brújula.', 'discover');
+      }, 7000);
+    }
+  }
+
+  private updateCompass(): void {
+    const pos = this.player.position;
+    const f = this.player.forwardDir();
+    const right = new THREE.Vector3(Math.cos(this.player.yaw), 0, -Math.sin(this.player.yaw));
+    const rel = (dx: number, dz: number) => Math.atan2(dx * right.x + dz * right.z, dx * f.x + dz * f.z);
+    const marks: CompassMarker[] = [
+      { rel: rel(0, -1), icon: 'N', dim: true, label: '' },
+      { rel: rel(1, 0), icon: 'E', dim: true, label: '' },
+      { rel: rel(0, 1), icon: 'S', dim: true, label: '' },
+      { rel: rel(-1, 0), icon: 'O', dim: true, label: '' },
+    ];
+    for (const l of this.world.landmarks) {
+      if (!l.revealed) continue;
+      const dx = l.position.x - pos.x;
+      const dz = l.position.z - pos.z;
+      const dist = Math.round(Math.hypot(dx, dz));
+      marks.push({ rel: rel(dx, dz), icon: LANDMARK_ICONS[l.id], dim: l.discovered, label: `${dist} m` });
+    }
+    this.hud.setCompass(marks);
+  }
+
+  private win(): void {
+    this.escaped = true;
+    this.dead = true;
+    this.touch?.release();
+    if (!this.touch) document.exitPointerLock();
+    const days = this.time / DAY_LENGTH;
+    const discovered = this.world.landmarks.filter((l) => l.discovered && l.id !== 'exit').length;
+    this.deathUi.show('Cruzas la Puerta del Bosque. Detrás de ti, las columnas de luz se apagan una a una.', [
+      ['Días en el bosque', days.toFixed(1)],
+      ['Lugares descubiertos', `${discovered} / ${discovered}`],
+      ['Objetos creados', String(this.craftedCount)],
+      ['Enemigos derrotados', String(this.kills)],
+      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, true))],
+    ], 'Has salido del bosque');
   }
 
   private updateFocus(): void {
     const eye = this.player.position.clone();
     eye.y += 1.2;
     this.focused = this.world.findInteractable(eye, this.player.forwardDir());
+    const near = this.world.landmarkNear(this.player.position, 9);
+    if (near?.id === 'tree' && near.discovered) {
+      this.hud.setPrompt(this.treeCooldown > 0 ? `Los frutos vuelven en ${Math.ceil(this.treeCooldown)} s` : '<kbd>E</kbd>Recoger frutos del Árbol Anciano');
+      return;
+    }
+    if (near?.id === 'pier' && near.discovered && this.focused?.kind === 'water') {
+      this.hud.setPrompt(this.fishCooldown > 0 ? `Pesca lista en ${Math.ceil(this.fishCooldown)} s` : '<kbd>E</kbd>Pescar');
+      return;
+    }
     if (this.focused) {
       const info = HARVEST[this.focused.kind];
       const extra = this.focused.kind === 'tree' && (this.inventory.axe ?? 0) > 0 ? ' (con hacha)' : '';
@@ -512,13 +654,13 @@ export class Game {
     this.touch?.release();
     if (!this.touch) document.exitPointerLock();
     const days = this.time / DAY_LENGTH;
-    const discovered = this.world.landmarks.filter((l) => l.discovered).length;
+    const discovered = this.world.landmarks.filter((l) => l.discovered && l.id !== 'exit').length;
     this.deathUi.show(this.lastCause || 'El bosque no perdona.', [
       ['Días sobrevividos', days.toFixed(1)],
-      ['Lugares descubiertos', `${discovered} / ${this.world.landmarks.length}`],
+      ['Lugares descubiertos', `${discovered} / ${this.world.landmarks.filter((l) => l.id !== 'exit').length}`],
       ['Objetos creados', String(this.craftedCount)],
       ['Enemigos derrotados', String(this.kills)],
-      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount))],
+      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, this.escaped))],
     ]);
   }
 
