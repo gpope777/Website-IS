@@ -1,6 +1,7 @@
 import { ITEM_LABELS, RECIPES, canCraft, type Inventory, type ItemId, type Recipe, type Stats } from '../game/survival';
 import type { Landmark, LandmarkId, Relic } from '../game/world';
 import { HALF } from '../game/world';
+import { BESTIARY } from '../game/lore';
 import { isTouchDevice } from './touch';
 
 const CONSUME_KEYS: Partial<Record<ItemId, string>> = { berries: '1', mushroom: '2', water: '3', torch: 'T', fish: '4' };
@@ -203,7 +204,7 @@ function scoresHtml(list: ScoreEntry[], highlight?: ScoreEntry): string {
     .join('')}</ol></div>`;
 }
 
-export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: (seed: string) => void): HTMLElement {
+export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: (seed: string, resume: boolean) => void, savedSeed: string | null = null): HTMLElement {
   const o = el('div', 'overlay');
   o.innerHTML = `
     <div class="panel">
@@ -214,13 +215,18 @@ export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: 
       <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.</p>
       <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${esc(defaultSeed)}" /></div>
       <button id="start">Entrar al bosque</button>
+      ${savedSeed ? `<button id="resume" class="secondary">Continuar partida (semilla ${esc(savedSeed)})</button>` : ''}
       ${scoresHtml(loadScores())}
     </div>`;
   parent.appendChild(o);
   const input = o.querySelector<HTMLInputElement>('#seed')!;
   o.querySelector('#start')!.addEventListener('click', () => {
     o.hidden = true;
-    onStart(input.value.trim() || defaultSeed);
+    onStart(input.value.trim() || defaultSeed, false);
+  });
+  o.querySelector('#resume')?.addEventListener('click', () => {
+    o.hidden = true;
+    onStart(savedSeed!, true);
   });
   return o;
 }
@@ -292,6 +298,8 @@ export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: 
 export interface JournalState {
   landmarks: Landmark[];
   relics: Relic[];
+  /** Per bestiary index: [seen, killed]. */
+  beasts: [boolean, number][];
   player: { x: number; z: number; yaw: number };
 }
 
@@ -302,14 +310,26 @@ export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: 
     <div class="panel journal">
       <h2>Diario de exploración</h2>
       <p class="progress"></p>
-      <div class="map-row"><canvas class="minimap" width="220" height="220"></canvas><div class="relics"><h4>Reliquias</h4><ul></ul></div></div>
-      <ul class="places"></ul>
+      <div class="tabs"><button type="button" class="tab on" data-tab="places">Lugares</button><button type="button" class="tab" data-tab="beasts">Bestiario</button></div>
+      <div class="tab-places"><div class="map-row"><canvas class="minimap" width="220" height="220"></canvas><div class="relics"><h4>Reliquias</h4><ul></ul></div></div>
+      <ul class="places"></ul></div>
+      <ul class="beasts" hidden></ul>
       <button class="secondary" id="close">Cerrar</button>
     </div>`;
   parent.appendChild(o);
   const list = o.querySelector('ul.places')!;
   const progress = o.querySelector('.progress')!;
   o.querySelector('#close')!.addEventListener('click', onClose);
+  const beastList = o.querySelector<HTMLElement>('ul.beasts')!;
+  const placesTab = o.querySelector<HTMLElement>('.tab-places')!;
+  for (const tab of o.querySelectorAll<HTMLButtonElement>('.tab')) {
+    tab.addEventListener('click', () => {
+      for (const t of o.querySelectorAll('.tab')) t.classList.toggle('on', t === tab);
+      const beasts = tab.dataset.tab === 'beasts';
+      beastList.hidden = !beasts;
+      placesTab.hidden = beasts;
+    });
+  }
   const canvas = o.querySelector<HTMLCanvasElement>('.minimap')!;
   const relicList = o.querySelector<HTMLElement>('.relics ul')!;
   const relicTitle = o.querySelector<HTMLElement>('.relics h4')!;
@@ -350,6 +370,11 @@ export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: 
   const refresh = (s: JournalState) => {
     const { landmarks } = s;
     drawMap(s);
+    beastList.innerHTML = BESTIARY.map((b, i) => {
+      const [seen, killed] = s.beasts[i] ?? [false, 0];
+      if (!seen) return `<li class="unknown"><b>❔ Criatura desconocida</b><p>Aún no la has visto de cerca.</p></li>`;
+      return `<li class="found"><b>${b.name}</b>${killed ? `<span class="count">derrotadas: ${killed}</span>` : ''}<p>${b.lore}</p><blockquote>${b.tip}</blockquote></li>`;
+    }).join('');
     const foundRelics = s.relics.filter((r) => r.found);
     relicTitle.textContent = `Reliquias ${foundRelics.length} / ${s.relics.length}`;
     relicList.innerHTML = foundRelics.length

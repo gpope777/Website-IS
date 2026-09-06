@@ -253,3 +253,16 @@ canvas { display: block; }
 .scores li b { color: var(--accent); font-variant-numeric: tabular-nums; }
 .scores li.me { color: var(--accent); }
 .scores code { background: rgba(255,255,255,0.08); padding: 0 5px; border-radius: 4px; }
+
+.tabs { display: flex; gap: 6px; margin: 8px 0; }
+.tabs .tab { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid rgba(255,255,255,0.1); padding: 6px 14px; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer; margin: 0; }
+.tabs .tab.on { background: rgba(240, 179, 90, 0.18); color: var(--accent); border-color: var(--accent); }
+.beasts { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.beasts li { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.beasts li.unknown { opacity: 0.55; }
+.beasts li.found { background: rgba(224, 90, 79, 0.08); }
+.beasts li b { font-size: 15px; }
+.beasts li .count { float: right; color: var(--muted); font-size: 12px; }
+.beasts li p { margin: 4px 0; }
+.beasts li blockquote { margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--health); font-style: italic; }
+.panel #resume { display: block; margin: 10px 0 0; }

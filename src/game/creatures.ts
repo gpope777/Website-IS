@@ -30,6 +30,8 @@ export class Creature {
   private readonly maxHp: number;
   /** The Gate Guardian: huge, slow, tough, always hunting, never respawns. */
   readonly boss: boolean;
+  /** Set by the game the first time the player gets a good look at it. */
+  seen = false;
   private target = new THREE.Vector3();
   private retarget = 0;
   private attackCooldown = 0;

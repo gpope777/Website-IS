@@ -1,5 +1,6 @@
 import { Game } from './game/game';
 import { startOverlay } from './ui/hud';
+import { lastSavedSeed } from './game/save';
 
 const app = document.getElementById('app')!;
 let game: Game | null = null;
@@ -9,7 +10,7 @@ function defaultSeed(): string {
   return params.get('seed') ?? Math.random().toString(36).slice(2, 8);
 }
 
-function boot(seed: string): void {
+function boot(seed: string, resume: boolean): void {
   game?.dispose();
   try {
     const url = new URL(location.href);
@@ -21,11 +22,11 @@ function boot(seed: string): void {
   game = new Game(app, seed, () => {
     game?.dispose();
     showStart();
-  });
+  }, resume);
 }
 
 function showStart(): void {
-  startOverlay(app, defaultSeed(), boot);
+  startOverlay(app, defaultSeed(), boot, lastSavedSeed());
 }
 
 showStart();

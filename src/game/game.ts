@@ -21,6 +21,8 @@ import { HARVEST, World, type Landmark, type Resource } from './world';
 import { Wolf } from './wolves';
 import { Creature, CREATURE_COUNT, CREATURE_KINDS } from './creatures';
 import { Audio } from './audio';
+import { BESTIARY, INTRO, NEARBY_HINTS, NIGHT_WHISPERS, endingFor } from './lore';
+import { loadSave, clearSave, writeSave, type SaveData } from './save';
 import { Hud, LANDMARK_ICONS, craftOverlay, deathOverlay, journalOverlay, pauseOverlay, type CompassMarker, type ScoreEntry } from '../ui/hud';
 import { TouchControls, isTouchDevice } from '../ui/touch';
 
@@ -43,6 +45,12 @@ export class Game {
   private raining = false;
   private thunderTimer = 0;
   private boss: Creature | null = null;
+  private beastSeen: boolean[] = BESTIARY.map(() => false);
+  private beastKilled: number[] = BESTIARY.map(() => 0);
+  private whisperTimer = 60;
+  private hintTimer = 0;
+  private saveTimer = 10;
+  private lastHint = '';
   private attackCooldown = 0;
   private kills = 0;
   private readonly torchLight: THREE.PointLight;
@@ -74,7 +82,7 @@ export class Game {
   private escaped = false;
   private touch: TouchControls | null = null;
 
-  constructor(private readonly container: HTMLElement, private readonly seed: string, private readonly onRestart: () => void) {
+  constructor(private readonly container: HTMLElement, private readonly seed: string, private readonly onRestart: () => void, resume = false) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -116,9 +124,89 @@ export class Game {
     document.addEventListener('keydown', unlock);
     window.addEventListener('resize', this.onResize);
     this.requestPointerLock();
-    this.hud.notify('Te despiertas en el bosque. Busca agua y comida antes de que anochezca.');
-    setTimeout(() => this.hud.notify('Las columnas de luz marcan lugares que explorar. Pulsa J para abrir el diario.', 'discover'), 4000);
+    const saved = resume ? loadSave(seed) : null;
+    if (saved) {
+      this.restore(saved);
+      this.hud.notify(`Partida recuperada. Día ${Math.floor(this.time / DAY_LENGTH) + 1}.`, 'discover');
+    } else {
+      INTRO.forEach((line, i) => setTimeout(() => this.hud.notify(line, 'discover'), 800 + i * 3200));
+      setTimeout(() => this.hud.notify('Pulsa J para abrir el diario. El juego se guarda solo.', 'discover'), 800 + INTRO.length * 3200);
+    }
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  // ---------------------------------------------------------------- save / load
+
+  private snapshot(): SaveData {
+    return {
+      v: 1,
+      seed: this.seed,
+      stats: this.stats,
+      inventory: this.inventory,
+      time: this.time,
+      elapsed: this.elapsed,
+      torchTime: this.torchTime,
+      pos: [this.player.position.x, this.player.position.y, this.player.position.z],
+      yaw: this.player.yaw,
+      landmarks: this.world.landmarks.map((l) => [l.id, l.discovered, l.revealed] as [string, boolean, boolean]),
+      relics: this.world.relics.map((r) => r.found),
+      placed: this.world.placed.map((p) => [p.kind, p.position.x, p.position.z] as ['campfire' | 'shelter', number, number]),
+      kills: this.kills,
+      crafted: this.craftedCount,
+      relicsFound: this.relicsFound,
+      exitRevealed: this.exitRevealed,
+      bossHp: this.boss?.hp ?? -1,
+      beastSeen: this.beastSeen,
+      beastKilled: this.beastKilled,
+    };
+  }
+
+  private restore(s: SaveData): void {
+    this.stats = s.stats;
+    this.inventory = s.inventory;
+    this.time = s.time;
+    this.elapsed = s.elapsed;
+    this.torchTime = s.torchTime;
+    this.player.position.set(s.pos[0], s.pos[1], s.pos[2]);
+    this.player.yaw = s.yaw;
+    this.kills = s.kills;
+    this.craftedCount = s.crafted;
+    this.relicsFound = s.relicsFound;
+    this.beastSeen = s.beastSeen;
+    this.beastKilled = s.beastKilled;
+    for (const [kind, x, z] of s.placed) this.world.place(kind, new THREE.Vector3(x, 0, z), 0);
+    s.relics.forEach((found, i) => {
+      const r = this.world.relics[i];
+      if (r && found) this.world.collectRelic(r);
+    });
+    for (const [id, discovered, revealed] of s.landmarks) {
+      const l = this.world.landmarks.find((x) => x.id === id);
+      if (!l) continue;
+      l.revealed = revealed;
+      if (discovered) {
+        this.world.discover(l);
+        (l.beacon.material as THREE.MeshBasicMaterial).opacity = 0;
+        l.beacon.visible = false;
+      }
+    }
+    if (s.exitRevealed) {
+      this.exitRevealed = true;
+      const exit = this.world.revealExit();
+      if (s.bossHp > 0) {
+        this.spawnBoss(exit);
+        this.boss!.hp = s.bossHp;
+      }
+    }
+    this.hud.setInventory(this.inventory);
+    this.hud.setStats(this.stats);
+  }
+
+  private spawnBoss(exit: Landmark): void {
+    const guardPos = exit.position.clone();
+    guardPos.x -= Math.sin(exit.object.rotation.y) * 6;
+    guardPos.z -= Math.cos(exit.object.rotation.y) * 6;
+    this.boss = new Creature(this.world, hashSeed(this.seed + ':boss'), 0, true, guardPos);
+    this.creatures.push(this.boss);
   }
 
   /** Build the on-screen controls. Idempotent: also called lazily on the first touch event. */
@@ -303,7 +391,7 @@ export class Game {
     this.journal = open;
     this.journalUi.el.hidden = !open;
     if (open) {
-      this.journalUi.refresh({ landmarks: this.world.landmarks, relics: this.world.relics, player: { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw } });
+      this.journalUi.refresh({ landmarks: this.world.landmarks, relics: this.world.relics, beasts: BESTIARY.map((_, i) => [this.beastSeen[i] ?? false, this.beastKilled[i] ?? 0]), player: { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw } });
       this.touch?.release();
       if (!this.touch) document.exitPointerLock();
     } else {
@@ -396,6 +484,8 @@ export class Game {
       if (c.hit(damage, from)) {
         this.kills++;
         this.audio.kill();
+        const bi = c.boss ? BESTIARY.length - 1 : c.kind;
+        this.beastKilled[bi] = (this.beastKilled[bi] ?? 0) + 1;
         if (c.boss) {
           this.hud.notify('🏆 El Guardián de la Puerta ha caído. El camino está libre.', 'discover');
           for (const l of this.world.landmarks) if (l.id === 'exit') l.discovered = false;
@@ -572,6 +662,12 @@ export class Game {
     this.updateFocus();
     this.updateCompass();
     this.updateWeather(dt, pos, night);
+    this.updateLore(dt, pos, night);
+    this.saveTimer -= dt;
+    if (this.saveTimer <= 0) {
+      this.saveTimer = 10;
+      writeSave(this.snapshot());
+    }
     this.audio.ambient(night, move.sprinting, this.raining);
     this.howlTimer -= dt;
     if (this.howlTimer <= 0) {
@@ -594,6 +690,39 @@ export class Game {
     this.hud.setClock(Math.floor(this.time / DAY_LENGTH) + 1, dayFraction, night, phase);
 
     if (isDead(this.stats)) this.die();
+  }
+
+  /** First sightings go to the bestiary; nights whisper; undiscovered places hint when you are close. */
+  private updateLore(dt: number, pos: THREE.Vector3, night: boolean): void {
+    const fwd = this.player.forwardDir();
+    for (const c of this.creatures) {
+      if (!c.alive) continue;
+      const bi = c.boss ? BESTIARY.length - 1 : c.kind;
+      if (this.beastSeen[bi]) continue;
+      const d = new THREE.Vector3().subVectors(c.position, pos);
+      d.y = 0;
+      const dist = d.length();
+      if (dist < 14 && d.normalize().dot(fwd) > 0.5) {
+        this.beastSeen[bi] = true;
+        const b = BESTIARY[bi]!;
+        this.hud.notify(`👁 Bestiario: ${b.name}`, 'discover');
+        setTimeout(() => this.hud.notify(b.tip, 'discover'), 1500);
+      }
+    }
+    this.whisperTimer -= dt;
+    if (night && this.whisperTimer <= 0) {
+      this.whisperTimer = 70 + Math.random() * 80;
+      this.hud.notify(NIGHT_WHISPERS[Math.floor(Math.random() * NIGHT_WHISPERS.length)]!);
+    }
+    this.hintTimer -= dt;
+    if (this.hintTimer <= 0) {
+      this.hintTimer = 8;
+      const near = this.world.landmarkNear(pos, 30);
+      if (near && !near.discovered && this.lastHint !== near.id) {
+        this.lastHint = near.id;
+        this.hud.notify(NEARBY_HINTS[near.id] ?? '', 'discover');
+      }
+    }
   }
 
   /** Showers roll in every few minutes: darker sky, closer fog, thunder, and you get cold faster unless sheltered. */
@@ -668,11 +797,7 @@ export class Game {
       setTimeout(() => {
         const exit = this.world.revealExit();
         this.audio.exitRevealed();
-        const guardPos = exit.position.clone();
-        guardPos.x -= Math.sin(exit.object.rotation.y) * 6;
-        guardPos.z -= Math.cos(exit.object.rotation.y) * 6;
-        this.boss = new Creature(this.world, hashSeed(this.seed + ':boss'), 0, true, guardPos);
-        this.creatures.push(this.boss);
+        this.spawnBoss(exit);
         setTimeout(() => this.hud.notify('Algo enorme custodia la Puerta. Tendrás que derrotarlo.', 'discover'), 2500);
         this.hud.notify('🚪 Una luz blanca se alza al borde del bosque. La Puerta del Bosque ha aparecido en tu brújula.', 'discover');
       }, 7000);
@@ -715,14 +840,16 @@ export class Game {
     if (!this.touch) document.exitPointerLock();
     const days = this.time / DAY_LENGTH;
     const discovered = this.world.landmarks.filter((l) => l.discovered && l.id !== 'exit').length;
-    this.deathUi.show('Cruzas la Puerta del Bosque. Detrás de ti, las columnas de luz se apagan una a una.', [
+    clearSave(this.seed);
+    const ending = endingFor(this.relicsFound, this.world.relics.length, true);
+    this.deathUi.show(ending.text, [
       ['Días en el bosque', days.toFixed(1)],
       ['Lugares descubiertos', `${discovered} / ${discovered}`],
       ['Objetos creados', String(this.craftedCount)],
       ['Enemigos derrotados', String(this.kills)],
       ['Reliquias', `${this.relicsFound} / ${this.world.relics.length}`],
       ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, true, this.relicsFound))],
-    ], 'Has salido del bosque', this.scoreEntry(true, days));
+    ], ending.title, this.scoreEntry(true, days));
   }
 
   private updateFocus(): void {
@@ -755,6 +882,7 @@ export class Game {
 
   private die(): void {
     this.audio.die();
+    clearSave(this.seed);
     this.dead = true;
     this.touch?.release();
     if (!this.touch) document.exitPointerLock();
