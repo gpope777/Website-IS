@@ -19,7 +19,7 @@ import {
 } from './survival';
 import { HARVEST, World, type Resource } from './world';
 import { Wolf } from './wolves';
-import { Creature, CREATURE_KINDS } from './creatures';
+import { Creature, CREATURE_COUNT, CREATURE_KINDS } from './creatures';
 import { Hud, craftOverlay, deathOverlay, pauseOverlay } from '../ui/hud';
 import { TouchControls, isTouchDevice } from '../ui/touch';
 
@@ -53,6 +53,7 @@ export class Game {
   private elapsed = 0;
   private bob = 0;
   private lastCause = '';
+  private wasSwimming = false;
   private focused: Resource | null = null;
   private readonly pauseEl: HTMLElement;
   private readonly craftUi: ReturnType<typeof craftOverlay>;
@@ -78,7 +79,7 @@ export class Game {
     this.world.scene.add(this.torchLight);
 
     for (let i = 0; i < 3; i++) this.wolves.push(new Wolf(this.world, hashSeed(seed + ':wolf' + i)));
-    for (let i = 0; i < CREATURE_KINDS; i++) this.creatures.push(new Creature(this.world, hashSeed(seed + ':creature' + i), i));
+    for (let i = 0; i < CREATURE_COUNT; i++) this.creatures.push(new Creature(this.world, hashSeed(seed + ':creature' + i), i % CREATURE_KINDS));
 
     this.hud = new Hud(container);
     this.hud.setInventory(this.inventory);
@@ -423,6 +424,12 @@ export class Game {
     const before = this.stats;
     this.stats = tick(this.stats, { dayFraction, nearFire, sheltered, moving: move.moving, sprinting: move.sprinting }, dt);
     if (sheltered && !move.moving) this.stats.energy = Math.min(100, this.stats.energy + 3 * dt);
+    if (move.swimming) {
+      this.stats.warmth = Math.max(0, this.stats.warmth - 1.5 * dt);
+      this.stats.energy = Math.max(0, this.stats.energy - 1.5 * dt);
+      if (!this.wasSwimming) this.hud.notify('Nadas. El agua está fría y cansa; no te quedes mucho.');
+    }
+    this.wasSwimming = move.swimming;
 
     this.world.update(dt);
     const hasLight = this.torchTime > 0;

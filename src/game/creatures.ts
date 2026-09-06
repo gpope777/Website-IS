@@ -5,6 +5,8 @@ import { createRng } from './rng';
 
 /** Number of concept-art sprites in public/enemies (enemy1.png … enemyN.png). */
 export const CREATURE_KINDS = 7;
+/** How many creatures roam at once (kinds repeat). */
+export const CREATURE_COUNT = 18;
 const loader = new THREE.TextureLoader();
 const textures: THREE.Texture[] = [];
 
@@ -49,9 +51,16 @@ export class Creature {
   }
 
   private spawn(awayFrom: THREE.Vector3): void {
+    // Spawn in a ring around the player: close enough to be met within a minute, never on top of them.
     for (let i = 0; i < 10; i++) {
-      this.position.set((this.rng() - 0.5) * 220, 0, (this.rng() - 0.5) * 220);
-      if (this.position.distanceTo(awayFrom) > 30 && this.world.heightAt(this.position.x, this.position.z) > -2.5) break;
+      const a = this.rng() * Math.PI * 2;
+      const r = 25 + this.rng() * 45;
+      this.position.set(
+        Math.max(-HALF + 10, Math.min(HALF - 10, awayFrom.x + Math.cos(a) * r)),
+        0,
+        Math.max(-HALF + 10, Math.min(HALF - 10, awayFrom.z + Math.sin(a) * r)),
+      );
+      if (this.world.heightAt(this.position.x, this.position.z) > -2.5) break;
     }
     this.hp = this.maxHp;
     this.object.visible = true;
@@ -80,7 +89,7 @@ export class Creature {
     if (away.lengthSq() > 0.001) this.position.addScaledVector(away.normalize(), 1.2);
     if (this.hp <= 0) {
       this.object.visible = false;
-      this.respawn = 60 + this.rng() * 60;
+      this.respawn = 20 + this.rng() * 20;
       return true;
     }
     return false;

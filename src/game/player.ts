@@ -14,6 +14,8 @@ export interface InputState {
 }
 
 export const EYE_HEIGHT = 1.7;
+/** Lake surface height (see World.buildWater). */
+export const WATER_LEVEL = -3.2;
 
 export class Player {
   readonly position = new THREE.Vector3(0, 0, 0);
@@ -36,10 +38,11 @@ export class Player {
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch - dy * 0.0022));
   }
 
-  update(input: InputState, dt: number, energy: number): { moving: boolean; sprinting: boolean } {
+  update(input: InputState, dt: number, energy: number): { moving: boolean; sprinting: boolean; swimming: boolean } {
     const tired = energy < 12;
-    const canSprint = input.sprint && !tired;
-    const speed = (canSprint ? 7.5 : 3.8) * (tired ? 0.65 : 1);
+    const swimming = this.world.heightAt(this.position.x, this.position.z) < WATER_LEVEL - 0.6;
+    const canSprint = input.sprint && !tired && !swimming;
+    const speed = (swimming ? 2.2 : canSprint ? 7.5 : 3.8) * (tired ? 0.65 : 1);
     const dir = new THREE.Vector3();
     if (input.axis) {
       dir.set(input.axis.x, 0, input.axis.z);
@@ -66,7 +69,16 @@ export class Player {
     next.x = Math.max(-HALF + 3, Math.min(HALF - 3, next.x));
     next.z = Math.max(-HALF + 3, Math.min(HALF - 3, next.z));
 
-    const ground = Math.max(this.world.heightAt(next.x, next.z), -3.0);
+    const terrain = this.world.heightAt(next.x, next.z);
+    if (terrain < WATER_LEVEL - 0.6) {
+      // Deep water: float at the surface, no jumping.
+      next.y = WATER_LEVEL - 0.9;
+      this.verticalVel = 0;
+      this.onGround = true;
+      this.position.copy(next);
+      return { moving, sprinting: false, swimming: true };
+    }
+    const ground = Math.max(terrain, WATER_LEVEL - 0.6);
     if (input.jump && this.onGround) {
       this.verticalVel = 5.2;
       this.onGround = false;
@@ -84,7 +96,7 @@ export class Player {
     if (this.onGround) next.y = ground;
 
     this.position.copy(next);
-    return { moving: moving && this.onGround, sprinting: canSprint && moving };
+    return { moving: moving && this.onGround, sprinting: canSprint && moving, swimming: false };
   }
 
   private resolveTreeCollisions(next: THREE.Vector3): void {
