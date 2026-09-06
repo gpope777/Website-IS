@@ -1,35 +1,24 @@
 {
-  "name": "innovational-tms-website",
+  "name": "bosque-survival",
+  "version": "0.1.0",
   "type": "module",
-  "version": "0.0.1",
-  "engines": {
-    "node": ">=20.3.0"
-  },
+  "private": true,
+  "engines": { "node": ">=20" },
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "check": "astro check",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "astro": "astro"
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@astrojs/mdx": "^5.0.4",
-    "@astrojs/sitemap": "^3.7.2",
-    "@astrojs/vercel": "^10.0.6",
-    "@fontsource-variable/inter": "^5.2.8",
-    "@fontsource-variable/source-serif-4": "^5.2.9",
-    "@types/three": "^0.184.0",
-    "astro": "^6.2.1",
-    "resend": "^6.12.2",
-    "three": "^0.184.0",
-    "zod": "^4.4.2"
+    "three": "^0.185.1"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9",
-    "@types/node": "^25.6.0",
+    "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.5"
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
   }
 }
