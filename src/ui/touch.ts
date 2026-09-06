@@ -46,6 +46,8 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'KeyT', label: 'T', sub: '🔦', cls: 'pill' },
   { code: 'KeyF', label: 'F', sub: '🔥', cls: 'pill' },
   { code: 'KeyR', label: 'R', sub: '⛺', cls: 'pill' },
+  { code: 'KeyB', label: 'B', sub: '🏠', cls: 'pill' },
+  { code: 'KeyH', label: 'H', sub: '🗼', cls: 'pill' },
 ];
 
 const STICK_RADIUS = 52; // px the knob can travel from centre

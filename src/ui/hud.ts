@@ -155,7 +155,9 @@ const DESKTOP_KEYS = `
         <div><kbd>X / clic</kbd> golpear (puño, o hacha)</div><div><kbd>J</kbd> diario de exploración</div>
         <div><kbd>4</kbd> comer pescado</div><div><kbd>M</kbd> silenciar sonido</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
-        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
+        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>
+        <div><kbd>B</kbd> construir casa</div><div><kbd>H</kbd> levantar atalaya</div>
+        <div><kbd>V</kbd> colocar valla</div>`;
 
 const TOUCH_KEYS = `
         <div><kbd>Joystick</kbd> moverse</div><div><kbd>Arrastrar</kbd> mirar</div>
@@ -163,7 +165,8 @@ const TOUCH_KEYS = `
         <div><kbd>A</kbd> interactuar</div><div><kbd>CREAR</kbd> crear objetos</div>
         <div><kbd>X</kbd> golpear (puño, o hacha)</div><div><kbd>DIARIO</kbd> lugares e historia</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
-        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
+        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>
+        <div><kbd>B</kbd> construir casa</div><div><kbd>H</kbd> atalaya</div>`;
 
 export interface ScoreEntry {
   seed: string;

@@ -9,7 +9,7 @@ export interface Beast {
   tip: string;
 }
 
-/** Index = concept-art sprite (enemy1..7.png). Index 7 = the Gate Guardian. */
+/** Index = concept-art sprite (enemy1..14.png). Last index = the Gate Guardian. */
 export const BESTIARY: Beast[] = [
   { name: 'Tragón de Ruedas', lore: 'Una boca morada sobre dos ruedas. No se sabe qué come, pero siempre tiene hambre.', tip: '«Rueda rápido en llano; súbete a una cuesta y se cansa.»' },
   { name: 'Araña Sol', lore: 'Cabeza amarilla con orejas de gato y ocho patas negras. Sonríe siempre. Eso es lo peor.', tip: '«Los ojos rojos brillan de noche. Si los ves parpadear, ya te ha visto.»' },
@@ -18,6 +18,13 @@ export const BESTIARY: Beast[] = [
   { name: 'Mirón', lore: 'Pequeño y silencioso. Solo mira. Luego muerde.', tip: '«Es el más débil. Es también el que más se acerca.»' },
   { name: 'Cangrejo de Tierra', lore: 'Ancho y bajo. Camina de lado entre los helechos y no le importa el fuego.', tip: '«El fuego no le asusta. Los golpes sí.»' },
   { name: 'Triángulo Negro', lore: 'Un triángulo invertido con dos ojos de plato y una boca de rayas. Nadie lo ha visto de espaldas.', tip: '«Da la vuelta y no está. Vuelve a mirar y está más cerca.»' },
+  { name: 'Ojo Lila', lore: 'Una esfera lavanda con una estrella roja por ojo y patas rojas como hilos. Se arrastra ceñuda entre los helechos.', tip: '«Lenta. Si la ves de lejos, ya la has esquivado.»' },
+  { name: 'Mantis de Cristal', lore: 'Un cuerpo verde y afilado colgado entre dos antenas que tocan el suelo. Cuando se queda quieta parece una hoja.', tip: '«Se camufla en los claros. Camina por los bosques densos.»' },
+  { name: 'Sombrero Ancho', lore: 'Un ala naranja sobre un cuerpo negro con dos patas de alambre. Nadie ha visto lo que hay bajo el ala.', tip: '«Da vueltas al fuego sin acercarse. Aguanta hasta el alba.»' },
+  { name: 'Rayo', lore: 'Un relámpago amarillo con ojos saltones. Aparece donde no estaba y desaparece igual.', tip: '«El más rápido. No corras: golpea cuando llegue.»' },
+  { name: 'Péndulo', lore: 'Una gota negra colgada de una barra con dos ojos rojos. Flota y deja burbujas en el aire.', tip: '«Muerde solo si está encima. Mírale los ojos y retrocede.»' },
+  { name: 'Capucha', lore: 'Un cuerpo lila con capucha de tela y dos alas de hilo. Enseña dos dientes cuando te ve.', tip: '«Le gustan los cobertizos. Cierra la puerta.»' },
+  { name: 'Estrella Enamorada', lore: 'Una estrella de trapo con corazones rotos por ojos. No parece enfadada. Lo está.', tip: '«Le atraen las reliquias. Cógelas y sigue andando.»' },
   { name: 'Guardián de la Puerta', lore: 'El primero de todos, crecido hasta tapar el cielo. Lleva treinta años esperando a que alguien llegue a la Puerta.', tip: '«No huyas. Golpea, retrocede, golpea. El hacha lo acaba en la mitad de tiempo.»' },
 ];
 

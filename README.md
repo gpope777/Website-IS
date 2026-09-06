@@ -16,6 +16,7 @@ recolectar recursos, mantenerte caliente y sobrevivir tantos días como puedas.
 | 1 / 2 / 3 | Comer bayas / comer seta / beber agua |
 | T | Encender antorcha |
 | F / R | Colocar fogata / refugio |
+| B / H / V | Construir casa / atalaya / valla |
 | Esc | Pausa |
 
 **Barras:** salud, hambre, sed, energía y calor. Si hambre, sed, calor o energía llegan a cero, pierdes salud.
@@ -26,6 +27,10 @@ El fuego (fogata o antorcha) los espanta y te devuelve calor. El refugio reduce 
 
 **Recursos:** árboles (madera; el hacha da el doble), rocas (piedra), arbustos (bayas), setas (alimentan pero restan salud),
 hierba alta (fibra) y el lago (agua). Todo se regenera con el tiempo.
+
+**Construcción:** con madera, piedra y fibra puedes levantar una casa (te protege de la lluvia y el frío), una atalaya
+(revela en la brújula los lugares a menos de 120 m) y vallas. El bosque también tiene aldeas abandonadas, ruinas, atalayas
+y puentes de tablones repartidos por el mapa.
 
 **Exploración:** hay cinco lugares escondidos en el bosque. Cada descubrimiento suma puntos y algo de energía.
 

@@ -3,7 +3,7 @@ import { Noise2D } from './noise';
 import { createRng } from './rng';
 import type { ItemId } from './survival';
 
-export const WORLD_SIZE = 320; // metres, square
+export const WORLD_SIZE = 480; // metres, square
 export const HALF = WORLD_SIZE / 2;
 
 export type ResourceKind = 'tree' | 'rock' | 'bush' | 'mushroom' | 'water';
@@ -62,8 +62,10 @@ export const RELIC_DEFS: { name: string; lore: string }[] = [
   { name: 'Última nota', lore: '«Si cruzas la puerta, cuenta lo que viste. Que nadie más se despierte aquí solo.»' },
 ];
 
+export type PlaceKind = 'campfire' | 'shelter' | 'house' | 'tower' | 'fence';
+
 export interface Placed {
-  kind: 'campfire' | 'shelter';
+  kind: PlaceKind;
   position: THREE.Vector3;
   object: THREE.Object3D;
   light?: THREE.PointLight;
@@ -120,6 +122,7 @@ export class World {
     this.buildWater();
     this.buildLandmarks();
     this.buildRelics();
+    this.buildSettlements();
   }
 
   // ---------------------------------------------------------------- terrain
@@ -149,7 +152,7 @@ export class World {
   }
 
   private buildTerrain(): THREE.Mesh {
-    const segments = 160;
+    const segments = 240;
     const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, segments, segments);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -193,7 +196,7 @@ export class World {
     const crownMat = new THREE.MeshLambertMaterial({ color: 0x2e6b33 });
     const crown2Mat = new THREE.MeshLambertMaterial({ color: 0x3a7d3d });
 
-    const maxTrees = 2600;
+    const maxTrees = 6000;
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, maxTrees);
     const crowns = new THREE.InstancedMesh(crownGeo, crownMat, maxTrees);
     const crowns2 = new THREE.InstancedMesh(crown2Geo, crown2Mat, maxTrees);
@@ -202,17 +205,17 @@ export class World {
 
     const rockGeo = new THREE.DodecahedronGeometry(0.9, 0);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x8a8c86, flatShading: true });
-    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 500);
+    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 1100);
     rocks.castShadow = rocks.receiveShadow = true;
 
     const bushGeo = new THREE.IcosahedronGeometry(0.9, 1);
     const bushMat = new THREE.MeshLambertMaterial({ color: 0x3f8a3a });
-    const bushes = new THREE.InstancedMesh(bushGeo, bushMat, 500);
+    const bushes = new THREE.InstancedMesh(bushGeo, bushMat, 1100);
     bushes.castShadow = true;
 
     const berryGeo = new THREE.SphereGeometry(0.12, 5, 5);
     const berryMat = new THREE.MeshLambertMaterial({ color: 0xd2342b });
-    const berries = new THREE.InstancedMesh(berryGeo, berryMat, 500 * 4);
+    const berries = new THREE.InstancedMesh(berryGeo, berryMat, 1100 * 4);
 
     const capGeo = new THREE.ConeGeometry(0.35, 0.25, 8);
     capGeo.translate(0, 0.45, 0);
@@ -220,13 +223,13 @@ export class World {
     stemGeo.translate(0, 0.2, 0);
     const capMat = new THREE.MeshLambertMaterial({ color: 0xc46b2c });
     const stemMat = new THREE.MeshLambertMaterial({ color: 0xe8dcc4 });
-    const caps = new THREE.InstancedMesh(capGeo, capMat, 260);
-    const stems = new THREE.InstancedMesh(stemGeo, stemMat, 260);
+    const caps = new THREE.InstancedMesh(capGeo, capMat, 600);
+    const stems = new THREE.InstancedMesh(stemGeo, stemMat, 600);
 
     const grassGeo = new THREE.ConeGeometry(0.25, 0.9, 3);
     grassGeo.translate(0, 0.45, 0);
     const grassMat = new THREE.MeshLambertMaterial({ color: 0x7fae4a, side: THREE.DoubleSide });
-    const grass = new THREE.InstancedMesh(grassGeo, grassMat, 4000);
+    const grass = new THREE.InstancedMesh(grassGeo, grassMat, 9000);
 
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -270,7 +273,7 @@ export class World {
             instanceIndex: ti,
           });
           ti++;
-        } else if (roll < d * 0.95 + 0.04 && ri < 500 && h > -2) {
+        } else if (roll < d * 0.95 + 0.04 && ri < 1100 && h > -2) {
           const s = 0.5 + this.rng() * 0.9;
           p.set(jx, h + 0.15 * s, jz);
           q.setFromEuler(new THREE.Euler(this.rng() * 3, this.rng() * 3, this.rng() * 3));
@@ -287,14 +290,14 @@ export class World {
             instanceIndex: ri,
           });
           ri++;
-        } else if (roll < d * 0.95 + 0.09 && bi < 500 && d < 0.6) {
+        } else if (roll < d * 0.95 + 0.09 && bi < 1100 && d < 0.6) {
           const s = 0.7 + this.rng() * 0.6;
           p.set(jx, h + 0.5 * s, jz);
           q.identity();
           scale.set(s, s * 0.85, s);
           m.compose(p, q, scale);
           bushes.setMatrixAt(bi, m);
-          for (let k = 0; k < 4 && bri < 2000; k++) {
+          for (let k = 0; k < 4 && bri < 4400; k++) {
             const a = this.rng() * Math.PI * 2;
             const e = this.rng() * Math.PI - Math.PI / 2;
             p.set(jx + Math.cos(a) * Math.cos(e) * s * 0.9, h + 0.5 * s + Math.sin(e) * s * 0.7, jz + Math.sin(a) * Math.cos(e) * s * 0.9);
@@ -313,7 +316,7 @@ export class World {
             instanceIndex: bi,
           });
           bi++;
-        } else if (roll < d * 0.95 + 0.11 && mi < 260 && d > 0.45) {
+        } else if (roll < d * 0.95 + 0.11 && mi < 600 && d > 0.45) {
           p.set(jx, h, jz);
           q.identity();
           const s = 0.8 + this.rng() * 0.6;
@@ -331,8 +334,8 @@ export class World {
             instanceIndex: mi,
           });
           mi++;
-        } else if (gi < 4000 && d < 0.55 && this.rng() < 0.6) {
-          for (let k = 0; k < 3 && gi < 4000; k++) {
+        } else if (gi < 9000 && d < 0.55 && this.rng() < 0.6) {
+          for (let k = 0; k < 3 && gi < 9000; k++) {
             p.set(jx + (this.rng() - 0.5) * 2, this.heightAt(jx, jz) - 0.05, jz + (this.rng() - 0.5) * 2);
             q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rng() * Math.PI);
             const s = 0.7 + this.rng() * 0.8;
@@ -402,6 +405,179 @@ export class World {
             regrow: 0,
             object: water,
           });
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- structures
+
+  private static readonly WOOD = new THREE.MeshLambertMaterial({ color: 0x6b4a2e });
+  private static readonly DARKWOOD = new THREE.MeshLambertMaterial({ color: 0x3b2a1c });
+  private static readonly STONE = new THREE.MeshLambertMaterial({ color: 0x8a8c86, flatShading: true });
+
+  /** Log hut with a pitched roof, a door gap on the +z side and a chimney. */
+  static house(rng: () => number = Math.random): THREE.Group {
+    const g = new THREE.Group();
+    const w = 5 + rng() * 2;
+    const d = 4 + rng() * 2;
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(w, 2.8, d), World.WOOD);
+    walls.position.y = 1.4;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.85, 2.2, 4), World.DARKWOOD);
+    roof.position.y = 3.9;
+    roof.rotation.y = Math.PI / 4;
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2, 0.2), new THREE.MeshBasicMaterial({ color: 0x100a06 }));
+    door.position.set(0, 1, d / 2 + 0.05);
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.6, 0.6), World.STONE);
+    chimney.position.set(w * 0.3, 4.2, -d * 0.2);
+    g.add(walls, roof, door, chimney);
+    return g;
+  }
+
+  /** Four-post watchtower with a platform and a little roof on top. */
+  static tower(): THREE.Group {
+    const g = new THREE.Group();
+    for (const [dx, dz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]] as const) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 8), World.WOOD);
+      post.position.set(dx, 4, dz);
+      g.add(post);
+    }
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 3.4), World.WOOD);
+    deck.position.y = 8;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.6, 1.6, 4), World.DARKWOOD);
+    roof.position.y = 9.6;
+    roof.rotation.y = Math.PI / 4;
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.9, 3.4), new THREE.MeshLambertMaterial({ color: 0x6b4a2e, transparent: true, opacity: 0.45 }));
+    rail.position.y = 8.6;
+    g.add(deck, roof, rail);
+    return g;
+  }
+
+  /** Two posts and two rails, 4 m long along x. */
+  static fence(): THREE.Group {
+    const g = new THREE.Group();
+    for (const dx of [-2, 2]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.3, 0.2), World.WOOD);
+      post.position.set(dx, 0.65, 0);
+      g.add(post);
+    }
+    for (const y of [0.5, 1.0]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.12, 0.1), World.WOOD);
+      rail.position.y = y;
+      g.add(rail);
+    }
+    return g;
+  }
+
+  static well(): THREE.Group {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.1, 1, 10, 1, true), new THREE.MeshLambertMaterial({ color: 0x8a8c86, flatShading: true, side: THREE.DoubleSide }));
+    ring.position.y = 0.5;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.9, 4), World.DARKWOOD);
+    roof.position.y = 2.7;
+    roof.rotation.y = Math.PI / 4;
+    for (const dx of [-0.9, 0.9]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.4, 0.15), World.WOOD);
+      post.position.set(dx, 1.2, 0);
+      g.add(post);
+    }
+    g.add(ring, roof);
+    return g;
+  }
+
+  /** Broken walls of a stone ruin. */
+  static ruin(rng: () => number): THREE.Group {
+    const g = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const h = 0.8 + rng() * 2.2;
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(i % 2 ? 0.7 : 5, h, i % 2 ? 5 : 0.7), World.STONE);
+      wall.position.set(i === 1 ? 2.5 : i === 3 ? -2.5 : 0, h / 2, i === 0 ? -2.5 : i === 2 ? 2.5 : 0);
+      g.add(wall);
+    }
+    return g;
+  }
+
+  /** Plank bridge: a deck just above the water with posts at both ends. */
+  static bridge(length: number): THREE.Group {
+    const g = new THREE.Group();
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(length, 0.25, 2.4), World.WOOD);
+    deck.position.y = -2.2;
+    g.add(deck);
+    for (const dx of [-length / 2 + 0.3, length / 2 - 0.3]) {
+      for (const dz of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), World.WOOD);
+        post.position.set(dx, -3.2, dz);
+        g.add(post);
+      }
+    }
+    return g;
+  }
+
+  /**
+   * Abandoned infrastructure on dry land: three hamlets (huts, well, fence, tower),
+   * a handful of lone ruins and watchtowers, and plank bridges over narrow water.
+   * Props only: no discovery, no lore. ponytail: no collision, walk-through like the cabin.
+   */
+  private buildSettlements(): void {
+    const dry = (x: number, z: number) => { const h = this.heightAt(x, z); return h > -2 && h < 14; };
+    const put = (obj: THREE.Object3D, x: number, z: number, rot = this.rng() * Math.PI * 2, clear = 6) => {
+      obj.position.set(x, this.heightAt(x, z), z);
+      obj.rotation.y = rot;
+      obj.traverse((o) => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true; });
+      this.scene.add(obj);
+      this.clearResourcesNear(x, z, clear);
+    };
+    const pick = (): [number, number] | null => {
+      for (let i = 0; i < 40; i++) {
+        const x = (this.rng() - 0.5) * WORLD_SIZE * 0.85;
+        const z = (this.rng() - 0.5) * WORLD_SIZE * 0.85;
+        if (Math.hypot(x, z) < 45 || !dry(x, z)) continue;
+        if (this.landmarks.some((l) => Math.hypot(l.position.x - x, l.position.z - z) < 40)) continue;
+        return [x, z];
+      }
+      return null;
+    };
+    for (let s = 0; s < 3; s++) {
+      const c = pick();
+      if (!c) continue;
+      const [cx, cz] = c;
+      const huts = 3 + Math.floor(this.rng() * 3);
+      for (let i = 0; i < huts; i++) {
+        const a = (i / huts) * Math.PI * 2 + this.rng() * 0.5;
+        const r = 10 + this.rng() * 6;
+        const x = cx + Math.cos(a) * r;
+        const z = cz + Math.sin(a) * r;
+        if (dry(x, z)) put(World.house(this.rng), x, z, -a + Math.PI / 2);
+      }
+      put(World.well(), cx, cz, 0, 3);
+      if (dry(cx + 20, cz + 4)) put(World.tower(), cx + 20, cz + 4, 0, 3);
+      for (let i = 0; i < 5; i++) {
+        const x = cx - 22 + i * 4.2;
+        if (dry(x, cz - 18)) put(World.fence(), x, cz - 18, 0, 1);
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      const c = pick();
+      if (!c) continue;
+      put(i % 2 ? World.tower() : World.ruin(this.rng), c[0], c[1]);
+    }
+    // Bridges: scan a coarse grid for spots where 10-20 m of water lie between two dry banks.
+    let bridges = 0;
+    for (let x = -HALF + 20; x < HALF - 20 && bridges < 4; x += 12) {
+      for (let z = -HALF + 20; z < HALF - 20 && bridges < 4; z += 12) {
+        if (this.heightAt(x, z) > -3.2) continue;
+        for (const [dx, dz] of [[1, 0], [0, 1]] as const) {
+          let len = 0;
+          while (len < 22 && this.heightAt(x + dx * len, z + dz * len) < -3.2) len += 2;
+          if (len < 10 || len >= 22) continue;
+          if (this.heightAt(x - dx * 2, z - dz * 2) < -2.8 || this.heightAt(x + dx * (len + 2), z + dz * (len + 2)) < -2.8) continue;
+          const b = World.bridge(len + 4);
+          b.position.set(x + (dx * len) / 2, 0, z + (dz * len) / 2);
+          b.rotation.y = dz ? Math.PI / 2 : 0;
+          b.traverse((o) => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true; });
+          this.scene.add(b);
+          bridges++;
+          break;
         }
       }
     }
@@ -822,7 +998,7 @@ export class World {
 
   // ---------------------------------------------------------------- placing
 
-  place(kind: 'campfire' | 'shelter', at: THREE.Vector3, facing: number): Placed {
+  place(kind: PlaceKind, at: THREE.Vector3, facing: number): Placed {
     const y = this.heightAt(at.x, at.z);
     const group = new THREE.Group();
     let light: THREE.PointLight | undefined;
@@ -853,7 +1029,7 @@ export class World {
       light.position.y = 1.2;
       light.castShadow = false;
       group.add(light);
-    } else {
+    } else if (kind === 'shelter') {
       const wood = new THREE.MeshLambertMaterial({ color: 0x6b4a2e });
       const leaf = new THREE.MeshLambertMaterial({ color: 0x3f6d34, side: THREE.DoubleSide });
       const a = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.15, 2.8), leaf);
@@ -866,7 +1042,9 @@ export class World {
       ridge.rotation.x = Math.PI / 2;
       ridge.position.y = 2.1;
       group.add(a, b, ridge);
-    }
+    } else if (kind === 'house') group.add(World.house(this.rng));
+    else if (kind === 'tower') group.add(World.tower());
+    else group.add(World.fence());
     group.position.set(at.x, y, at.z);
     group.rotation.y = facing;
     group.traverse((o) => {
@@ -878,7 +1056,7 @@ export class World {
     return placed;
   }
 
-  nearPlaced(kind: 'campfire' | 'shelter', pos: THREE.Vector3, dist: number): boolean {
+  nearPlaced(kind: PlaceKind, pos: THREE.Vector3, dist: number): boolean {
     return this.placed.some((p) => p.kind === kind && Math.hypot(p.position.x - pos.x, p.position.z - pos.z) < dist);
   }
 

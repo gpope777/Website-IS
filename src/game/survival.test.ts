@@ -108,3 +108,10 @@ describe('inventory and crafting', () => {
     expect(consume(s, { wood: 1 }, 'wood')).toBeNull();
   });
 });
+
+it('house recipe consumes wood, stone and fiber', () => {
+  const house = RECIPES.find((r) => r.id === 'house')!;
+  expect(canCraft({ wood: 20, stone: 8, fiber: 6 }, house)).toBe(true);
+  expect(canCraft({ wood: 20, stone: 7, fiber: 6 }, house)).toBe(false);
+  expect(craft({ wood: 21, stone: 8, fiber: 6 }, house)).toEqual({ wood: 1, house: 1 });
+});

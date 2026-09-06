@@ -9,6 +9,7 @@ import {
   createStats,
   isDead,
   isNight,
+  ITEM_LABELS,
   remove,
   scoreFor,
   tick,
@@ -17,7 +18,7 @@ import {
   type Recipe,
   type Stats,
 } from './survival';
-import { HARVEST, World, type Landmark, type Resource } from './world';
+import { HARVEST, World, type Landmark, type PlaceKind, type Resource } from './world';
 import { Wolf } from './wolves';
 import { Creature, CREATURE_COUNT, CREATURE_KINDS } from './creatures';
 import { Audio } from './audio';
@@ -29,6 +30,13 @@ import { TouchControls, isTouchDevice } from '../ui/touch';
 /** Real seconds per in-game day. */
 export const DAY_LENGTH = 6 * 60;
 const TORCH_DURATION = 90;
+const PLACE_INFO: Record<PlaceKind, { dist: number; done: string }> = {
+  campfire: { dist: 2, done: 'Fogata encendida. Quédate cerca para entrar en calor.' },
+  shelter: { dist: 3, done: 'Refugio montado. Duerme aquí para no pasar frío.' },
+  house: { dist: 5, done: 'Casa construida. Dentro no llueve ni hace frío.' },
+  tower: { dist: 4, done: 'Atalaya levantada.' },
+  fence: { dist: 2.5, done: 'Valla colocada.' },
+};
 
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
@@ -150,7 +158,7 @@ export class Game {
       yaw: this.player.yaw,
       landmarks: this.world.landmarks.map((l) => [l.id, l.discovered, l.revealed] as [string, boolean, boolean]),
       relics: this.world.relics.map((r) => r.found),
-      placed: this.world.placed.map((p) => [p.kind, p.position.x, p.position.z] as ['campfire' | 'shelter', number, number]),
+      placed: this.world.placed.map((p) => [p.kind, p.position.x, p.position.z] as [PlaceKind, number, number]),
       kills: this.kills,
       crafted: this.craftedCount,
       relicsFound: this.relicsFound,
@@ -353,6 +361,9 @@ export class Game {
       case 'KeyT': this.lightTorch(); break;
       case 'KeyF': this.placeItem('campfire'); break;
       case 'KeyR': this.placeItem('shelter'); break;
+      case 'KeyB': this.placeItem('house'); break;
+      case 'KeyH': this.placeItem('tower'); break;
+      case 'KeyV': this.placeItem('fence'); break;
     }
   }
 
@@ -410,7 +421,7 @@ export class Game {
     this.audio.craft();
     this.hud.setInventory(this.inventory);
     this.craftUi.refresh(this.inventory);
-    const hint = recipe.id === 'campfire' ? ' Pulsa F para colocarla.' : recipe.id === 'shelter' ? ' Pulsa R para colocarlo.' : recipe.id === 'torch' ? ' Pulsa T para encenderla.' : '';
+    const hint = recipe.id === 'campfire' ? ' Pulsa F para colocarla.' : recipe.id === 'shelter' ? ' Pulsa R para colocarlo.' : recipe.id === 'torch' ? ' Pulsa T para encenderla.' : recipe.id === 'house' ? ' Pulsa B para construirla.' : recipe.id === 'tower' ? ' Pulsa H para levantarla.' : recipe.id === 'fence' ? ' Pulsa V para colocarla.' : '';
     this.hud.notify(`Has creado: ${recipe.label.split(' (')[0]}.${hint}`);
   }
 
@@ -443,14 +454,14 @@ export class Game {
     this.hud.notify('Antorcha encendida. Los lobos la temen.');
   }
 
-  private placeItem(kind: 'campfire' | 'shelter'): void {
+  private placeItem(kind: PlaceKind): void {
     const next = remove(this.inventory, kind, 1);
     if (!next) {
-      this.hud.notify(kind === 'campfire' ? 'No tienes fogata. Créala con C.' : 'No tienes refugio. Créalo con C.');
+      this.hud.notify(`No tienes ${ITEM_LABELS[kind].toLowerCase()}. Créala con C.`);
       return;
     }
     const dir = this.player.forwardDir();
-    const at = this.player.position.clone().addScaledVector(dir, kind === 'campfire' ? 2 : 3);
+    const at = this.player.position.clone().addScaledVector(dir, PLACE_INFO[kind].dist);
     if (this.world.heightAt(at.x, at.z) < -3) {
       this.hud.notify('No puedes colocar eso en el agua.');
       return;
@@ -458,7 +469,18 @@ export class Game {
     this.inventory = next;
     this.world.place(kind, at, this.player.yaw);
     this.hud.setInventory(this.inventory);
-    this.hud.notify(kind === 'campfire' ? 'Fogata encendida. Quédate cerca para entrar en calor.' : 'Refugio montado. Duerme aquí para no pasar frío.');
+    this.hud.notify(PLACE_INFO[kind].done);
+    if (kind === 'tower') this.revealFromTower(at);
+  }
+
+  /** A watchtower shows every undiscovered place within 120 m on the compass. */
+  private revealFromTower(at: THREE.Vector3): void {
+    let n = 0;
+    for (const l of this.world.landmarks) {
+      if (l.revealed || l.discovered) continue;
+      if (Math.hypot(l.position.x - at.x, l.position.z - at.z) < 120) { l.revealed = true; n++; }
+    }
+    if (n) this.hud.notify(`Desde la atalaya ves ${n} lugar${n > 1 ? 'es' : ''} nuevo${n > 1 ? 's' : ''}. Mira la brújula.`);
   }
 
   /** Punch (or swing the axe) at whatever is in front of you. */
@@ -609,12 +631,13 @@ export class Game {
     const at = this.world.landmarkNear(pos, 7);
     const inCave = at?.id === 'cave' && at.discovered;
     const inCircle = at?.id === 'circle' && at.discovered && Math.hypot(at.position.x - pos.x, at.position.z - pos.z) < 4.5;
-    const sheltered = inCave || this.world.nearPlaced('shelter', pos, 2.5);
+    const inHouse = this.world.nearPlaced('house', pos, 3.5);
+    const sheltered = inCave || inHouse || this.world.nearPlaced('shelter', pos, 2.5);
 
     const before = this.stats;
     this.stats = tick(this.stats, { dayFraction, nearFire, sheltered, moving: move.moving, sprinting: move.sprinting }, dt);
     if (sheltered && !move.moving) this.stats.energy = Math.min(100, this.stats.energy + 3 * dt);
-    if (inCave) this.stats.warmth = Math.min(100, this.stats.warmth + 2 * dt);
+    if (inCave || inHouse) this.stats.warmth = Math.min(100, this.stats.warmth + 2 * dt);
     if (inCircle) this.stats.health = Math.min(100, this.stats.health + 2.5 * dt);
     if (move.swimming) {
       this.stats.warmth = Math.max(0, this.stats.warmth - 1.5 * dt);
@@ -737,7 +760,7 @@ export class Game {
     this.world.setRain(this.raining, pos, dt);
     if (!this.raining) return;
     const at = this.world.landmarkNear(pos, 7);
-    const covered = (at?.id === 'cave' && at.discovered) || this.world.nearPlaced('shelter', pos, 2.5) || this.world.nearPlaced('campfire', pos, 5);
+    const covered = (at?.id === 'cave' && at.discovered) || this.world.nearPlaced('shelter', pos, 2.5) || this.world.nearPlaced('house', pos, 3.5) || this.world.nearPlaced('campfire', pos, 5);
     if (!covered) this.stats.warmth = Math.max(0, this.stats.warmth - (night ? 1.2 : 0.7) * dt);
     this.thunderTimer -= dt;
     if (this.thunderTimer <= 0) {

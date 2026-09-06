@@ -4,9 +4,9 @@ import { HALF } from './world';
 import { createRng } from './rng';
 
 /** Number of concept-art sprites in public/enemies (enemy1.png … enemyN.png). */
-export const CREATURE_KINDS = 7;
+export const CREATURE_KINDS = 14;
 /** How many creatures roam at once (kinds repeat). */
-export const CREATURE_COUNT = 18;
+export const CREATURE_COUNT = 34;
 const loader = new THREE.TextureLoader();
 const textures: THREE.Texture[] = [];
 

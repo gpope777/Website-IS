@@ -108,7 +108,10 @@ export type ItemId =
   | 'campfire'
   | 'shelter'
   | 'torch'
-  | 'fish';
+  | 'fish'
+  | 'house'
+  | 'tower'
+  | 'fence';
 
 export const ITEM_LABELS: Record<ItemId, string> = {
   wood: 'Madera',
@@ -122,6 +125,9 @@ export const ITEM_LABELS: Record<ItemId, string> = {
   shelter: 'Refugio',
   torch: 'Antorcha',
   fish: 'Pescado',
+  house: 'Casa',
+  tower: 'Atalaya',
+  fence: 'Valla',
 };
 
 export type Inventory = Partial<Record<ItemId, number>>;
@@ -155,6 +161,9 @@ export const RECIPES: Recipe[] = [
   { id: 'torch', label: 'Antorcha (luz de noche)', cost: { wood: 1, fiber: 2 }, placeable: false },
   { id: 'campfire', label: 'Fogata (calor)', cost: { wood: 5, stone: 3 }, placeable: true },
   { id: 'shelter', label: 'Refugio (protege del frío)', cost: { wood: 8, fiber: 4 }, placeable: true },
+  { id: 'house', label: 'Casa (abrigo total: lluvia y frío)', cost: { wood: 20, stone: 8, fiber: 6 }, placeable: true },
+  { id: 'tower', label: 'Atalaya (revela lugares a 120 m)', cost: { wood: 14, stone: 4 }, placeable: true },
+  { id: 'fence', label: 'Valla (decorativa)', cost: { wood: 4 }, placeable: true },
 ];
 
 export function canCraft(inv: Inventory, recipe: Recipe): boolean {

@@ -1,3 +1,4 @@
+import type { PlaceKind } from './world';
 import type { Inventory, Stats } from './survival';
 
 /** One save slot per seed in localStorage. ponytail: JSON blob, no migrations until v2 exists. */
@@ -13,7 +14,7 @@ export interface SaveData {
   yaw: number;
   landmarks: [string, boolean, boolean][];
   relics: boolean[];
-  placed: ['campfire' | 'shelter', number, number][];
+  placed: [PlaceKind, number, number][];
   kills: number;
   crafted: number;
   relicsFound: number;
