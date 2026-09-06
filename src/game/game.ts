@@ -53,7 +53,7 @@ export class Game {
   private readonly pauseEl: HTMLElement;
   private readonly craftUi: ReturnType<typeof craftOverlay>;
   private readonly deathUi: ReturnType<typeof deathOverlay>;
-  private readonly touch: TouchControls | null = null;
+  private touch: TouchControls | null = null;
 
   constructor(private readonly container: HTMLElement, seed: string, private readonly onRestart: () => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -79,16 +79,7 @@ export class Game {
     this.hud.setInventory(this.inventory);
     this.hud.setStats(this.stats);
 
-    if (isTouchDevice()) {
-      container.classList.add('touch');
-      this.touch = new TouchControls(container, this.input, {
-        onLook: (dx, dy) => {
-          if (!this.paused && !this.crafting && !this.dead) this.player.look(dx, dy);
-        },
-        onAction: (code) => this.handleAction(code),
-        onPause: () => this.pause(),
-      });
-    }
+    if (isTouchDevice()) this.enableTouch();
 
     this.pauseEl = pauseOverlay(container, () => this.requestPointerLock());
     this.craftUi = craftOverlay(
@@ -105,6 +96,27 @@ export class Game {
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
+  /** Build the on-screen controls. Idempotent: also called lazily on the first touch event. */
+  private enableTouch(): void {
+    if (this.touch) return;
+    this.container.classList.add('touch');
+    this.touch = new TouchControls(this.container, this.input, {
+      onLook: (dx, dy) => {
+        if (!this.paused && !this.crafting && !this.dead) this.player.look(dx, dy);
+      },
+      onAction: (code) => this.handleAction(code),
+      onPause: () => this.pause(),
+    });
+    if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
+    // When switched on mid-game (first touch), keep playing; during construction the pause overlay does not exist yet.
+    if (this.pauseEl) this.resume();
+  }
+
+  private onFirstTouch = (): void => {
+    if (this.dead) return;
+    this.enableTouch();
+  };
+
   dispose(): void {
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this.onResize);
@@ -113,6 +125,7 @@ export class Game {
     document.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    document.removeEventListener('touchstart', this.onFirstTouch);
     this.touch?.dispose();
     this.container.classList.remove('touch');
     this.renderer.dispose();
@@ -154,6 +167,8 @@ export class Game {
     });
     // Losing the tab (or the phone locking) should pause rather than run blind.
     document.addEventListener('visibilitychange', this.onVisibility);
+    // Fallback for devices the media query misses: the first real touch turns the controls on.
+    document.addEventListener('touchstart', this.onFirstTouch, { passive: true });
   }
 
   private onVisibility = (): void => {

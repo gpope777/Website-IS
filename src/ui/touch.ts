@@ -1,12 +1,19 @@
 import type { InputState } from '../game/player';
 
-/** True on phones/tablets: coarse pointer without hover. */
+/**
+ * True on phones/tablets. Checks, in order: an explicit `?touch=1|0` override,
+ * a coarse primary pointer, and finally the presence of touch points on a small screen.
+ * The game also switches on touch controls lazily on the first touch event, so this
+ * only decides what the start screen shows.
+ */
 export function isTouchDevice(): boolean {
   if (typeof window === 'undefined') return false;
-  if (typeof window.matchMedia === 'function') {
-    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-  }
-  return 'ontouchstart' in window && navigator.maxTouchPoints > 0;
+  const forced = new URLSearchParams(window.location.search).get('touch');
+  if (forced === '1') return true;
+  if (forced === '0') return false;
+  if (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) return true;
+  const points = navigator.maxTouchPoints ?? 0;
+  return points > 0 && Math.min(window.innerWidth, window.innerHeight) <= 900;
 }
 
 export interface TouchHandlers {
