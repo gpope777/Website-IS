@@ -41,6 +41,27 @@ export interface Landmark {
   revealed: boolean;
 }
 
+export interface Relic {
+  name: string;
+  lore: string;
+  position: THREE.Vector3;
+  object: THREE.Object3D;
+  found: boolean;
+}
+
+export const RELIC_DEFS: { name: string; lore: string }[] = [
+  { name: 'Brújula rota', lore: 'La aguja gira sin parar. El ermitaño escribió: «aquí el norte no sirve; sirven los lugares».' },
+  { name: 'Cuchara tallada', lore: 'Madera de pino, pulida por años de uso. En el mango: «L.»' },
+  { name: 'Página arrancada', lore: '«Día 6. Los lobos no cruzan el fuego. Los otros bichos tampoco, pero sí rodean.»' },
+  { name: 'Bota vieja', lore: 'Solo una. La suela está gastada por el lado izquierdo: caminaba en círculos.' },
+  { name: 'Anzuelo de hueso', lore: 'Atado con fibra de hierba. Confirma que aprendió a pescar antes que a cazar.' },
+  { name: 'Collar de dientes', lore: 'Dientes de lobo, siete. Uno por cada noche que sobrevivió al principio.' },
+  { name: 'Frasco vacío', lore: 'Huele a seta. «No comer más de dos al día», dice la etiqueta.' },
+  { name: 'Pedernal', lore: 'Marcado con muescas: 31. Los días que tardó en encontrar la puerta.' },
+  { name: 'Mapa a carbón', lore: 'Un dibujo tosco: cinco puntos y una flecha hacia el borde. Coincide con tu brújula.' },
+  { name: 'Última nota', lore: '«Si cruzas la puerta, cuenta lo que viste. Que nadie más se despierte aquí solo.»' },
+];
+
 export interface Placed {
   kind: 'campfire' | 'shelter';
   position: THREE.Vector3;
@@ -60,6 +81,7 @@ export class World {
   readonly scene = new THREE.Scene();
   readonly resources: Resource[] = [];
   readonly landmarks: Landmark[] = [];
+  readonly relics: Relic[] = [];
   readonly placed: Placed[] = [];
   readonly terrain: THREE.Mesh;
   readonly sun = new THREE.DirectionalLight(0xfff2d8, 2.2);
@@ -95,6 +117,7 @@ export class World {
     this.buildForest();
     this.buildWater();
     this.buildLandmarks();
+    this.buildRelics();
   }
 
   // ---------------------------------------------------------------- terrain
@@ -533,6 +556,60 @@ export class World {
     }
   }
 
+  /** Ten small glowing keepsakes scattered on dry land, a few near landmarks. */
+  private buildRelics(): void {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffe08a });
+    const ring = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+    RELIC_DEFS.forEach((def, i) => {
+      let x = 0;
+      let z = 0;
+      let h = -99;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const l = this.landmarks[i];
+        if (l) {
+          const a = this.rng() * Math.PI * 2;
+          x = l.position.x + Math.cos(a) * 18;
+          z = l.position.z + Math.sin(a) * 18;
+        } else {
+          x = (this.rng() - 0.5) * WORLD_SIZE * 0.75;
+          z = (this.rng() - 0.5) * WORLD_SIZE * 0.75;
+        }
+        h = this.heightAt(x, z);
+        if (h > -2.5 && h < 16 && Math.hypot(x, z) > 25) break;
+      }
+      const g = new THREE.Group();
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 0), mat);
+      gem.position.y = 0.9;
+      gem.name = 'gem';
+      const halo = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.5, 6, 6, 1, true), ring);
+      halo.position.y = 3;
+      g.add(gem, halo);
+      g.position.set(x, Math.max(h, -3.2), z);
+      this.scene.add(g);
+      this.relics.push({ ...def, position: g.position.clone(), object: g, found: false });
+    });
+  }
+
+  /** Closest unfound relic within `r`, or null. */
+  relicNear(pos: THREE.Vector3, r: number): Relic | null {
+    let best: Relic | null = null;
+    let bd = r;
+    for (const rel of this.relics) {
+      if (rel.found) continue;
+      const d = Math.hypot(rel.position.x - pos.x, rel.position.z - pos.z);
+      if (d < bd) {
+        bd = d;
+        best = rel;
+      }
+    }
+    return best;
+  }
+
+  collectRelic(rel: Relic): void {
+    rel.found = true;
+    rel.object.visible = false;
+  }
+
   /** Mark a landmark as found: the beacon fades out over a few seconds (see animate). */
   discover(l: Landmark): void {
     l.discovered = true;
@@ -803,6 +880,14 @@ export class World {
   }
 
   animate(t: number): void {
+    for (const r of this.relics) {
+      if (r.found) continue;
+      const gem = r.object.getObjectByName('gem');
+      if (gem) {
+        gem.rotation.y = t * 1.5;
+        gem.position.y = 0.9 + Math.sin(t * 2 + r.position.x) * 0.15;
+      }
+    }
     for (const l of this.landmarks) {
       const mat = l.beacon.material as THREE.MeshBasicMaterial;
       if (l.discovered) {

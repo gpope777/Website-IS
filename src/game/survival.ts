@@ -203,6 +203,6 @@ export function consume(stats: Stats, inv: Inventory, id: ItemId): { stats: Stat
 
 // ---------------------------------------------------------------- Score
 
-export function scoreFor(secondsSurvived: number, discovered: number, crafted: number, escaped = false): number {
-  return Math.round(secondsSurvived * 2 + discovered * 150 + crafted * 100 + (escaped ? 2000 : 0));
+export function scoreFor(secondsSurvived: number, discovered: number, crafted: number, escaped = false, relics = 0): number {
+  return Math.round(secondsSurvived * 2 + discovered * 150 + crafted * 100 + relics * 80 + (escaped ? 2000 : 0));
 }

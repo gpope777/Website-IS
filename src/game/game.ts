@@ -20,6 +20,7 @@ import {
 import { HARVEST, World, type Landmark, type Resource } from './world';
 import { Wolf } from './wolves';
 import { Creature, CREATURE_COUNT, CREATURE_KINDS } from './creatures';
+import { Audio } from './audio';
 import { Hud, LANDMARK_ICONS, craftOverlay, deathOverlay, journalOverlay, pauseOverlay, type CompassMarker } from '../ui/hud';
 import { TouchControls, isTouchDevice } from '../ui/touch';
 
@@ -35,6 +36,9 @@ export class Game {
   private readonly hud: Hud;
   private readonly wolves: Wolf[] = [];
   private readonly creatures: Creature[] = [];
+  private readonly audio = new Audio();
+  private relicsFound = 0;
+  private howlTimer = 20;
   private attackCooldown = 0;
   private kills = 0;
   private readonly torchLight: THREE.PointLight;
@@ -103,6 +107,9 @@ export class Game {
     this.journalUi = journalOverlay(container, () => this.toggleJournal(false));
 
     this.bindInput();
+    const unlock = () => this.audio.unlock();
+    document.addEventListener('pointerdown', unlock, { passive: true });
+    document.addEventListener('keydown', unlock);
     window.addEventListener('resize', this.onResize);
     this.requestPointerLock();
     this.hud.notify('Te despiertas en el bosque. Busca agua y comida antes de que anochezca.');
@@ -246,6 +253,7 @@ export class Game {
       case 'KeyX': this.attack(); break;
       case 'KeyC': this.toggleCraft(true); break;
       case 'KeyJ': this.toggleJournal(true); break;
+      case 'KeyM': this.audio.setMuted(!this.audio.muted); this.hud.notify(this.audio.muted ? 'Sonido silenciado.' : 'Sonido activado.'); break;
       case 'Digit4': this.eat('fish'); break;
       case 'Digit1': this.eat('berries'); break;
       case 'Digit2': this.eat('mushroom'); break;
@@ -291,7 +299,7 @@ export class Game {
     this.journal = open;
     this.journalUi.el.hidden = !open;
     if (open) {
-      this.journalUi.refresh(this.world.landmarks);
+      this.journalUi.refresh({ landmarks: this.world.landmarks, relics: this.world.relics, player: { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw } });
       this.touch?.release();
       if (!this.touch) document.exitPointerLock();
     } else {
@@ -307,6 +315,7 @@ export class Game {
     }
     this.inventory = next;
     this.craftedCount++;
+    this.audio.craft();
     this.hud.setInventory(this.inventory);
     this.craftUi.refresh(this.inventory);
     const hint = recipe.id === 'campfire' ? ' Pulsa F para colocarla.' : recipe.id === 'shelter' ? ' Pulsa R para colocarlo.' : recipe.id === 'torch' ? ' Pulsa T para encenderla.' : '';
@@ -321,6 +330,7 @@ export class Game {
     }
     this.stats = r.stats;
     this.inventory = r.inv;
+    this.audio.eat();
     this.hud.setInventory(this.inventory);
     if (id === 'mushroom') this.hud.notify('La seta alimenta, pero te sienta mal.');
   }
@@ -365,6 +375,7 @@ export class Game {
     const hasAxe = (this.inventory.axe ?? 0) > 0;
     this.attackCooldown = hasAxe ? 0.7 : 0.45;
     this.hud.swing(hasAxe ? '🪓' : '👊');
+    this.audio.punch();
     const damage = hasAxe ? 20 : 10;
     const from = this.player.position;
     const fwd = this.player.forwardDir();
@@ -380,28 +391,48 @@ export class Game {
       if (!c.alive || !inFront(c.position, 1)) continue;
       if (c.hit(damage, from)) {
         this.kills++;
+        this.audio.kill();
         this.stats.energy = Math.min(100, this.stats.energy + 5);
         this.hud.notify('¡Has derrotado a la criatura!');
-      } else this.hud.notify(`Golpeas a la criatura (${Math.max(0, c.hp)} PV)`);
+      } else {
+        this.audio.hitCreature();
+        this.hud.notify(`Golpeas a la criatura (${Math.max(0, c.hp)} PV)`);
+      }
       return;
     }
     for (const w of this.wolves) {
       if (!inFront(w.position, 0.8)) continue;
       if (w.hit(damage)) {
         this.kills++;
+        this.audio.kill();
         this.hud.notify('¡El lobo cae!');
-      } else this.hud.notify('El lobo huye aullando.');
+      } else {
+        this.audio.hitCreature();
+        this.hud.notify('El lobo huye aullando.');
+      }
       return;
     }
   }
 
   private interact(): void {
     if (this.harvestCooldown > 0) return;
+    const relic = this.world.relicNear(this.player.position, 2.6);
+    if (relic) {
+      this.world.collectRelic(relic);
+      this.relicsFound++;
+      this.audio.discover();
+      this.hud.notify(`✦ Reliquia: ${relic.name} (${this.relicsFound}/${this.world.relics.length})`, 'discover');
+      setTimeout(() => this.hud.notify(relic.lore, 'discover'), 1200);
+      this.stats.energy = Math.min(100, this.stats.energy + 5);
+      this.harvestCooldown = 0.5;
+      return;
+    }
     const near = this.world.landmarkNear(this.player.position, 9);
     if (near?.id === 'tree' && near.discovered && this.treeCooldown <= 0) {
       this.treeCooldown = 45;
       this.inventory = add(this.inventory, 'berries', 3);
       this.hud.setInventory(this.inventory);
+      this.audio.pickup();
       this.hud.notify('+3 frutos del Árbol Anciano. Volverán a crecer.');
       this.harvestCooldown = 0.6;
       return;
@@ -414,6 +445,7 @@ export class Game {
       this.fishCooldown = 15;
       this.inventory = add(this.inventory, 'fish', 1);
       this.hud.setInventory(this.inventory);
+      this.audio.splash();
       this.hud.notify('+1 pescado. Pulsa 4 para comerlo.');
       this.harvestCooldown = 0.8;
       return;
@@ -430,6 +462,7 @@ export class Game {
           this.hud.notify('Bebes y llenas un poco de agua.');
         } else this.hud.notify('Bebes agua fresca.');
       } else if (this.world.harvest(res)) {
+        this.audio.pickup();
         this.inventory = add(this.inventory, info.item, amount);
         this.stats.energy = Math.max(0, this.stats.energy - (res.kind === 'tree' ? 3 : 1));
         this.hud.notify(`+${amount} ${info.item === 'wood' ? 'madera' : info.item === 'stone' ? 'piedra' : info.item === 'berries' ? 'bayas' : 'seta'}`);
@@ -442,6 +475,7 @@ export class Game {
     if (fiber) {
       this.inventory = add(this.inventory, 'fiber', 1);
       this.hud.setInventory(this.inventory);
+      this.audio.pickup();
       this.hud.notify('+1 fibra de hierba alta');
       this.harvestCooldown = 0.5;
     }
@@ -467,6 +501,7 @@ export class Game {
 
     const move = this.player.update(this.input, dt, this.stats.energy);
     if (move.moving) this.bob += dt;
+    this.audio.footsteps(dt, move.moving || move.swimming, move.sprinting, move.swimming);
 
     const dayFraction = (this.time / DAY_LENGTH) % 1;
     const night = isNight(dayFraction);
@@ -485,7 +520,10 @@ export class Game {
     if (move.swimming) {
       this.stats.warmth = Math.max(0, this.stats.warmth - 1.5 * dt);
       this.stats.energy = Math.max(0, this.stats.energy - 1.5 * dt);
-      if (!this.wasSwimming) this.hud.notify('Nadas. El agua está fría y cansa; no te quedes mucho.');
+      if (!this.wasSwimming) {
+        this.audio.splash();
+        this.hud.notify('Nadas. El agua está fría y cansa; no te quedes mucho.');
+      }
     }
     this.wasSwimming = move.swimming;
 
@@ -495,6 +533,7 @@ export class Game {
       const dmg = w.update(dt, pos, night, hasLight, this.elapsed);
       if (dmg > 0) {
         this.stats.health = Math.max(0, this.stats.health - dmg);
+        this.audio.hurt();
         this.lastCause = 'Un lobo te alcanzó en la oscuridad.';
         this.hud.notify('¡Un lobo te ha mordido! Busca fuego.');
       }
@@ -506,6 +545,7 @@ export class Game {
       const dmg = c.update(dt, pos, night, this.elapsed, safe);
       if (dmg > 0) {
         this.stats.health = Math.max(0, this.stats.health - dmg);
+        this.audio.hurt();
         this.lastCause = 'Una criatura del bosque te devoró.';
         this.hud.notify('¡Una criatura te ataca! Golpéala (X o clic).');
       }
@@ -522,6 +562,12 @@ export class Game {
     this.checkLandmarks();
     this.updateFocus();
     this.updateCompass();
+    this.audio.ambient(night, move.sprinting);
+    this.howlTimer -= dt;
+    if (this.howlTimer <= 0) {
+      this.howlTimer = 25 + Math.random() * 30;
+      if (night) this.audio.wolfHowl();
+    }
 
     // Warnings only on threshold crossings so they don't spam.
     for (const [key, msg] of [
@@ -559,6 +605,7 @@ export class Game {
     }
     const total = this.world.landmarks.filter((x) => x.id !== 'exit').length;
     const n = this.world.landmarks.filter((x) => x.discovered).length;
+    this.audio.discover();
     this.hud.notify(`${LANDMARK_ICONS[l.id]} Has descubierto: ${l.name} (${n}/${total})`, 'discover');
     setTimeout(() => this.hud.notify(l.story, 'discover'), 1500);
     setTimeout(() => this.hud.notify(l.reward, 'discover'), 5000);
@@ -583,6 +630,7 @@ export class Game {
       this.exitRevealed = true;
       setTimeout(() => {
         this.world.revealExit();
+        this.audio.exitRevealed();
         this.hud.notify('🚪 Una luz blanca se alza al borde del bosque. La Puerta del Bosque ha aparecido en tu brújula.', 'discover');
       }, 7000);
     }
@@ -599,6 +647,13 @@ export class Game {
       { rel: rel(0, 1), icon: 'S', dim: true, label: '' },
       { rel: rel(-1, 0), icon: 'O', dim: true, label: '' },
     ];
+    for (const r of this.world.relics) {
+      if (r.found) continue;
+      const dx = r.position.x - pos.x;
+      const dz = r.position.z - pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 35) marks.push({ rel: rel(dx, dz), icon: '✦', dim: false, label: `${Math.round(d)} m` });
+    }
     for (const l of this.world.landmarks) {
       if (!l.revealed) continue;
       const dx = l.position.x - pos.x;
@@ -610,6 +665,7 @@ export class Game {
   }
 
   private win(): void {
+    this.audio.win();
     this.escaped = true;
     this.dead = true;
     this.touch?.release();
@@ -621,7 +677,8 @@ export class Game {
       ['Lugares descubiertos', `${discovered} / ${discovered}`],
       ['Objetos creados', String(this.craftedCount)],
       ['Enemigos derrotados', String(this.kills)],
-      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, true))],
+      ['Reliquias', `${this.relicsFound} / ${this.world.relics.length}`],
+      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, true, this.relicsFound))],
     ], 'Has salido del bosque');
   }
 
@@ -629,6 +686,10 @@ export class Game {
     const eye = this.player.position.clone();
     eye.y += 1.2;
     this.focused = this.world.findInteractable(eye, this.player.forwardDir());
+    if (this.world.relicNear(this.player.position, 2.6)) {
+      this.hud.setPrompt('<kbd>E</kbd>Recoger reliquia');
+      return;
+    }
     const near = this.world.landmarkNear(this.player.position, 9);
     if (near?.id === 'tree' && near.discovered) {
       this.hud.setPrompt(this.treeCooldown > 0 ? `Los frutos vuelven en ${Math.ceil(this.treeCooldown)} s` : '<kbd>E</kbd>Recoger frutos del Árbol Anciano');
@@ -650,6 +711,7 @@ export class Game {
   }
 
   private die(): void {
+    this.audio.die();
     this.dead = true;
     this.touch?.release();
     if (!this.touch) document.exitPointerLock();
@@ -660,7 +722,8 @@ export class Game {
       ['Lugares descubiertos', `${discovered} / ${this.world.landmarks.filter((l) => l.id !== 'exit').length}`],
       ['Objetos creados', String(this.craftedCount)],
       ['Enemigos derrotados', String(this.kills)],
-      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, this.escaped))],
+      ['Reliquias', `${this.relicsFound} / ${this.world.relics.length}`],
+      ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount, this.escaped, this.relicsFound))],
     ]);
   }
 

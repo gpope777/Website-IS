@@ -1,5 +1,6 @@
 import { ITEM_LABELS, RECIPES, canCraft, type Inventory, type ItemId, type Recipe, type Stats } from '../game/survival';
-import type { Landmark, LandmarkId } from '../game/world';
+import type { Landmark, LandmarkId, Relic } from '../game/world';
+import { HALF } from '../game/world';
 import { isTouchDevice } from './touch';
 
 const CONSUME_KEYS: Partial<Record<ItemId, string>> = { berries: '1', mushroom: '2', water: '3', torch: 'T', fish: '4' };
@@ -151,6 +152,7 @@ const DESKTOP_KEYS = `
         <div><kbd>Shift</kbd> correr</div><div><kbd>Espacio</kbd> saltar</div>
         <div><kbd>E</kbd> interactuar</div><div><kbd>C</kbd> crear</div>
         <div><kbd>X / clic</kbd> golpear (puño, o hacha)</div><div><kbd>J</kbd> diario de exploración</div>
+        <div><kbd>4</kbd> comer pescado</div><div><kbd>M</kbd> silenciar sonido</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
         <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
 
@@ -245,21 +247,72 @@ export function deathOverlay(parent: HTMLElement, onRestart: () => void): { el: 
   return { el: o, show };
 }
 
-export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: HTMLElement; refresh: (landmarks: Landmark[]) => void } {
+export interface JournalState {
+  landmarks: Landmark[];
+  relics: Relic[];
+  player: { x: number; z: number; yaw: number };
+}
+
+export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: HTMLElement; refresh: (s: JournalState) => void } {
   const o = el('div', 'overlay');
   o.hidden = true;
   o.innerHTML = `
     <div class="panel journal">
       <h2>Diario de exploración</h2>
       <p class="progress"></p>
+      <div class="map-row"><canvas class="minimap" width="220" height="220"></canvas><div class="relics"><h4>Reliquias</h4><ul></ul></div></div>
       <ul class="places"></ul>
       <button class="secondary" id="close">Cerrar</button>
     </div>`;
   parent.appendChild(o);
-  const list = o.querySelector('ul')!;
+  const list = o.querySelector('ul.places')!;
   const progress = o.querySelector('.progress')!;
   o.querySelector('#close')!.addEventListener('click', onClose);
-  const refresh = (landmarks: Landmark[]) => {
+  const canvas = o.querySelector<HTMLCanvasElement>('.minimap')!;
+  const relicList = o.querySelector<HTMLElement>('.relics ul')!;
+  const relicTitle = o.querySelector<HTMLElement>('.relics h4')!;
+  const drawMap = (s: JournalState) => {
+    const c = canvas.getContext('2d')!;
+    const W = canvas.width;
+    const px = (v: number) => ((v + HALF) / (HALF * 2)) * W;
+    c.fillStyle = '#1b2a20';
+    c.fillRect(0, 0, W, W);
+    c.strokeStyle = 'rgba(255,255,255,0.12)';
+    c.strokeRect(0.5, 0.5, W - 1, W - 1);
+    for (const r of s.relics) {
+      if (!r.found) continue;
+      c.fillStyle = 'rgba(255,224,138,0.5)';
+      c.beginPath();
+      c.arc(px(r.position.x), px(r.position.z), 2, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.font = '14px system-ui';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (const l of s.landmarks) {
+      if (!l.revealed) continue;
+      c.globalAlpha = l.discovered ? 1 : 0.5;
+      c.fillText(LANDMARK_ICONS[l.id], px(l.position.x), px(l.position.z));
+    }
+    c.globalAlpha = 1;
+    const x = px(s.player.x);
+    const y = px(s.player.z);
+    c.fillStyle = '#f0b35a';
+    c.beginPath();
+    c.moveTo(x - Math.sin(s.player.yaw) * 8, y - Math.cos(s.player.yaw) * 8);
+    c.lineTo(x + Math.sin(s.player.yaw + 2.5) * 5, y + Math.cos(s.player.yaw + 2.5) * 5);
+    c.lineTo(x + Math.sin(s.player.yaw - 2.5) * 5, y + Math.cos(s.player.yaw - 2.5) * 5);
+    c.closePath();
+    c.fill();
+  };
+  const refresh = (s: JournalState) => {
+    const { landmarks } = s;
+    drawMap(s);
+    const foundRelics = s.relics.filter((r) => r.found);
+    relicTitle.textContent = `Reliquias ${foundRelics.length} / ${s.relics.length}`;
+    relicList.innerHTML = foundRelics.length
+      ? foundRelics.map((r) => `<li><b>${r.name}</b><br><small>${r.lore}</small></li>`).join('')
+      : '<li><small>Busca destellos dorados cerca de los lugares. Cada reliquia cuenta una parte de la historia.</small></li>';
     const found = landmarks.filter((l) => l.discovered).length;
     const total = landmarks.filter((l) => l.id !== 'exit').length;
     progress.textContent = found >= total
