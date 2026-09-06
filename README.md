@@ -41,6 +41,9 @@ hierba alta (fibra) y el lago (agua). Todo se regenera con el tiempo.
 
 https://gpope777.github.io/Website-IS/
 
+El despliegue usa GitHub Pages. El workflow está en `.github/pages-workflow.yml`; para activarlo, muévelo a
+`.github/workflows/pages.yml` (el token de esta sesión no tenía permiso `workflow` para hacerlo).
+
 ## Desarrollo
 
 ```bash
