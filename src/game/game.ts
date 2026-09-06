@@ -20,6 +20,7 @@ import {
 import { HARVEST, World, type Resource } from './world';
 import { Wolf } from './wolves';
 import { Hud, craftOverlay, deathOverlay, pauseOverlay } from '../ui/hud';
+import { TouchControls, isTouchDevice } from '../ui/touch';
 
 /** Real seconds per in-game day. */
 export const DAY_LENGTH = 6 * 60;
@@ -52,6 +53,7 @@ export class Game {
   private readonly pauseEl: HTMLElement;
   private readonly craftUi: ReturnType<typeof craftOverlay>;
   private readonly deathUi: ReturnType<typeof deathOverlay>;
+  private readonly touch: TouchControls | null = null;
 
   constructor(private readonly container: HTMLElement, seed: string, private readonly onRestart: () => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -77,6 +79,17 @@ export class Game {
     this.hud.setInventory(this.inventory);
     this.hud.setStats(this.stats);
 
+    if (isTouchDevice()) {
+      container.classList.add('touch');
+      this.touch = new TouchControls(container, this.input, {
+        onLook: (dx, dy) => {
+          if (!this.paused && !this.crafting && !this.dead) this.player.look(dx, dy);
+        },
+        onAction: (code) => this.handleAction(code),
+        onPause: () => this.pause(),
+      });
+    }
+
     this.pauseEl = pauseOverlay(container, () => this.requestPointerLock());
     this.craftUi = craftOverlay(
       container,
@@ -99,15 +112,36 @@ export class Game {
     document.removeEventListener('keydown', this.onKeyDown);
     document.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    this.touch?.dispose();
+    this.container.classList.remove('touch');
     this.renderer.dispose();
     this.container.innerHTML = '';
   }
 
   // ---------------------------------------------------------------- input
 
+  /** Resume play. On desktop this goes through pointer lock; on touch there is no lock, so resume directly. */
   private requestPointerLock(): void {
     if (this.dead) return;
+    if (this.touch) {
+      this.resume();
+      return;
+    }
     this.renderer.domElement.requestPointerLock?.();
+  }
+
+  private resume(): void {
+    this.paused = false;
+    this.pauseEl.hidden = true;
+    this.timer.update();
+  }
+
+  private pause(): void {
+    if (this.dead || this.crafting) return;
+    this.paused = true;
+    this.pauseEl.hidden = false;
+    this.touch?.release();
   }
 
   private bindInput(): void {
@@ -116,20 +150,21 @@ export class Game {
     document.addEventListener('keyup', this.onKeyUp);
     document.addEventListener('mousemove', this.onMouseMove);
     this.renderer.domElement.addEventListener('click', () => {
-      if (!this.paused && !this.crafting) this.requestPointerLock();
+      if (!this.paused && !this.crafting && !this.touch) this.requestPointerLock();
     });
+    // Losing the tab (or the phone locking) should pause rather than run blind.
+    document.addEventListener('visibilitychange', this.onVisibility);
   }
 
+  private onVisibility = (): void => {
+    if (document.hidden && this.touch) this.pause();
+  };
+
   private onLockChange = (): void => {
+    if (this.touch) return;
     const locked = document.pointerLockElement === this.renderer.domElement;
-    if (locked) {
-      this.paused = false;
-      this.pauseEl.hidden = true;
-      this.timer.update();
-    } else if (!this.crafting && !this.dead) {
-      this.paused = true;
-      this.pauseEl.hidden = false;
-    }
+    if (locked) this.resume();
+    else if (!this.crafting && !this.dead) this.pause();
   };
 
   private onMouseMove = (e: MouseEvent): void => {
@@ -154,6 +189,19 @@ export class Game {
       case 'KeyD': case 'ArrowRight': this.input.right = true; break;
       case 'ShiftLeft': case 'ShiftRight': this.input.sprint = true; break;
       case 'Space': this.input.jump = true; e.preventDefault(); break;
+      default: this.handleAction(e.code);
+    }
+  };
+
+  /** Momentary actions shared by the keyboard and the touch buttons. */
+  private handleAction(code: string): void {
+    if (this.dead) return;
+    if (this.crafting) {
+      if (code === 'KeyC' || code === 'Escape') this.toggleCraft(false);
+      return;
+    }
+    if (this.paused) return;
+    switch (code) {
       case 'KeyE': this.interact(); break;
       case 'KeyC': this.toggleCraft(true); break;
       case 'Digit1': this.eat('berries'); break;
@@ -163,7 +211,7 @@ export class Game {
       case 'KeyF': this.placeItem('campfire'); break;
       case 'KeyR': this.placeItem('shelter'); break;
     }
-  };
+  }
 
   private onKeyUp = (e: KeyboardEvent): void => {
     switch (e.code) {
@@ -189,7 +237,8 @@ export class Game {
     this.craftUi.el.hidden = !open;
     if (open) {
       this.craftUi.refresh(this.inventory);
-      document.exitPointerLock();
+      this.touch?.release();
+      if (!this.touch) document.exitPointerLock();
     } else {
       this.requestPointerLock();
     }
@@ -383,7 +432,8 @@ export class Game {
 
   private die(): void {
     this.dead = true;
-    document.exitPointerLock();
+    this.touch?.release();
+    if (!this.touch) document.exitPointerLock();
     const days = this.time / DAY_LENGTH;
     const discovered = this.world.landmarks.filter((l) => l.discovered).length;
     this.deathUi.show(this.lastCause || 'El bosque no perdona.', [

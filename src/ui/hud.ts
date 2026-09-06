@@ -1,4 +1,5 @@
 import { ITEM_LABELS, RECIPES, canCraft, type Inventory, type ItemId, type Recipe, type Stats } from '../game/survival';
+import { isTouchDevice } from './touch';
 
 const CONSUME_KEYS: Partial<Record<ItemId, string>> = { berries: '1', mushroom: '2', water: '3', torch: 'T' };
 
@@ -107,6 +108,20 @@ export class Hud {
 
 // ---------------------------------------------------------------- overlays
 
+const DESKTOP_KEYS = `
+        <div><kbd>WASD</kbd> moverse</div><div><kbd>Ratón</kbd> mirar</div>
+        <div><kbd>Shift</kbd> correr</div><div><kbd>Espacio</kbd> saltar</div>
+        <div><kbd>E</kbd> interactuar</div><div><kbd>C</kbd> crear</div>
+        <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
+        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
+
+const TOUCH_KEYS = `
+        <div><kbd>Joystick</kbd> moverse</div><div><kbd>Arrastrar</kbd> mirar</div>
+        <div><kbd>Joystick al borde</kbd> correr</div><div><kbd>B</kbd> saltar</div>
+        <div><kbd>A</kbd> interactuar</div><div><kbd>CREAR</kbd> crear objetos</div>
+        <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
+        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
+
 export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: (seed: string) => void): HTMLElement {
   const o = el('div', 'overlay');
   o.innerHTML = `
@@ -114,13 +129,7 @@ export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: 
       <h1>Bosque</h1>
       <p>Te has despertado en medio de un bosque sin recordar cómo llegaste. Explora, recoge recursos, mantente caliente
       y sobrevive tantos días como puedas. Hay cinco lugares que descubrir.</p>
-      <div class="keys">
-        <div><kbd>WASD</kbd> moverse</div><div><kbd>Ratón</kbd> mirar</div>
-        <div><kbd>Shift</kbd> correr</div><div><kbd>Espacio</kbd> saltar</div>
-        <div><kbd>E</kbd> interactuar</div><div><kbd>C</kbd> crear</div>
-        <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
-        <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>
-      </div>
+      <div class="keys">${isTouchDevice() ? TOUCH_KEYS : DESKTOP_KEYS}</div>
       <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.</p>
       <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${defaultSeed}" /></div>
       <button id="start">Entrar al bosque</button>
@@ -140,7 +149,7 @@ export function pauseOverlay(parent: HTMLElement, onResume: () => void): HTMLEle
   o.innerHTML = `
     <div class="panel">
       <h2>Pausa</h2>
-      <p>Haz clic para volver al bosque. El tiempo no corre mientras estás aquí.</p>
+      <p>${isTouchDevice() ? 'Toca Continuar para volver al bosque.' : 'Haz clic para volver al bosque.'} El tiempo no corre mientras estás aquí.</p>
       <button id="resume">Continuar</button>
     </div>`;
   parent.appendChild(o);
@@ -154,7 +163,7 @@ export function craftOverlay(parent: HTMLElement, onCraft: (r: Recipe) => void, 
   o.innerHTML = `
     <div class="panel">
       <h2>Crear objetos</h2>
-      <p>Pulsa el número para crear. <kbd>C</kbd> o <kbd>Esc</kbd> para cerrar.</p>
+      <p>${isTouchDevice() ? 'Toca una receta para crearla.' : 'Pulsa el número para crear. <kbd>C</kbd> o <kbd>Esc</kbd> para cerrar.'}</p>
       <ul class="craft"></ul>
       <button class="secondary" id="close">Cerrar</button>
     </div>`;

@@ -9,6 +9,8 @@ export interface InputState {
   right: boolean;
   sprint: boolean;
   jump: boolean;
+  /** Optional analog movement (touch stick): x = strafe, z = forward(-)/back(+), magnitude ≤ 1. */
+  axis?: { x: number; z: number };
 }
 
 export const EYE_HEIGHT = 1.7;
@@ -39,15 +41,18 @@ export class Player {
     const canSprint = input.sprint && !tired;
     const speed = (canSprint ? 7.5 : 3.8) * (tired ? 0.65 : 1);
     const dir = new THREE.Vector3();
-    if (input.forward) dir.z -= 1;
-    if (input.back) dir.z += 1;
-    if (input.left) dir.x -= 1;
-    if (input.right) dir.x += 1;
-    const moving = dir.lengthSq() > 0;
-    if (moving) {
-      dir.normalize();
-      dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+    if (input.axis) {
+      dir.set(input.axis.x, 0, input.axis.z);
+      if (dir.lengthSq() > 1) dir.normalize();
+    } else {
+      if (input.forward) dir.z -= 1;
+      if (input.back) dir.z += 1;
+      if (input.left) dir.x -= 1;
+      if (input.right) dir.x += 1;
+      if (dir.lengthSq() > 0) dir.normalize();
     }
+    const moving = dir.lengthSq() > 0;
+    if (moving) dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
 
     const target = dir.multiplyScalar(speed);
     const accel = this.onGround ? 12 : 3;
