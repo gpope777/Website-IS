@@ -37,6 +37,10 @@ hierba alta (fibra) y el lago (agua). Todo se regenera con el tiempo.
 - Three.js para el render 3D (terreno por ruido fractal, instancing para la vegetación, sombras, ciclo de luz)
 - Vitest para la simulación de supervivencia, que es lógica pura sin DOM
 
+## Jugar en línea
+
+https://gpope777.github.io/Website-IS/
+
 ## Desarrollo
 
 ```bash
