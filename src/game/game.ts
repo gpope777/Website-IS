@@ -19,6 +19,7 @@ import {
 } from './survival';
 import { HARVEST, World, type Resource } from './world';
 import { Wolf } from './wolves';
+import { Creature, CREATURE_KINDS } from './creatures';
 import { Hud, craftOverlay, deathOverlay, pauseOverlay } from '../ui/hud';
 import { TouchControls, isTouchDevice } from '../ui/touch';
 
@@ -33,6 +34,9 @@ export class Game {
   private readonly player: Player;
   private readonly hud: Hud;
   private readonly wolves: Wolf[] = [];
+  private readonly creatures: Creature[] = [];
+  private attackCooldown = 0;
+  private kills = 0;
   private readonly torchLight: THREE.PointLight;
   private readonly timer = new THREE.Timer();
   private readonly input: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false };
@@ -74,6 +78,7 @@ export class Game {
     this.world.scene.add(this.torchLight);
 
     for (let i = 0; i < 3; i++) this.wolves.push(new Wolf(this.world, hashSeed(seed + ':wolf' + i)));
+    for (let i = 0; i < CREATURE_KINDS; i++) this.creatures.push(new Creature(this.world, hashSeed(seed + ':creature' + i), i));
 
     this.hud = new Hud(container);
     this.hud.setInventory(this.inventory);
@@ -165,6 +170,9 @@ export class Game {
     this.renderer.domElement.addEventListener('click', () => {
       if (!this.paused && !this.crafting && !this.touch) this.requestPointerLock();
     });
+    this.renderer.domElement.addEventListener('mousedown', (e) => {
+      if (e.button === 0 && document.pointerLockElement === this.renderer.domElement) this.handleAction('KeyX');
+    });
     // Losing the tab (or the phone locking) should pause rather than run blind.
     document.addEventListener('visibilitychange', this.onVisibility);
     // Fallback for devices the media query misses: the first real touch turns the controls on.
@@ -218,6 +226,7 @@ export class Game {
     if (this.paused) return;
     switch (code) {
       case 'KeyE': this.interact(); break;
+      case 'KeyX': this.attack(); break;
       case 'KeyC': this.toggleCraft(true); break;
       case 'Digit1': this.eat('berries'); break;
       case 'Digit2': this.eat('mushroom'); break;
@@ -319,6 +328,42 @@ export class Game {
     this.hud.notify(kind === 'campfire' ? 'Fogata encendida. Quédate cerca para entrar en calor.' : 'Refugio montado. Duerme aquí para no pasar frío.');
   }
 
+  /** Punch (or swing the axe) at whatever is in front of you. */
+  private attack(): void {
+    if (this.attackCooldown > 0) return;
+    const hasAxe = (this.inventory.axe ?? 0) > 0;
+    this.attackCooldown = hasAxe ? 0.7 : 0.45;
+    this.hud.swing(hasAxe ? '🪓' : '👊');
+    const damage = hasAxe ? 20 : 10;
+    const from = this.player.position;
+    const fwd = this.player.forwardDir();
+    const reach = 2.8;
+    const inFront = (p: THREE.Vector3, radius: number): boolean => {
+      const d = new THREE.Vector3().subVectors(p, from);
+      d.y = 0;
+      const dist = d.length();
+      if (dist > reach + radius) return false;
+      return dist < radius || d.normalize().dot(fwd) > 0.6;
+    };
+    for (const c of this.creatures) {
+      if (!c.alive || !inFront(c.position, 1)) continue;
+      if (c.hit(damage, from)) {
+        this.kills++;
+        this.stats.energy = Math.min(100, this.stats.energy + 5);
+        this.hud.notify('¡Has derrotado a la criatura!');
+      } else this.hud.notify(`Golpeas a la criatura (${Math.max(0, c.hp)} PV)`);
+      return;
+    }
+    for (const w of this.wolves) {
+      if (!inFront(w.position, 0.8)) continue;
+      if (w.hit(damage)) {
+        this.kills++;
+        this.hud.notify('¡El lobo cae!');
+      } else this.hud.notify('El lobo huye aullando.');
+      return;
+    }
+  }
+
   private interact(): void {
     if (this.harvestCooldown > 0) return;
     const res = this.focused;
@@ -363,6 +408,7 @@ export class Game {
     this.elapsed += dt;
     this.time += dt;
     this.harvestCooldown = Math.max(0, this.harvestCooldown - dt);
+    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     if (this.torchTime > 0) this.torchTime = Math.max(0, this.torchTime - dt);
 
     const move = this.player.update(this.input, dt, this.stats.energy);
@@ -386,6 +432,15 @@ export class Game {
         this.stats.health = Math.max(0, this.stats.health - dmg);
         this.lastCause = 'Un lobo te alcanzó en la oscuridad.';
         this.hud.notify('¡Un lobo te ha mordido! Busca fuego.');
+      }
+    }
+
+    for (const c of this.creatures) {
+      const dmg = c.update(dt, pos, night, this.elapsed);
+      if (dmg > 0) {
+        this.stats.health = Math.max(0, this.stats.health - dmg);
+        this.lastCause = 'Una criatura del bosque te devoró.';
+        this.hud.notify('¡Una criatura te ataca! Golpéala (X o clic).');
       }
     }
 
@@ -455,6 +510,7 @@ export class Game {
       ['Días sobrevividos', days.toFixed(1)],
       ['Lugares descubiertos', `${discovered} / ${this.world.landmarks.length}`],
       ['Objetos creados', String(this.craftedCount)],
+      ['Enemigos derrotados', String(this.kills)],
       ['Puntuación', String(scoreFor(this.elapsed, discovered, this.craftedCount))],
     ]);
   }

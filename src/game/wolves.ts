@@ -12,6 +12,8 @@ export class Wolf {
   private attackCooldown = 0;
   private rng: () => number;
   state: 'roam' | 'stalk' | 'flee' = 'roam';
+  hp = 40;
+  private hurt = 0;
 
   constructor(private readonly world: World, seed: number) {
     this.rng = createRng(seed);
@@ -58,6 +60,18 @@ export class Wolf {
     this.retarget = 6 + this.rng() * 8;
   }
 
+  /** Returns true if the wolf died. A hit wolf runs away and comes back later at full health. */
+  hit(damage: number): boolean {
+    this.hp -= damage;
+    this.hurt = 3;
+    if (this.hp <= 0) {
+      this.hp = 40;
+      this.position.set((this.rng() - 0.5) * 200, 0, (this.rng() - 0.5) * 200);
+      return true;
+    }
+    return false;
+  }
+
   /** Returns damage dealt to the player this frame. */
   update(dt: number, player: THREE.Vector3, night: boolean, playerHasLight: boolean, t: number): number {
     this.retarget -= dt;
@@ -66,7 +80,8 @@ export class Wolf {
     toPlayer.y = 0;
     const dist = toPlayer.length();
     const nearFire = this.world.placed.some((p) => p.kind === 'campfire' && p.position.distanceTo(player) < 9);
-    const scared = nearFire || playerHasLight;
+    this.hurt = Math.max(0, this.hurt - dt);
+    const scared = nearFire || playerHasLight || this.hurt > 0;
 
     if (scared && dist < 14) this.state = 'flee';
     else if (night && dist < 45) this.state = 'stalk';

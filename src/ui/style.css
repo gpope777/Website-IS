@@ -200,3 +200,13 @@ canvas { display: block; }
   .touch-pills .touch-btn { width: 48px; height: 38px; }
   .touch .stats { display: none; }
 }
+
+.hand { position: absolute; right: 18%; bottom: -30%; font-size: 120px; pointer-events: none; opacity: 0; transform: rotate(-20deg); }
+.hand.swing { animation: swing 0.3s ease-out; }
+@keyframes swing {
+  0% { opacity: 1; bottom: -30%; transform: rotate(-20deg) scale(0.8); }
+  40% { opacity: 1; bottom: 8%; transform: rotate(10deg) scale(1.15); }
+  100% { opacity: 0; bottom: 0%; transform: rotate(0deg) scale(1); }
+}
+.touch-actions .btn-x { right: 100px; bottom: 100px; width: 66px; height: 66px; font-size: 20px; background: rgba(240, 190, 60, 0.28); border-color: rgba(240, 190, 60, 0.7); }
+@media (max-width: 700px) { .touch-actions .btn-x { right: 86px; bottom: 84px; width: 56px; height: 56px; } }

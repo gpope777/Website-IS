@@ -36,6 +36,7 @@ interface ButtonDef {
 const ACTION_BUTTONS: ButtonDef[] = [
   { code: 'KeyE', label: 'A', sub: 'usar', cls: 'btn-a' },
   { code: 'Space', label: 'B', sub: 'saltar', cls: 'btn-b', hold: 'jump' },
+  { code: 'KeyX', label: 'X', sub: 'golpear', cls: 'btn-x' },
 ];
 
 const PILL_BUTTONS: ButtonDef[] = [

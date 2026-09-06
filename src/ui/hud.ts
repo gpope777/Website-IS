@@ -12,6 +12,7 @@ export class Hud {
   private prompt: HTMLElement;
   private log: HTMLElement;
   private vignette: HTMLElement;
+  private hand: HTMLElement;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud');
@@ -48,8 +49,9 @@ export class Hud {
     this.prompt = el('div', 'prompt');
     this.log = el('div', 'log');
     this.vignette = el('div', 'vignette');
+    this.hand = el('div', 'hand');
 
-    this.root.append(this.vignette, clock, stats, this.inv, el('div', 'crosshair'), this.prompt, this.log);
+    this.root.append(this.vignette, clock, stats, this.inv, el('div', 'crosshair'), this.prompt, this.log, this.hand);
   }
 
   setStats(s: Stats): void {
@@ -70,6 +72,14 @@ export class Hud {
     const mm = String(minutes % 60).padStart(2, '0');
     this.clock.innerHTML = `Día <b>${day}</b> · ${hh}:${mm}`;
     this.clockSub.textContent = night ? `${phaseLabel} — cuidado con los lobos` : phaseLabel;
+  }
+
+  /** Flash a punch/axe swing at the bottom of the screen. */
+  swing(icon: string): void {
+    this.hand.textContent = icon;
+    this.hand.classList.remove('swing');
+    void this.hand.offsetWidth;
+    this.hand.classList.add('swing');
   }
 
   setInventory(inv: Inventory): void {
@@ -112,6 +122,7 @@ const DESKTOP_KEYS = `
         <div><kbd>WASD</kbd> moverse</div><div><kbd>Ratón</kbd> mirar</div>
         <div><kbd>Shift</kbd> correr</div><div><kbd>Espacio</kbd> saltar</div>
         <div><kbd>E</kbd> interactuar</div><div><kbd>C</kbd> crear</div>
+        <div><kbd>X / clic</kbd> golpear (puño, o hacha)</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
         <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
 
@@ -119,6 +130,7 @@ const TOUCH_KEYS = `
         <div><kbd>Joystick</kbd> moverse</div><div><kbd>Arrastrar</kbd> mirar</div>
         <div><kbd>Joystick al borde</kbd> correr</div><div><kbd>B</kbd> saltar</div>
         <div><kbd>A</kbd> interactuar</div><div><kbd>CREAR</kbd> crear objetos</div>
+        <div><kbd>X</kbd> golpear (puño, o hacha)</div>
         <div><kbd>1 2 3</kbd> comer / beber</div><div><kbd>T</kbd> antorcha</div>
         <div><kbd>F</kbd> colocar fogata</div><div><kbd>R</kbd> colocar refugio</div>`;
 
