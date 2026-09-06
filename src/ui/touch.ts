@@ -101,7 +101,30 @@ export class TouchControls {
     system.appendChild(pause);
 
     this.root.append(look, this.stickBase, actions, pills, system);
+
+    // iOS Safari ignores `user-scalable=no`: double-tap and pinch still zoom the page and there is
+    // no way back for the player. Cancel those gestures at the source while the controls exist.
+    this.root.addEventListener('touchstart', this.blockGesture, { passive: false });
+    this.root.addEventListener('touchmove', this.blockGesture, { passive: false });
+    this.root.addEventListener('touchend', this.blockDoubleTap, { passive: false });
+    document.addEventListener('gesturestart', this.blockGesture, { passive: false });
+    document.addEventListener('gesturechange', this.blockGesture, { passive: false });
+    document.addEventListener('dblclick', this.blockGesture, { passive: false });
   }
+
+  private lastTapEnd = 0;
+
+  private blockGesture = (e: Event): void => {
+    if (e.cancelable) e.preventDefault();
+  };
+
+  private blockDoubleTap = (e: TouchEvent): void => {
+    const now = performance.now();
+    if (now - this.lastTapEnd < 350 && e.cancelable) e.preventDefault();
+    this.lastTapEnd = now;
+    // Always cancel on our own controls so Safari never synthesises a zoom from the tap.
+    if (e.cancelable) e.preventDefault();
+  };
 
   /** Clear every held flag, e.g. when the game pauses or a menu opens. */
   release(): void {
@@ -115,6 +138,9 @@ export class TouchControls {
 
   dispose(): void {
     this.release();
+    document.removeEventListener('gesturestart', this.blockGesture);
+    document.removeEventListener('gesturechange', this.blockGesture);
+    document.removeEventListener('dblclick', this.blockGesture);
     this.root.remove();
   }
 

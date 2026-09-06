@@ -12,7 +12,9 @@
   color: var(--fg);
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1220; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1220; touch-action: manipulation; overscroll-behavior: none; }
+#app.touch, #app.touch canvas { touch-action: none; }
+.overlay, .overlay * { touch-action: manipulation; }
 #app { position: fixed; inset: 0; }
 canvas { display: block; }
 
