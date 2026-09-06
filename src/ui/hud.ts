@@ -174,6 +174,9 @@ export interface ScoreEntry {
 
 const SCORES_KEY = 'bosque.scores';
 
+/** Seeds come from the URL and are persisted, so they must never be parsed as HTML. */
+const esc = (v: string): string => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
 export function loadScores(): ScoreEntry[] {
   try {
     return JSON.parse(localStorage.getItem(SCORES_KEY) ?? '[]') as ScoreEntry[];
@@ -196,7 +199,7 @@ function scoresHtml(list: ScoreEntry[], highlight?: ScoreEntry): string {
   if (list.length === 0) return '';
   return `<div class="scores"><h4>Mejores partidas</h4><ol>${list
     .slice(0, 5)
-    .map((s) => `<li class="${s === highlight ? 'me' : ''}"><span>${s.escaped ? '🚪' : '💀'} ${s.days.toFixed(1)} días · semilla <code>${s.seed}</code></span><b>${s.score}</b></li>`)
+    .map((s) => `<li class="${s === highlight ? 'me' : ''}"><span>${s.escaped ? '🚪' : '💀'} ${s.days.toFixed(1)} días · semilla <code>${esc(s.seed)}</code></span><b>${s.score}</b></li>`)
     .join('')}</ol></div>`;
 }
 
@@ -209,7 +212,7 @@ export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: 
       y sobrevive tantos días como puedas. Sigue las columnas de luz: seis lugares guardan la historia de quien estuvo aquí antes, y la salida del bosque.</p>
       <div class="keys">${isTouchDevice() ? TOUCH_KEYS : DESKTOP_KEYS}</div>
       <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.</p>
-      <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${defaultSeed}" /></div>
+      <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${esc(defaultSeed)}" /></div>
       <button id="start">Entrar al bosque</button>
       ${scoresHtml(loadScores())}
     </div>`;
