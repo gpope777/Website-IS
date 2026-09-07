@@ -9,7 +9,7 @@ export interface Beast {
   tip: string;
 }
 
-/** Index = concept-art sprite (enemy1..14.png). Last index = the Gate Guardian. */
+/** Index = concept-art sprite (enemy1..15.png). Last index = the Gate Guardian. */
 export const BESTIARY: Beast[] = [
   { name: 'Tragón de Ruedas', lore: 'Una boca morada sobre dos ruedas. No se sabe qué come, pero siempre tiene hambre.', tip: '«Rueda rápido en llano; súbete a una cuesta y se cansa.»' },
   { name: 'Araña Sol', lore: 'Cabeza amarilla con orejas de gato y ocho patas negras. Sonríe siempre. Eso es lo peor.', tip: '«Los ojos rojos brillan de noche. Si los ves parpadear, ya te ha visto.»' },
@@ -25,6 +25,7 @@ export const BESTIARY: Beast[] = [
   { name: 'Péndulo', lore: 'Una gota negra colgada de una barra con dos ojos rojos. Flota y deja burbujas en el aire.', tip: '«Muerde solo si está encima. Mírale los ojos y retrocede.»' },
   { name: 'Capucha', lore: 'Un cuerpo lila con capucha de tela y dos alas de hilo. Enseña dos dientes cuando te ve.', tip: '«Le gustan los cobertizos. Cierra la puerta.»' },
   { name: 'Estrella Enamorada', lore: 'Una estrella de trapo con corazones rotos por ojos. No parece enfadada. Lo está.', tip: '«Le atraen las reliquias. Cógelas y sigue andando.»' },
+  { name: 'Espantapájaros Verde', lore: 'Un poste torcido en forma de cruz, verde como el musgo, con dos brazos finos que cuelgan sin fuerza. De lejos parece un árbol muerto. De cerca, te mira.', tip: '«No se mueve si no te mueves tú. Aparta la vista y rodéalo.»' },
   { name: 'Guardián de la Puerta', lore: 'El primero de todos, crecido hasta tapar el cielo. Lleva treinta años esperando a que alguien llegue a la Puerta.', tip: '«No huyas. Golpea, retrocede, golpea. El hacha lo acaba en la mitad de tiempo.»' },
 ];
 
