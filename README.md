@@ -28,18 +28,28 @@ El fuego (fogata o antorcha) los espanta y te devuelve calor. El refugio reduce 
 **Recursos:** árboles (madera; el hacha da el doble), rocas (piedra), arbustos (bayas), setas (alimentan pero restan salud),
 hierba alta (fibra) y el lago (agua). Todo se regenera con el tiempo.
 
+**Fibra:** sale de los matojos de hierba alta dorada, más altos y claros que la hierba normal. Ponte encima y pulsa
+<kbd>E</kbd> para sacar una fibra; el matojo no se agota. Salen en los claros, nunca en el bosque cerrado, aparecen como
+manchas doradas en el mapa del diario (<kbd>J</kbd>) y el más cercano a menos de 24 m se marca en la brújula con 🌾.
+También hay tres fibras en la caja de la Cabaña abandonada. La necesitas para el hacha (1), la antorcha (2), el refugio
+(4) y la casa (6).
+
 **Construcción:** con madera, piedra y fibra puedes levantar una casa (te protege de la lluvia y el frío), una atalaya
 (revela en la brújula los lugares a menos de 120 m) y vallas. El bosque también tiene aldeas abandonadas, ruinas, atalayas
 y puentes de tablones repartidos por el mapa.
 
 **Exploración:** hay cinco lugares escondidos en el bosque. Cada descubrimiento suma puntos y algo de energía.
 
+**Mapa:** el diario (<kbd>J</kbd>) dibuja el bosque entero con relieve, el lago, los claros y las manchas de hierba alta.
+Los lugares solo aparecen cuando los has descubierto o revelado.
+
 **Semilla:** la URL guarda `?seed=...`. Misma semilla, mismo bosque.
 
 ## Stack
 
 - TypeScript (strict) + Vite
-- Three.js para el render 3D (terreno por ruido fractal, instancing para la vegetación, sombras, ciclo de luz)
+- Three.js para el render 3D (terreno por ruido fractal, instancing para la vegetación, sombras suaves, ciclo de luz,
+  cúpula de cielo con sol, luna y estrellas, viento en la hierba y oleaje en el lago vía `onBeforeCompile`)
 - Vitest para la simulación de supervivencia, que es lógica pura sin DOM
 
 ## Jugar en línea

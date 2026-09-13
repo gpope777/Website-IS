@@ -28,6 +28,7 @@ export class Hud {
   private hand: HTMLElement;
   private compass: HTMLElement;
   private compassMarks: HTMLElement;
+  private crosshair: HTMLElement;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud');
@@ -68,8 +69,14 @@ export class Hud {
     this.compass = el('div', 'compass');
     this.compassMarks = el('div', 'marks');
     this.compass.append(this.compassMarks, el('i', 'needle'));
+    this.crosshair = el('div', 'crosshair');
 
-    this.root.append(this.vignette, clock, stats, this.inv, el('div', 'crosshair'), this.prompt, this.log, this.hand, this.compass);
+    this.root.append(this.vignette, clock, stats, this.inv, this.crosshair, this.prompt, this.log, this.hand, this.compass);
+  }
+
+  /** Opens the crosshair up when there is something in front of you worth pressing E on. */
+  setTarget(on: boolean): void {
+    this.crosshair.classList.toggle('on', on);
   }
 
   setStats(s: Stats): void {
@@ -215,7 +222,8 @@ export function startOverlay(parent: HTMLElement, defaultSeed: string, onStart: 
       <p>Te has despertado en medio de un bosque sin recordar cómo llegaste. Explora, recoge recursos, mantente caliente
       y sobrevive tantos días como puedas. Sigue las columnas de luz: seis lugares guardan la historia de quien estuvo aquí antes, y la salida del bosque.</p>
       <div class="keys">${isTouchDevice() ? TOUCH_KEYS : DESKTOP_KEYS}</div>
-      <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.</p>
+      <p>El fuego te protege del frío y de los lobos. Las setas alimentan pero sientan mal. No dejes que ninguna barra llegue a cero.
+      Los matojos de hierba alta dorada dan fibra, y aparecen marcados en el mapa del diario.</p>
       <div class="seed"><label for="seed">Semilla del bosque</label><input id="seed" value="${esc(defaultSeed)}" /></div>
       <button id="start">Entrar al bosque</button>
       ${savedSeed ? `<button id="resume" class="secondary">Continuar partida (semilla ${esc(savedSeed)})</button>` : ''}
@@ -304,6 +312,10 @@ export interface JournalState {
   /** Per bestiary index: [seen, killed]. */
   beasts: [boolean, number][];
   player: { x: number; z: number; yaw: number };
+  /** Tall-grass clumps, drawn as golden patches on the map. */
+  fiber: { x: number; z: number }[];
+  /** Pre-rendered terrain of the whole forest, or null to fall back to a flat background. */
+  map: HTMLCanvasElement | null;
 }
 
 export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: HTMLElement; refresh: (s: JournalState) => void } {
@@ -314,7 +326,12 @@ export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: 
       <h2>Diario de exploración</h2>
       <p class="progress"></p>
       <div class="tabs"><button type="button" class="tab on" data-tab="places">Lugares</button><button type="button" class="tab" data-tab="beasts">Bestiario</button></div>
-      <div class="tab-places"><div class="map-row"><canvas class="minimap" width="220" height="220"></canvas><div class="relics"><h4>Reliquias</h4><ul></ul></div></div>
+      <div class="tab-places"><div class="map-row">
+        <div class="map-col">
+          <canvas class="minimap" width="480" height="480"></canvas>
+          <div class="legend"><span class="fiber">Hierba alta (fibra)</span><span class="relic">Reliquia</span><span class="you">Tú</span></div>
+        </div>
+        <div class="relics"><h4>Reliquias</h4><ul></ul></div></div>
       <ul class="places"></ul></div>
       <ul class="beasts" hidden></ul>
       <button class="secondary" id="close">Cerrar</button>
@@ -336,39 +353,92 @@ export function journalOverlay(parent: HTMLElement, onClose: () => void): { el: 
   const canvas = o.querySelector<HTMLCanvasElement>('.minimap')!;
   const relicList = o.querySelector<HTMLElement>('.relics ul')!;
   const relicTitle = o.querySelector<HTMLElement>('.relics h4')!;
+  let fiberSprite: HTMLCanvasElement | null = null;
+  /** Soft golden blob reused for every clump: cheaper than a gradient per patch. */
+  const sprite = (): HTMLCanvasElement => {
+    if (fiberSprite) return fiberSprite;
+    const s = document.createElement('canvas');
+    s.width = s.height = 32;
+    const g = s.getContext('2d')!;
+    const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255, 226, 122, 0.5)');
+    grad.addColorStop(0.35, 'rgba(222, 182, 74, 0.2)');
+    grad.addColorStop(1, 'rgba(222, 182, 74, 0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 32, 32);
+    fiberSprite = s;
+    return s;
+  };
+
   const drawMap = (s: JournalState) => {
     const c = canvas.getContext('2d')!;
     const W = canvas.width;
     const px = (v: number) => ((v + HALF) / (HALF * 2)) * W;
-    c.fillStyle = '#1b2a20';
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, W, W);
+    if (s.map) {
+      c.imageSmoothingEnabled = true;
+      c.drawImage(s.map, 0, 0, W, W);
+    } else {
+      c.fillStyle = '#1b2a20';
+      c.fillRect(0, 0, W, W);
+    }
+
+    // Knock the terrain back a little so the golden meadows read against the greens.
+    c.fillStyle = 'rgba(8, 16, 11, 0.26)';
     c.fillRect(0, 0, W, W);
-    c.strokeStyle = 'rgba(255,255,255,0.12)';
-    c.strokeRect(0.5, 0.5, W - 1, W - 1);
-    for (const r of s.relics) {
-      if (!r.found) continue;
-      c.fillStyle = 'rgba(255,224,138,0.5)';
+
+    // Fibre first, underneath the icons: the blobs add up into visible meadows.
+    const blob = sprite();
+    const r = W * 0.03;
+    c.globalCompositeOperation = 'lighter';
+    for (const f of s.fiber) c.drawImage(blob, px(f.x) - r / 2, px(f.z) - r / 2, r, r);
+    c.globalCompositeOperation = 'source-over';
+
+    for (const rel of s.relics) {
+      if (!rel.found) continue;
+      c.fillStyle = 'rgba(255,224,138,0.85)';
       c.beginPath();
-      c.arc(px(r.position.x), px(r.position.z), 2, 0, Math.PI * 2);
+      c.arc(px(rel.position.x), px(rel.position.z), W * 0.008, 0, Math.PI * 2);
       c.fill();
     }
-    c.font = '14px system-ui';
+
+    c.font = `${Math.round(W * 0.055)}px system-ui`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
+    c.shadowColor = 'rgba(0,0,0,0.65)';
+    c.shadowBlur = W * 0.02;
     for (const l of s.landmarks) {
       if (!l.revealed) continue;
-      c.globalAlpha = l.discovered ? 1 : 0.5;
+      c.globalAlpha = l.discovered ? 1 : 0.55;
       c.fillText(LANDMARK_ICONS[l.id], px(l.position.x), px(l.position.z));
     }
     c.globalAlpha = 1;
+    c.shadowBlur = 0;
+
     const x = px(s.player.x);
     const y = px(s.player.z);
-    c.fillStyle = '#f0b35a';
+    const arrow = W * 0.05;
+    c.fillStyle = '#ffd894';
+    c.strokeStyle = 'rgba(20, 14, 6, 0.85)';
+    c.lineWidth = W * 0.006;
+    c.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    c.shadowBlur = W * 0.02;
     c.beginPath();
-    c.moveTo(x - Math.sin(s.player.yaw) * 8, y - Math.cos(s.player.yaw) * 8);
-    c.lineTo(x + Math.sin(s.player.yaw + 2.5) * 5, y + Math.cos(s.player.yaw + 2.5) * 5);
-    c.lineTo(x + Math.sin(s.player.yaw - 2.5) * 5, y + Math.cos(s.player.yaw - 2.5) * 5);
+    c.moveTo(x - Math.sin(s.player.yaw) * arrow, y - Math.cos(s.player.yaw) * arrow);
+    c.lineTo(x + Math.sin(s.player.yaw + 2.5) * arrow * 0.62, y + Math.cos(s.player.yaw + 2.5) * arrow * 0.62);
+    c.lineTo(x + Math.sin(s.player.yaw - 2.5) * arrow * 0.62, y + Math.cos(s.player.yaw - 2.5) * arrow * 0.62);
     c.closePath();
     c.fill();
+    c.shadowBlur = 0;
+    c.stroke();
+
+    c.strokeStyle = 'rgba(255,255,255,0.14)';
+    c.lineWidth = 2;
+    c.strokeRect(1, 1, W - 2, W - 2);
+    c.fillStyle = 'rgba(255,255,255,0.55)';
+    c.font = `600 ${Math.round(W * 0.038)}px system-ui`;
+    c.fillText('N', W / 2, W * 0.045);
   };
   const refresh = (s: JournalState) => {
     const { landmarks } = s;

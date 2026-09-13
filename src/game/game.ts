@@ -95,7 +95,7 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
@@ -402,7 +402,14 @@ export class Game {
     this.journal = open;
     this.journalUi.el.hidden = !open;
     if (open) {
-      this.journalUi.refresh({ landmarks: this.world.landmarks, relics: this.world.relics, beasts: BESTIARY.map((_, i) => [this.beastSeen[i] ?? false, this.beastKilled[i] ?? 0]), player: { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw } });
+      this.journalUi.refresh({
+        landmarks: this.world.landmarks,
+        relics: this.world.relics,
+        beasts: BESTIARY.map((_, i) => [this.beastSeen[i] ?? false, this.beastKilled[i] ?? 0]),
+        player: { x: this.player.position.x, z: this.player.position.z, yaw: this.player.yaw },
+        fiber: this.world.fiberPatches,
+        map: this.world.mapCanvas(),
+      });
       this.touch?.release();
       if (!this.touch) document.exitPointerLock();
     } else {
@@ -571,6 +578,9 @@ export class Game {
       this.harvestCooldown = 0.8;
       return;
     }
+    // Standing in a clump beats whatever is in the crosshair: otherwise a nearby tree
+    // swallows every E press and the fibre feels broken.
+    if (this.gatherFiber(1.5)) return;
     const res = this.focused;
     if (res) {
       const info = HARVEST[res.kind];
@@ -592,14 +602,18 @@ export class Game {
       this.hud.setInventory(this.inventory);
       return;
     }
-    const fiber = this.world.nearestFiber(this.player.position);
-    if (fiber) {
-      this.inventory = add(this.inventory, 'fiber', 1);
-      this.hud.setInventory(this.inventory);
-      this.audio.pickup();
-      this.hud.notify('+1 fibra de hierba alta');
-      this.harvestCooldown = 0.5;
-    }
+    this.gatherFiber();
+  }
+
+  /** Pull a handful of fibre from a tall-grass clump within `reach`. Returns false if there is none. */
+  private gatherFiber(reach?: number): boolean {
+    if (!this.world.nearestFiber(this.player.position, reach)) return false;
+    this.inventory = add(this.inventory, 'fiber', 1);
+    this.hud.setInventory(this.inventory);
+    this.audio.pickup();
+    this.hud.notify('+1 fibra de hierba alta');
+    this.harvestCooldown = 0.5;
+    return true;
   }
 
   // ---------------------------------------------------------------- loop
@@ -845,6 +859,12 @@ export class Game {
       const d = Math.hypot(dx, dz);
       if (d < 35) marks.push({ rel: rel(dx, dz), icon: '✦', dim: false, label: `${Math.round(d)} m` });
     }
+    const fiber = this.world.nearestFiber(pos, 24);
+    if (fiber) {
+      const dx = fiber.x - pos.x;
+      const dz = fiber.z - pos.z;
+      marks.push({ rel: rel(dx, dz), icon: '🌾', dim: true, label: `${Math.round(Math.hypot(dx, dz))} m` });
+    }
     for (const l of this.world.landmarks) {
       if (!l.revealed) continue;
       const dx = l.position.x - pos.x;
@@ -879,6 +899,7 @@ export class Game {
     const eye = this.player.position.clone();
     eye.y += 1.2;
     this.focused = this.world.findInteractable(eye, this.player.forwardDir());
+    this.hud.setTarget(!!this.focused || !!this.world.nearestFiber(this.player.position, 1.5) || !!this.world.relicNear(this.player.position, 2.6));
     if (this.world.relicNear(this.player.position, 2.6)) {
       this.hud.setPrompt('<kbd>E</kbd>Recoger reliquia');
       return;
@@ -890,6 +911,10 @@ export class Game {
     }
     if (near?.id === 'pier' && near.discovered && this.focused?.kind === 'water') {
       this.hud.setPrompt(this.fishCooldown > 0 ? `Pesca lista en ${Math.ceil(this.fishCooldown)} s` : '<kbd>E</kbd>Pescar');
+      return;
+    }
+    if (this.world.nearestFiber(this.player.position, 1.5)) {
+      this.hud.setPrompt('<kbd>E</kbd>Recoger fibra');
       return;
     }
     if (this.focused) {

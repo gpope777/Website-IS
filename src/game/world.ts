@@ -94,12 +94,33 @@ export class World {
   readonly fog: THREE.Fog;
   private readonly noise: Noise2D;
   private readonly rng: () => number;
+  /** Second stream, used only for looks (tints, blade layout). Keeps world generation byte-stable. */
+  private readonly crng: () => number;
   private readonly heightCache = new Map<string, number>();
-  private readonly fiberPatches: THREE.Vector3[] = [];
+  /** Tall-grass clumps: the places fibre can be gathered. Drawn in gold and shown on the journal map. */
+  readonly fiberPatches: THREE.Vector3[] = [];
+  /** Time uniforms of every material animated in the shader (wind on the grass, swell on the lake). */
+  private readonly timeUniforms: { value: number }[] = [];
+  private readonly sky: THREE.Mesh;
+  private readonly skyUniforms = {
+    uTime: { value: 0 },
+    uTop: { value: new THREE.Color(0x2a5a9e) },
+    uHorizon: { value: new THREE.Color(0xa8c4b0) },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
+    uSunColor: { value: new THREE.Color(0xffe9b8) },
+    uNight: { value: 0 },
+  };
+  private readonly fireflies: THREE.Points;
+  private readonly fireflySeeds: Float32Array;
+  private nightAmount = 0;
+  private readonly playerPos = new THREE.Vector3();
+  private mapCache: HTMLCanvasElement | null = null;
 
   constructor(seed: number) {
     this.noise = new Noise2D(seed);
     this.rng = createRng(seed ^ 0x9e3779b9);
+    this.crng = createRng(seed ^ 0x517cc1b7);
     this.fog = new THREE.Fog(0xa8c4b0, 25, 140);
     this.scene.fog = this.fog;
     this.scene.background = new THREE.Color(0xa8c4b0);
@@ -118,11 +139,20 @@ export class World {
     this.sun.shadow.bias = -0.0015;
     this.scene.add(this.sun, this.sun.target, this.moon, this.hemi);
 
+    this.sky = this.buildSky();
+    this.scene.add(this.sky);
+    const flies = this.buildFireflies();
+    this.fireflies = flies.points;
+    this.fireflySeeds = flies.seeds;
+    this.scene.add(this.fireflies);
+
     this.buildForest();
     this.buildWater();
     this.buildLandmarks();
     this.buildRelics();
     this.buildSettlements();
+    // Last: the landmarks and the hamlets clear the patches they stand on first.
+    this.buildFiberClumps();
   }
 
   // ---------------------------------------------------------------- terrain
@@ -131,6 +161,13 @@ export class World {
     const key = `${(x * 4) | 0}:${(z * 4) | 0}`;
     const cached = this.heightCache.get(key);
     if (cached !== undefined) return cached;
+    const h = this.rawHeight(x, z);
+    this.heightCache.set(key, h);
+    return h;
+  }
+
+  /** Terrain height without touching the cache: for bulk sampling (the journal map). */
+  private rawHeight(x: number, z: number): number {
     const n = this.noise.fbm(x * 0.012 + 100, z * 0.012 + 100, 5);
     const ridge = this.noise.fbm(x * 0.004, z * 0.004, 3);
     const edge = Math.max(Math.abs(x), Math.abs(z)) / HALF;
@@ -142,7 +179,6 @@ export class World {
       const t = dSpawn / 24;
       h = Math.max(h, 0.8) * (1 - t) + h * t;
     }
-    this.heightCache.set(key, h);
     return h;
   }
 
@@ -161,6 +197,7 @@ export class World {
     const dark = new THREE.Color(0x2f5a2a);
     const dirt = new THREE.Color(0x6b5a3e);
     const rock = new THREE.Color(0x7d7f7a);
+    const sand = new THREE.Color(0x9a8a5e);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -169,8 +206,11 @@ export class World {
       pos.setY(i, h);
       const d = this.density(x, z);
       tmp.copy(grass).lerp(dark, d);
+      // Sandy shoreline just above the water line, then mud below it.
+      if (h > -3.4 && h < -0.8) tmp.lerp(sand, 1 - (h + 3.4) / 2.6);
       if (h < -3) tmp.lerp(dirt, Math.min(1, (-3 - h) / 4));
       if (h > 14) tmp.lerp(rock, Math.min(1, (h - 14) / 10));
+      tmp.multiplyScalar(0.9 + this.noise.value(x * 0.33, z * 0.33) * 0.2);
       colors[i * 3] = tmp.r;
       colors[i * 3 + 1] = tmp.g;
       colors[i * 3 + 2] = tmp.b;
@@ -229,6 +269,7 @@ export class World {
     const grassGeo = new THREE.ConeGeometry(0.25, 0.9, 3);
     grassGeo.translate(0, 0.45, 0);
     const grassMat = new THREE.MeshLambertMaterial({ color: 0x7fae4a, side: THREE.DoubleSide });
+    this.wind(grassMat, 0.1);
     const grass = new THREE.InstancedMesh(grassGeo, grassMat, 9000);
 
     const m = new THREE.Matrix4();
@@ -360,14 +401,60 @@ export class World {
       im.frustumCulled = false;
       this.scene.add(im);
     }
+    this.tint(trunks, ti, 0.3);
+    this.tint(crowns, ti, 0.34);
+    this.tint(crowns2, ti, 0.34);
+    this.tint(rocks, ri, 0.26);
+    this.tint(bushes, bi, 0.3);
+    this.tint(caps, mi, 0.3);
+    this.tint(grass, gi, 0.36);
     this.berriesMesh = berries;
     this.treeMeshes = [trunks, crowns, crowns2];
+  }
+
+  /**
+   * Tall golden grass on top of every fibre patch: a tuft of leaning blades, a head above the
+   * ordinary grass and clearly warmer in colour, so a patch reads as gatherable from a distance.
+   */
+  private buildFiberClumps(): void {
+    const BLADES = 10;
+    const geo = new THREE.ConeGeometry(0.075, 1.35, 3);
+    geo.translate(0, 0.675, 0);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xd8c163, side: THREE.DoubleSide });
+    this.wind(mat, 0.06);
+    const mesh = new THREE.InstancedMesh(geo, mat, this.fiberPatches.length * BLADES);
+    mesh.castShadow = true;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const p = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    let i = 0;
+    for (const patch of this.fiberPatches) {
+      for (let k = 0; k < BLADES; k++) {
+        const a = (k / BLADES) * Math.PI * 2 + this.crng() * 0.7;
+        const r = 0.1 + this.crng() * 0.42;
+        p.set(patch.x + Math.cos(a) * r, patch.y - 0.05, patch.z + Math.sin(a) * r);
+        const lean = 0.05 + this.crng() * 0.14;
+        e.set(Math.cos(a) * lean, this.crng() * Math.PI, Math.sin(a) * lean);
+        q.setFromEuler(e);
+        const s = 0.7 + this.crng() * 0.45;
+        scale.set(1, s, 1);
+        m.compose(p, q, scale);
+        mesh.setMatrixAt(i, m);
+        i++;
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.frustumCulled = false;
+    this.tint(mesh, i, 0.34);
+    this.scene.add(mesh);
   }
 
   private berriesMesh!: THREE.InstancedMesh;
   private treeMeshes: THREE.InstancedMesh[] = [];
 
-  /** Tall grass patches where fiber can be gathered (no visual marker; found by walking). */
+  /** Tall golden grass: the clumps you can see on the ground and on the journal map. */
   nearestFiber(pos: THREE.Vector3, maxDist = 2.5): THREE.Vector3 | null {
     let best: THREE.Vector3 | null = null;
     let bd = maxDist;
@@ -384,9 +471,11 @@ export class World {
   // ---------------------------------------------------------------- water
 
   private buildWater(): void {
-    const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 1, 1);
+    const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 120, 120);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshLambertMaterial({ color: 0x2f6f8f, transparent: true, opacity: 0.78 });
+    // Phong (not Lambert) so the sun leaves a glint on the swell.
+    const mat = new THREE.MeshPhongMaterial({ color: 0x2b6a8b, specular: 0x9fd4ea, shininess: 80, transparent: true, opacity: 0.84 });
+    this.waves(mat);
     const water = new THREE.Mesh(geo, mat);
     water.position.y = -3.2;
     water.name = 'water';
@@ -408,6 +497,216 @@ export class World {
         }
       }
     }
+  }
+
+  // ---------------------------------------------------------------- looks
+
+  /**
+   * Bends a material's geometry with a slow double sine, stronger the higher up the blade.
+   * Instanced meshes take their phase from the instance position so no two clumps move alike.
+   */
+  private wind(mat: THREE.Material, amount: number): void {
+    const u = { value: 0 };
+    this.timeUniforms.push(u);
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = u;
+      shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          float phase = instanceMatrix[3].x * 0.8 + instanceMatrix[3].z * 1.1;
+        #else
+          float phase = 0.0;
+        #endif
+        float gust = sin(uTime * 1.6 + phase) * 0.6 + sin(uTime * 0.7 + phase * 1.7) * 0.4;
+        float reach = max(transformed.y, 0.0) * ${amount.toFixed(3)};
+        transformed.x += gust * reach;
+        transformed.z += cos(uTime * 1.1 + phase * 0.9) * reach * 0.6;`,
+      );
+    };
+    // Without this the sway-free Lambert program would be reused for these materials.
+    mat.customProgramCacheKey = () => `wind${amount}`;
+  }
+
+  /** Vertical swell on the lake, with the matching normal so the light moves with it. */
+  private waves(mat: THREE.MeshPhongMaterial): void {
+    const u = { value: 0 };
+    this.timeUniforms.push(u);
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = u;
+      shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`
+        .replace(
+          '#include <beginnormal_vertex>',
+          `float wa = position.x * 0.21 + uTime * 0.85;
+           float wb = position.z * 0.17 - uTime * 0.62;
+           float wc = (position.x + position.z) * 0.07 + uTime * 0.33;
+           vec3 objectNormal = normalize(vec3(-cos(wa) * 0.034 - cos(wc) * 0.021, 1.0, -cos(wb) * 0.022 - cos(wc) * 0.021));`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `vec3 transformed = vec3(position);
+           transformed.y += sin(wa) * 0.16 + sin(wb) * 0.13 + sin(wc) * 0.3;`,
+        );
+    };
+    mat.customProgramCacheKey = () => 'waves';
+  }
+
+  /** Per-instance brightness/warmth multiplier so instanced vegetation isn't one flat colour. */
+  private tint(mesh: THREE.InstancedMesh, count: number, amount: number): void {
+    const c = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const v = 1 + (this.crng() - 0.5) * amount;
+      const warm = (this.crng() - 0.5) * amount * 0.4;
+      c.setRGB(v + warm, v, v - warm);
+      mesh.setColorAt(i, c);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
+  /**
+   * Sky dome: a vertical gradient with the sun, the moon and a field of stars that fades in at
+   * night. It rides along with the player, so the horizon is always at the right distance.
+   */
+  private buildSky(): THREE.Mesh {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vDir = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform vec3 uTop;
+        uniform vec3 uHorizon;
+        uniform vec3 uSunColor;
+        uniform vec3 uSunDir;
+        uniform vec3 uMoonDir;
+        uniform float uNight;
+        uniform float uTime;
+        varying vec3 vDir;
+        float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+        void main() {
+          vec3 dir = normalize(vDir);
+          vec3 col = mix(uHorizon, uTop, pow(clamp(dir.y, 0.0, 1.0), 0.42));
+          vec3 sp = dir * 150.0;
+          vec3 cell = floor(sp);
+          vec3 at = vec3(hash(cell), hash(cell + 11.0), hash(cell + 23.0));
+          float star = smoothstep(0.11, 0.0, length(fract(sp) - at)) * step(0.978, hash(cell + 37.0));
+          star *= smoothstep(0.0, 0.18, dir.y) * (0.65 + 0.35 * sin(uTime * 2.2 + hash(cell) * 30.0));
+          col += vec3(0.86, 0.9, 1.0) * star * uNight;
+          float sd = max(dot(dir, uSunDir), 0.0);
+          col += uSunColor * (pow(sd, 6.0) * 0.3 + smoothstep(0.9965, 0.9988, sd) * 1.7);
+          float md = max(dot(dir, uMoonDir), 0.0);
+          col += vec3(0.74, 0.82, 1.0) * (pow(md, 60.0) * 0.22 + smoothstep(0.9986, 0.9994, md) * 1.5) * uNight;
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(320, 32, 20), mat);
+    mesh.renderOrder = -1;
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+
+  /** Soft round dot used for point sprites; built from data so it needs no canvas. */
+  private static glowTexture(): THREE.DataTexture {
+    const n = 32;
+    const data = new Uint8Array(n * n * 4);
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const d = Math.hypot(x - (n - 1) / 2, y - (n - 1) / 2) / (n / 2);
+        const a = Math.max(0, 1 - d) ** 2.2;
+        const o = (y * n + x) * 4;
+        data[o] = data[o + 1] = data[o + 2] = 255;
+        data[o + 3] = Math.round(a * 255);
+      }
+    }
+    const tex = new THREE.DataTexture(data, n, n);
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  /** Motes of light that drift around the player after dark. */
+  private buildFireflies(): { points: THREE.Points; seeds: Float32Array } {
+    const n = 150;
+    const seeds = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      seeds[i * 4] = (this.crng() - 0.5) * 64;
+      seeds[i * 4 + 1] = -0.4 + this.crng() * 3.4;
+      seeds[i * 4 + 2] = (this.crng() - 0.5) * 64;
+      seeds[i * 4 + 3] = this.crng() * Math.PI * 2;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const points = new THREE.Points(
+      geo,
+      new THREE.PointsMaterial({
+        color: 0xd6ff9c,
+        size: 0.38,
+        map: World.glowTexture(),
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    points.frustumCulled = false;
+    points.visible = false;
+    return { points, seeds };
+  }
+
+  /**
+   * Cartographic render of the whole forest for the journal map: water depth, meadow vs grove and
+   * relief shading. Costs about a tenth of a second, so it is built on first use and then cached.
+   */
+  mapCanvas(size = 256): HTMLCanvasElement {
+    if (this.mapCache) return this.mapCache;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(size, size);
+    const step = WORLD_SIZE / size;
+    const side = size + 1;
+    const heights = new Float32Array(side * side);
+    for (let j = 0; j < side; j++) {
+      for (let i = 0; i < side; i++) heights[j * side + i] = this.rawHeight(-HALF + i * step, -HALF + j * step);
+    }
+    const deep = new THREE.Color(0x143a52);
+    const shallow = new THREE.Color(0x2f7290);
+    const sand = new THREE.Color(0x9c8c60);
+    const meadow = new THREE.Color(0x74a04d);
+    const forest = new THREE.Color(0x2c5431);
+    const stone = new THREE.Color(0x8b8d88);
+    const c = new THREE.Color();
+    for (let j = 0; j < size; j++) {
+      for (let i = 0; i < size; i++) {
+        const h = heights[j * side + i]!;
+        if (h < -3.2) {
+          c.copy(shallow).lerp(deep, Math.min(1, (-3.2 - h) / 7));
+        } else {
+          c.copy(meadow).lerp(forest, Math.min(1, this.density(-HALF + i * step, -HALF + j * step) * 1.3));
+          if (h < -0.8) c.lerp(sand, 1 - (h + 3.2) / 2.4);
+          if (h > 14) c.lerp(stone, Math.min(1, (h - 14) / 10));
+          // Relief: light from the north-west, so ridges and valleys read at a glance.
+          const slope = heights[j * side + i + 1]! + heights[(j + 1) * side + i]! - 2 * h;
+          c.multiplyScalar(Math.max(0.55, Math.min(1.4, 1 - slope * 0.14)));
+        }
+        c.convertLinearToSRGB();
+        const o = (j * size + i) * 4;
+        img.data[o] = Math.min(255, c.r * 255);
+        img.data[o + 1] = Math.min(255, c.g * 255);
+        img.data[o + 2] = Math.min(255, c.b * 255);
+        img.data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    this.mapCache = canvas;
+    return canvas;
   }
 
   // ---------------------------------------------------------------- structures
@@ -853,7 +1152,7 @@ export class World {
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      this.rain = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xcfe3f5, size: 0.12, transparent: true, opacity: 0.6 }));
+      this.rain = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xcfe3f5, size: 0.16, map: World.glowTexture(), transparent: true, opacity: 0.6, depthWrite: false }));
       this.scene.add(this.rain);
     }
     this.raining = on;
@@ -877,6 +1176,10 @@ export class World {
   }
 
   private clearResourcesNear(x: number, z: number, r: number): void {
+    for (let i = this.fiberPatches.length - 1; i >= 0; i--) {
+      const f = this.fiberPatches[i]!;
+      if (Math.hypot(f.x - x, f.z - z) < r) this.fiberPatches.splice(i, 1);
+    }
     for (const res of this.resources) {
       if (res.kind === 'water') continue;
       if (Math.hypot(res.position.x - x, res.position.z - z) < r) {
@@ -1074,24 +1377,71 @@ export class World {
     const daylight = Math.max(0, Math.min(1, (sunY + 0.15) / 0.5));
     this.sun.intensity = 2.4 * daylight;
     this.moon.intensity = 0.3 * (1 - daylight);
-    this.hemi.intensity = 0.15 + 0.6 * daylight;
+    this.hemi.intensity = 0.25 + 0.7 * daylight;
 
     const dusk = 1 - Math.abs(sunY) > 0.85 && sunY > -0.2 ? 1 - Math.abs(sunY) - 0.85 : 0;
-    const day = new THREE.Color(0xa8c8d8);
-    const night = new THREE.Color(0x0b1220);
-    const orange = new THREE.Color(0xd9865a);
-    const sky = night.clone().lerp(day, daylight).lerp(orange, Math.min(1, dusk * 4) * 0.6);
-    (this.scene.background as THREE.Color).copy(sky);
-    this.fog.color.copy(sky);
+    const warm = Math.min(1, dusk * 4) * 0.6;
+    const horizon = this.skyScratch.copy(World.SKY_NIGHT).lerp(World.SKY_DAY, daylight).lerp(World.SKY_DUSK, warm);
+    if (this.raining) horizon.multiplyScalar(0.75);
+    (this.scene.background as THREE.Color).copy(horizon);
+    this.fog.color.copy(horizon);
     const rainMul = this.raining ? 0.55 : 1;
     this.fog.near = (20 + 20 * daylight) * rainMul;
     this.fog.far = (60 + 100 * daylight) * rainMul;
-    if (this.raining) (this.scene.background as THREE.Color).multiplyScalar(0.75);
-    this.fog.color.copy(this.scene.background as THREE.Color);
     this.sun.color.set(daylight > 0.6 ? 0xfff2d8 : 0xffb070);
+
+    this.playerPos.copy(playerPos);
+    this.nightAmount = 1 - daylight;
+    this.sky.position.copy(playerPos);
+    this.skyUniforms.uSunDir.value.set(sunX * 120, sunY * 120, 40).normalize();
+    this.skyUniforms.uMoonDir.value.set(-sunX * 120, -sunY * 120, -40).normalize();
+    this.skyUniforms.uNight.value = this.nightAmount;
+    this.skyUniforms.uHorizon.value.copy(horizon);
+    this.skyUniforms.uTop.value.copy(World.ZENITH_NIGHT).lerp(World.ZENITH_DAY, daylight).lerp(World.SKY_DUSK, warm * 0.5);
+    if (this.raining) this.skyUniforms.uTop.value.multiplyScalar(0.6);
+    this.skyUniforms.uSunColor.value.copy(this.sun.color).multiplyScalar(0.4 + 0.6 * daylight);
   }
 
+  private static readonly SKY_DAY = new THREE.Color(0xa8c8d8);
+  private static readonly SKY_NIGHT = new THREE.Color(0x0b1220);
+  private static readonly SKY_DUSK = new THREE.Color(0xd9865a);
+  private static readonly ZENITH_DAY = new THREE.Color(0x4180c2);
+  private static readonly ZENITH_NIGHT = new THREE.Color(0x050a1a);
+  private readonly skyScratch = new THREE.Color();
+
+  /** Motes drift around the player and wrap across a 72 m box so the swarm never runs out. */
+  private updateFireflies(t: number): void {
+    const strength = Math.max(0, this.nightAmount - 0.45) / 0.55;
+    this.fireflies.visible = strength > 0.02 && !this.raining;
+    if (!this.fireflies.visible) return;
+    (this.fireflies.material as THREE.PointsMaterial).opacity = strength * 0.85;
+    const arr = this.fireflies.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const { x: px, y: py, z: pz } = this.playerPos;
+    for (let i = 0; i < arr.count; i++) {
+      let bx = this.fireflySeeds[i * 4]!;
+      let bz = this.fireflySeeds[i * 4 + 2]!;
+      if (bx - px > 36) bx -= 72;
+      else if (px - bx > 36) bx += 72;
+      if (bz - pz > 36) bz -= 72;
+      else if (pz - bz > 36) bz += 72;
+      this.fireflySeeds[i * 4] = bx;
+      this.fireflySeeds[i * 4 + 2] = bz;
+      const ph = this.fireflySeeds[i * 4 + 3]!;
+      arr.setXYZ(
+        i,
+        bx + Math.sin(t * 0.33 + ph) * 3.4,
+        py + this.fireflySeeds[i * 4 + 1]! + Math.sin(t * 1.2 + ph * 2.1) * 0.5,
+        bz + Math.cos(t * 0.27 + ph * 1.4) * 3.4,
+      );
+    }
+    arr.needsUpdate = true;
+  }
+
+
   animate(t: number): void {
+    for (const u of this.timeUniforms) u.value = t;
+    this.skyUniforms.uTime.value = t;
+    this.updateFireflies(t);
     for (const r of this.relics) {
       if (r.found) continue;
       const gem = r.object.getObjectByName('gem');
