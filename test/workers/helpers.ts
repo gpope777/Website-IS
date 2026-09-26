@@ -13,7 +13,9 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class Client {
   readonly msgs: ServerMsg[] = [];
   private constructor(readonly ws: WebSocket) {
-    ws.addEventListener('message', (e) => this.msgs.push(JSON.parse(String(e.data)) as ServerMsg));
+    ws.addEventListener('message', (e) => {
+      this.msgs.push(JSON.parse(String(e.data)) as ServerMsg);
+    });
   }
 
   static async open(world: string): Promise<Client> {

@@ -11,6 +11,7 @@ const MAX_BAD = 20;
 export class WorldRoom extends DurableObject<Env> {
   private sim: WorldSim | null = null;
   private readonly names = new Map<WebSocket, string>();
+  private readonly pending = new Set<WebSocket>();
   private readonly bad = new Map<WebSocket, number>();
   private readonly limiter = new RateLimiter();
   private loop: ReturnType<typeof setInterval> | null = null;
@@ -39,7 +40,12 @@ export class WorldRoom extends DurableObject<Env> {
     const msg = typeof raw === 'string' && raw.length <= MAX_MSG ? decodeClient(raw) : null;
     if (!msg) return this.strike(ws);
     const name = this.names.get(ws);
-    if (!name) return msg.t === 'hello' ? this.hello(ws, msg) : this.strike(ws);
+    if (!name) {
+      // A hello is already in flight (hashing) for this socket: a second one is either a
+      // buggy/malicious client or a stale duplicate — never let it race the first.
+      if (this.pending.has(ws)) return this.strike(ws);
+      return msg.t === 'hello' ? this.hello(ws, msg) : this.strike(ws);
+    }
     this.sim?.handle(name, msg);
     this.flush();
   }
@@ -86,31 +92,42 @@ export class WorldRoom extends DurableObject<Env> {
     if (msg.v !== PROTOCOL_VERSION) return fail('version');
     const sim = this.load();
     if (!sim) return fail('noworld');
-    const now = Date.now();
-    if (this.limiter.blocked(msg.name, now)) return fail('rate');
-    const hash = await hashPin(msg.pin, sim.salt);
-    const existing = sim.getPlayer(msg.name);
-    if (existing && existing.pinHash !== hash) {
-      this.limiter.fail(msg.name, now);
-      return fail('pin');
+    // Cheap pre-check to fail fast; the authoritative check is after the await below, once
+    // this call is the only one that can act on `msg.name`'s outcome.
+    if (this.limiter.blocked(msg.name, Date.now())) return fail('rate');
+    this.pending.add(ws);
+    try {
+      const hash = await hashPin(msg.pin, sim.salt);
+      // The socket closed, or another hello already claimed it, while we were hashing.
+      if (!this.pending.has(ws) || this.names.has(ws)) return;
+      const now = Date.now();
+      if (this.limiter.blocked(msg.name, now)) return fail('rate');
+      const existing = sim.getPlayer(msg.name);
+      if (existing && existing.pinHash !== hash) {
+        this.limiter.fail(msg.name, now);
+        return fail('pin');
+      }
+      this.limiter.succeed(msg.name);
+      if (!sim.onlineNames().includes(msg.name) && sim.activeCount() >= MAX_ONLINE) return fail('full');
+      // Same name on a new device/tab replaces the old socket (phone reconnects often).
+      for (const [other, n] of this.names) {
+        if (n !== msg.name) continue;
+        this.names.delete(other);
+        other.close(4000, 'replaced');
+      }
+      if (!existing) sim.createPlayer(msg.name, hash);
+      this.names.set(ws, msg.name);
+      this.send(ws, sim.connect(msg.name));
+      this.startLoop();
+    } finally {
+      this.pending.delete(ws);
     }
-    this.limiter.succeed(msg.name);
-    if (!sim.onlineNames().includes(msg.name) && sim.activeCount() >= MAX_ONLINE) return fail('full');
-    // Same name on a new device/tab replaces the old socket (phone reconnects often).
-    for (const [other, n] of this.names) {
-      if (n !== msg.name) continue;
-      this.names.delete(other);
-      other.close(4000, 'replaced');
-    }
-    if (!existing) sim.createPlayer(msg.name, hash);
-    this.names.set(ws, msg.name);
-    this.send(ws, sim.connect(msg.name));
-    this.startLoop();
   }
 
   private drop(ws: WebSocket): void {
     const name = this.names.get(ws);
     this.names.delete(ws);
+    this.pending.delete(ws);
     this.bad.delete(ws);
     if (!name || !this.sim) return;
     this.sim.markAway(name);

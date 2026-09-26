@@ -13,7 +13,11 @@ export default {
     const admin = url.pathname.match(ADMIN);
     if (admin && WORLD_RE.test(admin[1]!)) {
       if (!authorized(request, env)) return new Response('Unauthorized', { status: 401 });
-      return room(env, admin[1]!).fetch(new Request(new URL(`/admin/${admin[2]}`, url), request));
+      const action = admin[2]!;
+      if ((action === 'create' || action === 'import') && request.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+      return room(env, admin[1]!).fetch(new Request(new URL(`/admin/${action}`, url), request));
     }
     if (url.pathname.startsWith('/admin/')) return new Response('Unauthorized', { status: 401 });
     return env.ASSETS.fetch(request);
