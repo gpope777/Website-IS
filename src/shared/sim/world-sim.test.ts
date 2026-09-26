@@ -47,6 +47,47 @@ describe('WorldSim', () => {
     expect(snap(sim, 'Ana').self.fix).toBe(false);
   });
 
+  it('rejects a big jump after idling, even though no move refreshed the anchor', () => {
+    const sim = setup('Ana');
+    for (let i = 0; i < 60; i++) sim.step(1); // idle a full minute; naive elapsed-since-last-move would allow 9*60+1 m
+    const before = { x: sim.getPlayer('Ana')!.x, z: sim.getPlayer('Ana')!.z };
+    sim.handle('Ana', { t: 'move', x: before.x + 50, y: sim.terrain.heightAt(before.x + 50, before.z), z: before.z, yaw: 0, anim: 'run' });
+    expect(sim.getPlayer('Ana')!.x).toBe(before.x);
+    expect(sim.getPlayer('Ana')!.z).toBe(before.z);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+  });
+
+  it('rejects a flood of small moves within one tick that would sum past the anchor budget', () => {
+    const sim = setup('Ana');
+    const start = { x: sim.getPlayer('Ana')!.x, z: sim.getPlayer('Ana')!.z };
+    for (let i = 1; i <= 10; i++) {
+      // Each hop is 1.8 m from the ORIGINAL anchor, not cumulative — a client flooding moves within
+      // one tick (no sim.step between them) can't walk further than the single-tick budget allows.
+      const x = start.x + 1.8 * i;
+      sim.handle('Ana', { t: 'move', x, y: sim.terrain.heightAt(x, start.z), z: start.z, yaw: 0, anim: 'run' });
+    }
+    // Budget for a single tick is MAX_SPEED*TICK_DT+1 = 1.9 m from the anchor, so nothing past the
+    // first ~1 hop should have been accepted.
+    expect(sim.getPlayer('Ana')!.x).toBeLessThanOrEqual(start.x + 1.9 + 1e-9);
+  });
+
+  it('accepts normal walking pace tick after tick', () => {
+    const sim = setup('Ana');
+    let x = sim.getPlayer('Ana')!.x;
+    const z = sim.getPlayer('Ana')!.z;
+    for (let i = 0; i < 20; i++) {
+      sim.step(0.1);
+      x += 0.75; // 7.5 m/s, under MAX_SPEED = 9
+      sim.handle('Ana', { t: 'move', x, y: sim.terrain.heightAt(x, z), z, yaw: 0, anim: 'run' });
+      expect(sim.getPlayer('Ana')!.x).toBeCloseTo(x);
+    }
+  });
+
+  it('rejects creating a player whose name already exists', () => {
+    const sim = setup('Ana');
+    expect(() => sim.createPlayer('Ana', 'other-hash')).toThrow('player exists: Ana');
+  });
+
   it('harvests in reach, with cooldown, and depletes then regrows', () => {
     const sim = setup('Ana', 'Leo');
     const t = tree(sim);

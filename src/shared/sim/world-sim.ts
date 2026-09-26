@@ -54,7 +54,9 @@ export interface Outgoing {
 interface Live {
   anim: Anim;
   awayFor: number | null;
-  lastMoveAt: number;
+  anchorX: number;
+  anchorZ: number;
+  anchorAt: number;
   harvestReadyAt: number;
   punchReadyAt: number;
   fix: boolean;
@@ -119,6 +121,7 @@ export class WorldSim {
 
   /** New record at world spawn. The room has already checked the PIN. */
   createPlayer(name: string, pinHash: string): SavedPlayer {
+    if (this.players.has(name)) throw new Error(`player exists: ${name}`);
     const p: SavedPlayer = { name, pinHash, x: 0, y: this.terrain.heightAt(0, 0), z: 0, yaw: 0, vitals: createVitals(), inv: {}, dead: false };
     this.players.set(name, p);
     return p;
@@ -130,9 +133,11 @@ export class WorldSim {
     let l = this.live.get(name);
     if (l) {
       l.awayFor = null;
-      l.lastMoveAt = this.time;
+      l.anchorX = p.x;
+      l.anchorZ = p.z;
+      l.anchorAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, lastMoveAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -256,8 +261,16 @@ export class WorldSim {
 
   private onMove(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
     if (p.dead) return;
-    const elapsed = Math.max(this.time - l.lastMoveAt, TICK_DT);
-    const moved = Math.hypot(m.x - p.x, m.z - p.z);
+    // Re-anchor at most once per second to the last accepted position, so neither idling
+    // (anchor frozen far in the past) nor flooding many moves within one tick can inflate the
+    // allowed travel distance.
+    if (this.time - l.anchorAt > 1) {
+      l.anchorX = p.x;
+      l.anchorZ = p.z;
+      l.anchorAt = this.time;
+    }
+    const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
+    const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
     const inBounds = Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
     const yOk = m.y > ground - 1 && m.y < ground + 4;
@@ -271,7 +284,6 @@ export class WorldSim {
     p.z = m.z;
     p.yaw = m.yaw;
     l.anim = m.anim;
-    l.lastMoveAt = this.time;
   }
 
   private onHarvest(p: SavedPlayer, l: Live, id: number): void {
@@ -333,7 +345,9 @@ export class WorldSim {
     p.vitals = { ...RESPAWN_VITALS };
     p.dead = false;
     l.fix = true;
-    l.lastMoveAt = this.time;
+    l.anchorX = p.x;
+    l.anchorZ = p.z;
+    l.anchorAt = this.time;
   }
 
   // ---------------------------------------------------------------- helpers
