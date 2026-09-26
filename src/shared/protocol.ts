@@ -13,7 +13,7 @@ export interface Structure { id: number; kind: StructureKind; x: number; y: numb
 /** `fix` = the server rejected your last move; snap to x/y/z. */
 export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean }
 
-export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad';
+export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
 
 export type ClientMsg =
   | { t: 'hello'; v: number; name: string; pin: string }

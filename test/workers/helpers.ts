@@ -12,9 +12,13 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class Client {
   readonly msgs: ServerMsg[] = [];
+  closeCode: number | null = null;
   private constructor(readonly ws: WebSocket) {
     ws.addEventListener('message', (e) => {
       this.msgs.push(JSON.parse(String(e.data)) as ServerMsg);
+    });
+    ws.addEventListener('close', (e) => {
+      this.closeCode = e.code;
     });
   }
 
@@ -48,5 +52,12 @@ export class Client {
 
   close(): void {
     this.ws.close(1000, 'bye');
+  }
+
+  /** Waits for the socket to close, returning its close code. */
+  async waitClosed(timeout = 3000): Promise<number | null> {
+    const start = Date.now();
+    while (this.closeCode === null && Date.now() - start < timeout) await sleep(20);
+    return this.closeCode;
   }
 }

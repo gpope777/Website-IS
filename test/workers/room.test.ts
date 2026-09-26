@@ -74,6 +74,18 @@ describe('joining', () => {
     expect(codes.every((c) => c === 'pin' || c === 'rate')).toBe(true);
   });
 
+  it('replaces the old socket when the same name joins from a second socket', async () => {
+    await createWorld('join-replace');
+    const a = await Client.open('join-replace');
+    expect((await a.join('Ana', '1111')).you).toBe('Ana');
+    const b = await Client.open('join-replace');
+    expect((await b.join('Ana', '1111')).you).toBe('Ana');
+    expect(await a.waitClosed()).toBe(4000);
+    b.send({ t: 'move', x: 0, y: 0, z: 0, yaw: 0, anim: 'idle' });
+    await sleep(200);
+    expect(b.closeCode).toBeNull();
+  });
+
   it('ignores a second hello racing the first on the same socket', async () => {
     await createWorld('join-race');
     const a = await Client.open('join-race');

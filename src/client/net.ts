@@ -58,8 +58,13 @@ export class Connection {
       }
       this.onMsg(m);
     };
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       if (this.closed || this.ws !== ws) return;
+      if (e.code === 4000) {
+        this.closed = true;
+        this.onStatus({ kind: 'fatal', code: 'replaced' });
+        return;
+      }
       this.attempt++;
       this.onStatus({ kind: 'reconnecting', attempt: this.attempt });
       this.timer = window.setTimeout(() => this.open(), backoffMs(this.attempt - 1));

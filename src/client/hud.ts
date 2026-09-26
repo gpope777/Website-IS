@@ -11,6 +11,7 @@ const FATAL: Record<ErrorCode, string> = {
   noworld: 'Ese mundo no existe. Revisa el código.',
   full: 'El mundo está lleno.',
   bad: 'Error de conexión.',
+  replaced: 'Entraste desde otro dispositivo.',
 };
 
 export class Hud {
