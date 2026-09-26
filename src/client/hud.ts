@@ -23,6 +23,11 @@ export class Hud {
   private readonly overlay = el('div', 'overlay');
   menuOpen = false;
 
+  /** True while any overlay panel (menu, death, fatal error) covers the screen. */
+  get overlayOpen(): boolean {
+    return !this.overlay.hidden;
+  }
+
   constructor(parent: HTMLElement) {
     this.root.className = 'hud';
     const stats = el('div', 'stats');
@@ -104,6 +109,7 @@ export class Hud {
   }
 
   private panel(html: string, actions: Record<string, () => void>): void {
+    this.menuOpen = false; // only showMenu (below) sets this back to true; keeps it honest for death/fatal panels
     this.overlay.innerHTML = `<div class="panel">${html}</div>`;
     this.overlay.hidden = false;
     for (const b of this.overlay.querySelectorAll<HTMLElement>('[data-a]')) {

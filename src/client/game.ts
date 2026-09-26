@@ -9,7 +9,7 @@ import { loadModels, type ModelKit } from './actors/models';
 import { CameraRig } from './camera-rig';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
-import { Keyboard, readMove, type Action, type InputState, KEY_ACTIONS } from './input';
+import { clearHold, Keyboard, readMove, type Action, type InputState, KEY_ACTIONS } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
 import { animFor, createBody, stepBody, type Body } from './movement';
@@ -29,6 +29,10 @@ interface Remote {
 }
 
 const IDLE_INPUT = { x: 0, z: 0, sprint: false, jump: false };
+
+/** Suppresses a stray Escape keydown that some browsers echo right after the same
+ * Escape already exited pointer lock (which we turn into opening the menu ourselves). */
+const ESC_GUARD_MS = 300;
 
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
@@ -61,6 +65,8 @@ export class Game {
   private attackUntil = 0;
   private sendTimer = 0;
   private lastSent = '';
+  private disposed = false;
+  private lockMenuOpenedAt = 0;
 
   constructor(private readonly root: HTMLElement, join: JoinInfo, private readonly onLeave: () => void) {
     const t = TIERS[this.tier];
@@ -78,7 +84,9 @@ export class Game {
     this.keyboard = new Keyboard(this.input, (a) => this.onAction(a));
     this.touch = isTouchDevice()
       ? new TouchControls(root, this.input, {
-          onLook: (dx, dy) => this.rig.look(dx, dy),
+          onLook: (dx, dy) => {
+            if (!this.hud.overlayOpen) this.rig.look(dx, dy);
+          },
           onAction: (code) => {
             const a = KEY_ACTIONS[code];
             if (a) this.onAction(a);
@@ -91,6 +99,7 @@ export class Game {
       this.renderer.domElement.addEventListener('click', this.onClick);
       document.addEventListener('mousemove', this.onMouse);
     }
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
     addEventListener('resize', this.onResize);
 
     this.conn = new Connection(
@@ -106,11 +115,13 @@ export class Game {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.conn.close();
     this.renderer.setAnimationLoop(null);
     this.keyboard.dispose();
     this.touch?.dispose();
     document.removeEventListener('mousemove', this.onMouse);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     removeEventListener('resize', this.onResize);
     if (document.pointerLockElement) document.exitPointerLock();
     this.renderer.dispose();
@@ -120,6 +131,7 @@ export class Game {
   // ---------------------------------------------------------------- network
 
   private onStatus(s: NetStatus): void {
+    if (s.kind === 'fatal') this.releaseInputs();
     this.hud.setStatus(s, () => this.onLeave());
   }
 
@@ -219,18 +231,36 @@ export class Game {
     if (self.fix && this.body) {
       Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0 });
     }
-    if (self.dead && !this.dead) this.hud.showDeath(() => {
+    if (self.dead && !this.dead) this.showDeath();
+    this.dead = self.dead;
+  }
+
+  /** Also re-invoked whenever something (menu toggle, a stray pointer-lock Esc) tries to
+   * replace the death panel while still dead: the respawn button must stay reachable. */
+  private showDeath(): void {
+    this.releaseInputs();
+    this.hud.showDeath(() => {
       this.conn.send({ t: 'respawn' });
       this.hud.hideOverlay();
     });
-    this.dead = self.dead;
+  }
+
+  private releaseInputs(): void {
+    clearHold(this.input);
+    this.touch?.release();
   }
 
   // ---------------------------------------------------------------- actions
 
   private onAction(a: Action): void {
     if (a === 'menu') {
-      if (this.hud.menuOpen) return this.hud.hideOverlay();
+      if (this.dead) return this.showDeath();
+      if (this.hud.menuOpen) {
+        // A pointer-lock exit and its Escape keydown can both reach us for the same press.
+        if (performance.now() - this.lockMenuOpenedAt < ESC_GUARD_MS) return;
+        return this.hud.hideOverlay();
+      }
+      this.releaseInputs();
       if (document.pointerLockElement) document.exitPointerLock();
       return this.hud.showMenu(this.tier, {
         onTier: (t) => {
@@ -247,6 +277,16 @@ export class Game {
     if (a === 'campfire' || a === 'wall') return this.place(a);
     this.act();
   }
+
+  /** The browser eats the Escape keydown that exits pointer lock, so open the menu ourselves
+   * when lock is lost mid-game instead of waiting for a keydown that will never arrive. */
+  private onPointerLockChange = (): void => {
+    if (this.disposed || this.dead || this.hud.menuOpen) return;
+    if (document.pointerLockElement !== this.renderer.domElement) {
+      this.lockMenuOpenedAt = performance.now();
+      this.onAction('menu');
+    }
+  };
 
   /** One button does everything: punch the nearest wolf, else gather the nearest resource. */
   private act(): void {

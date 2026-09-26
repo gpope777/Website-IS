@@ -43,6 +43,11 @@ const HOLD: Record<string, keyof Omit<InputState, 'axis'>> = {
   Space: 'jump',
 };
 
+/** Zero every held movement/action flag, e.g. on blur or when an overlay (menu/death) takes over input. */
+export function clearHold(input: InputState): void {
+  for (const k of Object.values(HOLD)) input[k] = false;
+}
+
 export class Keyboard {
   constructor(private readonly input: InputState, private readonly onAction: (a: Action) => void) {
     addEventListener('keydown', this.down);
@@ -73,7 +78,5 @@ export class Keyboard {
     if (hold) this.input[hold] = false;
   };
 
-  private clear = (): void => {
-    for (const k of Object.values(HOLD)) this.input[k] = false;
-  };
+  private clear = (): void => clearHold(this.input);
 }
