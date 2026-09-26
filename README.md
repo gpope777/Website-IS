@@ -1,78 +1,82 @@
-# Bosque — juego de exploración y supervivencia
+# Bosque Online — supervivencia cooperativa
 
-Juego en primera persona para navegador. Te despiertas en un bosque generado proceduralmente y tienes que explorar,
-recolectar recursos, mantenerte caliente y sobrevivir tantos días como puedas.
+Juego de supervivencia en tercera persona para navegador, ahora en línea: hasta varios jugadores comparten el
+mismo bosque generado proceduralmente, ven a los demás en tiempo real y su progreso se guarda en el servidor.
 
 ## Cómo jugar
 
-| Tecla | Acción |
+| Tecla / gesto | Acción |
 | --- | --- |
-| WASD / flechas | Moverse |
-| Ratón | Mirar |
-| Shift | Correr (gasta energía) |
-| Espacio | Saltar |
-| E | Interactuar: talar, recoger, beber |
-| C | Menú de creación |
-| 1 / 2 / 3 | Comer bayas / comer seta / beber agua |
-| T | Encender antorcha |
-| F / R | Colocar fogata / refugio |
-| B / H / V | Construir casa / atalaya / valla |
-| Esc | Pausa |
+| WASD / flechas / stick (móvil) | Moverse |
+| Ratón (clic para capturar) / arrastrar (móvil) | Mirar |
+| Shift | Correr |
+| Espacio / botón B (móvil) | Saltar |
+| E / F o clic / botón A (móvil) | Acción (recolectar, golpear) |
+| 1 | Comer bayas |
+| B | Fogata (5 madera + 3 piedra) |
+| V | Muro (4 madera) |
+| C | Cambiar cámara (3ª / 1ª persona) |
+| Esc | Menú |
 
-**Barras:** salud, hambre, sed, energía y calor. Si hambre, sed, calor o energía llegan a cero, pierdes salud.
-Con hambre y sed altas la salud se regenera sola.
+En móvil: stick de movimiento, arrastrar para mirar, botones A (acción) y B (saltar), píldoras de estado y MENÚ
+en la esquina superior izquierda.
 
-**Ciclo de día:** un día dura 6 minutos reales. De noche baja la temperatura y salen los lobos.
-El fuego (fogata o antorcha) los espanta y te devuelve calor. El refugio reduce el frío y recupera energía.
+## Arquitectura
 
-**Recursos:** árboles (madera; el hacha da el doble), rocas (piedra), arbustos (bayas), setas (alimentan pero restan salud),
-hierba alta (fibra) y el lago (agua). Todo se regenera con el tiempo.
+- `src/shared` — reglas del juego y simulación (lógica pura, sin DOM)
+- `src/server` — Cloudflare Worker (`index.ts`), Durable Object por mundo (`world-room.ts`), autenticación (`auth.ts`)
+- `src/client` — juego en Three.js
 
-**Construcción:** con madera, piedra y fibra puedes levantar una casa (te protege de la lluvia y el frío), una atalaya
-(revela en la brújula los lugares a menos de 120 m) y vallas. El bosque también tiene aldeas abandonadas, ruinas, atalayas
-y puentes de tablones repartidos por el mapa.
-
-**Exploración:** hay cinco lugares escondidos en el bosque. Cada descubrimiento suma puntos y algo de energía.
-
-**Semilla:** la URL guarda `?seed=...`. Misma semilla, mismo bosque.
-
-## Stack
-
-- TypeScript (strict) + Vite
-- Three.js para el render 3D (terreno por ruido fractal, instancing para la vegetación, sombras, ciclo de luz)
-- Vitest para la simulación de supervivencia, que es lógica pura sin DOM
-
-## Jugar en línea
-
-https://gpope777.github.io/Website-IS/
-
-El despliegue usa GitHub Pages. El workflow está en `.github/pages-workflow.yml`; para activarlo, muévelo a
-`.github/workflows/pages.yml` (el token de esta sesión no tenía permiso `workflow` para hacerlo).
+Detalles de diseño: `.superpowers/sdd/2026-09-26-multiplayer-foundation/`. Créditos de modelos 3D:
+[`public/models/CREDITS.md`](public/models/CREDITS.md).
 
 ## Desarrollo
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm test           # tests de la simulación
-npm run check      # tsc
-npm run build      # dist/
+npm run dev:server   # build + Worker + juego en http://localhost:8787 (recomendado)
+npm run dev          # http://localhost:5173, con recarga en caliente (proxy /ws hacia :8787)
+npm run check        # tsc (cliente, servidor, tests de Workers)
+npm test             # simulación y lógica compartida
+npm run test:workers # tests contra el runtime de Cloudflare Workers
 ```
 
-## Estructura
+Para crear un mundo local (usa el token de `.dev.vars`, `ADMIN_TOKEN=dev-admin`):
 
+```bash
+curl -X POST http://localhost:8787/admin/test/create -H "Authorization: Bearer dev-admin"
 ```
-src/
-├── main.ts            # arranque, semilla, reinicio
-├── game/
-│   ├── survival.ts    # estadísticas, inventario, recetas, consumibles (puro, testeado)
-│   ├── world.ts       # terreno, bosque, agua, hitos, objetos colocados, iluminación
-│   ├── player.ts      # controlador en primera persona y colisiones
-│   ├── wolves.ts      # depredador nocturno
-│   ├── game.ts        # bucle principal, input, interacción, HUD
-│   ├── noise.ts       # ruido 2D fractal
-│   └── rng.ts         # PRNG determinista
-└── ui/
-    ├── hud.ts         # HUD y overlays (inicio, pausa, crafteo, muerte)
-    └── style.css
+
+Luego entra con `http://localhost:8787/?mundo=test`.
+
+## Despliegue
+
+Cada push a `main` corre pruebas y despliega automáticamente (`.github/workflows/deploy.yml`). Para desplegar a mano:
+
+```bash
+npm run deploy
+```
+
+Rollback (cliente y servidor juntos):
+
+```bash
+npx wrangler rollback
+```
+
+## Administración de mundos (producción)
+
+Todas las rutas requieren `Authorization: Bearer $ADMIN_TOKEN`.
+
+```bash
+# crear un mundo (opcionalmente con seed)
+curl -X POST https://bosque.<subdominio>.workers.dev/admin/<mundo>/create \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -d '{"seed": "opcional"}'
+
+# exportar backup
+curl https://bosque.<subdominio>.workers.dev/admin/<mundo>/export \
+  -H "Authorization: Bearer $ADMIN_TOKEN" > backups/<mundo>-$(date +%F).json
+
+# importar backup
+curl -X POST https://bosque.<subdominio>.workers.dev/admin/<mundo>/import \
+  -H "Authorization: Bearer $ADMIN_TOKEN" --data-binary @backups/<mundo>-2026-09-26.json
 ```
