@@ -57,7 +57,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
   const huntable = (t: WolfTarget) => !t.dead && !t.fires;
   let target = targets.find((t) => t.name === w.target && huntable(t) && dist(w, t) < WOLF.giveUp) ?? null;
   if (!target) {
-    let best = WOLF.sight;
+    let best: number = WOLF.sight;
     for (const t of targets) {
       const d = dist(w, t);
       if (huntable(t) && d < best) {
