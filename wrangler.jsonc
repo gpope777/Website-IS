@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "bosque",
+  "main": "src/server/index.ts",
+  // If wrangler rejects this date as newer than its runtime, use the date it suggests.
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/ws/*", "/admin/*"]
+  },
+  "durable_objects": { "bindings": [{ "name": "WORLDS", "class_name": "WorldRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorldRoom"] }],
+  "observability": { "enabled": true }
+}
