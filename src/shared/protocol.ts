@@ -1,0 +1,94 @@
+import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
+import type { Vitals } from './survival';
+
+export const PROTOCOL_VERSION = 1;
+
+export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack'] as const;
+export type Anim = (typeof ANIMS)[number];
+export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
+
+export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean }
+export interface WolfView { id: number; x: number; y: number; z: number; yaw: number; anim: WolfAnim }
+export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string }
+/** `fix` = the server rejected your last move; snap to x/y/z. */
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean }
+
+export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad';
+
+export type ClientMsg =
+  | { t: 'hello'; v: number; name: string; pin: string }
+  | { t: 'move'; x: number; y: number; z: number; yaw: number; anim: Anim }
+  | { t: 'harvest'; id: number }
+  | { t: 'place'; kind: StructureKind; x: number; z: number; rot: number }
+  | { t: 'attack'; id: number }
+  | { t: 'eat' }
+  | { t: 'respawn' };
+
+export type ServerMsg =
+  | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
+  | { t: 'error'; code: ErrorCode }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState }
+  | { t: 'res'; id: number; gone: boolean }
+  | { t: 'built'; s: Structure }
+  | { t: 'toast'; text: string };
+
+export const NAME_RE = /^[\p{L}\p{N} _-]{1,16}$/u;
+export const PIN_RE = /^\d{4}$/;
+export const WORLD_RE = /^[a-z0-9-]{3,32}$/;
+
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const id = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+
+function parse(raw: string): Record<string, unknown> | null {
+  try {
+    const p: unknown = JSON.parse(raw);
+    return typeof p === 'object' && p !== null && !Array.isArray(p) ? (p as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Trust boundary: everything a client sends passes through here. */
+export function decodeClient(raw: string): ClientMsg | null {
+  const m = parse(raw);
+  if (!m) return null;
+  switch (m.t) {
+    case 'hello': {
+      const { v, name, pin } = m;
+      return num(v) && typeof name === 'string' && name.trim() === name && NAME_RE.test(name) && typeof pin === 'string' && PIN_RE.test(pin)
+        ? { t: 'hello', v, name, pin }
+        : null;
+    }
+    case 'move': {
+      const { x, y, z, yaw, anim } = m;
+      return num(x) && num(y) && num(z) && num(yaw) && (ANIMS as readonly unknown[]).includes(anim)
+        ? { t: 'move', x, y, z, yaw, anim: anim as Anim }
+        : null;
+    }
+    case 'harvest':
+      return id(m.id) ? { t: 'harvest', id: m.id } : null;
+    case 'attack':
+      return id(m.id) ? { t: 'attack', id: m.id } : null;
+    case 'place': {
+      const { kind, x, z, rot } = m;
+      return (STRUCTURE_KINDS as readonly unknown[]).includes(kind) && num(x) && num(z) && num(rot)
+        ? { t: 'place', kind: kind as StructureKind, x, z, rot }
+        : null;
+    }
+    case 'eat':
+      return { t: 'eat' };
+    case 'respawn':
+      return { t: 'respawn' };
+    default:
+      return null;
+  }
+}
+
+export function encode(m: ClientMsg | ServerMsg): string {
+  return JSON.stringify(m);
+}
+
+/** Round to cm to keep snapshots small. */
+export function r2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
