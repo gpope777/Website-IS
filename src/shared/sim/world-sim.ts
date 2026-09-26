@@ -18,6 +18,8 @@ export const MAX_STRUCTURES = 500;
 export const MAX_ONLINE = 8;
 export const PUNCH = { damage: 20, cooldown: 0.6, reach: 3 } as const;
 export const HARVEST_COOLDOWN = 0.4;
+// Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
+const EPS = 1e-6;
 
 const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado' };
 
@@ -288,7 +290,7 @@ export class WorldSim {
 
   private onHarvest(p: SavedPlayer, l: Live, id: number): void {
     const r = this.resources[id];
-    if (!r || p.dead || this.time < l.harvestReadyAt) return;
+    if (!r || p.dead || this.time + EPS < l.harvestReadyAt) return;
     if (Math.hypot(r.x - p.x, r.z - p.z) > REACH + r.radius) return;
     const def = HARVEST[r.kind];
     const st = this.resState.get(id) ?? { uses: def.uses, regrow: 0 };
@@ -323,7 +325,7 @@ export class WorldSim {
 
   private onAttack(p: SavedPlayer, l: Live, id: number): void {
     const w = this.wolves.find((x) => x.id === id);
-    if (!w || w.hp <= 0 || p.dead || this.time < l.punchReadyAt) return;
+    if (!w || w.hp <= 0 || p.dead || this.time + EPS < l.punchReadyAt) return;
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     l.punchReadyAt = this.time + PUNCH.cooldown;
     l.anim = 'attack';

@@ -107,6 +107,19 @@ describe('WorldSim', () => {
     expect(msgs(sim)).toContainEqual({ t: 'res', id: t.id, gone: false });
   });
 
+  it('accepts a harvest exactly at the cooldown boundary despite float drift', () => {
+    // this.time accumulates 0.1s ticks in floating point; with the default world start time
+    // (DAY_LENGTH*0.33), 4 ticks of 0.1 land ~2.8e-14 short of harvestReadyAt (time + 0.4),
+    // which a naive `this.time < l.harvestReadyAt` check rejects.
+    const sim = setup('Ana');
+    const t = tree(sim);
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'harvest', id: t.id });
+    for (let i = 0; i < 4; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'harvest', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.wood).toBe(2);
+  });
+
   it('builds a campfire when affordable and uses it as spawn', () => {
     const sim = setup('Ana');
     sim.handle('Ana', { t: 'place', kind: 'campfire', x: 2, z: 0, rot: 0 });
