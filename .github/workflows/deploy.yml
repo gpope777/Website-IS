@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      create_worlds:
+        description: 'Mundos a crear, separados por espacio (ej: "test familia-x7k2"). Vacío = ninguno.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -15,6 +20,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,7 +34,27 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run test:workers
-      - run: npx wrangler deploy
+      - name: Deploy
+        run: npx wrangler deploy | tee deploy.log
+      - name: Game URL
+        run: |
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "URL=$URL" >> "$GITHUB_ENV"
+          echo "### Juego: $URL" >> "$GITHUB_STEP_SUMMARY"
+      # The admin password lives only in GitHub secrets; it is re-applied on every deploy.
+      - name: Set ADMIN_TOKEN
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          if [ -n "$ADMIN_TOKEN" ]; then printf '%s' "$ADMIN_TOKEN" | npx wrangler secret put ADMIN_TOKEN; fi
+      - name: Create worlds
+        if: ${{ inputs.create_worlds != '' }}
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          WORLDS: ${{ inputs.create_worlds }}
+        run: |
+          for w in $WORLDS; do
+            code=$(curl -s -o out.json -w '%{http_code}' -X POST "$URL/admin/$w/create" -H "Authorization: Bearer $ADMIN_TOKEN")
+            echo "$w → HTTP $code $(cat out.json)"
+            echo "- \`$w\` → HTTP $code · $URL/?mundo=$w" >> "$GITHUB_STEP_SUMMARY"
+          done
