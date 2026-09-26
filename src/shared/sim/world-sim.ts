@@ -10,6 +10,8 @@ export const DAY_LENGTH = 6 * 60;
 export const TICK_DT = 0.1;
 export const VIEW_RADIUS = 100;
 export const MAX_SPEED = 9;
+/** Cap on the re-anchor allowance window, so idling still bounds the accepted jump distance. */
+const MAX_ANCHOR_WINDOW = 2;
 export const REACH = 3.5;
 export const BUILD_REACH = 6;
 export const FIRE_RADIUS = 4;
@@ -59,6 +61,8 @@ interface Live {
   anchorX: number;
   anchorZ: number;
   anchorAt: number;
+  /** Sim time of the last move accepted for this player (used to re-anchor after a stall). */
+  lastAcceptedAt: number;
   harvestReadyAt: number;
   punchReadyAt: number;
   fix: boolean;
@@ -138,8 +142,9 @@ export class WorldSim {
       l.anchorX = p.x;
       l.anchorZ = p.z;
       l.anchorAt = this.time;
+      l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -263,13 +268,15 @@ export class WorldSim {
 
   private onMove(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
     if (p.dead) return;
-    // Re-anchor at most once per second to the last accepted position, so neither idling
-    // (anchor frozen far in the past) nor flooding many moves within one tick can inflate the
-    // allowed travel distance.
+    // Re-anchor at most once per second to the last accepted position, so flooding many moves
+    // within one tick can't inflate the allowed travel distance. The anchor time goes back to
+    // the last ACCEPTED move (not "now"), so the allowance covers the elapsed stall — capped at
+    // MAX_ANCHOR_WINDOW so idling still bounds the jump (a naive "now" anchor would otherwise
+    // shrink the allowance to one tick and snap the player back after any stall or lag spike).
     if (this.time - l.anchorAt > 1) {
       l.anchorX = p.x;
       l.anchorZ = p.z;
-      l.anchorAt = this.time;
+      l.anchorAt = Math.max(l.lastAcceptedAt, this.time - MAX_ANCHOR_WINDOW);
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
@@ -286,6 +293,7 @@ export class WorldSim {
     p.z = m.z;
     p.yaw = m.yaw;
     l.anim = m.anim;
+    l.lastAcceptedAt = this.time;
   }
 
   private onHarvest(p: SavedPlayer, l: Live, id: number): void {
@@ -350,6 +358,7 @@ export class WorldSim {
     l.anchorX = p.x;
     l.anchorZ = p.z;
     l.anchorAt = this.time;
+    l.lastAcceptedAt = this.time;
   }
 
   // ---------------------------------------------------------------- helpers

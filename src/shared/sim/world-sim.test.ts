@@ -83,6 +83,21 @@ describe('WorldSim', () => {
     }
   });
 
+  it('accepts a move covering the stall gap after a lag spike, instead of snapping back', () => {
+    const sim = setup('Ana');
+    let x = sim.getPlayer('Ana')!.x;
+    const z = sim.getPlayer('Ana')!.z;
+    sim.step(0.1);
+    x += 0.75; // one normal step, to establish a recent accepted move
+    sim.handle('Ana', { t: 'move', x, y: sim.terrain.heightAt(x, z), z, yaw: 0, anim: 'run' });
+    expect(sim.getPlayer('Ana')!.x).toBeCloseTo(x);
+    for (let i = 0; i < 15; i++) sim.step(0.1); // 1.5 s network stall: no moves arrive
+    const jump = x + 1.5 * 7.5; // catch-up move covering the stalled distance at a plausible pace
+    sim.handle('Ana', { t: 'move', x: jump, y: sim.terrain.heightAt(jump, z), z, yaw: 0, anim: 'run' });
+    expect(sim.getPlayer('Ana')!.x).toBeCloseTo(jump);
+    expect(snap(sim, 'Ana').self.fix).toBe(false);
+  });
+
   it('rejects creating a player whose name already exists', () => {
     const sim = setup('Ana');
     expect(() => sim.createPlayer('Ana', 'other-hash')).toThrow('player exists: Ana');

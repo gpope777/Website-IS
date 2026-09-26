@@ -155,21 +155,25 @@ export class WorldRoom extends DurableObject<Env> {
   }
 
   private tick(): void {
-    const sim = this.sim;
-    if (!sim) return this.stopLoop(false);
-    sim.step(TICK_DT);
-    for (const [ws, name] of this.names) {
-      const snap = sim.snapshotFor(name);
-      if (snap) this.send(ws, snap);
+    try {
+      const sim = this.sim;
+      if (!sim) return this.stopLoop(false);
+      sim.step(TICK_DT);
+      for (const [ws, name] of this.names) {
+        const snap = sim.snapshotFor(name);
+        if (snap) this.send(ws, snap);
+      }
+      this.flush();
+      this.sinceSave += TICK_DT;
+      if (this.sinceSave >= SAVE_EVERY) {
+        this.sinceSave = 0;
+        this.persist();
+      }
+      // Everyone left and the away grace period ran out: stop so the object can sleep.
+      if (sim.onlineNames().length === 0) this.stopLoop();
+    } catch (err) {
+      console.error('tick failed', err);
     }
-    this.flush();
-    this.sinceSave += TICK_DT;
-    if (this.sinceSave >= SAVE_EVERY) {
-      this.sinceSave = 0;
-      this.persist();
-    }
-    // Everyone left and the away grace period ran out: stop so the object can sleep.
-    if (sim.onlineNames().length === 0) this.stopLoop();
   }
 
   private flush(): void {
