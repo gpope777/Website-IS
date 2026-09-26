@@ -266,3 +266,11 @@ canvas { display: block; }
 .beasts li p { margin: 4px 0; }
 .beasts li blockquote { margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--health); font-style: italic; }
 .panel #resume { display: block; margin: 10px 0 0; }
+.banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: var(--bg); padding: 6px 14px; border-radius: 16px; font-size: 14px; z-index: 5; }
+.banner[hidden] { display: none; }
+.prompt-line { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: var(--bg); padding: 6px 12px; border-radius: 8px; font-size: 14px; }
+.prompt-line[hidden] { display: none; }
+.panel label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+.panel input, .panel select { width: 100%; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: var(--fg); }
+.panel .err { color: var(--health); min-height: 1.2em; margin-top: 8px; }
+.inventory-line { position: absolute; top: 12px; right: 12px; background: var(--bg); padding: 6px 12px; border-radius: 8px; font-size: 14px; }

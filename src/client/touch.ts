@@ -1,4 +1,4 @@
-import type { InputState } from '../game/player';
+import type { InputState } from './input';
 
 /**
  * True on phones/tablets. Checks, in order: an explicit `?touch=1|0` override,
@@ -34,20 +34,15 @@ interface ButtonDef {
 }
 
 const ACTION_BUTTONS: ButtonDef[] = [
-  { code: 'KeyE', label: 'A', sub: 'usar', cls: 'btn-a' },
+  { code: 'KeyE', label: 'A', sub: 'acción', cls: 'btn-a' },
   { code: 'Space', label: 'B', sub: 'saltar', cls: 'btn-b', hold: 'jump' },
-  { code: 'KeyX', label: 'X', sub: 'golpear', cls: 'btn-x' },
 ];
 
 const PILL_BUTTONS: ButtonDef[] = [
-  { code: 'Digit1', label: '1', sub: '🫐', cls: 'pill' },
-  { code: 'Digit2', label: '2', sub: '🍄', cls: 'pill' },
-  { code: 'Digit3', label: '3', sub: '💧', cls: 'pill' },
-  { code: 'KeyT', label: 'T', sub: '🔦', cls: 'pill' },
-  { code: 'KeyF', label: 'F', sub: '🔥', cls: 'pill' },
-  { code: 'KeyR', label: 'R', sub: '⛺', cls: 'pill' },
-  { code: 'KeyB', label: 'B', sub: '🏠', cls: 'pill' },
-  { code: 'KeyH', label: 'H', sub: '🗼', cls: 'pill' },
+  { code: 'Digit1', label: '🫐', sub: 'comer', cls: 'pill' },
+  { code: 'KeyB', label: '🔥', sub: 'fogata', cls: 'pill' },
+  { code: 'KeyV', label: '🧱', sub: 'muro', cls: 'pill' },
+  { code: 'KeyC', label: '🎥', sub: 'cámara', cls: 'pill' },
 ];
 
 const STICK_RADIUS = 52; // px the knob can travel from centre
@@ -95,14 +90,12 @@ export class TouchControls {
     for (const b of PILL_BUTTONS) pills.appendChild(this.button(b));
 
     const system = div('touch-system');
-    system.appendChild(this.button({ code: 'KeyJ', label: 'DIARIO', cls: 'sys' }));
-    system.appendChild(this.button({ code: 'KeyC', label: 'CREAR', cls: 'sys' }));
-    const pause = this.button({ code: '', label: 'PAUSA', cls: 'sys' });
-    pause.addEventListener('pointerup', (e) => {
+    const menu = this.button({ code: '', label: 'MENÚ', cls: 'sys' });
+    menu.addEventListener('pointerup', (e) => {
       e.preventDefault();
       h.onPause();
     });
-    system.appendChild(pause);
+    system.appendChild(menu);
 
     this.root.append(look, this.stickBase, actions, pills, system);
 
