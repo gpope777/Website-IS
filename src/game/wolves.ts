@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { World } from './world';
 import { HALF } from './world';
-import { createRng } from './rng';
+import { createRng } from '../shared/rng';
 
 /** A simple night predator. It roams, stalks the player in the dark, and fears fire and torches. */
 export class Wolf {

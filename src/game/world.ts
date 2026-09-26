@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { Noise2D } from './noise';
-import { createRng } from './rng';
+import { Noise2D } from '../shared/noise';
+import { createRng } from '../shared/rng';
 import type { ItemId } from './survival';
 
 export const WORLD_SIZE = 480; // metres, square

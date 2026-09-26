@@ -3,22 +3,28 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "check": "tsc --noEmit",
+    "dev:server": "vite build && wrangler dev --port 8787",
+    "build": "vite build",
+    "check": "tsc --noEmit && tsc --noEmit -p src/server && tsc --noEmit -p test/workers",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:workers": "vitest run -c vitest.workers.config.ts",
+    "test:watch": "vitest",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.2.8",
     "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.2",
-    "vitest": "^5.0.0"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.141.0"
   }
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { World } from './world';
 import { HALF } from './world';
-import { createRng } from './rng';
+import { createRng } from '../shared/rng';
 
 /** Number of concept-art sprites in public/enemies (enemy1.png … enemy15.png). */
 export const CREATURE_KINDS = 15;

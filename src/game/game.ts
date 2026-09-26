@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Player, type InputState } from './player';
-import { hashSeed } from './rng';
+import { hashSeed } from '../shared/rng';
 import {
   RECIPES,
   add,
