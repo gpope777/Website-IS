@@ -194,3 +194,21 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador local (Chromium headless, 1000×600, partida importada con Corazón, 4 muros e `invasion: 'pending'`): a los ~20 s apareció la tarjeta "El Marchito entra en el claro…" y la barra "El Marchito · voluntad 400/400"; unos segundos después la risa y "Solo vine a mirar…". Sin errores en consola. El primer intento usó `enemy15.png`, que no tiene transparencia (se veía un rectángulo morado): cambiado a `enemy12.png`. NO verificado en navegador: verle bien de cerca (la cámara no lo encuadró), pegarle hasta echarlo, la visión al vencer al Tragón, móvil (todo eso tiene tests de servidor).
 - Bloqueos: ninguno.
 - Qué probar: vencer al Tragón → visión con sus nombres; salir y volver al Corazón → a los 20 s entra el Marchito desde el lado del tronco; mirar qué muros rompe (los más cercanos al Corazón); pegarle y parar su golpe → baja la voluntad; ¿se le puede echar antes de que termine? (400 de voluntad puede ser mucho o poco: `ENEMY.marchito` en `src/shared/sim/wolves.ts`, `MARCHITO` en `src/shared/sim/marchito.ts`). ¿El dibujo `enemy12` es el que el sobrino quiere para el villano? Cambiarlo es una línea (`MARCHITO_IMG` en `src/client/game.ts`). Ver de noche que el asedio llega del lado de la Raíz-madre.
+
+---
+
+# Decisiones de Gabriel (entrevista 2026-09-27)
+
+**Cierre del Slice 1** (antes del Slice 2, en `aventura/slice-1`):
+- Balance: estacas (ralentizan + dañan de verdad), Tragón menos letal, voluntad/daño de El Marchito.
+- 2ª trampa: **red de raíces** (inmoviliza unos segundos).
+- **Corrupción por zonas** del bosque.
+- Mazmorra: **3–4 puzzles + mini-jefe** = bruto marchito reforzado (más vida + carga).
+
+**Slice 2:**
+- Bioma: **Costa/Lago**, ampliando el mismo mundo (se llega con el ciervo: "cada montura es la llave del siguiente bioma").
+- Poder: **Viento**.
+- Monturas: **pez gigante** (personal, carrera por anillos + anillo final) y **ballena** (una por mundo, lenta, lleva 3–4 jugadores, se doma en co-op).
+- **Invasión 2** incluida (El Marchito se lleva algo → misión de rescate).
+- Nombres: placeholders en un solo archivo; los sobrinos los cambian después.
+- Orden: cierre S1 → spec S2 → planes S2 → implementar. Sin merge ni deploy.
