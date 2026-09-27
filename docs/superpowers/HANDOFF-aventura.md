@@ -257,3 +257,22 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador local (Chromium headless 1000×600): mundo nuevo sin errores de consola. Con la partida importada en la playa (z = 268) se ven la arena, la franja de barro morado-pardo y, detrás, el agua y el bosque. NO verificado: cruzar a caballo, el pasajero con dos clientes, el mar hondo en vivo, ni en móvil.
 - Bloqueos: ninguno.
 - Qué probar: ir al sur a pie hasta el barro (aviso y vida bajando, lento), volver y cruzar a caballo (~5 s). Con dos jugadores: uno a caballo y el otro pulsa A a su lado ("Subir detrás"), cruzan juntos la Ciénaga, y A para bajar. En la playa, nadar mar adentro hasta que "La corriente te devuelve". Constantes: `CIENAGA`/`SWIM_MAX_DEPTH` en `coast.ts`, `COAST`/`COAST_Z0`/`SOUTH` en `terrain.ts`, `MOUNT.seatBack`.
+
+## Slice 2 · S2-B — el Pez Grande — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-B-pez-grande.md`.
+- Commits: T1 reglas del pez (`src/shared/fish.ts`), T2 domar al pez (carrera de anillos, protocolo v14), T3 montar y bucear en el servidor, T4 cliente del pez (anillos, montar, bucear).
+- Tests: npm test 325 (antes 305), test:workers 12, check + build verdes. PROTOCOL_VERSION = 14. Campo guardado nuevo opcional `SavedPlayer.fish` (dónde espera tu pez): las partidas viejas cargan.
+- Cómo funciona:
+  - **Pez salvaje:** uno por mundo, sembrado en los bajíos (HALF+60…80, 1,5–3,5 m de fondo, se llega nadando). Halo dorado; en el cliente da vueltas de 2 m (el servidor lo tiene quieto en su sitio). Cada jugador doma su copia.
+  - **Doma, parte 1:** A a ≤4 m → "Sale disparado". Aparecen **6 anillos** en el agua (sembrados, 10–14 m entre sí, todos nadables a pie); el siguiente brilla, y una línea arriba dice "Anillo 3/6 · 5 s". El servidor cuenta un anillo cuando tu posición validada pasa a ≤2,2 m de su centro, en orden, antes de 7 s. Si no: "Se escapa" y 3 s de espera.
+  - **Doma, parte 2:** el anillo del ciervo, **2 rondas** (3,0 → 4,2 rad/s, zona 1,1 → 0,75). Un amigo a ≤6 m la ensancha ×1,5. Un fallo: "Se sacude y se va. Otra vez" (vuelves a la carrera tras 3 s).
+  - **Montar:** 9 m/s, sprint 14 sin gastar aguante; tope del servidor 15 (+2 s de gracia al bajar). Solo en agua: ni playa, ni Ciénaga, ni **aguas bravas** (30 m alrededor de la isla de la mazmorra). **B / Espacio mantenido = bucear** a 3 m/s hasta el fondo + 0,5; al soltar sube a 4 m/s. Sin límite de aire. La corriente del mar hondo no afecta al pez.
+  - **Bajar:** A (E/M) donde hay <1 m de fondo; en hondo: "Aquí es hondo. Acércate a la orilla". El pez espera allí y A junto a él vuelve a montar. Morir o entrar en la mazmorra te baja.
+- Decisiones/desvíos:
+  - Sin mensaje `tame` nuevo: `mount` gana los actos 6 (carrera), 7 (montar el pez) y 8 (bajar); el acto 1 (toque del anillo) sirve para las dos bestias. `TameView` lleva `beast`.
+  - `PlayerView.ride` pasa de booleano a `'deer' | 'fish' | null` (tests del ciervo adaptados a la unión, cambio buscado). `snap.fish` trae el pez salvaje y los aparcados; `SelfState` gana `fish`, `onFish` y `race`. Los anillos no viajan: el cliente los calcula con la semilla.
+  - El pez es una figura de cajas (azul con aletas naranjas), como el ciervo. Los anillos son toros amarillos/blancos sobre el agua.
+  - En el pez no se puede montar el ciervo ni subir detrás de nadie.
+- Verificado en navegador: no (solo tests + build).
+- Bloqueos: ninguno.
+- Qué probar: bajar a la playa (a caballo), nadar al halo dorado, A, seguir los anillos (¿7 s es justo nadando rápido?), calmarlo con 2 toques. Montado: sprint por el mar, mantener B para bajar al fondo, intentar entrar en la playa y cerca de la isla (se para), volver a la orilla y A para bajar. Constantes: `FISH` en `src/shared/fish.ts`.
