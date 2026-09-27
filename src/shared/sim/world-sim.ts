@@ -2,9 +2,10 @@ import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
+import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type ClientMsg, type GraveView, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
+import { r2, type Anim, type ClientMsg, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type Structure, type WolfView } from '../protocol';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -45,6 +46,8 @@ export interface SavedPlayer {
   vitals: Vitals;
   inv: Inventory;
   dead: boolean;
+  /** Shrine ids cleared (one orb each). Optional: older saves have none. */
+  shrines?: number[];
 }
 
 export interface SavedWorld {
@@ -102,7 +105,10 @@ export class WorldSim {
   readonly terrain: Terrain;
   readonly crags: readonly Crag[];
   readonly resources: ResourceSpawn[];
+  readonly shrines: readonly Shrine[];
   time: number;
+  /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
+  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean }[];
   private readonly players = new Map<string, SavedPlayer>();
   private readonly live = new Map<string, Live>();
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
@@ -125,6 +131,8 @@ export class WorldSim {
     this.terrain = createTerrain(saved.seed);
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
+    this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
+    this.shrineLive = this.shrines.map(() => ({ pulled: [null, null], openUntil: -Infinity, pressed: false }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
@@ -219,6 +227,10 @@ export class WorldSim {
         return this.onShoot(p, l, msg.id);
       case 'revive':
         return this.onRevive(p, msg.name);
+      case 'shrine':
+        return this.onShrine(p, msg.id, msg.part);
+      case 'power':
+        return;
       case 'hello':
         return; // the room handles hello
     }
@@ -251,6 +263,7 @@ export class WorldSim {
       }
     }
 
+    this.stepShrines();
     this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
     if (!night && this.wasNight) this.wolves = [];
@@ -292,7 +305,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: [], shrines: [] };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: [], shrines: this.shrineViews() };
   }
 
   drain(): Outgoing[] {
@@ -474,6 +487,60 @@ export class WorldSim {
     this.say(`${p.name} levantó a ${t.name}`);
   }
 
+  private onShrine(p: SavedPlayer, id: number, part: number): void {
+    const s = this.shrines[id];
+    const st = this.shrineLive[id];
+    if (!s || !st || p.dead) return;
+    if (part > 0) {
+      const lever = s.kind === 'levers' ? s.parts[part - 1] : undefined;
+      if (!lever || Math.hypot(lever.x - p.x, lever.z - p.z) > SHRINE.partReach) return;
+      st.pulled[part - 1] = this.time;
+      const other = st.pulled[2 - part];
+      if (other != null && this.time - other <= SHRINE.leverWindow + EPS) {
+        st.openUntil = this.time + SHRINE.openFor;
+        return this.tell(p.name, 'Algo se abre en el santuario');
+      }
+      return this.tell(p.name, 'La palanca cede. Falta la otra');
+    }
+    const cleared = p.shrines ?? [];
+    if (cleared.includes(id)) return;
+    const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
+    if (Math.hypot(s.orb.x - p.x, s.orb.z - p.z) > reach || p.y < s.orb.y - 2.5) return;
+    if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
+    p.shrines = [...cleared, id];
+    this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
+    if (cleared.length === 0) this.tell(p.name, 'Despierta la Enredadera: H o 🌿 hace crecer una enredadera trepable');
+  }
+
+  private shrineOpen(id: number): boolean {
+    return this.shrines[id]!.kind === 'ledge' || this.time < this.shrineLive[id]!.openUntil;
+  }
+
+  private shrineViews(): ShrineView[] {
+    return this.shrines.map((s, id) => {
+      const st = this.shrineLive[id]!;
+      const open = this.shrineOpen(id);
+      const parts = s.kind === 'plate' ? [st.pressed] : s.parts.map((_, i) => st.pulled[i] != null && (open || this.time - st.pulled[i]! <= SHRINE.leverWindow + EPS));
+      return { id, open, parts };
+    });
+  }
+
+  private stepShrines(): void {
+    this.shrines.forEach((s, id) => {
+      if (s.kind !== 'plate') return;
+      const st = this.shrineLive[id]!;
+      const plate = s.parts[0]!;
+      st.pressed = false;
+      for (const [name, l] of this.live) {
+        const p = this.players.get(name)!;
+        if (p.dead || l.awayFor !== null || Math.hypot(plate.x - p.x, plate.z - p.z) > SHRINE.plateRadius) continue;
+        if (Math.abs(p.y - this.terrain.heightAt(plate.x, plate.z)) > 1.5) continue;
+        st.pressed = true;
+      }
+      if (st.pressed) st.openUntil = this.time + SHRINE.plateHold;
+    });
+  }
+
   private onRespawn(p: SavedPlayer, l: Live): void {
     if (!p.dead) return;
     this.dropGrave(p);
@@ -507,7 +574,7 @@ export class WorldSim {
       dead: p.dead,
       fix,
       reviveLeft: p.dead && l.deadAt !== null ? Math.max(0, Math.ceil(REVIVE.window - (this.time - l.deadAt) - EPS)) : 0,
-      shrines: [],
+      shrines: [...(p.shrines ?? [])],
       powerLeft: 0,
     };
   }

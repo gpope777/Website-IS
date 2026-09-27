@@ -707,3 +707,101 @@ describe('traversal moves', () => {
     expect(sim.getPlayer('Ana')!.y).toBeLessThan(g + 4);
   });
 });
+
+describe('shrines', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const view = (sim: WorldSim, name: string, id: number) => snap(sim, name).shrines.find((v) => v.id === id)!;
+  const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
+
+  it('the orb stays shut until both levers are pulled within the window', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'levers');
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([]);
+    put(sim, 'Ana', s.parts[0]!.x, s.parts[0]!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([true, false]);
+    for (let i = 0; i < 70; i++) sim.step(0.1); // too slow
+    put(sim, 'Ana', s.parts[1]!.x, s.parts[1]!.z);
+    use(sim, 'Ana', s.id, 2);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    put(sim, 'Ana', s.parts[0]!.x, s.parts[0]!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([s.id]);
+    expect(sim.save().players[0]!.shrines).toEqual([s.id]);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('Enredadera') });
+  });
+
+  it('a lever out of reach does nothing', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'levers');
+    put(sim, 'Ana', s.parts[0]!.x + 5, s.parts[0]!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([false, false]);
+  });
+
+  it('the plate holds the gate open while pressed and a few seconds after', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'plate');
+    put(sim, 'Ana', s.parts[0]!.x, s.parts[0]!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id)).toEqual({ id: s.id, open: true, parts: [true] });
+    put(sim, 'Ana', s.orb.x + 30, s.orb.z);
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id)).toEqual({ id: s.id, open: true, parts: [false] });
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([]);
+  });
+
+  it('a friend can hold the plate; each player clears a shrine once', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'plate');
+    put(sim, 'Leo', s.parts[0]!.x, s.parts[0]!.z);
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.step(0.1);
+    use(sim, 'Ana', s.id, 0);
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([s.id]);
+    expect(snap(sim, 'Leo').self.shrines).toEqual([]);
+  });
+
+  it('the ledge orb needs you on top of the rock', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'ledge');
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([]);
+    sim.getPlayer('Ana')!.y = s.pillar!.top;
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([s.id]);
+  });
+
+  it('ignores dead players and bad ids or parts', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'ledge');
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.getPlayer('Ana')!.y = s.pillar!.top;
+    use(sim, 'Ana', 99, 0);
+    use(sim, 'Ana', s.id, 1);
+    sim.getPlayer('Ana')!.dead = true;
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toEqual([]);
+  });
+
+  it('old saves without shrines load', () => {
+    const sim = setup('Ana');
+    const saved = sim.save();
+    delete saved.players[0]!.shrines;
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self.shrines).toEqual([]);
+    expect(snap(again, 'Ana').shrines).toHaveLength(3);
+  });
+});
