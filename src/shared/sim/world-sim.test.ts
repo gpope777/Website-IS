@@ -5,6 +5,7 @@ import { BLOCK, BOW } from './combat';
 import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
 import { ENREDADERA } from '../enredadera';
+import { DUNGEON, inDungeon, leverPos } from '../dungeon';
 import { AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -734,7 +735,9 @@ describe('shrines', () => {
     use(sim, 'Ana', s.id, 0);
     expect(snap(sim, 'Ana').self.shrines).toEqual([s.id]);
     expect(sim.save().players[0]!.shrines).toEqual([s.id]);
-    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('Enredadera') });
+    // Plan F: the power comes from the dungeon altar, not the first orb.
+    expect(msgs(sim)).not.toContainEqual({ t: 'toast', text: expect.stringContaining('Enredadera') });
+    expect(snap(sim, 'Ana').self.power).toBe(false);
   });
 
   it('a lever out of reach does nothing', () => {
@@ -810,13 +813,14 @@ describe('shrines', () => {
 describe('Enredadera', () => {
   function caster(...names: string[]) {
     const sim = setup(...names);
-    for (const n of names) sim.getPlayer(n)!.shrines = [0];
+    for (const n of names) sim.getPlayer(n)!.enredadera = true;
     return sim;
   }
   const cast = (sim: WorldSim, x: number, z: number) => sim.handle('Ana', { t: 'power', x, z });
 
-  it('needs a cleared shrine', () => {
+  it('needs the dungeon altar: a shrine orb is not enough', () => {
     const sim = setup('Ana');
+    sim.getPlayer('Ana')!.shrines = [0];
     cast(sim, 2, 0);
     expect(snap(sim, 'Ana').vines).toEqual([]);
     expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Aún no tienes ese poder' });
@@ -875,7 +879,7 @@ describe('Enredadera', () => {
     const sim = new WorldSim(saved);
     sim.createPlayer('Ana', 'h');
     sim.connect('Ana');
-    sim.getPlayer('Ana')!.shrines = [0];
+    sim.getPlayer('Ana')!.enredadera = true;
     cast(sim, 2, 0);
     msgs(sim);
     for (let i = 0; i < 20; i++) sim.step(0.1);
@@ -889,5 +893,122 @@ describe('Enredadera', () => {
     sim.getPlayer('Ana')!.dead = true;
     cast(sim, 2, 0);
     expect(snap(sim, 'Ana').vines).toEqual([]);
+  });
+});
+
+describe('dungeon', () => {
+  const act = (sim: WorldSim, name: string, a: number) => sim.handle(name, { t: 'dungeon', act: a });
+  function enter(sim: WorldSim, name: string) {
+    put(sim, name, sim.entrance.x + DUNGEON.trunkR + 1, sim.entrance.z);
+    act(sim, name, 0);
+  }
+  function openGate(sim: WorldSim, name: string) {
+    for (const i of [0, 1]) {
+      const l = leverPos(i);
+      put(sim, name, l.x, l.z);
+      act(sim, name, 2 + i);
+    }
+  }
+
+  it('the hollow takes you inside and the exit brings you back', () => {
+    const sim = setup('Ana');
+    act(sim, 'Ana', 0); // at spawn, far from the root
+    expect(inDungeon(sim.getPlayer('Ana')!.x, sim.getPlayer('Ana')!.z)).toBe(false);
+    enter(sim, 'Ana');
+    const p = sim.getPlayer('Ana')!;
+    expect(inDungeon(p.x, p.z)).toBe(true);
+    expect(p.y).toBe(DUNGEON.floor);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+    sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x: p.x + 0.5, y: DUNGEON.floor, z: p.z, yaw: 0, anim: 'walk' });
+    expect(snap(sim, 'Ana').self.fix).toBe(false);
+    expect(p.x).toBe(DUNGEON.x + 0.5);
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.entryZ);
+    act(sim, 'Ana', 1);
+    expect(inDungeon(p.x, p.z)).toBe(false);
+    expect(Math.hypot(p.x - sim.entrance.x, p.z - sim.entrance.z)).toBeLessThan(DUNGEON.trunkR + DUNGEON.enterReach);
+  });
+
+  it('exit only works at the door, and only from inside', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', sim.entrance.x + 5, sim.entrance.z);
+    act(sim, 'Ana', 1);
+    expect(sim.getPlayer('Ana')!.x).toBe(sim.entrance.x + 5);
+    enter(sim, 'Ana');
+    put(sim, 'Ana', DUNGEON.x, 20);
+    act(sim, 'Ana', 1);
+    expect(inDungeon(sim.getPlayer('Ana')!.x, sim.getPlayer('Ana')!.z)).toBe(true);
+  });
+
+  it('the gate stays shut until both root levers are pulled in time, then the altar gives Enredadera', () => {
+    const sim = setup('Ana');
+    enter(sim, 'Ana');
+    const p = sim.getPlayer('Ana')!;
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.gateZ - 1);
+    for (let i = 0; i < 11; i++) sim.step(0.1); // let the move anchor catch up with the teleport
+    sim.handle('Ana', { t: 'move', x: DUNGEON.x, y: DUNGEON.floor, z: DUNGEON.gateZ + 0.2, yaw: 0, anim: 'walk' });
+    expect(p.z).toBe(DUNGEON.gateZ - 1);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+    expect(snap(sim, 'Ana').dungeon).toMatchObject({ gate: false, levers: [false, false] });
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.altarZ);
+    act(sim, 'Ana', 4); // the altar is behind the gate
+    expect(snap(sim, 'Ana').self.power).toBe(false);
+    openGate(sim, 'Ana');
+    expect(snap(sim, 'Ana').dungeon).toMatchObject({ gate: true, levers: [true, true] });
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.gateZ - 1);
+    for (let i = 0; i < 11; i++) sim.step(0.1); // let the move anchor catch up with the teleport
+    sim.handle('Ana', { t: 'move', x: DUNGEON.x, y: DUNGEON.floor, z: DUNGEON.gateZ + 0.2, yaw: 0, anim: 'walk' });
+    expect(p.z).toBe(DUNGEON.gateZ + 0.2);
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.altarZ);
+    msgs(sim);
+    act(sim, 'Ana', 4);
+    expect(snap(sim, 'Ana').self.power).toBe(true);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('Enredadera') });
+    expect(sim.save().players[0]!.enredadera).toBe(true);
+    sim.handle('Ana', { t: 'power', x: DUNGEON.x, z: DUNGEON.altarZ + 3 });
+    expect(snap(sim, 'Ana').vines).toHaveLength(1);
+  });
+
+  it('levers pulled too far apart do not open it; levers need reach', () => {
+    const sim = setup('Ana');
+    enter(sim, 'Ana');
+    const l0 = leverPos(0);
+    const l1 = leverPos(1);
+    put(sim, 'Ana', l1.x, l1.z);
+    act(sim, 'Ana', 2); // lever 0 is on the other side
+    expect(snap(sim, 'Ana').dungeon.levers).toEqual([false, false]);
+    put(sim, 'Ana', l0.x, l0.z);
+    act(sim, 'Ana', 2);
+    for (let i = 0; i < (DUNGEON.leverWindow + 1) * 10; i++) sim.step(0.1);
+    put(sim, 'Ana', l1.x, l1.z);
+    act(sim, 'Ana', 3);
+    expect(snap(sim, 'Ana').dungeon.gate).toBe(false);
+  });
+
+  it('old saves with a shrine orb keep the power; new orbs do not give it', () => {
+    const sim = setup('Ana', 'Leo');
+    sim.getPlayer('Ana')!.shrines = [0];
+    const saved = sim.save();
+    delete saved.players[0]!.enredadera;
+    saved.players[1]!.enredadera = false;
+    saved.players[1]!.shrines = [1];
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    again.connect('Leo');
+    expect(snap(again, 'Ana').self.power).toBe(true);
+    expect(snap(again, 'Leo').self.power).toBe(false);
+  });
+
+  it('the dead cannot use it, and it is warm inside at night', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.dead = true;
+    enter(sim, 'Ana');
+    expect(inDungeon(sim.getPlayer('Ana')!.x, sim.getPlayer('Ana')!.z)).toBe(false);
+    sim.getPlayer('Ana')!.dead = false;
+    enter(sim, 'Ana');
+    sim.time = DAY_LENGTH * 0.9;
+    const before = sim.getPlayer('Ana')!.vitals.warmth;
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    expect(sim.getPlayer('Ana')!.vitals.warmth).toBeGreaterThanOrEqual(before);
   });
 });

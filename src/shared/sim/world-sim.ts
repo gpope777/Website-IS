@@ -3,10 +3,11 @@ import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
+import { clampStep, DUNGEON, generateEntrance, inDungeon, leverPos, withDungeon } from '../dungeon';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type ClientMsg, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type Structure, type WolfView } from '../protocol';
+import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type Structure, type WolfView } from '../protocol';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -49,6 +50,8 @@ export interface SavedPlayer {
   dead: boolean;
   /** Shrine ids cleared (one orb each). Optional: older saves have none. */
   shrines?: number[];
+  /** Has Enredadera (dungeon altar). Optional: older saves have none (see the constructor migration). */
+  enredadera?: boolean;
 }
 
 export interface SavedWorld {
@@ -109,7 +112,11 @@ export class WorldSim {
   readonly crags: readonly Crag[];
   readonly resources: ResourceSpawn[];
   readonly shrines: readonly Shrine[];
+  /** The Raíz-madre's trunk in the world (the dungeon entrance). */
+  readonly entrance: { x: number; y: number; z: number };
   time: number;
+  /** Live-only: root lever pull times and whether the gate opened (stays open until the room restarts). */
+  private readonly dungeonLive = { pulled: [null, null] as (number | null)[], gate: false };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean }[];
   private readonly players = new Map<string, SavedPlayer>();
@@ -134,12 +141,15 @@ export class WorldSim {
     this.seed = saved.seed;
     this.salt = saved.salt;
     this.time = saved.time;
-    this.terrain = createTerrain(saved.seed);
+    this.terrain = withDungeon(createTerrain(saved.seed));
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
     this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
+    this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, this.shrines);
     this.shrineLive = this.shrines.map(() => ({ pulled: [null, null], openUntil: -Infinity, pressed: false }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
+    // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
+    for (const p of this.players.values()) if (p.enredadera === undefined && (p.shrines ?? []).length > 0) p.enredadera = true;
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.raidLevel = saved.raidLevel ?? 0;
@@ -238,7 +248,7 @@ export class WorldSim {
       case 'power':
         return this.onPower(p, l, msg.x, msg.z);
       case 'dungeon':
-        return; // Plan F Task 2
+        return this.onDungeon(p, l, msg.act);
       case 'hello':
         return; // the room handles hello
     }
@@ -314,7 +324,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: { gate: false, levers: [false, false], purified: false, boss: null }, ally: null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: null };
   }
 
   drain(): Outgoing[] {
@@ -373,14 +383,17 @@ export class WorldSim {
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
-    const inBounds = Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2;
+    const inBounds = inDungeon(m.x, m.z) || (Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2);
+    const through = clampStep(p.x, p.z, m.x, m.z, this.dungeonLive.gate);
+    // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
+    const wallOk = !inDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
     const cragCeiling = cragsNear(this.climbables(), m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
     // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
     // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
     const yOk = m.y > ground - 1 && (m.y < ground + 4 || m.y < cragCeiling || m.y <= p.y);
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
-    if (!inBounds || !yOk || moved > MAX_SPEED * elapsed + 1) {
+    if (!inBounds || !wallOk || !yOk || moved > MAX_SPEED * elapsed + 1) {
       l.fix = true;
       return;
     }
@@ -525,14 +538,14 @@ export class WorldSim {
     if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
     p.shrines = [...cleared, id];
     this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
-    if (cleared.length === 0) this.tell(p.name, 'Despierta la Enredadera: H o 🌿 hace crecer una enredadera trepable');
   }
 
   private onPower(p: SavedPlayer, l: Live, x: number, z: number): void {
     if (p.dead) return;
-    if (!(p.shrines ?? []).length) return this.tell(p.name, 'Aún no tienes ese poder');
+    if (!p.enredadera) return this.tell(p.name, 'Aún no tienes ese poder');
     if (this.time + EPS < l.powerReadyAt) return this.tell(p.name, `La enredadera aún no brota (${Math.ceil(l.powerReadyAt - this.time - EPS)} s)`);
-    if (Math.hypot(x - p.x, z - p.z) > ENREDADERA.reach || Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4) return this.tell(p.name, 'Demasiado lejos');
+    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4;
+    if (Math.hypot(x - p.x, z - p.z) > ENREDADERA.reach || offMap) return this.tell(p.name, 'Demasiado lejos');
     const others = this.vines.filter((v) => v.owner !== p.name);
     const wrapped = new Set(others.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
@@ -542,6 +555,60 @@ export class WorldSim {
     this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
+  }
+
+  private onDungeon(p: SavedPlayer, l: Live, act: number): void {
+    if (p.dead) return;
+    const near = (x: number, z: number, r: number) => Math.hypot(x - p.x, z - p.z) <= r;
+    if (act === 0) {
+      if (!near(this.entrance.x, this.entrance.z, DUNGEON.trunkR + DUNGEON.enterReach)) return;
+      this.teleport(p, l, DUNGEON.x, DUNGEON.entryZ + 1.5);
+      return this.tell(p.name, 'Dentro de la Raíz-madre. Huele a papel viejo');
+    }
+    if (!inDungeon(p.x, p.z)) return;
+    if (act === 1) {
+      if (!near(DUNGEON.x, DUNGEON.entryZ, DUNGEON.exitReach)) return;
+      const e = this.entrance;
+      const d = Math.max(Math.hypot(e.x, e.z), 1e-4);
+      const out = DUNGEON.trunkR + 2;
+      return this.teleport(p, l, e.x - (e.x / d) * out, e.z - (e.z / d) * out);
+    }
+    const g = this.dungeonLive;
+    if (act === 2 || act === 3) {
+      const i = act - 2;
+      const lever = leverPos(i);
+      if (!near(lever.x, lever.z, DUNGEON.leverReach) || g.gate) return;
+      g.pulled[i] = this.time;
+      const other = g.pulled[1 - i];
+      if (other != null && this.time - other <= DUNGEON.leverWindow + EPS) {
+        g.gate = true;
+        return this.say('La verja de raíces se abre');
+      }
+      return this.tell(p.name, 'La raíz cede. Falta la otra');
+    }
+    if (act === 4) {
+      if (!g.gate || !near(DUNGEON.x, DUNGEON.altarZ, DUNGEON.altarReach) || p.enredadera) return;
+      p.enredadera = true;
+      this.tell(p.name, 'Despierta la Enredadera: H o 🌿 hace crecer una enredadera trepable');
+    }
+  }
+
+  /** Server-side move (dungeon door): the client snaps to it through `fix`. */
+  private teleport(p: SavedPlayer, l: Live, x: number, z: number): void {
+    p.x = r2(x);
+    p.z = r2(z);
+    p.y = this.terrain.heightAt(p.x, p.z);
+    l.fix = true;
+    l.anchorX = p.x;
+    l.anchorZ = p.z;
+    l.anchorAt = this.time;
+    l.lastAcceptedAt = this.time;
+  }
+
+  private dungeonView(): DungeonView {
+    const g = this.dungeonLive;
+    const pulled = g.pulled.map((t) => t != null && (g.gate || this.time - t <= DUNGEON.leverWindow + EPS));
+    return { gate: g.gate, levers: pulled, purified: false, boss: null };
   }
 
   /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */
@@ -623,11 +690,12 @@ export class WorldSim {
       reviveLeft: p.dead && l.deadAt !== null ? Math.max(0, Math.ceil(REVIVE.window - (this.time - l.deadAt) - EPS)) : 0,
       shrines: [...(p.shrines ?? [])],
       powerLeft: Math.max(0, Math.ceil(l.powerReadyAt - this.time - EPS)),
-      power: (p.shrines ?? []).length > 0,
+      power: !!p.enredadera,
     };
   }
 
   private nearFire(x: number, z: number, r = FIRE_RADIUS): boolean {
+    if (inDungeon(x, z)) return true; // warm inside the Raíz-madre
     return this.structures.some((s) => {
       const d = Math.hypot(s.x - x, s.z - z);
       return (s.kind === 'campfire' && d < r) || (s.kind === 'heart' && s.hp > 0 && d < HEART.warmRadius);
