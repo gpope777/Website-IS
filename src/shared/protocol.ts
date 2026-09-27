@@ -4,14 +4,14 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 38;
+export const PROTOCOL_VERSION = 39;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer or the giant fish. */ ride: 'deer' | 'fish' | 'whale' | 'frog' | null; /** Sitting behind this rider on their deer. */ seat: string | null; /** Capa de corteza level (0–3): bark tint on the torso. */ capa: number }
-export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'elite2' | 'boss2' | 'marchito' | 'anchor' | 'lieut1' | 'elite3' | 'boss3' | 'lieut2';
+export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'elite2' | 'boss2' | 'marchito' | 'anchor' | 'lieut1' | 'elite3' | 'boss3' | 'lieut2' | 'elite4';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean; /** Burning from a Llamarada or a hoguera. */ burning?: true }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
@@ -55,9 +55,9 @@ export interface CageView { anchors: number[] }
 export interface MarchitoView { will: number; max: number; laughing: boolean; /** Invasion 2: how far he has wrapped the Tragón (0–1). */ grab?: number }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; /** Has Piedra (from the mountain dungeon altar). */ piedra: boolean; /** Whole seconds until Piedra can be cast again. */ stoneLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null }
 
-export const POWER_KINDS = ['enredadera', 'viento', 'fuego'] as const;
+export const POWER_KINDS = ['enredadera', 'viento', 'fuego', 'piedra'] as const;
 export type PowerKind = (typeof POWER_KINDS)[number];
 
 export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
@@ -79,7 +79,7 @@ export type ClientMsg =
   | { t: 'power'; x: number; z: number; kind?: PowerKind }
   /** part 0 = take the orb, 1/2 = pull lever 1/2 (Hundido: 2 = the seabed one), Islote: 1–3 = turn a wheel, Marea: 1 = pick up / drop the pumice block, Candiles: 1–3 = light a brazier, 4 = take a torch */
   | { t: 'shrine'; id: number; part: number }
-  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier, 8 = enter the coast Raíz-madre, 9 = leave it, 10/11 = pull its levers, 12 = take Viento at its altar, 13 = enter the swamp Raíz-madre, 14 = leave it, 15/16 = pull its levers, 17 = take Fuego at its altar */
+  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier, 8 = enter the coast Raíz-madre, 9 = leave it, 10/11 = pull its levers, 12 = take Viento at its altar, 13 = enter the swamp Raíz-madre, 14 = leave it, 15/16 = pull its levers, 17 = take Fuego at its altar, 18 = enter the mountain cave, 19 = leave it, 20/21 = pull its levers, 22 = take Piedra at its altar, 23/24 = push its block 0/1, 25 = its reset lever */
   | { t: 'dungeon'; act: number }
   /** 0 = start taming the wild deer, 1 = tap the ring at sim time `at`, 2 = get on your deer, 3 = get off, 4 = sit behind the nearest rider, 5 = get off the seat, 6 = start the fish's ring race, 7 = get on your fish, 8 = get off the fish, 9 = start taming the whale (needs 2+), 10 = board the whale, 11 = leave the whale, 12 = start the frog's lily-pad chase, 13 = get on your frog, 14 = get off the frog */
   | { t: 'mount'; act: number; at?: number }
@@ -176,7 +176,7 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'shrine':
       return id(m.id) && id(m.part) && (m.part as number) <= 7 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
-      return id(m.act) && (m.act as number) <= 17 ? { t: 'dungeon', act: m.act as number } : null;
+      return id(m.act) && (m.act as number) <= 25 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':
       if (!id(m.act) || (m.act as number) > 14) return null;
       if (m.act === 1) return num(m.at) ? { t: 'mount', act: 1, at: m.at } : null;

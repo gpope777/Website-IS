@@ -5,6 +5,7 @@ import { weatherAt, wetAt } from '../weather';
 import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
+import { PIEDRA, pillarSpot, structureCrags } from '../piedra';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
@@ -68,7 +69,7 @@ export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const
 const EPS = 1e-6;
 
 const upFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida', fire: 'Hoguera lista. Ya arderá' };
+const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida', fire: 'Hoguera lista. Ya arderá', tower: 'Torre alzada. Desde arriba se ve lejos', pillar: 'Se alza un pilar' };
 
 export interface SavedPlayer {
   name: string;
@@ -104,6 +105,8 @@ export interface SavedPlayer {
   viento?: boolean;
   /** Has Fuego (swamp dungeon altar). Optional: older saves have none. */
   fuego?: boolean;
+  /** Has Piedra (mountain dungeon altar). Optional: older saves have none. */
+  piedra?: boolean;
 }
 
 export interface SavedWorld {
@@ -179,6 +182,8 @@ interface Live {
   windReadyAt: number;
   /** Sim time Fuego can be cast again. Live-only. */
   fireReadyAt?: number;
+  /** Sim time Piedra can be cast again. Live-only. */
+  stoneReadyAt?: number;
   /** Glider lift from a gust: the highest accepted y until `boostUntil`; `boosted` = used this flight. */
   boostCeil: number;
   boostUntil: number;
@@ -363,6 +368,8 @@ export class WorldSim {
   private vines: (Crag & { owner: string; until: number })[] = [];
   private nextVineId: number = ENREDADERA.idBase;
   private regenClock = 0;
+  /** Live-only: when each Piedra pillar (a structure id) crumbles. */
+  private readonly pillarUntil = new Map<number, number>();
   /** Live-only: sim time each hoguera can catch again. */
   private readonly fireReady = new Map<number, number>();
   /** Live-only: sim time each net can catch again. */
@@ -525,7 +532,7 @@ export class WorldSim {
       case 'shrine':
         return this.onShrine(p, msg.id, msg.part);
       case 'power':
-        return msg.kind === 'viento' ? this.onGust(p, l, msg.x, msg.z) : msg.kind === 'fuego' ? this.onFlame(p, l, msg.x, msg.z) : this.onPower(p, l, msg.x, msg.z);
+        return msg.kind === 'viento' ? this.onGust(p, l, msg.x, msg.z) : msg.kind === 'fuego' ? this.onFlame(p, l, msg.x, msg.z) : msg.kind === 'piedra' ? this.onStone(p, l, msg.x, msg.z) : this.onPower(p, l, msg.x, msg.z);
       case 'mount':
         return this.onMount(p, l, msg.act, msg.at);
       case 'dungeon':
@@ -589,6 +596,7 @@ export class WorldSim {
     this.stepShrines();
     this.stepTravel(night);
     this.stepVines(dt);
+    this.stepPillars();
     this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
     if (!night && this.wasNight) this.wolves = [];
@@ -714,7 +722,7 @@ export class WorldSim {
       salt: this.salt,
       time: this.time,
       nextStructureId: this.nextStructureId,
-      structures: this.structures.map((s) => ({ ...s })),
+      structures: this.structures.filter((s) => s.kind !== 'pillar').map((s) => ({ ...s })), // pillars are temporary
       resources: Object.fromEntries([...this.resState].map(([id, s]) => [String(id), { ...s }])),
       players: [...this.players.values()].map((p) => structuredClone(p)),
       raidLevel: this.raidLevel,
@@ -739,7 +747,7 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges, ...structureCrags(this.structures)];
   }
 
   /** Nenúfares' pads still afloat. */
@@ -901,7 +909,9 @@ export class WorldSim {
       this.outbox.push({ to: p.name, msg: { t: 'toast', text } });
     };
     if (p.dead) return;
+    if (kind === 'pillar') return; // raised by Piedra, never placed
     if (kind === 'fire' && !p.fuego) return toast(`Hace falta el ${NAMES.powerFire}`);
+    if (kind === 'tower' && !p.piedra) return toast(`Hace falta la ${NAMES.powerStone}`);
     if (!hasAll(p.inv, BUILD_COST[kind])) return toast('Faltan materiales');
     if (kind === 'heart' && this.heart()) return toast('Ya hay un Corazón en este mundo');
     if (Math.hypot(x - p.x, z - p.z) > BUILD_REACH) return toast('Demasiado lejos');
@@ -1411,6 +1421,56 @@ export class WorldSim {
     } else this.tell(p.name, 'La lámpara de gas prende. Rápido, las otras');
   }
 
+  /** Every enemy that can be hit (beasts, elites, bosses, El Marchito, the cage's anchors). */
+  private allFoes(): Wolf[] {
+    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+  }
+
+  /** Piedra: Alzar a stone pillar 4 m toward the aim (2 m grid). Max 3 per player (the oldest crumbles), 120 s each. */
+  private onStone(p: SavedPlayer, l: Live, x: number, z: number): void {
+    if (p.dead) return;
+    if (!p.piedra) return this.tell(p.name, 'Aún no tienes ese poder');
+    const ready = l.stoneReadyAt ?? 0;
+    if (this.time + EPS < ready) return this.tell(p.name, `La roca aún no responde (${Math.ceil(ready - this.time - EPS)} s)`);
+    const at = pillarSpot(p.x, p.z, x, z);
+    const inside = inAnyDungeon(p.x, p.z);
+    const through = clampStep(p.x, p.z, at.x, at.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
+    if (inside ? !inAnyDungeon(at.x, at.z, -1) || Math.hypot(through.x - at.x, through.z - at.z) > 0.01 : !inMap(at.x, at.z, 2)) return this.tell(p.name, 'Aquí no sale roca');
+    const y = this.terrain.heightAt(at.x, at.z);
+    if (y < WATER_LEVEL - 0.5) return this.tell(p.name, 'Aquí no sale roca');
+    if (this.structures.some((s) => Math.hypot(s.x - at.x, s.z - at.z) < 1.5)) return this.tell(p.name, 'Hay algo en el camino');
+    if (this.structures.length >= MAX_STRUCTURES) return this.tell(p.name, 'El mundo ya tiene demasiadas construcciones');
+    l.stoneReadyAt = this.time + PIEDRA.cooldown;
+    const mine = this.structures.filter((s) => s.kind === 'pillar' && s.owner === p.name).sort((a, b) => a.id - b.id);
+    for (const old of mine.slice(0, Math.max(0, mine.length - PIEDRA.max + 1))) this.crumble(old);
+    const s: Structure = { id: this.nextStructureId++, kind: 'pillar', x: at.x, y: r2(y), z: at.z, rot: 0, owner: p.name, hp: PIEDRA.hp };
+    this.structures.push(s);
+    this.pillarUntil.set(s.id, this.time + PIEDRA.life);
+    this.outbox.push({ to: null, msg: { t: 'built', s } });
+    for (const w of this.allFoes()) {
+      if (w.hp <= 0 || w.kind === 'anchor' || Math.hypot(w.x - at.x, w.z - at.z) > PIEDRA.liftR) continue;
+      w.stun = Math.max(w.stun, PIEDRA.liftStun);
+      this.strike(p.name, w, PIEDRA.liftDamage);
+    }
+    const root = this.zones.find((zn) => isMountainZone(zn.id) && zn.id !== MOUNTAIN_ZONES.root && !this.cleansed.has(zn.id) && Math.hypot(zn.x - at.x, zn.z - at.z) <= PIEDRA.rootReach);
+    if (root) this.cleanse(root.id, 'La roca aplasta la raíz marchita. La montaña respira');
+  }
+
+  /** A pillar goes back into the ground. */
+  private crumble(s: Structure): void {
+    this.pillarUntil.delete(s.id);
+    if (this.structures.includes(s)) this.wreck(s);
+  }
+
+  /** Pillars crumble after 120 s (or when broken: then `wreck` already took them). */
+  private stepPillars(): void {
+    for (const [id, until] of this.pillarUntil) {
+      const s = this.structures.find((x) => x.id === id);
+      if (!s) this.pillarUntil.delete(id);
+      else if (this.time >= until - EPS) this.crumble(s);
+    }
+  }
+
   /** Burning beasts lose 3 PV/s; fleeing timers run down. */
   private stepBurning(dt: number): void {
     const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : [])];
@@ -1716,6 +1776,11 @@ export class WorldSim {
   private swampGates(): boolean[] {
     const g = this.swampLive;
     return [g.gate, g.thorn >= FUEGO.burns, g.lamps, g.eliteDown];
+  }
+
+  /** Which of the four mountain gates are open (S4-E T3 fills them in). */
+  private mountainGates(): boolean[] {
+    return [false, false, false, false];
   }
 
   /** Boardwalk planks under ~1.2 s of weight sink for 4 s; the mud sends fallers back to the gas hall's gate. */
@@ -2592,6 +2657,8 @@ export class WorldSim {
       windLeft: Math.max(0, Math.ceil(l.windReadyAt - this.time - EPS)),
       fuego: !!p.fuego,
       fireLeft: Math.max(0, Math.ceil((l.fireReadyAt ?? 0) - this.time - EPS)),
+      piedra: !!p.piedra,
+      stoneLeft: Math.max(0, Math.ceil((l.stoneReadyAt ?? 0) - this.time - EPS)),
       tame: this.tameView(p, l),
       riding: l.riding,
       steed: !!p.steed,
@@ -2813,8 +2880,8 @@ export class WorldSim {
     const h = this.heart();
     if (!h || this.raid?.phase !== 'active') return null;
     const blockers = this.structures
-      .filter((s) => s.kind === 'wall')
-      .flatMap((s) => [-1, 0, 1].map((o) => ({ id: s.id, x: s.x + Math.cos(s.rot) * o, z: s.z - Math.sin(s.rot) * o })));
+      .filter((s) => s.kind === 'wall' || s.kind === 'pillar')
+      .flatMap((s) => (s.kind === 'pillar' ? [{ id: s.id, x: s.x, z: s.z }] : [-1, 0, 1].map((o) => ({ id: s.id, x: s.x + Math.cos(s.rot) * o, z: s.z - Math.sin(s.rot) * o }))));
     return { heartId: h.id, x: h.x, z: h.z, blockers };
   }
 

@@ -6,9 +6,11 @@ export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl', 'a
 const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s`, amber: cap(NAMES.amber), quartz: cap(NAMES.quartz) };
 
-export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots' | 'fire';
-export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots', 'fire'];
-export const STRUCTURE_LABELS: Record<StructureKind, string> = { campfire: 'Fogata', wall: 'Muro', heart: `${NAMES.heart}`, spikes: 'Estacas', roots: 'Red de raíces', fire: 'Hoguera' };
+/** 'pillar' is Piedra's (raised by the power, never placed nor saved). */
+export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots' | 'fire' | 'tower' | 'pillar';
+/** What a client may `place`. */
+export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots', 'fire', 'tower'];
+export const STRUCTURE_LABELS: Record<StructureKind, string> = { campfire: 'Fogata', wall: 'Muro', heart: `${NAMES.heart}`, spikes: 'Estacas', roots: 'Red de raíces', fire: 'Hoguera', tower: cap(NAMES.tower), pillar: 'Pilar' };
 export const BUILD_COST: Record<StructureKind, Inventory> = {
   campfire: { wood: 5, stone: 3 },
   wall: { wood: 4 },
@@ -18,8 +20,11 @@ export const BUILD_COST: Record<StructureKind, Inventory> = {
   roots: { wood: 4, berries: 2 },
   /** Hoguera: a fire trap (needs Fuego). */
   fire: { wood: 4, amber: 2 },
+  /** Torre: a stone tower trap (needs Piedra). */
+  tower: { stone: 6, quartz: 2 },
+  pillar: {},
 };
-export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall: 150, heart: 500, spikes: 80, roots: 60, fire: 60 };
+export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall: 150, heart: 500, spikes: 80, roots: 60, fire: 60, tower: 150, pillar: 80 };
 /** Tending the Heart: berries in, HP back. */
 export const TEND_COST: Inventory = { berries: 5 };
 export const TEND_HEAL = 100;

@@ -71,7 +71,7 @@ export function stepTriangulo(w: Wolf, targets: WolfTarget[], goal: RaidGoal, te
   return stepLieutenant(w, targets, goal, terrain, dt, rng, ENEMY.lieut2.run);
 }
 
-/** The nearest player structure (not the Heart) within rock range, or null. S4-E: Piedra pillars count too. */
+/** The nearest player structure (not the Heart) within rock range, or null. Piedra pillars are structures, so they count too. */
 export function rockTarget(w: { x: number; z: number }, structures: readonly { id: number; kind: string; x: number; z: number }[]): number | null {
   let best: number | null = null;
   let bestD: number = TRIANGULO.rockRange;

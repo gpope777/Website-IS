@@ -75,6 +75,7 @@ describe('El Triángulo (S4-D)', () => {
     const heart = { id: 1, kind: 'heart', x: 1, z: 0 };
     expect(rockTarget(at, [heart])).toBeNull();
     expect(rockTarget(at, [heart, { id: 2, kind: 'wall', x: 20, z: 0 }, { id: 3, kind: 'spikes', x: 0, z: 10 }])).toBe(3);
+    expect(rockTarget(at, [heart, { id: 3, kind: 'spikes', x: 0, z: 10 }, { id: 4, kind: 'pillar', x: 4, z: 0 }])).toBe(4); // S4-E: Piedra pillars too
     expect(rockTarget(at, [{ id: 4, kind: 'wall', x: 30, z: 0 }])).toBeNull();
   });
 });
