@@ -42,8 +42,10 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   boss2: { hp: 360, run: 2.6, damage: 10, reach: 4, biteCooldown: 3.5 },
   /** El Marchito in person (see sim/marchito.ts): hp is his voluntad (the 4-player cap; see marchitoWill), he never dies. */
   marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
+  /** An anchor of Invasion 2's root cage (see rescue.ts): a withered root that never moves or bites. */
+  anchor: { hp: 150, run: 0, damage: 0, reach: 0, biteCooldown: 99 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}` };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz' };
 
 export interface Wolf {
   id: number;

@@ -21,6 +21,7 @@ import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type P
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
+import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
@@ -103,6 +104,8 @@ export interface SavedWorld {
   invasion?: 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): owed since someone tamed a fish, the Tragón taken, or rescued. Optional: older saves have none. */
   invasion2?: 'pending' | 'taken' | 'rescued';
+  /** While the Tragón is taken: which of the cage's 3 anchors are broken. Optional. */
+  anchors?: boolean[];
   /** Corruption zones cleansed so far (ids from generateZones). Optional: older saves have none. */
   cleansed?: number[];
   /** La Ballena, once tamed (it belongs to the world): where it floats. Optional: older saves have a wild one. */
@@ -266,6 +269,14 @@ export class WorldSim {
   invasion: 'none' | 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): none yet, owed (a fish was tamed), the Tragón taken, or rescued. */
   invasion2: 'none' | 'pending' | 'taken' | 'rescued';
+  /** The cage's anchors broken so far (saved while taken). */
+  private anchors: boolean[];
+  /** Live anchor records (kind 'anchor') for the ones still standing; their PV is live-only. */
+  private anchorFoes: Wolf[] = [];
+  /** Islets whose guards already came out this load. Live-only. */
+  private guarded = [false, false, false];
+  /** Where the cage and its anchors are (seeded). */
+  readonly rescue: RescueSite;
   /** Sim time a pending invasion may start. Live-only. */
   private invasionAt: number;
   /** El Marchito in person, while he is here. Live-only. */
@@ -315,6 +326,9 @@ export class WorldSim {
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
     this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
+    this.rescue = rescueSite(this.terrain, saved.seed);
+    this.anchors = [0, 1, 2].map((i) => saved.anchors?.[i] ?? false);
+    this.buildAnchors();
     this.nextStructureId = saved.nextStructureId;
     this.graves = (saved.graves ?? []).map((g) => ({ ...g, inv: { ...g.inv } }));
     this.nextGraveId = 1 + Math.max(0, ...this.graves.map((g) => g.id));
@@ -417,6 +431,8 @@ export class WorldSim {
         return this.onChest(p, msg.id);
       case 'upgrade':
         return this.onUpgrade(p);
+      case 'rescue':
+        return this.onRescue(p);
       case 'hello':
         return; // the room handles hello
     }
@@ -490,6 +506,7 @@ export class WorldSim {
     this.stepSeats();
     this.stepInvasion(dt);
     this.stepInvasion2(dt);
+    this.stepGuards();
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
 
@@ -516,6 +533,7 @@ export class WorldSim {
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const el = this.elite;
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
+    for (const a of this.anchorFoes) if (a.hp > 0 && near(a.x, a.z)) wolves.push({ id: a.id, kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: 0, anim: 'idle', raid: false });
     const mm = this.marchito;
     if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
     const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0, ...(mm.grab !== null ? { grab: r2(Math.min(1, mm.grab / MARCHITO.grabFor)) } : {}) } : null;
@@ -523,7 +541,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt() };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -548,6 +566,7 @@ export class WorldSim {
       ...(this.purified2 ? { purified2: true } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
+      ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
       ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
     };
@@ -908,10 +927,14 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : [])];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
+      if (w.kind === 'anchor') {
+        this.strike(p.name, w, VIENTO.damage * RESCUE.gustMult);
+        continue;
+      }
       if (w === this.boss2) {
         this.gustAntenon(p.name, this.boss2, dir);
         continue;
@@ -1024,6 +1047,8 @@ export class WorldSim {
   /** Wolves, raiders or the boss. */
   private enemy(id: number): Wolf | undefined {
     if (this.marchito && this.marchito.id === id) return this.marchito;
+    const anchor = this.anchorFoes.find((a) => a.id === id);
+    if (anchor) return anchor;
     if (this.elite && this.elite.id === id) return this.elite;
     if (this.shield && this.shield.id === id) return this.shield;
     if (this.boss2 && this.boss2.id === id) return this.boss2;
@@ -1033,6 +1058,10 @@ export class WorldSim {
   /** Hurt an enemy for a player; the folded boss shrugs it off. */
   private strike(name: string, w: Wolf, dmg: number): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
+    if (w.kind === 'anchor') {
+      if (hitWolf(w, dmg)) this.breakAnchor(w);
+      return;
+    }
     if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
     if (w === this.boss2 && this.boss2.exposed <= 0) return this.tell(name, 'La cáscara de marea aguanta. Empújalo contra el coral, o párale');
     const by = this.players.get(name);
@@ -2065,6 +2094,57 @@ export class WorldSim {
     else if (ev) this.endTheft(true);
   }
 
+  /** Live records for the anchors still standing (only while the Tragón is taken). */
+  private buildAnchors(): void {
+    if (this.invasion2 !== 'taken') {
+      this.anchorFoes = [];
+      return;
+    }
+    this.anchorFoes = this.rescue.anchors.flatMap((a, i) =>
+      this.anchors[i] ? [] : [{ id: RESCUE.anchorIdBase + i, x: a.x, y: this.terrain.heightAt(a.x, a.z), z: a.z, yaw: 0, hp: RESCUE.anchorHp, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle' as const, raid: false, kind: 'anchor' as const, stun: 0 }],
+    );
+  }
+
+  private breakAnchor(w: Wolf): void {
+    this.anchors[w.id - RESCUE.anchorIdBase] = true;
+    this.anchorFoes = this.anchorFoes.filter((a) => a !== w);
+    const left = this.anchors.filter((b) => !b).length;
+    this.say(left ? `Se parte una cadena. La jaula baja. Quedan ${left}` : `Se parte la última cadena. La jaula del ${NAMES.bossForestShort} se suelta en el fondo`);
+  }
+
+  /** The first time someone reaches an islet whose anchor stands, two corrupt wolves come out to guard it. */
+  private stepGuards(): void {
+    if (this.invasion2 !== 'taken') return;
+    const islets = coastFeatures(this.seed).islets;
+    const targets = this.targets().filter((t) => !t.dead);
+    islets.forEach((o, i) => {
+      if (this.anchors[i] || this.guarded[i] || !targets.some((t) => Math.hypot(t.x - o.x, t.z - o.z) <= o.r + RESCUE.guardReach)) return;
+      this.guarded[i] = true;
+      const a = this.rescue.anchors[i]!;
+      for (let n = 0, k = 0; n < RESCUE.guards && k < 16; k++) {
+        const ang = (k / 16) * Math.PI * 2;
+        const x = a.x + Math.sin(ang) * 3;
+        const z = a.z + Math.cos(ang) * 3;
+        if (this.terrain.heightAt(x, z) <= WATER_LEVEL + 0.2) continue;
+        this.wolves.push(createWolf(this.nextWolfId++, x, z, this.terrain, this.rng));
+        n++;
+        k += 7; // spread them apart
+      }
+      this.say('Unos lobos marchitos guardan el ancla');
+    });
+  }
+
+  private onRescue(p: SavedPlayer): void {
+    const c = this.rescue.cage;
+    if (this.invasion2 !== 'taken' || p.dead || Math.hypot(c.x - p.x, c.z - p.z) > RESCUE.freeReach) return;
+    const left = this.anchors.filter((b) => !b).length;
+    if (left) return this.tell(p.name, `La jaula aguanta: quedan ${left} ${left === 1 ? 'ancla' : 'anclas'} en los islotes`);
+    this.invasion2 = 'rescued';
+    this.anchorFoes = [];
+    this.say(`${p.name} abre la jaula. El ${NAMES.bossForestShort} vuelve al ${NAMES.heart}, con rabia`);
+    this.vision(VISION.rescued(joinNames(this.activeNames())));
+  }
+
   private startTheft(h: Structure): void {
     const { x, z } = clampMap(h.x, h.z + MARCHITO.spawnDist, 6);
     this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, [], thiefWill(this.activeCount()));
@@ -2078,6 +2158,9 @@ export class WorldSim {
     this.marchito = null;
     this.invasion2 = 'taken';
     this.ally = null;
+    this.anchors = [false, false, false];
+    this.guarded = [false, false, false];
+    this.buildAnchors();
     if (wreck && h) {
       for (const id of pickDefenses(this.structures, h, 0.25)) {
         const s = this.structures.find((x) => x.id === id);

@@ -19,6 +19,7 @@ import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
 import { VIENTO } from '../viento';
 import { ANTENON, ANTENON_ALLY } from './antenon';
+import { RESCUE } from '../rescue';
 import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
@@ -3264,5 +3265,105 @@ describe('Invasion 2: the stolen Tragón (S2-H)', () => {
     dusk(sim);
     expect(priv(sim).marchito).not.toBeNull();
     expect(sim.save().invasion2).toBe('pending');
+  });
+});
+
+describe('the rescue (S2-H)', () => {
+  type Priv = { wolves: Wolf[] };
+  const texts = (m: ServerMsg[]) => m.flatMap((x) => (x.t === 'toast' ? [x.text] : []));
+
+  function taken(anchors?: boolean[]) {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    const saved = sim.save();
+    Object.assign(saved, { purified: true, invasion: 'done', invasion2: 'taken', ...(anchors ? { anchors } : {}) });
+    const w = new WorldSim(saved);
+    w.connect('Ana');
+    put(w, 'Ana', h.x - 40, h.z);
+    w.step(0.1);
+    msgs(w);
+    return { sim: w, h };
+  }
+  /** Stand beside anchor i on its islet. */
+  const atAnchor = (sim: WorldSim, i: number) => {
+    const a = sim.rescue.anchors[i]!;
+    put(sim, 'Ana', a.x + 1, a.z);
+    sim.getPlayer('Ana')!.vitals.health = 100;
+  };
+
+  it('while taken: no defender, a cage with 3 anchors of 150 PV; old saves load and it round-trips', () => {
+    const { sim } = taken();
+    const s = snap(sim, 'Ana');
+    expect(s.ally).toBeNull();
+    expect(s.cage).toEqual({ anchors: [150, 150, 150] });
+    expect(sim.save().anchors).toEqual([false, false, false]);
+    expect(new WorldSim(sim.save()).save().anchors).toEqual([false, false, false]);
+    const { sim: some } = taken([true, false, false]);
+    expect(snap(some, 'Ana').cage!.anchors[0]).toBe(0);
+  });
+
+  it('anchors are hit like enemies; a gust does triple; at 0 a chain snaps and it is gone', () => {
+    const { sim } = taken();
+    atAnchor(sim, 0);
+    const id = RESCUE.anchorIdBase;
+    expect(snap(sim, 'Ana').wolves.find((w) => w.id === id)).toMatchObject({ kind: 'anchor' });
+    sim.handle('Ana', { t: 'attack', id });
+    expect(snap(sim, 'Ana').cage!.anchors[0]).toBe(150 - PUNCH.damage);
+    sim.getPlayer('Ana')!.viento = true;
+    const a = sim.rescue.anchors[0]!;
+    const before = snap(sim, 'Ana').cage!.anchors[0]!;
+    sim.handle('Ana', { t: 'power', kind: 'viento', x: a.x, z: a.z });
+    expect(snap(sim, 'Ana').cage!.anchors[0]).toBe(before - VIENTO.damage * RESCUE.gustMult);
+    for (let i = 0; i < 40 && snap(sim, 'Ana').cage!.anchors[0]! > 0; i++) {
+      sim.step(PUNCH.cooldown);
+      atAnchor(sim, 0);
+      sim.handle('Ana', { t: 'attack', id });
+    }
+    expect(snap(sim, 'Ana').cage!.anchors[0]).toBe(0);
+    expect(texts(msgs(sim)).some((t) => t.includes('Se parte una cadena'))).toBe(true);
+    expect(snap(sim, 'Ana').wolves.find((w) => w.id === id)).toBeUndefined();
+    expect(sim.save().anchors).toEqual([true, false, false]);
+  });
+
+  it('reaching an islet brings out 2 guards, once', () => {
+    const { sim } = taken();
+    const n0 = (sim as unknown as Priv).wolves.length;
+    atAnchor(sim, 1);
+    sim.step(0.1);
+    const n1 = (sim as unknown as Priv).wolves.length;
+    expect(n1 - n0).toBe(RESCUE.guards);
+    put(sim, 'Ana', 0, 0);
+    sim.step(0.1);
+    atAnchor(sim, 1);
+    sim.step(0.1);
+    expect((sim as unknown as Priv).wolves.length).toBeLessThanOrEqual(n1);
+  });
+
+  it('the cage opens only with every anchor broken; the Tragón comes back biting harder', () => {
+    const { sim: held } = taken([true, true, false]);
+    const c = held.rescue.cage;
+    put(held, 'Ana', c.x + 1, c.z);
+    held.handle('Ana', { t: 'rescue' });
+    expect(held.invasion2).toBe('taken');
+    expect(texts(msgs(held))[0]).toContain('quedan 1 ancla');
+    const { sim, h } = taken([true, true, true]);
+    put(sim, 'Ana', c.x + RESCUE.freeReach + 2, c.z);
+    sim.handle('Ana', { t: 'rescue' });
+    expect(sim.invasion2).toBe('taken');
+    put(sim, 'Ana', c.x + 1, c.z);
+    sim.handle('Ana', { t: 'rescue' });
+    expect(sim.invasion2).toBe('rescued');
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.join(' ').includes('Ana'))).toBe(true);
+    expect(sim.save().invasion2).toBe('rescued');
+    expect(sim.save().anchors).toBeUndefined();
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').cage).toBeNull();
+    expect(snap(sim, 'Ana').ally).not.toBeNull();
+    // a raider beside the Heart takes the angrier bite
+    const w = { id: 5555, x: h.x + ALLY.home + 1, y: 0, z: h.z, yaw: 0, hp: 200, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle', raid: true, kind: 'wolf', stun: 100 } as Wolf;
+    (sim as unknown as Priv).wolves.push(w);
+    for (let i = 0; i < 3 && w.hp === 200; i++) sim.step(0.1);
+    expect(w.hp).toBe(200 - ALLY.damage - ALLY.rage);
   });
 });
