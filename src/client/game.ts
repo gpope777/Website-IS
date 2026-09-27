@@ -14,7 +14,10 @@ import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { antenonBarText, bossBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, peatBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
+import { antenonBarText, bossBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
+import { MountainDungeonMeshes } from './scene/mountain-dungeon';
+import { mountainEntrance, shelfCrag } from '../shared/mountain-dungeon';
+import { PIEDRA, structureCrags } from '../shared/piedra';
 import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
@@ -159,6 +162,12 @@ export class Game {
   private readonly flameFx = new FlameFx();
   private hasFire = false;
   private fireLeft = 0;
+  private hasStone = false;
+  private stoneLeft = 0;
+  private readonly mountainDoor = mountainEntrance();
+  private caveMeshes: MountainDungeonMeshes | null = null;
+  /** Live Piedra pillars and torres: climbable (structureCrags), and pillars stop the rockfall. */
+  private stoneStructs: Structure[] = [];
   private readonly swampDoor = swampEntrance();
   private plankKey = '';
   /** The power H casts (J / holding the pill switches); client-side, sent with each cast. */
@@ -380,6 +389,10 @@ export class Game {
       case 'wrecked':
         this.structures.remove(m.id);
         for (let i = 0; i < 3; i++) this.colliders.remove(`s${m.id}:${i}`);
+        if (this.stoneStructs.some((s) => s.id === m.id)) {
+          this.stoneStructs = this.stoneStructs.filter((s) => s.id !== m.id);
+          this.rebuildClimbables();
+        }
         return;
       case 'error':
         return; // handled by Connection → onStatus
@@ -439,6 +452,8 @@ export class Game {
     this.scene.add(this.coastMeshes.group, this.gustFx.mesh);
     this.swampMeshes = new SwampDungeonMeshes({ ...this.swampDoor, y: this.terrain.heightAt(this.swampDoor.x, this.swampDoor.z) }, t.shadows);
     this.scene.add(this.swampMeshes.group, this.flameFx.mesh);
+    this.caveMeshes = new MountainDungeonMeshes({ ...this.mountainDoor, y: this.terrain.heightAt(this.mountainDoor.x, this.mountainDoor.z) }, t.shadows);
+    this.scene.add(this.caveMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows, this.ledges);
     this.zones = allZones(this.terrain, seed, this.entrance);
     const [nearPatch, farPatch, swampPatch] = terrainPatches(t.terrainSegments);
@@ -489,6 +504,10 @@ export class Game {
   private addStructure(s: Structure): void {
     if (this.structures.has(s.id)) return;
     this.structures.add(s).forEach((c, i) => this.colliders.add(`s${s.id}:${i}`, c));
+    if (s.kind === 'pillar' || s.kind === 'tower') {
+      this.stoneStructs = [...this.stoneStructs, s];
+      this.rebuildClimbables();
+    }
   }
 
   private onSnap(m: Extract<ServerMsg, { t: 'snap' }>): void {
@@ -513,13 +532,14 @@ export class Game {
       this.rebuildClimbables();
     }
     this.swampMeshes?.sync(m.dungeon.swamp, this.hasFire);
+    this.caveMeshes?.sync(m.dungeon.mountain, this.hasStone);
     this.zarzalKnot?.sync(m.zarzalBurnt);
     this.fogatasLit = m.fogatas;
     this.fogataMeshes?.sync(m.fogatas);
     if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
-    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? marchitoBarText(m.marchito));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? rockBarText(m.dungeon.mountain) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     this.fishViews = m.fish;
@@ -573,7 +593,14 @@ export class Game {
         mantle.name = 'peat';
         mantle.position.set(0, 0.62, -0.05);
         r.actor.root.add(mantle);
-      } else if (w.kind !== 'elite2' && w.kind !== 'elite3') r.actor.root.scale.setScalar(w.kind === 'elite' ? 2.4 : w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
+      } else if (w.kind === 'elite4' && !r.actor.root.getObjectByName('slab')) {
+        // The bruto de roca: the elite's size behind a grey stone slab.
+        r.actor.root.scale.setScalar(2.4);
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.85, 0.12), new THREE.MeshLambertMaterial({ color: 0x8a8c86, flatShading: true }));
+        slab.name = 'slab';
+        slab.position.set(0, 0.45, 0.5);
+        r.actor.root.add(slab);
+      } else if (w.kind !== 'elite2' && w.kind !== 'elite3' && w.kind !== 'elite4') r.actor.root.scale.setScalar(w.kind === 'elite' ? 2.4 : w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
       this.burnMark(r.actor.root, !!w.burning);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
@@ -652,7 +679,7 @@ export class Game {
     const pads = this.shrines.flatMap((s) => (s.kind === 'lilies' ? lilyPadCrags(s, this.shrineViews.find((v) => v.id === s.id)?.parts ?? s.parts.map(() => true)) : []));
     const stumps = this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []));
     const planks = plankCrags(this.dungeon.swamp.planks);
-    this.climbList = [...this.crags, ...bare, ...this.vines, ...pads, ...stumps, ...planks, ...this.ledges];
+    this.climbList = [...this.crags, ...bare, ...this.vines, ...pads, ...stumps, ...planks, ...this.ledges, shelfCrag(), ...structureCrags(this.stoneStructs)];
   }
 
   private syncVines(vines: Crag[]): void {
@@ -705,7 +732,9 @@ export class Game {
     this.windLeft = self.windLeft;
     this.hasFire = self.fuego;
     this.fireLeft = self.fireLeft;
-    const owns = { enredadera: self.power, viento: self.viento, fuego: self.fuego };
+    this.hasStone = self.piedra;
+    this.stoneLeft = self.stoneLeft;
+    const owns = { enredadera: self.power, viento: self.viento, fuego: self.fuego, piedra: self.piedra };
     if (!owns[this.powerKind] && owns[nextPower(this.powerKind, owns)]) {
       this.powerKind = nextPower(this.powerKind, owns); // e.g. Viento first: the pill follows what you own
       this.touch?.setPowerIcon(POWER_ICON[this.powerKind]);
@@ -773,7 +802,7 @@ export class Game {
         fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
         onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
         onTrap: () => {
-          this.trap = nextTrap(this.trap, this.hasFire);
+          this.trap = nextTrap(this.trap, this.hasFire, this.hasStone);
           this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
         },
       });
@@ -784,6 +813,7 @@ export class Game {
     if (a === 'campfire' || a === 'wall' || a === 'heart' || a === 'spikes') return this.place(a);
     if (a === 'net') return this.place('roots');
     if (a === 'fire') return this.place('fire');
+    if (a === 'tower') return this.place('tower');
     if (a === 'trap') return this.place(this.trap);
     if (a === 'roll') return this.roll();
     if (a === 'lock') return this.toggleLock();
@@ -913,7 +943,7 @@ export class Game {
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     const sp = this.shrinePart();
     if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
-    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire);
+    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone);
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
     const ca = this.coastAct();
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
@@ -1031,16 +1061,23 @@ export class Game {
   }
 
   private switchPower(): void {
-    const owns = { enredadera: this.hasPower, viento: this.hasWind, fuego: this.hasFire };
+    const owns = { enredadera: this.hasPower, viento: this.hasWind, fuego: this.hasFire, piedra: this.hasStone };
     const next = nextPower(this.powerKind, owns);
     if (next === this.powerKind) return this.hud.toast(owns[next] ? 'Solo tienes un poder' : 'Aún no tienes ningún poder');
     this.powerKind = next;
     this.touch?.setPowerIcon(POWER_ICON[next]);
-    this.hud.toast(`Poder: ${{ enredadera: NAMES.powerVine, viento: NAMES.powerWind, fuego: NAMES.powerFire }[next]} ${POWER_ICON[next]}`);
+    this.hud.toast(`Poder: ${{ enredadera: NAMES.powerVine, viento: NAMES.powerWind, fuego: NAMES.powerFire, piedra: NAMES.powerStone }[next]} ${POWER_ICON[next]}`);
   }
 
   private power(): void {
     const b = this.body!;
+    if (this.powerKind === 'piedra') {
+      // Aim ahead; the server snaps the pillar 4 m out on its 2 m grid.
+      const x = b.x + Math.sin(b.facing) * PIEDRA.ahead;
+      const z = b.z + Math.cos(b.facing) * PIEDRA.ahead;
+      if (this.hasStone && this.stoneLeft === 0) this.stoneLeft = PIEDRA.cooldown; // until the next snap says otherwise
+      return this.conn.send({ t: 'power', x: r2(x), z: r2(z), kind: 'piedra' });
+    }
     if (this.powerKind === 'fuego') {
       const x = b.x + Math.sin(b.facing) * 2.5;
       const z = b.z + Math.cos(b.facing) * 2.5;
@@ -1131,7 +1168,7 @@ export class Game {
       const yaw = d.rotation.y;
       Object.assign(b, { x: d.position.x - Math.sin(yaw) * MOUNT.seatBack, y: d.position.y - MOUNT.height, z: d.position.z - Math.cos(yaw) * MOUNT.seatBack, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, wall: false, gliding: false, facing: yaw });
       res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
-    } else res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates, this.dungeon.coast.gates, this.dungeon.swamp.gates));
+    } else res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates, this.dungeon.coast.gates, this.dungeon.swamp.gates, this.dungeon.mountain.gates));
     if (res.steep && now >= this.steepToastAt) {
       this.steepToastAt = now + 3000;
       this.hud.toast(STEEP_TEXT[res.steep]);
@@ -1217,6 +1254,7 @@ export class Game {
     this.dungeonMeshes?.animate(performance.now() / 1000);
     this.coastMeshes?.animate(performance.now() / 1000, dt);
     this.swampMeshes?.animate(performance.now() / 1000);
+    this.caveMeshes?.animate(this.serverTime, dt, this.stoneStructs.filter((s) => s.kind === 'pillar'));
     this.flameFx.update(dt);
     this.gustFx.update(dt);
     this.rig.apply(this.camera, b, terrain);
@@ -1338,7 +1376,7 @@ export class Game {
     if (fa) return this.hud.setPrompt(fa.t === 'hint' ? `${NAMES.fogata[0]!.toUpperCase()}${NAMES.fogata.slice(1)} apagada · ${fa.label}` : `E · ${fa.label}`);
     const ra = this.rescueAct();
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
-    const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire));
+    const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma?.act === 14) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio · Salto alto`);
     if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 || ma.act === 11 || ma.act === 14 ? `E / M · ${ma.label}` : `E · ${ma.label}`);

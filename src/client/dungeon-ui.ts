@@ -2,8 +2,8 @@ import { NAMES } from '../shared/names';
 import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
 import { COAST_DUNGEON, inCoastDungeon, insideCoast } from '../shared/coast-dungeon';
 import { inSwampDungeon, insideSwamp, SWAMP_DUNGEON } from '../shared/swamp-dungeon';
-import { dungeonBlockCell, MOUNTAIN_DUNGEON } from '../shared/mountain-dungeon';
-import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, SwampDungeonView } from '../shared/protocol';
+import { dungeonBlockCell, inMountainDungeon, insideMountain, MOUNTAIN_DUNGEON } from '../shared/mountain-dungeon';
+import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, MountainDungeonView, SwampDungeonView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
 export function emptyDungeonView(): DungeonView {
@@ -128,4 +128,34 @@ export function peatBarText(view: SwampDungeonView): string | null {
   if (!e) return null;
   const name = NAMES.eliteSwamp.charAt(0).toUpperCase() + NAMES.eliteSwamp.slice(1);
   return `${name} ${e.hp}/${e.max}${e.burning ? ' · ardiendo' : e.charging ? ' · ¡carga!' : ''}`;
+}
+
+/** The contextual A / E action around the mountain cave (acts 18–25). The server re-checks everything. */
+export function mountainDungeonAction(pos: { x: number; z: number }, entrance: { x: number; z: number }, view: MountainDungeonView, piedra: boolean): { act: number; label: string } | null {
+  const M = MOUNTAIN_DUNGEON;
+  const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
+  if (!inMountainDungeon(pos.x, pos.z)) return near(entrance.x, entrance.z, M.mouthR + M.enterReach) ? { act: 18, label: 'Entrar en la cueva' } : null;
+  if (near(M.x, M.entryZ, M.exitReach)) return { act: 19, label: 'Salir de la cueva' };
+  if (!view.gates[0]) {
+    for (const i of [0, 1]) {
+      const l = insideMountain(M.levers[i]!);
+      if (near(l.x, l.z, M.leverReach)) return { act: 20 + i, label: 'Tirar de la raíz' };
+    }
+  }
+  if (view.gates[0] && !piedra && near(M.x, M.altarZ, M.altarReach)) return { act: 22, label: `Tomar la ${NAMES.powerStone}` };
+  if (!view.gates[2]) {
+    const i = view.blocks.findIndex((b) => near(b.x, b.z, M.pushReach));
+    if (i >= 0) return { act: 23 + i, label: piedra ? 'Empujar el bloque' : 'No se mueve' };
+    const l = insideMountain(M.resetLever);
+    if (near(l.x, l.z, M.leverReach)) return { act: 25, label: 'Tirar de la palanca' };
+  }
+  return null;
+}
+
+/** The bruto de roca's bar while it fights. */
+export function rockBarText(view: MountainDungeonView): string | null {
+  const e = view.elite;
+  if (!e) return null;
+  const name = NAMES.eliteMountain.charAt(0).toUpperCase() + NAMES.eliteMountain.slice(1);
+  return `${name} ${e.hp}/${e.max}${e.exposed ? ' · expuesto' : e.charging ? ' · ¡carga!' : ''}`;
 }

@@ -9,6 +9,7 @@ const WITHERED = new THREE.MeshLambertMaterial({ color: 0x5a5048 });
 const SPIKE = new THREE.MeshLambertMaterial({ color: 0x8a6a44, flatShading: true });
 const NET = new THREE.MeshLambertMaterial({ color: 0x5a3f22, flatShading: true });
 const FLAME = new THREE.MeshBasicMaterial({ color: 0xffa040 });
+const PILLAR = new THREE.MeshLambertMaterial({ color: 0x9a9c98, flatShading: true });
 // ponytail: one point light per fire, capped. Past the cap fires glow without lighting; a light pool comes with #2's night work.
 const MAX_FIRE_LIGHTS = 8;
 
@@ -23,7 +24,7 @@ export class StructureMeshes {
 
   /** Adds the mesh and returns collision circles for it. */
   add(s: Structure): Circle[] {
-    const obj = s.kind === 'campfire' ? this.campfire(s) : s.kind === 'heart' ? this.heart() : s.kind === 'spikes' ? this.spikes() : s.kind === 'roots' ? this.net() : s.kind === 'fire' ? this.hoguera(s) : this.wall();
+    const obj = s.kind === 'campfire' ? this.campfire(s) : s.kind === 'heart' ? this.heart() : s.kind === 'spikes' ? this.spikes() : s.kind === 'roots' ? this.net() : s.kind === 'fire' ? this.hoguera(s) : s.kind === 'pillar' ? this.pillar() : s.kind === 'tower' ? this.tower() : this.wall();
     obj.position.set(s.x, s.y, s.z);
     obj.rotation.y = s.rot;
     this.group.add(obj);
@@ -32,6 +33,7 @@ export class StructureMeshes {
     if (s.kind === 'campfire') return [{ x: s.x, z: s.z, r: 0.6 }];
     if (s.kind === 'heart') return [{ x: s.x, z: s.z, r: 1.2 }];
     if (s.kind === 'spikes' || s.kind === 'roots' || s.kind === 'fire') return []; // players walk over them
+    if (s.kind === 'pillar' || s.kind === 'tower') return []; // climbable crags (structureCrags), not walls
     // A 3 m wall along its local X axis, approximated by three circles.
     return [-1, 0, 1].map((o) => ({ x: s.x + Math.cos(s.rot) * o, z: s.z - Math.sin(s.rot) * o, r: 0.55 }));
   }
@@ -57,6 +59,25 @@ export class StructureMeshes {
       f.flame.scale.set(k, 0.8 + Math.sin(t * 9.1 + f.seed) * 0.2, k);
       if (f.light) f.light.intensity = 28 + Math.sin(t * 17 + f.seed) * 3;
     }
+  }
+
+  /** Piedra's pillar: a 2 × 3 × 2 m block of grey stone. */
+  private pillar(): THREE.Mesh {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), PILLAR);
+    m.geometry.translate(0, 1.5, 0);
+    return m;
+  }
+
+  /** La torre: a 4 m stone drum with a rim on top to stand on. */
+  private tower(): THREE.Group {
+    const g = new THREE.Group();
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 4, 8), STONE);
+    drum.position.y = 2;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.15, 5, 8), PILLAR);
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.y = 4;
+    g.add(drum, rim);
+    return g;
   }
 
   private campfire(s: Structure): THREE.Group {

@@ -69,3 +69,14 @@ describe('power switching (S2-F)', () => {
     expect(POWER_ICON.fuego).toBe('🔥');
   });
 });
+
+describe('four powers (S4-E)', () => {
+  it('cycles enredadera → viento → fuego → piedra, skipping what you lack', async () => {
+    const { nextPower, POWER_ICON } = await import('./input');
+    const all = { enredadera: true, viento: true, fuego: true, piedra: true };
+    expect(nextPower('fuego', all)).toBe('piedra');
+    expect(nextPower('piedra', all)).toBe('enredadera');
+    expect(nextPower('viento', { viento: true, piedra: true })).toBe('piedra');
+    expect(POWER_ICON.piedra).toBe('🪨');
+  });
+});

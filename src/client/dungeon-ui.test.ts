@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { NAMES } from '../shared/names';
 import { DUNGEON, inside, leverPos } from '../shared/dungeon';
 import type { DungeonView } from '../shared/protocol';
-import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView } from './dungeon-ui';
+import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText } from './dungeon-ui';
+import { dungeonBlockCell, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON as M } from '../shared/mountain-dungeon';
 
 const entrance = { x: 100, y: 2, z: 0 };
 const shut: DungeonView = emptyDungeonView();
@@ -134,5 +135,31 @@ describe('El Zancudo UI (S3-F)', () => {
     expect(zancudoBarText({ ...v, boss: { ...boss, diving: true, shadow: { x: 0, z: 0 } } })).toBe(`${NAMES.bossSwamp} 380/380 · ¡picado!`);
     expect(zancudoBarText({ ...v, boss: { ...boss, hp: 200, grounded: true } })).toBe(`${NAMES.bossSwamp} 200/380 · ¡en el suelo!`);
     expect(zancudoBarText({ ...v, boss: { ...boss, latch: 'Ana' } })).toBe(`${NAMES.bossSwamp} 380/380 · chupando a Ana: ¡rueda!`);
+  });
+});
+
+
+describe('mountainDungeonAction (S4-E)', () => {
+  const door = mountainEntrance();
+  const mv = emptyDungeonView().mountain;
+  it('enters at the cave mouth, leaves at the door, pulls levers, takes Piedra', () => {
+    expect(mountainDungeonAction({ x: door.x, z: door.z + 3 }, door, mv, false)).toEqual({ act: 18, label: 'Entrar en la cueva' });
+    expect(mountainDungeonAction({ x: 0, z: 0 }, door, mv, false)).toBeNull();
+    expect(mountainDungeonAction({ x: M.x, z: M.entryZ }, door, mv, false)?.act).toBe(19);
+    const l = insideMountain(M.levers[1]!);
+    expect(mountainDungeonAction(l, door, mv, false)?.act).toBe(21);
+    const opened = { ...mv, gates: [true, false, false, false] };
+    expect(mountainDungeonAction({ x: M.x, z: M.altarZ }, door, opened, false)).toEqual({ act: 22, label: `Tomar la ${NAMES.powerStone}` });
+    expect(mountainDungeonAction({ x: M.x, z: M.altarZ }, door, opened, true)).toBeNull();
+  });
+  it('pushes blocks with Piedra; the reset lever', () => {
+    const b1 = dungeonBlockCell(M.blocks.starts[1]);
+    expect(mountainDungeonAction({ x: b1.x, z: b1.z - 1.5 }, door, mv, true)).toEqual({ act: 24, label: 'Empujar el bloque' });
+    expect(mountainDungeonAction({ x: b1.x, z: b1.z - 1.5 }, door, mv, false)?.label).toBe('No se mueve');
+    expect(mountainDungeonAction(insideMountain(M.resetLever), door, mv, true)?.act).toBe(25);
+  });
+  it('shows the bruto de roca bar', () => {
+    expect(rockBarText(mv)).toBeNull();
+    expect(rockBarText({ ...mv, elite: { hp: 300, max: 500, charging: false, exposed: true } })).toBe('Bruto de roca 300/500 · expuesto');
   });
 });
