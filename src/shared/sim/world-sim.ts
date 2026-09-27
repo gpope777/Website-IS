@@ -7,7 +7,7 @@ import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
-import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
+import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
@@ -369,12 +369,15 @@ export class WorldSim {
   private readonly netReady = new Map<number, number>();
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
-  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean } | null = null;
+  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean; tri?: boolean } | null = null;
   private raidN: number;
   private swampSeen: boolean;
   private mountainsSeen: boolean;
   /** La Gata Araña's wolf id while she leads a raid. */
   private gataId: number | null = null;
+  /** El Triángulo in tonight's raid (S4-D) and his rock timer. */
+  private triId: number | null = null;
+  private rockIn = 0;
   /** Seconds left of a raid fleeing after she fell. */
   private raidFlee = 0;
   private wasNight = false; // false on load so a night-time load still spawns wolves
@@ -608,6 +611,19 @@ export class WorldSim {
         if (w.kind === 'lieut1') {
           const bit = stepGata(w, targets, goal, this.terrain, dt, this.rng);
           if (bit) this.bite(bit, ENEMY.lieut1.damage, w);
+          continue;
+        }
+        if (w.kind === 'lieut2') {
+          const bit = stepTriangulo(w, targets, goal, this.terrain, dt, this.rng);
+          if (bit) this.bite(bit, ENEMY.lieut2.damage, w);
+          this.rockIn -= dt;
+          if (this.rockIn <= 0 && w.hp > 0) {
+            const id = rockTarget(w, this.structures);
+            if (id !== null) {
+              this.rockIn = TRIANGULO.rockEvery;
+              this.damageStructure(id, TRIANGULO.rockDamage);
+            }
+          }
           continue;
         }
         w.haste = hasteNear(gata, w.x, w.z);
@@ -2682,7 +2698,9 @@ export class WorldSim {
       const where = !src || src.id === 0 ? `la ${NAMES.forestRoot}` : 'una zona marchita';
       this.raidN++;
       this.raid.gata = gataLeads(this.raidN, this.swampSeen, corrupt);
-      const coast = (coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '') + (this.raid.gata ? `. ${NAMES.lieutenant1} guía el asedio esta noche` : '');
+      this.raid.tri = triLeads(this.raidN, this.mountainsSeen, corrupt);
+      const lead = this.raid.gata ? NAMES.lieutenant1 : this.raid.tri ? NAMES.lieutenant2 : '';
+      const coast = (coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '') + (lead ? `. ${lead} guía el asedio esta noche` : '');
       this.say(
         this.purified
           ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón${coast}`
@@ -2696,6 +2714,7 @@ export class WorldSim {
     if (!night && this.wasNight && this.raid) {
       this.raid = null;
       this.gataId = null;
+      this.triId = null;
       this.raidFlee = 0;
       if (heart && heart.hp > 0) {
         this.raidLevel++;
@@ -2725,47 +2744,53 @@ export class WorldSim {
         }
       }
     }
-    // La Gata Araña walks in behind her pack.
-    if (this.raid?.gata) {
+    // La Gata Araña (or El Triángulo) walks in behind the pack.
+    const lead: EnemyKind | null = this.raid?.gata ? 'lieut1' : this.raid?.tri ? 'lieut2' : null;
+    if (lead) {
       for (let tries = 0; tries < 20; tries++) {
         const ang = dir + (this.rng() - 0.5) * 0.8;
-        const d = RAID.spawnMax + GATA.behind;
+        const d = RAID.spawnMax + (lead === 'lieut1' ? GATA.behind : TRIANGULO.behind);
         const x = heart.x + Math.sin(ang) * d;
         const z = heart.z + Math.cos(ang) * d;
         if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
-          const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, 'lieut1');
+          const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, lead);
           w.raid = true;
           this.wolves.push(w);
-          this.gataId = w.id;
+          if (lead === 'lieut1') this.gataId = w.id;
+          else [this.triId, this.rockIn] = [w.id, TRIANGULO.rockEvery];
           break;
         }
       }
     }
   }
 
-  /** When La Gata Araña falls: amber to everyone near, a vision, and the rest of her raid flees and is gone in 3 s. */
+  /** When a lieutenant falls: loot to everyone near, a vision, and the rest of the raid flees and is gone in 3 s. */
   private stepGataFall(dt: number): void {
     if (this.raidFlee > 0) {
       this.raidFlee = Math.max(0, this.raidFlee - dt);
-      if (this.raidFlee === 0) this.wolves = this.wolves.filter((w) => !w.raid || w.kind === 'lieut1');
+      if (this.raidFlee === 0) this.wolves = this.wolves.filter((w) => !w.raid || w.kind === 'lieut1' || w.kind === 'lieut2');
       return;
     }
-    const g = this.gataId === null ? undefined : this.wolves.find((w) => w.id === this.gataId);
-    if (this.gataId === null || (g && g.hp > 0)) return;
-    this.gataId = null;
+    const gata = this.gataId !== null;
+    const id = gata ? this.gataId : this.triId;
+    const g = id === null ? undefined : this.wolves.find((w) => w.id === id);
+    if (id === null || (g && g.hp > 0)) return;
+    this.gataId = this.triId = null;
     if (!g) return;
     this.raidFlee = GATA.fleeFor;
     const present = this.activeNames().filter((n) => {
       const p = this.players.get(n);
       return !!p && !p.dead && Math.hypot(p.x - g.x, p.z - g.z) <= GATA.present;
     });
-    for (const n of present) {
-      const p = this.players.get(n)!;
-      p.inv = addItem(p.inv, 'amber', GATA.amber);
-      this.tell(n, `${NAMES.lieutenant1} deja ${GATA.amber} de ${NAMES.amber}`);
+    const [who, item, n, label] = gata ? [NAMES.lieutenant1, 'amber', GATA.amber, NAMES.amber] as const : [NAMES.lieutenant2, 'quartz', TRIANGULO.quartz, NAMES.quartz] as const;
+    for (const name of present) {
+      const p = this.players.get(name)!;
+      p.inv = addItem(p.inv, item, n);
+      this.tell(name, `${who} deja ${n} de ${label}`);
     }
-    this.say(`${NAMES.lieutenant1} cae. Su manada huye`);
-    this.vision(VISION.gata(joinNames(present.length ? present : this.activeNames())));
+    this.say(`${who} cae. ${gata ? 'Su manada' : 'El asedio'} huye`);
+    const names = joinNames(present.length ? present : this.activeNames());
+    this.vision(gata ? VISION.gata(names) : VISION.triangulo(names));
   }
 
   /** A beast running away from a point (a raider from the Heart, a wolf from fire). */

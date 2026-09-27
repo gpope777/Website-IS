@@ -4848,7 +4848,7 @@ describe('mountain shrines and refugios (S4-C)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(37);
+    expect(PROTOCOL_VERSION).toBe(38);
   });
 });
 
@@ -4982,5 +4982,69 @@ describe('mountain corruption (S4-D)', () => {
     put(sim, 'Ana', 0, -HALF - 20);
     sim.step(0.1);
     expect(sim.save().mountainsSeen).toBe(true);
+  });
+});
+
+describe('El Triángulo (S4-D)', () => {
+  const night = (opts: { raidN?: number; mountainsSeen?: boolean; cleansed?: number[] }, names = ['Ana']) => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, opts);
+    const sim = new WorldSim(w);
+    for (const n of names) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    const heart = plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('El Triángulo guía el asedio esta noche'));
+    stepTo(sim, 0.81);
+    return { sim, heart, warn, tri: sim.wolfList.find((x) => x.kind === 'lieut2') };
+  };
+
+  it('leads the 4th raid once the mountains are seen and zone 14 is corrupt', () => {
+    const a = night({ raidN: 3, mountainsSeen: true });
+    expect(a.warn).toBe(true);
+    expect(a.tri?.hp).toBe(340);
+    expect(a.tri?.raid).toBe(true);
+    expect(a.sim.wolfList.some((x) => x.kind === 'lieut1')).toBe(false);
+    for (const o of [{ raidN: 3 }, { raidN: 2, mountainsSeen: true }, { raidN: 3, mountainsSeen: true, cleansed: [14] }]) {
+      const b = night(o);
+      expect(b.warn).toBe(false);
+      expect(b.tri).toBeUndefined();
+    }
+  });
+
+  it('throws a 40-damage rock at a player structure every 6 s; the Heart takes none', () => {
+    const { sim, heart, tri } = night({ raidN: 3, mountainsSeen: true });
+    (sim as unknown as { wolves: Wolf[] }).wolves = [tri as Wolf];
+    put(sim, 'Ana', heart.x + 150, heart.z + 150);
+    const d = Math.hypot(tri!.x - heart.x, tri!.z - heart.z);
+    const wall = { id: 500, kind: 'wall' as const, x: heart.x + ((tri!.x - heart.x) / d) * 19, y: 0, z: heart.z + ((tri!.z - heart.z) / d) * 19, rot: 0, owner: 'Ana', hp: 1000 };
+    (sim as unknown as { structures: unknown[] }).structures.push(wall);
+    const hp0 = sim.save().structures.find((s) => s.kind === 'heart')!.hp;
+    for (let i = 0; i < 200; i++) sim.step(0.1);
+    const lost = 1000 - wall.hp;
+    expect(lost).toBeGreaterThanOrEqual(40);
+    expect(lost % 40).toBe(0);
+    expect(sim.save().structures.find((s) => s.kind === 'heart')!.hp).toBe(hp0);
+  });
+
+  it('when he falls his pack flees, the near player gets 2 cuarzo, the far one none, and a vision', () => {
+    const { sim, tri } = night({ raidN: 3, mountainsSeen: true }, ['Ana', 'Leo']);
+    put(sim, 'Ana', tri!.x + 5, tri!.z);
+    put(sim, 'Leo', tri!.x + 100, tri!.z);
+    msgs(sim);
+    (tri as Wolf).hp = 0;
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Mis rocas')))).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(2);
+    expect(sim.getPlayer('Leo')!.inv.quartz ?? 0).toBe(0);
+    for (let i = 0; i < 32; i++) sim.step(0.1);
+    expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut2')).toEqual([]);
+  });
+
+  it('protocol version moved on', () => {
+    expect(PROTOCOL_VERSION).toBe(38);
   });
 });

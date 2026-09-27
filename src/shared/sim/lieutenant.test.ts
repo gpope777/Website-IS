@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../terrain';
-import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
+import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { createWolf, stepRaider, type RaidGoal, type WolfTarget } from './wolves';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
@@ -46,5 +46,35 @@ describe('La Gata Araña (S3-D)', () => {
     stepRaider(a, [], goal, flat, 0.1, rng);
     stepRaider(b, [], goal, flat, 0.1, rng);
     expect(30 - b.x).toBeCloseTo((30 - a.x) * GATA.haste, 5);
+  });
+});
+
+describe('El Triángulo (S4-D)', () => {
+  it('leads raids with raidN % 3 === 1 from the 4th, once the mountains are seen and zone 14 is corrupt; never with the Gata', () => {
+    expect(triLeads(4, true, [14])).toBe(true);
+    expect(triLeads(7, true, [0, 14, 15])).toBe(true);
+    expect(triLeads(1, true, [14])).toBe(false);
+    expect(triLeads(3, true, [14])).toBe(false);
+    expect(triLeads(5, true, [14])).toBe(false);
+    expect(triLeads(4, false, [14])).toBe(false);
+    expect(triLeads(4, true, [15, 16])).toBe(false);
+    for (let n = 0; n < 30; n++) expect(triLeads(n, true, [10, 14]) && gataLeads(n, true, [10, 14])).toBe(false);
+  });
+
+  it('kicks a player in sight; with nobody near he waits short of the Heart', () => {
+    const w = createWolf(1, 40, 0, flat, rng, 'lieut2');
+    expect(w.hp).toBe(TRIANGULO.hp);
+    expect(stepTriangulo(Object.assign(w, { x: 59 }), [target(60)], goal, flat, 0.1, rng)).toBe('Ana');
+    const v = createWolf(2, 40, 0, flat, rng, 'lieut2');
+    for (let i = 0; i < 200; i++) stepTriangulo(v, [target(-200)], goal, flat, 0.1, rng);
+    expect(v.x).toBeCloseTo(GATA.hold, 1);
+  });
+
+  it('throws rocks at the nearest player structure within 25 m, never the Heart', () => {
+    const at = { x: 0, z: 0 };
+    const heart = { id: 1, kind: 'heart', x: 1, z: 0 };
+    expect(rockTarget(at, [heart])).toBeNull();
+    expect(rockTarget(at, [heart, { id: 2, kind: 'wall', x: 20, z: 0 }, { id: 3, kind: 'spikes', x: 0, z: 10 }])).toBe(3);
+    expect(rockTarget(at, [{ id: 4, kind: 'wall', x: 30, z: 0 }])).toBeNull();
   });
 });
