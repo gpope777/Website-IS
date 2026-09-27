@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
+import { taintAt, type Zone } from '../../shared/corruption';
+
+const TAINT = new THREE.Color(0x5a3a6e);
 
 export function buildTerrainMesh(terrain: Terrain, segments: number): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, segments, segments);
@@ -22,10 +25,27 @@ export function buildTerrainMesh(terrain: Terrain, segments: number): THREE.Mesh
     colors.set([tmp.r, tmp.g, tmp.b], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.userData.base = colors.slice();
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
   mesh.receiveShadow = true;
   return mesh;
+}
+
+/** Recolour the ground toward purple inside corrupt zones (only colours change: cheap). */
+export function tintTerrain(mesh: THREE.Mesh, zones: readonly Zone[], corrupt: readonly number[]): void {
+  const geo = mesh.geometry;
+  const base = geo.userData.base as Float32Array;
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const col = geo.attributes.color as THREE.BufferAttribute;
+  const tmp = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    tmp.setRGB(base[i * 3]!, base[i * 3 + 1]!, base[i * 3 + 2]!);
+    const k = taintAt(zones, corrupt, pos.getX(i), pos.getZ(i));
+    if (k > 0) tmp.lerp(TAINT, k * 0.75);
+    col.setXYZ(i, tmp.r, tmp.g, tmp.b);
+  }
+  col.needsUpdate = true;
 }
 
 export function buildWater(): THREE.Mesh {

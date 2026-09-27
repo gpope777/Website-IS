@@ -3,6 +3,7 @@ import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
+import { CORRUPTION, generateZones, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, leverPos, withDungeon } from '../dungeon';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
@@ -79,6 +80,8 @@ export interface SavedWorld {
   purified?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
+  /** Corruption zones cleansed so far (ids from generateZones). Optional: older saves have none. */
+  cleansed?: number[];
 }
 
 export interface Grave extends GraveView {
@@ -137,6 +140,10 @@ export class WorldSim {
   readonly entrance: { x: number; y: number; z: number };
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
   readonly wild: { x: number; y: number; z: number };
+  /** Corruption zones (spec §3), seeded; zone 0 is on the Raíz-madre. */
+  readonly zones: readonly Zone[];
+  /** Zone ids cleansed (saved). */
+  private readonly cleansed: Set<number>;
   time: number;
   /** Live-only: root lever pull times and whether the gate opened (stays open until the room restarts). */
   private readonly dungeonLive = { pulled: [null, null] as (number | null)[], gate: false };
@@ -184,6 +191,8 @@ export class WorldSim {
     this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, this.shrines);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...this.shrines, this.entrance]);
+    this.zones = generateZones(this.terrain, saved.seed, this.entrance);
+    this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
     this.shrineLive = this.shrines.map(() => ({ pulled: [null, null], openUntil: -Infinity, pressed: false }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
@@ -377,7 +386,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), marchito };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), marchito, corrupt: this.corrupt() };
   }
 
   drain(): Outgoing[] {
@@ -400,6 +409,7 @@ export class WorldSim {
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
+      ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
     };
   }
 
@@ -408,6 +418,11 @@ export class WorldSim {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
     return [...this.crags, ...bare, ...this.vines];
+  }
+
+  /** Ids of the zones still corrupt. */
+  corrupt(): number[] {
+    return this.zones.filter((z) => !this.cleansed.has(z.id)).map((z) => z.id);
   }
 
   heart(): Structure | undefined {
@@ -598,6 +613,9 @@ export class WorldSim {
     if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
     p.shrines = [...cleared, id];
     this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
+    // The shrine's light cleanses the corrupt zone nearest it (never the Raíz-madre's: that takes the Tragón).
+    const zn = nearestZone(this.zones, s.x, s.z, this.corrupt().filter((i) => i !== 0));
+    if (zn) this.cleanse(zn.id, 'La luz del santuario limpia un trozo de bosque');
   }
 
   private onPower(p: SavedPlayer, l: Live, x: number, z: number): void {
@@ -615,6 +633,8 @@ export class WorldSim {
     this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
+    const zn = this.zones.find((z) => z.id !== 0 && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
+    if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     const b = this.boss;
     if (b && b.hp > 0 && Math.hypot(b.x - plan.x, b.z - plan.z) <= BOSS.rootRadius + plan.r) {
       b.rooted = BOSS.rootFor;
@@ -654,6 +674,7 @@ export class WorldSim {
     if (this.boss && this.boss.hp <= 0 && !this.purified) {
       this.purified = true;
       this.say('El Tragón se deshace en papel limpio. Ahora cuida el Corazón');
+      this.cleanse(0, 'La Raíz-madre deja de supurar morado');
       this.vision(VISION.purified(joinNames(this.activeNames())));
       if (this.invasion === 'none') {
         this.invasion = 'pending';
@@ -946,17 +967,45 @@ export class WorldSim {
         }
       }
     }
+    // Corrupt zones breed more and tougher beasts: extra wolves around each player standing in one, the first a brute.
+    const corrupt = this.corrupt();
+    for (const a of anchors) {
+      const zn = zoneAt(this.zones, a.x, a.z);
+      if (!zn || !corrupt.includes(zn.id) || inDungeon(a.x, a.z)) continue;
+      for (let i = 0; i < CORRUPTION.extraWolves; i++) {
+        for (let tries = 0; tries < 10; tries++) {
+          const ang = this.rng() * Math.PI * 2;
+          const d = 20 + this.rng() * 15;
+          const x = a.x + Math.sin(ang) * d;
+          const z = a.z + Math.cos(ang) * d;
+          if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
+            this.wolves.push(createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, i === 0 ? 'brute' : 'wolf'));
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  private cleanse(id: number, text: string): void {
+    if (this.cleansed.has(id) || !this.zones.some((z) => z.id === id)) return;
+    this.cleansed.add(id);
+    this.say(text);
   }
 
   private stepRaid(night: boolean): void {
     const heart = this.heart();
     const f = dayFraction(this.time);
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
-      this.raid = { phase: 'warn', dir: this.rootDir(heart) + (this.rng() - 0.5) * RAID.jitter };
+      // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
+      const corrupt = this.corrupt();
+      const src = nearestZone(this.zones, heart.x, heart.z, corrupt);
+      this.raid = { phase: 'warn', dir: raidDirFrom(heart, this.zones, corrupt, this.rootDir(heart)) + (this.rng() - 0.5) * RAID.jitter };
+      const where = !src || src.id === 0 ? 'la Raíz-madre' : 'una zona marchita';
       this.say(
         this.purified
-          ? 'Restos de corrupción desde la Raíz-madre. Vienen menos: vuelvan al Corazón'
-          : 'El cielo se tiñe de morado hacia la Raíz-madre. El Marchito envía a sus bestias: vuelvan al Corazón',
+          ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón`
+          : `El cielo se tiñe de morado hacia ${where}. El Marchito envía a sus bestias: vuelvan al Corazón`,
       );
     }
     if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {

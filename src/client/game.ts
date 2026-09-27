@@ -33,7 +33,9 @@ import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
 import { buildCrags, buildVine } from './scene/crags';
 import { ShrineMeshes } from './scene/shrines';
-import { buildTerrainMesh, buildWater } from './scene/terrain-mesh';
+import { buildTerrainMesh, buildWater, tintTerrain } from './scene/terrain-mesh';
+import { CorruptionMeshes } from './scene/corruption';
+import { generateZones, type Zone } from '../shared/corruption';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
@@ -110,6 +112,11 @@ export class Game {
   /** Has Enredadera (from the server). */
   private hasPower = false;
   private entrance = { x: 0, y: 0, z: 0 };
+  private zones: Zone[] = [];
+  private ground: THREE.Mesh | null = null;
+  private corruptionMeshes: CorruptionMeshes | null = null;
+  /** Last corrupt-ids key applied to the ground tint. */
+  private corruptKey = '';
   private dungeon: DungeonView = { gate: false, levers: [false, false], purified: false, boss: null };
   private vines: Crag[] = [];
   private vineKey = '';
@@ -267,7 +274,12 @@ export class Game {
     this.scene.add(this.steedMeshes.group);
     this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
-    this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
+    this.zones = generateZones(this.terrain, seed, this.entrance);
+    this.ground = buildTerrainMesh(this.terrain, t.terrainSegments);
+    this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
+    this.corruptKey = '';
+    this.scene.add(this.corruptionMeshes.group);
+    this.scene.add(this.ground, buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
     const solid = this.climbList;
     for (const s of this.spawns) {
@@ -309,6 +321,12 @@ export class Game {
     this.hud.setBoss(bossBarText(m.dungeon) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
+    const key = m.corrupt.join(',');
+    if (key !== this.corruptKey && this.ground) {
+      this.corruptKey = key;
+      tintTerrain(this.ground, this.zones, m.corrupt);
+      this.corruptionMeshes?.sync(m.corrupt);
+    }
     if (!this.kits) return;
     for (const p of m.players) {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));

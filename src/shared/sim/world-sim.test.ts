@@ -6,6 +6,7 @@ import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
 import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, leverPos } from '../dungeon';
+import { CORRUPTION } from '../corruption';
 import { WATER_LEVEL } from '../terrain';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
@@ -1590,9 +1591,13 @@ describe('El Marchito', () => {
 });
 
 describe('corruption from the Raíz-madre', () => {
-  it('raids are warned from the Raíz-madre side of the Heart', () => {
+  it('raids are warned from the Raíz-madre side of the Heart (once the other zones are clean)', () => {
     for (const seed of [1, 42, 777]) {
-      const sim = new WorldSim(newWorld(seed, 's'));
+      // Rule change (cierre S1): raids come from the nearest corrupt zone; with only zone 0 left, that is the Raíz-madre.
+      const w = newWorld(seed, 's');
+      const probe = new WorldSim(w);
+      w.cleansed = probe.zones.filter((z) => z.id !== 0).map((z) => z.id);
+      const sim = new WorldSim(w);
       sim.createPlayer('Ana', 'h');
       sim.connect('Ana');
       const h = plantHeart(sim);
@@ -1615,5 +1620,86 @@ describe('corruption from the Raíz-madre', () => {
     expect(raiders.length).toBe(Math.ceil(full * RAID.cleansed));
     expect(raiders.some((w) => w.kind === 'brute')).toBe(false);
     expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('Vienen menos') });
+  });
+});
+
+describe('corruption by zones', () => {
+  type Priv = { boss: { hp: number } | null };
+  it('every zone starts corrupt; the snap and the save carry it; old saves load', () => {
+    const sim = setup('Ana');
+    const all = sim.zones.map((z) => z.id);
+    expect(all.length).toBeGreaterThanOrEqual(4);
+    expect(snap(sim, 'Ana').corrupt).toEqual(all);
+    expect(sim.save().cleansed).toBeUndefined();
+    const saved = sim.save();
+    saved.cleansed = [1];
+    expect(new WorldSim(saved).corrupt()).toEqual(all.filter((i) => i !== 1));
+    const old = sim.save();
+    old.purified = true; // an old world that beat the Tragón before zones existed
+    expect(new WorldSim(old).corrupt()).not.toContain(0);
+  });
+
+  it('raids come from the nearest corrupt zone', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    const corrupt = sim.corrupt();
+    const near = [...sim.zones].filter((z) => corrupt.includes(z.id)).sort((a, b) => Math.hypot(a.x - h.x, a.z - h.z) - Math.hypot(b.x - h.x, b.z - h.z))[0]!;
+    stepTo(sim, RAID.warnAt + 0.01);
+    const to = Math.atan2(near.x - h.x, near.z - h.z);
+    const d = sim.raidState()!.dir - to;
+    expect(Math.abs(Math.atan2(Math.sin(d), Math.cos(d)))).toBeLessThanOrEqual(RAID.jitter / 2 + 1e-9);
+  });
+
+  it('beating the Tragón cleanses zone 0 (saved)', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.bossZ - 3);
+    sim.step(0.1);
+    (sim as unknown as Priv).boss!.hp = 0;
+    sim.step(0.1);
+    expect(sim.corrupt()).not.toContain(0);
+    expect(sim.save().cleansed).toContain(0);
+  });
+
+  it('Enredadera at a zone\'s withered root cleanses it', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const z = sim.zones.find((x) => x.id !== 0)!;
+    put(sim, 'Ana', z.x - 3, z.z);
+    msgs(sim);
+    sim.handle('Ana', { t: 'power', x: z.x, z: z.z });
+    expect(sim.corrupt()).not.toContain(z.id);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('El bosque respira') });
+  });
+
+  it('a shrine orb cleanses the corrupt zone nearest that shrine', () => {
+    const sim = setup('Ana');
+    const i = sim.shrines.findIndex((s) => s.kind === 'ledge');
+    const s = sim.shrines[i]!;
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x: s.orb.x, y: s.orb.y, z: s.orb.z });
+    const before = sim.corrupt();
+    sim.handle('Ana', { t: 'shrine', id: i, part: 0 });
+    expect(p.shrines).toContain(i);
+    expect(sim.corrupt().length).toBe(before.length - 1);
+    expect(sim.corrupt()).toContain(0);
+  });
+
+  it('a night in a corrupt zone brings extra beasts, one a brute', () => {
+    const count = (clean: boolean) => {
+      const w = newWorld(42, 'salt');
+      const probe = new WorldSim(w);
+      const z = probe.zones.find((x) => x.id !== 0)!;
+      if (clean) w.cleansed = [z.id];
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      put(sim, 'Ana', z.x, z.z);
+      stepTo(sim, 0.81);
+      return sim.wolfList.filter((x) => !x.raid);
+    };
+    const dirty = count(false);
+    const clean = count(true);
+    expect(dirty.length).toBe(clean.length + CORRUPTION.extraWolves);
+    expect(dirty.some((w) => w.kind === 'brute')).toBe(true);
   });
 });
