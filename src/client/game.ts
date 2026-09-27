@@ -40,7 +40,7 @@ import { TouchControls, isTouchDevice } from './touch';
 /** The nephew's drawing used for el Tragón de Papel (and, purified, the Heart's defender). */
 const TRAGON_IMG = '/enemies/enemy1.png';
 /** El Marchito in person: the tallest of the nephew's drawings, dyed dark. */
-const MARCHITO_IMG = '/enemies/enemy15.png';
+const MARCHITO_IMG = '/enemies/enemy12.png';
 
 interface Remote {
   actor: Puppet;
@@ -316,7 +316,7 @@ export class Game {
     }
     for (const w of m.wolves) {
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 640 / 1010) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);

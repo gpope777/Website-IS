@@ -34,7 +34,7 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   /** El Tragón de Papel, the dungeon boss (see sim/boss.ts). */
   boss: { hp: 300, run: 2.8, damage: 24, reach: 3.2, biteCooldown: 2.2 },
   /** El Marchito in person (see sim/marchito.ts): hp is his voluntad, he never dies. */
-  marchito: { hp: 400, run: 3.2, damage: 18, reach: 3, biteCooldown: 2.5 },
+  marchito: { hp: 400, run: 2.6, damage: 18, reach: 3, biteCooldown: 2.5 },
 };
 export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: 'el Tragón de Papel', marchito: 'El Marchito' };
 

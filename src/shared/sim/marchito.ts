@@ -5,7 +5,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * nearer half of the defenses, swats whoever is in his way, laughs and leaves. He cannot die:
  * his hp is "voluntad", and at 0 he is driven off (the world decides that, not this file).
  */
-export const MARCHITO = { id: 900_000, delay: 20, spawnDist: 28, smashReach: 2.6, smashTime: 1.2, laughFor: 4, maxTime: 120, height: 7 } as const;
+export const MARCHITO = { id: 900_000, delay: 20, spawnDist: 28, smashReach: 2.6, smashTime: 2.5, laughFor: 4, maxTime: 120, height: 7 } as const;
 
 export interface Marchito extends Wolf {
   /** Structure ids still to smash, nearest the Heart first. */

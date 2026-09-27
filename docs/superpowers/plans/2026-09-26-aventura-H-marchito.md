@@ -31,8 +31,8 @@
 
 **Interfaces (produces):**
 ```ts
-export const MARCHITO = { id: 900_000, delay: 20, spawnDist: 28, smashReach: 2.6, smashTime: 1.2, laughFor: 4, maxTime: 120, height: 7 } as const;
-// ENEMY.marchito = { hp: 400, run: 3.2, damage: 18, reach: 3, biteCooldown: 2.5 }  (hp = voluntad)
+export const MARCHITO = { id: 900_000, delay: 20, spawnDist: 28, smashReach: 2.6, smashTime: 2.5, laughFor: 4, maxTime: 120, height: 7 } as const;
+// ENEMY.marchito = { hp: 400, run: 2.6, damage: 18, reach: 3, biteCooldown: 2.5 }  (hp = voluntad)
 export interface Marchito extends Wolf { prey: number[]; smash: number; laugh: number; age: number; taunted: string[] }
 export function pickDefenses(structs: readonly { id: number; kind: string; x: number; z: number }[], heart: { x: number; z: number }): number[]
 export function createMarchito(x: number, y: number, z: number, prey: number[]): Marchito
@@ -100,7 +100,7 @@ Protocol tests: `PROTOCOL_VERSION` is 9.
 - `marchitoBarText(v: MarchitoView | null): string | null` → `'El Marchito · voluntad 320/400'` or `'El Marchito se ríe'`. The boss line shows `bossBarText(dungeon) ?? marchitoBarText(marchito)`.
 - `KEY_ACTIONS.Enter = 'dismiss'` → `hud.hideVision()`.
 - `Hud.showVision(lines)`: a card at the top centre (italic lines, a ✕ button with `pointer-events: auto`), auto-hides after `3 s + 2.5 s × lines`. Also mirrored in the log.
-- `WolfView.kind === 'marchito'` → `PaperActor('/enemies/enemy15.png', MARCHITO.height, camera, 640 / 1010)` tinted dark purple (`0x7a5a8c`), lighter while laughing.
+- `WolfView.kind === 'marchito'` → `PaperActor('/enemies/enemy12.png', MARCHITO.height, camera, 589 / 662)` tinted dark purple (`0x7a5a8c`), lighter while laughing.
 - Menu help line: `'El Marchito: no se le puede matar. Golpes y paradas le quitan voluntad; Enter / ✕ cierra una visión'`.
 - [ ] Tests: `marchitoBarText` cases; `Enter` maps to `'dismiss'`. Build + check.
 - [ ] Commit `feat(aventura): El Marchito and his visions on the client`.
