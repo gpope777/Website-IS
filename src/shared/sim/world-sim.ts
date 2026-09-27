@@ -48,7 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
-import { canPlaceStall, newStall, pickUp, restock, setShelf, STALL, takeShelf, type ShopResult, type Stall } from '../shop';
+import { buy, canPlaceStall, collectTill, newStall, pickUp, restock, setShelf, STALL, takeShelf, type ShopResult, type Stall } from '../shop';
 import { addKillXp, BOSS_KINDS, bossesOf, canLearn, FEAT_FAST, FEAT_HAT, FEAT_HEART, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -145,6 +145,8 @@ export interface SavedPlayer {
   piedra?: boolean;
   /** S5-G: has seen the ending's credits (live, or on the first login after). Optional. */
   credits?: boolean;
+  /** T6-B: sales at your Puesto while you were away (told on connect). */
+  soldSince?: number;
   /** S5-H: the steed is la Estrella (not the deer). Optional. */
   star?: boolean;
   /** P4-A: Savia the save can't reconstruct (kills, lieutenants, zones, pillars, raids, the whale). Optional. */
@@ -302,6 +304,8 @@ interface Live {
   dragon: boolean;
   /** S5-C: pulling a Pilar-raíz's core: which, and when it gives. Live-only. */
   pull?: { id: number; at: number } | null;
+  /** T6-B: sim time this player may buy again (live-only). */
+  buyReadyAt?: number;
 }
 
 type Beast = 'deer' | 'fish' | 'frog' | 'dragon' | 'star';
@@ -688,6 +692,10 @@ export class WorldSim {
       p.credits = true;
       this.outbox.push({ to: name, msg: { t: 'ending', cards: lateCards(this.endingNames), credits: creditLines(this.endingNames.length ? joinNames(this.endingNames) : 'vosotros') } });
     }
+    if (p.soldSince) {
+      this.tell(name, `Tu ${NAMES.stall.toLowerCase()} vendió ${p.soldSince} ${p.soldSince === 1 ? 'vez' : 'veces'} desde que te fuiste.`);
+      delete p.soldSince;
+    }
     return { t: 'welcome', you: name, seed: this.seed, time: this.time, self: this.selfState(p, l), structures: this.structures.map((s) => ({ ...s })), gone, stalls: structuredClone(this.stalls) };
   }
 
@@ -772,6 +780,10 @@ export class WorldSim {
         return this.onStall(p, (s, inv) => takeShelf(s, msg.shelf, inv));
       case 'stallPick':
         return this.onStallPick(p);
+      case 'buy':
+        return this.onBuy(p, msg.stall, msg.shelf);
+      case 'stallTill':
+        return this.onStall(p, (s, inv) => collectTill(s, inv));
       case 'hello':
         return; // the room handles hello
     }
@@ -1372,6 +1384,32 @@ export class WorldSim {
     p.inv = pickUp(s!, p.inv);
     this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(s!), gone: true } });
     this.tell(p.name, `${NAMES.stall} recogido`);
+  }
+
+  /** T6-B: buy one tanda at someone else's Puesto; 1 every 0,5 s; whole or nothing. */
+  private onBuy(p: SavedPlayer, id: number, shelf: number): void {
+    const l = this.live.get(p.name);
+    if (!l || p.dead || (l.buyReadyAt ?? 0) > this.time) return;
+    const i = this.stalls.findIndex((s) => s.id === id);
+    if (i < 0) return;
+    l.buyReadyAt = this.time + 0.5;
+    const s = this.stalls[i]!;
+    if (s.owner === p.name) return this.tell(p.name, 'Es tu puesto.');
+    if (Math.hypot(s.x - p.x, s.z - p.z) > STALL.reach) return this.tell(p.name, 'Acércate al puesto.');
+    const r = buy(s, shelf, p.inv, p.name, Math.floor(this.time / DAY_LENGTH) + 1);
+    if (!r.ok) return this.tell(p.name, r.why);
+    this.stalls[i] = r.stall;
+    p.inv = r.inv;
+    const sh = s.shelves[shelf]!;
+    const what = `${sh.n} ${ITEM_LABELS[sh.give].toLowerCase()}`;
+    this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(r.stall) } });
+    this.tell(p.name, `Compras ${what}.`);
+    const owner = this.live.get(s.owner);
+    if (owner && owner.awayFor === null) this.tell(s.owner, `${p.name} compró ${what} en tu ${NAMES.stall.toLowerCase()}.`);
+    else {
+      const o = this.players.get(s.owner);
+      if (o) o.soldSince = (o.soldSince ?? 0) + 1;
+    }
   }
 
   private onLook(p: SavedPlayer, color: number, hat: number): void {

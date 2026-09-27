@@ -48,9 +48,9 @@ export function collectTill(s: Stall, inv: Inventory): ShopResult;
 
 ### Task 2: server — buy, Caja, log, notice, rate (protocolo v60)
 
-- [ ] **Step 1: failing tests** (`world-sim-t6b.test.ts`). Protocol 60; `decodeClient` accepts `buy`/`stallTill`, rejects bad ids/shelves; Bea beside Ana's Puesto buys: mochilas and Caja move, `stall` event, toast to Bea and to Ana (online); too far / own Puesto / unknown id / short → toast, nothing moves; two buys in the same 0,5 s → only one; Ana away (not connected): the sale bumps `soldSince`, on `connect` she gets "Tu puesto vendió 2 veces desde que te fuiste." and it resets; `stallTill` by the owner beside it empties the Caja, by others nothing; `soldSince` survives save/load; **property test** over `handle()` with Ana, Bea, Cai (buy / stallTill / stallStock / stallSet / stallTake, time advancing randomly) keeps mochilas + tumbas + Puestos constant and Caja ≤ 200.
-- [ ] **Step 2: implement** (`onBuy`, `onStallTill`, `buyReadyAt` in `Live`, `soldSince`, connect notice).
-- [ ] **Step 3:** green (adapt 59 → 60 in version tests, noted), self-review, commit `feat(tiendas): comprar y Caja en el servidor (protocolo v60)`.
+- [x] **Step 1: failing tests** (`world-sim-t6b.test.ts`). Protocol 60; `decodeClient` accepts `buy`/`stallTill`, rejects bad ids/shelves; Bea beside Ana's Puesto buys: mochilas and Caja move, `stall` event, toast to Bea and to Ana (online); too far / own Puesto / unknown id / short → toast, nothing moves; two buys in the same 0,5 s → only one; Ana away (not connected): the sale bumps `soldSince`, on `connect` she gets "Tu puesto vendió 2 veces desde que te fuiste." and it resets; `stallTill` by the owner beside it empties the Caja, by others nothing; `soldSince` survives save/load; **property test** over `handle()` with Ana, Bea, Cai (buy / stallTill / stallStock / stallSet / stallTake, time advancing randomly) keeps mochilas + tumbas + Puestos constant and Caja ≤ 200.
+- [x] **Step 2: implement** (`onBuy`, `onStallTill`, `buyReadyAt` in `Live`, `soldSince`, connect notice).
+- [x] **Step 3:** green (adapt 59 → 60 in version tests, noted), self-review, commit `feat(tiendas): comprar y Caja en el servidor (protocolo v60)`.
 
 ### Task 3: client — buyer's panel, Caja in the owner panel, Puestos in the Menú
 

@@ -6,7 +6,7 @@ import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 import { isLook, isSkill, type Look, type SkillId } from './progression';
 
-export const PROTOCOL_VERSION = 59;
+export const PROTOCOL_VERSION = 60;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
@@ -152,7 +152,11 @@ export type ClientMsg =
   /** T6-A: Quitar: the whole shelf back to your mochila. */
   | { t: 'stallTake'; shelf: number }
   /** T6-A: Recoger puesto: everything and its cost back. */
-  | { t: 'stallPick' };
+  | { t: 'stallPick' }
+  /** T6-B: buy one tanda from shelf `shelf` of Puesto `stall`. */
+  | { t: 'buy'; stall: number; shelf: number }
+  /** T6-B: Vaciar caja: your Puesto's Caja to your mochila. */
+  | { t: 'stallTill' };
 
 export type CallBeast = 'deer' | 'frog' | 'fish';
 export const CALL_BEASTS: readonly CallBeast[] = ['deer', 'frog', 'fish'];
@@ -287,6 +291,10 @@ export function decodeClient(raw: string): ClientMsg | null {
       return isShelf(m.shelf) ? { t: 'stallTake', shelf: m.shelf } : null;
     case 'stallPick':
       return { t: 'stallPick' };
+    case 'buy':
+      return id(m.stall) && isShelf(m.shelf) ? { t: 'buy', stall: m.stall, shelf: m.shelf } : null;
+    case 'stallTill':
+      return { t: 'stallTill' };
     case 'look':
       return isLook(m.color, m.hat) ? { t: 'look', color: m.color as number, hat: m.hat as number } : null;
     default:
