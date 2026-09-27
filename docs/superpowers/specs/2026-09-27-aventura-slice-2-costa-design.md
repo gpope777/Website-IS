@@ -1,5 +1,11 @@
 # Bosque — Aventura Slice 2: la Costa
 
+> **Decisiones de Gabriel (2026-09-27), mandan sobre el resto del documento:**
+> - Ciénaga como está, y **el ciervo lleva 2** (jinete + pasajero), para que nadie quede fuera de la Costa.
+> - **Ballena: mínimo 2 jugadores para domarla** (no se puede solo). El co-op sigue agrandando la zona.
+> - Invasión 2 se lleva al **Tragón purificado**. Jefe = `enemy3.png` ("El Antenón", provisional).
+> - Perlas + mejora de arma: sí. Cambio de poder: mantener la pastilla 0,5 s. Costa de 220 m.
+
 **Date:** 2026-09-27
 **Status:** Draft for Gabriel's review. No code or plans yet.
 **Builds on:** `2026-09-26-bosque-aventura-design.md` (the approved design; section numbers below as §N refer to it), `2026-09-26-bosque-online-design.md` (architecture), and the code on `aventura/slice-1` after the Slice 1 closeout (PROTOCOL_VERSION 12, 285 tests).
