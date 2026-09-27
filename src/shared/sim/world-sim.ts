@@ -11,6 +11,7 @@ import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
+import { COAST_SHRINE, generateCoastShrines } from '../coast-shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WolfView } from '../protocol';
@@ -192,7 +193,7 @@ export class WorldSim {
   /** The bruto reforzado while someone is in its room. Live-only. */
   private elite: Elite | null = null;
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
-  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean }[];
+  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null }[];
   private readonly players = new Map<string, SavedPlayer>();
   private readonly live = new Map<string, Live>();
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
@@ -232,15 +233,16 @@ export class WorldSim {
     this.terrain = withDungeon(createTerrain(saved.seed));
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
-    this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
-    this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, this.shrines);
-    this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...this.shrines, this.entrance]);
+    const forest = generateShrines(this.terrain, saved.seed, this.crags);
+    this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed)];
+    this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
+    this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...forest, this.entrance]);
     this.island = coastFeatures(saved.seed).island;
     this.fishHome = wildFish(this.terrain, saved.seed);
     this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
     this.zones = generateZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
-    this.shrineLive = this.shrines.map(() => ({ pulled: [null, null], openUntil: -Infinity, pressed: false }));
+    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
     for (const p of this.players.values()) if (p.enredadera === undefined && (p.shrines ?? []).length > 0) p.enredadera = true;
@@ -686,17 +688,7 @@ export class WorldSim {
     const s = this.shrines[id];
     const st = this.shrineLive[id];
     if (!s || !st || p.dead) return;
-    if (part > 0) {
-      const lever = s.kind === 'levers' ? s.parts[part - 1] : undefined;
-      if (!lever || Math.hypot(lever.x - p.x, lever.z - p.z) > SHRINE.partReach) return;
-      st.pulled[part - 1] = this.time;
-      const other = st.pulled[2 - part];
-      if (other != null && this.time - other <= SHRINE.leverWindow + EPS) {
-        st.openUntil = this.time + SHRINE.openFor;
-        return this.tell(p.name, 'Algo se abre en el santuario');
-      }
-      return this.tell(p.name, 'La palanca cede. Falta la otra');
-    }
+    if (part > 0) return this.onShrinePart(p, s, st, part);
     const cleared = p.shrines ?? [];
     if (cleared.includes(id)) return;
     const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
@@ -705,8 +697,39 @@ export class WorldSim {
     p.shrines = [...cleared, id];
     this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
     // The shrine's light cleanses the corrupt zone nearest it (never the Raíz-madre's: that takes the Tragón).
-    const zn = nearestZone(this.zones, s.x, s.z, this.corrupt().filter((i) => i !== 0));
+    // Coast orbs will cleanse coast zones (a later plan); never a forest one.
+    const zn = s.id < COAST_SHRINE.firstId ? nearestZone(this.zones, s.x, s.z, this.corrupt().filter((i) => i !== 0)) : undefined;
     if (zn) this.cleanse(zn.id, 'La luz del santuario limpia un trozo de bosque');
+  }
+
+  /** Levers, wheels and Marea's pumice block. */
+  private onShrinePart(p: SavedPlayer, s: Shrine, st: (typeof this.shrineLive)[number], part: number): void {
+    if (s.kind === 'tide') {
+      const b = st.block!;
+      if (part !== 1) return;
+      if (b.held === p.name) {
+        Object.assign(b, { x: r2(p.x), z: r2(p.z), held: null });
+        return;
+      }
+      if (b.held || Math.hypot(b.x - p.x, b.z - p.z) > SHRINE.partReach) return;
+      b.held = p.name;
+      // S2-F: a Viento gust will also slide the block.
+      return this.tell(p.name, 'Piedra pómez. Flota, pero pesa. A para soltarla');
+    }
+    if (s.kind !== 'levers' && s.kind !== 'sunken' && s.kind !== 'fan') return;
+    const lever = s.parts[part - 1];
+    if (!lever || Math.hypot(lever.x - p.x, lever.z - p.z) > SHRINE.partReach) return;
+    if (s.kind === 'sunken' && part === 2 && p.y > this.terrain.heightAt(lever.x, lever.z) + COAST_SHRINE.above) return this.tell(p.name, 'Está en el fondo');
+    st.pulled[part - 1] = this.time;
+    const window = s.kind === 'fan' ? COAST_SHRINE.wheelWindow : s.kind === 'sunken' ? COAST_SHRINE.sunkenWindow : SHRINE.leverWindow;
+    const all = st.pulled.every((t) => t != null && this.time - t <= window + EPS);
+    if (all) {
+      st.openUntil = this.time + SHRINE.openFor;
+      return this.tell(p.name, 'Algo se abre en el santuario');
+    }
+    // S2-F: a Viento gust will turn the fan-gate on its own.
+    if (s.kind === 'fan') return this.tell(p.name, `La verja-molino no se mueve. Quizá con ${NAMES.powerWind.toLowerCase()}… o con tres manos`);
+    return this.tell(p.name, s.kind === 'sunken' ? 'La palanca cede. Falta la otra, y hay prisa' : 'La palanca cede. Falta la otra');
   }
 
   private onPower(p: SavedPlayer, l: Live, x: number, z: number): void {
@@ -1180,17 +1203,28 @@ export class WorldSim {
     return this.shrines.map((s, id) => {
       const st = this.shrineLive[id]!;
       const open = this.shrineOpen(id);
-      const parts = s.kind === 'plate' ? [st.pressed] : s.parts.map((_, i) => st.pulled[i] != null && (open || this.time - st.pulled[i]! <= SHRINE.leverWindow + EPS));
+      if (s.kind === 'plate') return { id, open, parts: [st.pressed] };
+      if (s.kind === 'tide') return { id, open, parts: [st.pressed], block: { x: r2(st.block!.x), z: r2(st.block!.z), held: st.block!.held } };
+      const window = s.kind === 'fan' ? COAST_SHRINE.wheelWindow : s.kind === 'sunken' ? COAST_SHRINE.sunkenWindow : SHRINE.leverWindow;
+      const parts = s.parts.map((_, i) => st.pulled[i] != null && (open || this.time - st.pulled[i]! <= window + EPS));
       return { id, open, parts };
     });
   }
 
   private stepShrines(): void {
     this.shrines.forEach((s, id) => {
-      if (s.kind !== 'plate') return;
+      if (s.kind !== 'plate' && s.kind !== 'tide') return;
       const st = this.shrineLive[id]!;
       const plate = s.parts[0]!;
       st.pressed = false;
+      const b = st.block;
+      if (b?.held) {
+        const p = this.players.get(b.held);
+        const l = this.live.get(b.held);
+        if (p && l && !p.dead && l.awayFor === null) Object.assign(b, { x: p.x, z: p.z });
+        else b.held = null; // dropped where its holder fell (or left)
+      }
+      if (b && !b.held && Math.hypot(plate.x - b.x, plate.z - b.z) <= SHRINE.plateRadius) st.pressed = true;
       for (const [name, l] of this.live) {
         const p = this.players.get(name)!;
         if (p.dead || l.awayFor !== null || Math.hypot(plate.x - p.x, plate.z - p.z) > SHRINE.plateRadius) continue;

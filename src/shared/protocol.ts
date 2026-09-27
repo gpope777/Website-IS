@@ -2,7 +2,7 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -14,8 +14,8 @@ export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
-/** `parts` follow `Shrine.parts`: lever pulled / plate pressed. */
-export interface ShrineView { id: number; open: boolean; parts: boolean[] }
+/** `parts` follow `Shrine.parts`: lever or wheel pulled / plate pressed. `block` = Marea's pumice block. */
+export interface ShrineView { id: number; open: boolean; parts: boolean[]; block?: CarryView }
 /** Something you can carry in the Raíz-madre: where it is and who holds it. */
 export interface CarryView { x: number; z: number; held: string | null }
 /** Live dungeon state: gates (`gate` = gate 0, the levers'), levers pulled, the plate, the block and lantern, the brazier, whether the boss was purified, and the bars while they fight. */
@@ -59,7 +59,7 @@ export type ClientMsg =
   | { t: 'shoot'; id: number }
   | { t: 'revive'; name: string }
   | { t: 'power'; x: number; z: number }
-  /** part 0 = take the orb, 1/2 = pull lever 1/2 */
+  /** part 0 = take the orb, 1/2 = pull lever 1/2 (Hundido: 2 = the seabed one), Islote: 1–3 = turn a wheel, Marea: 1 = pick up / drop the pumice block */
   | { t: 'shrine'; id: number; part: number }
   /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier */
   | { t: 'dungeon'; act: number }
@@ -138,7 +138,7 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'power':
       return num(m.x) && num(m.z) ? { t: 'power', x: m.x, z: m.z } : null;
     case 'shrine':
-      return id(m.id) && id(m.part) && (m.part as number) <= 2 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
+      return id(m.id) && id(m.part) && (m.part as number) <= 3 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
       return id(m.act) && (m.act as number) <= 7 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':

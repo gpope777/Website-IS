@@ -54,7 +54,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(14);
+    expect(PROTOCOL_VERSION).toBe(15);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -103,12 +103,13 @@ describe('power and shrine protocol', () => {
   it('decodes power and shrine messages', () => {
     ok({ t: 'power', x: 1, z: 2 });
     ok({ t: 'shrine', id: 0, part: 2 });
-    bad('{"t":"shrine","id":0,"part":3}');
+    ok({ t: 'shrine', id: 5, part: 3 });
+    bad('{"t":"shrine","id":0,"part":4}');
     bad('{"t":"shrine","id":0,"part":-1}');
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(14);
+    expect(PROTOCOL_VERSION).toBe(15);
   });
 });
 
@@ -126,6 +127,6 @@ describe('mount protocol', () => {
     ok({ t: 'mount', act: 8 });
     bad('{"t":"mount","act":9}');
     bad('{"t":"mount","act":-1}');
-    expect(PROTOCOL_VERSION).toBe(14);
+    expect(PROTOCOL_VERSION).toBe(15);
   });
 });

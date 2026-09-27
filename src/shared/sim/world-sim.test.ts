@@ -14,6 +14,7 @@ import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
+import { NAMES } from '../names';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -865,7 +866,122 @@ describe('shrines', () => {
     const again = new WorldSim(saved);
     again.connect('Ana');
     expect(snap(again, 'Ana').self.shrines).toEqual([]);
-    expect(snap(again, 'Ana').shrines).toHaveLength(3);
+    expect(snap(again, 'Ana').shrines).toHaveLength(6); // S2-C: the coast's three follow the forest's (intentional change)
+  });
+});
+
+describe('coast shrines', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const view = (sim: WorldSim, name: string, id: number) => snap(sim, name).shrines.find((v) => v.id === id)!;
+  const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
+  const take = (sim: WorldSim, name: string, id: number) => {
+    const s = sim.shrines[id]!;
+    put(sim, name, s.orb.x, s.orb.z);
+    use(sim, name, id, 0);
+    return snap(sim, name).self.shrines.includes(id);
+  };
+
+  it('Marea: a friend on the tide plate opens it', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'tide');
+    expect(s.id).toBe(3);
+    expect(take(sim, 'Ana', s.id)).toBe(false);
+    put(sim, 'Leo', s.parts[0]!.x, s.parts[0]!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    expect(take(sim, 'Ana', s.id)).toBe(true);
+  });
+
+  it('Marea: the pumice block carried onto the plate keeps it open', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'tide');
+    const [plate, start] = s.parts as [{ x: number; z: number }, { x: number; z: number }];
+    expect(view(sim, 'Ana', s.id).block).toEqual({ x: expect.closeTo(start.x, 1), z: expect.closeTo(start.z, 1), held: null });
+    put(sim, 'Ana', plate.x + 20, plate.z);
+    use(sim, 'Ana', s.id, 1); // too far from the block
+    expect(view(sim, 'Ana', s.id).block!.held).toBe(null);
+    put(sim, 'Ana', start.x, start.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).block!.held).toBe('Ana');
+    put(sim, 'Ana', plate.x, plate.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).block).toMatchObject({ x: expect.closeTo(plate.x, 1), held: 'Ana' });
+    use(sim, 'Ana', s.id, 1); // drop it on the plate
+    expect(view(sim, 'Ana', s.id).block!.held).toBe(null);
+    put(sim, 'Ana', s.orb.x + 30, s.orb.z);
+    for (let i = 0; i < 60; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id)).toMatchObject({ open: true, parts: [true] });
+    expect(take(sim, 'Ana', s.id)).toBe(true);
+  });
+
+  it('Marea: the block drops where its holder dies', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'tide');
+    put(sim, 'Ana', s.parts[1]!.x, s.parts[1]!.z);
+    use(sim, 'Ana', s.id, 1);
+    sim.getPlayer('Ana')!.dead = true;
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).block!.held).toBe(null);
+  });
+
+  it('Hundido: the seabed lever needs a diver, and both levers within 8 s', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'sunken');
+    const [beach, bed] = s.parts as [{ x: number; z: number }, { x: number; z: number }];
+    const p = sim.getPlayer('Ana')!;
+    put(sim, 'Ana', bed.x, bed.z);
+    p.y = WATER_LEVEL - 0.5; // swimming at the surface
+    use(sim, 'Ana', s.id, 2);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([false, false]);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Está en el fondo' });
+    p.y = sim.terrain.heightAt(bed.x, bed.z) + 0.6; // diving
+    use(sim, 'Ana', s.id, 2);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([false, true]);
+    for (let i = 0; i < 75; i++) sim.step(0.1);
+    put(sim, 'Ana', beach.x, beach.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    expect(take(sim, 'Ana', s.id)).toBe(true);
+  });
+
+  it('Hundido: too slow and it stays shut', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'sunken');
+    const [beach, bed] = s.parts as [{ x: number; z: number }, { x: number; z: number }];
+    put(sim, 'Ana', bed.x, bed.z);
+    use(sim, 'Ana', s.id, 2);
+    for (let i = 0; i < 90; i++) sim.step(0.1);
+    put(sim, 'Ana', beach.x, beach.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+  });
+
+  it('Islote: three wheels within 6 s open the fan-gate; one alone does not', () => {
+    const sim = setup('Ana', 'Leo', 'Eva');
+    const s = kind(sim, 'fan');
+    const names = ['Ana', 'Leo', 'Eva'];
+    put(sim, 'Ana', s.parts[0]!.x, s.parts[0]!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: `La verja-molino no se mueve. Quizá con ${NAMES.powerWind.toLowerCase()}… o con tres manos` });
+    names.forEach((n, i) => {
+      put(sim, n, s.parts[i]!.x, s.parts[i]!.z);
+      use(sim, n, s.id, i + 1);
+    });
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([true, true, true]);
+    expect(take(sim, 'Leo', s.id)).toBe(true);
+    expect(snap(sim, 'Leo').self.vitals).toBeDefined();
+  });
+
+  it('a coast orb cleanses no forest zone', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'tide');
+    const before = sim.corrupt();
+    put(sim, 'Leo', s.parts[0]!.x, s.parts[0]!.z);
+    sim.step(0.1);
+    expect(take(sim, 'Ana', s.id)).toBe(true);
+    expect(sim.corrupt()).toEqual(before);
   });
 });
 
