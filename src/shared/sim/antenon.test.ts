@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COAST_DUNGEON as C } from '../coast-dungeon';
-import { ANTENON, createAntenon, pushAntenon, stepAntenon } from './antenon';
+import { ANTENON, ANTENON_ALLY, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly } from './antenon';
 import type { WolfTarget } from './wolves';
 
 const at = (name: string, x: number, z: number): WolfTarget => ({ name, x, z, dead: false, fires: false });
@@ -67,5 +67,24 @@ describe('El Antenón', () => {
     a.z = 166;
     const dmg = run(a, [at('Ana', C.x + 2, 166)], 30).reduce((s, h) => s + h.dmg, 0);
     expect(dmg).toBeLessThan(100);
+  });
+});
+
+describe('the white Antenón', () => {
+  const flat = () => 10;
+  const raider = (id: number, x: number, z: number) => ({ id, x, y: 10, z, yaw: 0, hp: 60, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle' as const, raid: true, kind: 'wolf' as const, stun: 0 });
+  const heart = { x: 0, z: 0 };
+
+  it('gusts raiders within 12 m of the Heart 6 m away, every 8 s', () => {
+    const a = createGustAlly(heart, flat);
+    const near = raider(1, 5, 0);
+    const far = raider(2, 0, 15);
+    expect(stepGustAlly(a, heart, [near, far], flat, 0.1)).toBe(1);
+    expect(near.x).toBeCloseTo(11);
+    expect(near.stun).toBe(ANTENON_ALLY.stun);
+    expect(far.z).toBe(15);
+    const again = raider(3, 3, 0);
+    expect(stepGustAlly(a, heart, [again], flat, 7)).toBe(0);
+    expect(stepGustAlly(a, heart, [again], flat, 1.1)).toBe(1);
   });
 });

@@ -20,7 +20,7 @@ import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, ty
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
-import { ANTENON, createAntenon, pushAntenon, stepAntenon, type Antenon } from './antenon';
+import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
@@ -256,6 +256,8 @@ export class WorldSim {
   /** El Antenón (saved once beaten) and, live while someone is in its room, the fight. */
   purified2: boolean;
   private boss2: Antenon | null = null;
+  /** The purified Antenón by the Heart; live-only, rebuilt from `purified2`. */
+  private ally2: GustAlly | null = null;
   /** The purified Tragón by the Heart; live-only, rebuilt from `purified`. */
   private ally: Ally | null = null;
   /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
@@ -475,6 +477,7 @@ export class WorldSim {
     this.stepBossFight(dt);
     this.stepAntenonFight(dt);
     this.stepAlly(dt);
+    this.stepAlly2(dt);
     this.stepRace();
     this.stepTaming();
     this.stepWhaleTame();
@@ -514,7 +517,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt() };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt() };
   }
 
   drain(): Outgoing[] {
@@ -993,6 +996,18 @@ export class WorldSim {
     this.ally ??= createAlly(h, this.terrain);
     const foe = stepAlly(this.ally, h, this.wolves, this.terrain, dt);
     if (foe) hitWolf(foe, ALLY.damage);
+  }
+
+  /** The purified Antenón lives by a living Heart and gusts raiders away from it every 8 s. */
+  private stepAlly2(dt: number): void {
+    const h = this.heart();
+    if (!this.purified2 || !h || h.hp <= 0) {
+      this.ally2 = null;
+      return;
+    }
+    const at = (x: number, z: number) => this.terrain.heightAt(x, z);
+    this.ally2 ??= createGustAlly(h, at);
+    if (stepGustAlly(this.ally2, h, this.wolves, at, dt)) this.say(`${NAMES.bossCoast} sopla. Los asaltantes vuelan lejos del ${NAMES.heart}`);
   }
 
   /** Wolves, raiders or the boss. */

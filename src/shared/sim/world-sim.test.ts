@@ -18,7 +18,7 @@ import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
 import { VIENTO } from '../viento';
-import { ANTENON } from './antenon';
+import { ANTENON, ANTENON_ALLY } from './antenon';
 import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
@@ -1353,6 +1353,26 @@ describe('purified defender', () => {
     Object.assign(w, { x: h.x + 4, z: h.z });
     for (let i = 0; i < 15; i++) sim.step(0.1);
     expect(w.hp).toBeLessThanOrEqual(full - ALLY.damage);
+  });
+});
+
+describe('the purified Antenón (S2-G)', () => {
+  it('none before it is beaten; with purified2 and a Heart it waits by the Heart and gusts raiders', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally2).toBeNull();
+    sim.purified2 = true;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally2).toMatchObject({ x: h.x - ANTENON_ALLY.home, z: h.z });
+    put(sim, 'Ana', 150, 150);
+    sim.heart()!.hp = 100_000;
+    stepTo(sim, 0.81);
+    const w = sim.wolfList.find((x) => x.raid)!;
+    w.stun = 100;
+    Object.assign(w, { x: h.x + 4, z: h.z });
+    for (let i = 0; i < 90 && Math.hypot(w.x - h.x, w.z - h.z) < 9; i++) sim.step(0.1);
+    expect(Math.hypot(w.x - h.x, w.z - h.z)).toBeGreaterThan(9);
   });
 });
 

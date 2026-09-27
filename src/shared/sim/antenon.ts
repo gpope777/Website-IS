@@ -1,5 +1,7 @@
 import { COAST_DUNGEON, outOfPillars } from '../coast-dungeon';
 import type { Dir } from '../viento';
+import { clampMap } from '../terrain';
+import type { WolfAnim } from '../protocol';
 import { ENEMY, type Wolf, type WolfTarget } from './wolves';
 
 /**
@@ -179,4 +181,49 @@ export function stepAntenon(a: Antenon, targets: readonly WolfTarget[], dt: numb
   clampRoom(a);
   a.anim = 'run';
   return [];
+}
+
+/** The purified Antenón by the Heart (spec §7.3): every 8 s it gusts the raiders near the Heart away. It cannot die. */
+export const ANTENON_ALLY = { every: 8, guard: 12, push: 6, stun: 1, home: 2.5, show: 0.6 } as const;
+
+export interface GustAlly {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  /** Seconds until it can gust again. */
+  cooldown: number;
+  /** Seconds left showing the gust. */
+  show: number;
+  anim: WolfAnim;
+}
+
+export function createGustAlly(heart: { x: number; z: number }, heightAt: (x: number, z: number) => number): GustAlly {
+  const x = heart.x - ANTENON_ALLY.home;
+  return { x, y: heightAt(x, heart.z), z: heart.z, yaw: 0, cooldown: 0, show: 0, anim: 'idle' };
+}
+
+/** One tick. Pushes every raider within `guard` of the Heart `push` metres straight away from it; returns how many. */
+export function stepGustAlly(a: GustAlly, heart: { x: number; z: number }, foes: readonly Wolf[], heightAt: (x: number, z: number) => number, dt: number): number {
+  a.cooldown = Math.max(0, a.cooldown - dt);
+  a.show = Math.max(0, a.show - dt);
+  a.anim = a.show > 0 ? 'attack' : 'idle';
+  if (a.cooldown > 0) return 0;
+  const near = foes.filter((w) => w.raid && w.hp > 0 && Math.hypot(w.x - heart.x, w.z - heart.z) <= ANTENON_ALLY.guard);
+  if (!near.length) return 0;
+  for (const w of near) {
+    const d = Math.hypot(w.x - heart.x, w.z - heart.z);
+    const ux = d < 1e-4 ? 1 : (w.x - heart.x) / d;
+    const uz = d < 1e-4 ? 0 : (w.z - heart.z) / d;
+    const to = clampMap(w.x + ux * ANTENON_ALLY.push, w.z + uz * ANTENON_ALLY.push, 3);
+    w.x = to.x;
+    w.z = to.z;
+    w.y = heightAt(w.x, w.z);
+    w.stun = Math.max(w.stun, ANTENON_ALLY.stun);
+  }
+  a.yaw = Math.atan2(near[0]!.x - a.x, near[0]!.z - a.z);
+  a.cooldown = ANTENON_ALLY.every;
+  a.show = ANTENON_ALLY.show;
+  a.anim = 'attack';
+  return near.length;
 }
