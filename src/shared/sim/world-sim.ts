@@ -8,7 +8,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type Structure, type WolfView } from '../protocol';
+import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
@@ -106,6 +106,10 @@ interface Live {
   tame: { round: number; start: number; zone: number } | null;
   /** Sim time the deer lets you try again. */
   tameReadyAt: number;
+  /** On the deer. Live-only: a reconnect starts on foot beside it. */
+  riding: boolean;
+  /** Sim time the rider speed cap still applies after getting off (lag grace). */
+  rodeUntil: number;
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
@@ -222,7 +226,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0 };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0 };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -341,7 +345,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: false });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -352,7 +356,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: [] };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near) };
   }
 
   drain(): Outgoing[] {
@@ -420,9 +424,13 @@ export class WorldSim {
     const cragCeiling = cragsNear(this.climbables(), m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
     // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
     // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
-    const yOk = m.y > ground - 1 && (m.y < ground + 4 || m.y < cragCeiling || m.y <= p.y);
+    // Riders cannot climb (no crag allowance) nor swim.
+    const yOk = m.y > ground - 1 && (m.y < ground + 4 || (!l.riding && m.y < cragCeiling) || m.y <= p.y);
+    const dryOk = !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
+    // The server knows who rides: only riders (and just-dismounted ones, for lag) get the deer's speed.
+    const cap = l.riding || this.time < l.rodeUntil ? MOUNT.maxSpeed : MAX_SPEED;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
-    if (!inBounds || !wallOk || !yOk || moved > MAX_SPEED * elapsed + 1) {
+    if (!inBounds || !wallOk || !yOk || !dryOk || moved > cap * elapsed + 1) {
       l.fix = true;
       return;
     }
@@ -432,6 +440,7 @@ export class WorldSim {
     p.yaw = m.yaw;
     l.anim = m.anim;
     l.lastAcceptedAt = this.time;
+    if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
   private onHarvest(p: SavedPlayer, l: Live, id: number): void {
@@ -698,9 +707,25 @@ export class WorldSim {
         return this.tell(p.name, 'Aguanta');
       }
       l.tame = null;
-      p.steed = { x: r2(this.wild.x), z: r2(this.wild.z) };
-      return this.tell(p.name, 'El ciervo es tuyo. A junto a él para montar');
+      p.steed = { x: r2(p.x), z: r2(p.z) };
+      l.riding = true;
+      return this.tell(p.name, 'El ciervo es tuyo. A para bajar, A junto a él para montar');
     }
+    if (act === 2) {
+      const st = p.steed;
+      if (!st || l.riding || l.tame || inDungeon(p.x, p.z) || Math.hypot(st.x - p.x, st.z - p.z) > MOUNT.reach) return;
+      l.riding = true;
+      return;
+    }
+    if (act === 3) this.dismount(p, l);
+  }
+
+  /** Get off (or fall off): the deer stays where you stood. */
+  private dismount(p: SavedPlayer, l: Live): void {
+    if (!l.riding) return;
+    l.riding = false;
+    l.rodeUntil = this.time + MOUNT.grace;
+    p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
   private nextRound(l: Live, round: number): void {
@@ -723,6 +748,18 @@ export class WorldSim {
     return w;
   }
 
+  /** The wild deer plus every parked (not ridden) tamed one in view. */
+  private steedViews(near: (x: number, z: number) => boolean): SteedView[] {
+    const out: SteedView[] = [];
+    if (near(this.wild.x, this.wild.z)) out.push({ owner: null, x: r2(this.wild.x), y: r2(this.wild.y), z: r2(this.wild.z), yaw: 0 });
+    for (const o of this.players.values()) {
+      const st = o.steed;
+      if (!st || this.live.get(o.name)?.riding || !near(st.x, st.z)) continue;
+      out.push({ owner: o.name, x: st.x, y: r2(this.terrain.heightAt(st.x, st.z)), z: st.z, yaw: 0 });
+    }
+    return out;
+  }
+
   private tameView(p: SavedPlayer, l: Live): SelfState['tame'] {
     const t = l.tame;
     if (!t) return null;
@@ -741,6 +778,7 @@ export class WorldSim {
 
   /** Server-side move (dungeon door): the client snaps to it through `fix`. */
   private teleport(p: SavedPlayer, l: Live, x: number, z: number): void {
+    this.dismount(p, l); // no deer in the Raíz-madre: it waits at the door
     p.x = r2(x);
     p.z = r2(z);
     p.y = this.terrain.heightAt(p.x, p.z);
@@ -840,7 +878,7 @@ export class WorldSim {
       powerLeft: Math.max(0, Math.ceil(l.powerReadyAt - this.time - EPS)),
       power: !!p.enredadera,
       tame: this.tameView(p, l),
-      riding: false,
+      riding: l.riding,
       steed: !!p.steed,
     };
   }
@@ -1004,7 +1042,10 @@ export class WorldSim {
     p.dead = true;
     p.vitals = { ...p.vitals, health: 0 };
     const l = this.live.get(p.name);
-    if (l) l.deadAt = this.time;
+    if (l) {
+      l.deadAt = this.time;
+      this.dismount(p, l);
+    }
     this.outbox.push({ to: null, msg: { t: 'toast', text: `${p.name} ha caído` } });
   }
 }

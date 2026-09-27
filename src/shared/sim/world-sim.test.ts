@@ -6,6 +6,7 @@ import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
 import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, leverPos } from '../dungeon';
+import { WATER_LEVEL } from '../terrain';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
@@ -1204,7 +1205,8 @@ describe('taming the deer', () => {
     expect(self.tame).toBeNull();
     expect(self.steed).toBe(true);
     expect(sim.getPlayer('Ana')!.steed).toBeDefined();
-    expect(texts(sim)).toContain('El ciervo es tuyo. A junto a él para montar');
+    expect(texts(sim)).toContain('El ciervo es tuyo. A para bajar, A junto a él para montar');
+    expect(self.riding).toBe(true);
   });
 
   it('a tap outside the zone throws you off and the deer needs a moment', () => {
@@ -1267,5 +1269,130 @@ describe('taming the deer', () => {
     sim.handle('Ana', { t: 'mount', act: 0 });
     expect(snap(sim, 'Ana').self.tame).toBeNull();
     expect(texts(sim)).toContain('Ya tienes montura');
+  });
+});
+
+describe('riding the deer', () => {
+  /** Ana owns a deer parked beside her at (x, z). */
+  const owner = (x = 5, z = 5) => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', x, z);
+    sim.getPlayer('Ana')!.steed = { x: x + 1, z };
+    return sim;
+  };
+  /** Try moving `dist` metres along +x after a 1 s pause. */
+  const dash = (sim: WorldSim, dist: number) => {
+    const p = sim.getPlayer('Ana')!;
+    for (let i = 0; i < 10; i++) sim.step(0.1);
+    const x = p.x + dist;
+    sim.handle('Ana', { t: 'move', x, y: sim.terrain.heightAt(x, p.z), z: p.z, yaw: 0, anim: 'run' });
+    return p.x === x;
+  };
+
+  it('gets on only beside your own deer, and off anywhere', () => {
+    const sim = owner();
+    put(sim, 'Ana', 20, 5);
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+    put(sim, 'Ana', 5, 5);
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    expect(snap(sim, 'Ana').self.riding).toBe(true);
+    put(sim, 'Ana', 8, 9);
+    sim.handle('Ana', { t: 'mount', act: 3 });
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+    expect(sim.getPlayer('Ana')!.steed).toEqual({ x: 8, z: 9 });
+    const other = setup('Leo');
+    put(other, 'Leo', other.wild.x + 1, other.wild.z);
+    other.handle('Leo', { t: 'mount', act: 2 });
+    expect(snap(other, 'Leo').self.riding).toBe(false); // the wild deer is not yours
+  });
+
+  it('only riders get the deer speed (plus a short grace after getting off)', () => {
+    const walker = owner(0, 0);
+    expect(dash(walker, 12)).toBe(false);
+    const rider = owner(0, 0);
+    rider.handle('Ana', { t: 'mount', act: 2 });
+    expect(dash(rider, 12)).toBe(true);
+    expect(dash(rider, 15)).toBe(false);
+    rider.handle('Ana', { t: 'mount', act: 3 });
+    rider.step(0.1);
+    rider.handle('Ana', { t: 'move', x: rider.getPlayer('Ana')!.x + 1, y: rider.getPlayer('Ana')!.y, z: 0, yaw: 0, anim: 'walk' });
+    for (let i = 0; i < MOUNT.grace * 10 + 5; i++) rider.step(0.1);
+    // The anchor window is now 2 s: a rider could cover 13 × 2 + 1 = 27 m, a walker only 19.
+    expect(dash(rider, 21)).toBe(false);
+  });
+
+  it('the deer will not swim or climb', () => {
+    const sim = owner(0, 0);
+    let wet: { x: number; z: number } | null = null;
+    for (let x = -200; x <= 200 && !wet; x += 2) for (let z = -200; z <= 200 && !wet; z += 2) if (sim.terrain.heightAt(x, z) < WATER_LEVEL - 1) wet = { x, z };
+    expect(wet).not.toBeNull();
+    put(sim, 'Ana', wet!.x, wet!.z);
+    sim.getPlayer('Ana')!.steed = { x: wet!.x, z: wet!.z };
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    sim.step(0.1);
+    const before = sim.getPlayer('Ana')!.x;
+    sim.handle('Ana', { t: 'move', x: before + 0.5, y: WATER_LEVEL - 0.9, z: wet!.z, yaw: 0, anim: 'walk' });
+    expect(sim.getPlayer('Ana')!.x).toBe(before);
+    const c = sim.crags[0]!;
+    const cx = c.x + c.r + 0.5;
+    put(sim, 'Ana', cx, c.z);
+    sim.getPlayer('Ana')!.steed = { x: cx, z: c.z };
+    const s2 = snap(sim, 'Ana');
+    expect(s2.self.riding).toBe(true);
+    sim.handle('Ana', { t: 'move', x: cx, y: sim.terrain.heightAt(cx, c.z) + 6, z: c.z, yaw: 0, anim: 'jump' });
+    expect(sim.getPlayer('Ana')!.y).toBeLessThan(sim.terrain.heightAt(cx, c.z) + 1);
+  });
+
+  it('entering the Raíz-madre or dying leaves the deer where you were', () => {
+    const sim = setup('Ana');
+    const e = sim.entrance;
+    put(sim, 'Ana', e.x + DUNGEON.trunkR + 1, e.z);
+    const at = { x: Math.round(sim.getPlayer('Ana')!.x * 100) / 100, z: Math.round(sim.getPlayer('Ana')!.z * 100) / 100 };
+    sim.getPlayer('Ana')!.steed = { ...at };
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    sim.handle('Ana', { t: 'dungeon', act: 0 });
+    expect(inDungeon(sim.getPlayer('Ana')!.x, sim.getPlayer('Ana')!.z)).toBe(true);
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+    expect(sim.getPlayer('Ana')!.steed).toEqual(at);
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+
+    const d = owner(3, 3);
+    d.handle('Ana', { t: 'mount', act: 2 });
+    down(d, 'Ana');
+    expect(d.getPlayer('Ana')!.dead).toBe(true);
+    expect(snap(d, 'Ana').self.riding).toBe(false);
+    expect(d.getPlayer('Ana')!.steed).toEqual({ x: 3, z: 3 });
+  });
+
+  it('others see the wild deer, parked deer and who rides', () => {
+    const sim = setup('Ana', 'Leo');
+    put(sim, 'Ana', 5, 5);
+    put(sim, 'Leo', 6, 5);
+    sim.getPlayer('Ana')!.steed = { x: 6, z: 5 };
+    let s = snap(sim, 'Leo');
+    expect(s.steeds.filter((v) => v.owner === 'Ana')).toHaveLength(1);
+    expect(s.players.find((p) => p.name === 'Ana')!.ride).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    s = snap(sim, 'Leo');
+    expect(s.steeds.filter((v) => v.owner === 'Ana')).toHaveLength(0);
+    expect(s.players.find((p) => p.name === 'Ana')!.ride).toBe(true);
+    put(sim, 'Leo', sim.wild.x, sim.wild.z + 2);
+    expect(snap(sim, 'Leo').steeds.some((v) => v.owner === null)).toBe(true);
+  });
+
+  it('the deer is saved; old saves without one still load', () => {
+    const sim = owner(2, 2);
+    const saved = sim.save();
+    expect(saved.players[0]!.steed).toEqual({ x: 3, z: 2 });
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self).toMatchObject({ steed: true, riding: false });
+    const old = sim.save();
+    delete old.players[0]!.steed;
+    const legacy = new WorldSim(old);
+    legacy.connect('Ana');
+    expect(snap(legacy, 'Ana').self).toMatchObject({ steed: false, riding: false, tame: null });
   });
 });
