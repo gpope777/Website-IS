@@ -28,7 +28,7 @@ export function swampAction(x: SwampCtx): { t: 'amber'; id: number; label: strin
 }
 
 /** A fogata within reach: light it with the torch, or (lit) go back to the Heart. Unlit without a torch: a hint only. */
-export function fogataAction(pos: { x: number; z: number }, spots: readonly { id: number; x: number; z: number }[], lit: readonly boolean[], torch: boolean):
+export function fogataAction(pos: { x: number; z: number }, spots: readonly { id: number; x: number; z: number; refugio?: boolean }[], lit: readonly boolean[], torch: boolean):
   | { t: 'fogata'; id: number; label: string }
   | { t: 'travel'; to: 'heart'; label: string }
   | { t: 'hint'; label: string }
@@ -36,7 +36,7 @@ export function fogataAction(pos: { x: number; z: number }, spots: readonly { id
   const f = spots.find((s) => Math.hypot(s.x - pos.x, s.z - pos.z) <= FOGATA.reach);
   if (!f) return null;
   if (lit[f.id]) return { t: 'travel', to: 'heart', label: `Volver al ${NAMES.heart}` };
-  return torch ? { t: 'fogata', id: f.id, label: `Encender la ${NAMES.fogata}` } : { t: 'hint', label: 'Hace falta fuego' };
+  return torch ? { t: 'fogata', id: f.id, label: f.refugio ? `Encender el ${NAMES.refugio}` : `Encender la ${NAMES.fogata}` } : { t: 'hint', label: 'Hace falta fuego' };
 }
 
 /** Lit fogata ids the Heart's Menú offers (only standing at the Heart). */

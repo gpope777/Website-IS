@@ -4,6 +4,7 @@ import type { Shrine } from '../../shared/shrines';
 import { WATER_LEVEL, type Terrain } from '../../shared/terrain';
 import { SWAMP_SHRINE } from '../../shared/swamp-shrines';
 import { buildCrags } from './crags';
+import type { Crag } from '../../shared/crags';
 
 const STONE = new THREE.MeshLambertMaterial({ color: 0x8f8a7e, flatShading: true });
 const WOOD = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
@@ -28,6 +29,9 @@ interface Parts {
   flames: THREE.Mesh[];
   /** Nenúfares: the pads (lowered while sunk). */
   pads: THREE.Mesh[];
+  /** Losas gemelas: the second plate's glow. Bloques: the 3 stone blocks. */
+  plate2Mat: THREE.MeshLambertMaterial | null;
+  stones: THREE.Mesh[];
 }
 
 /** Shrines: a beam of light on the horizon, an orb behind a ring of light, levers or a plate. */
@@ -35,8 +39,8 @@ export class ShrineMeshes {
   readonly group = new THREE.Group();
   private readonly parts: Parts[] = [];
 
-  constructor(shrines: readonly Shrine[], private readonly terrain: Terrain, shadows: boolean) {
-    const pillars = shrines.flatMap((s) => (s.pillar ? [s.pillar] : []));
+  constructor(shrines: readonly Shrine[], private readonly terrain: Terrain, shadows: boolean, ledges: readonly Crag[] = []) {
+    const pillars = [...shrines.flatMap((s) => (s.pillar ? [s.pillar] : [])), ...ledges];
     this.group.add(buildCrags(pillars, shadows));
     for (const s of shrines) {
       const base = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, 0.5, 8), STONE);
@@ -126,14 +130,50 @@ export class ShrineMeshes {
         block.position.set(b.x, terrain.heightAt(b.x, b.z) + 0.4, b.z);
         this.group.add(block);
       }
-      if (s.kind === 'plate' || s.kind === 'tide') {
+      let plate2Mat: THREE.MeshLambertMaterial | null = null;
+      const stones: THREE.Mesh[] = [];
+      if (s.kind === 'twins') {
+        // Two plates and the loose boulder uphill of the second one.
+        block = new THREE.Mesh(new THREE.DodecahedronGeometry(0.9, 0), STONE);
+        const b = s.parts[2]!;
+        block.position.set(b.x, terrain.heightAt(b.x, b.z) + 0.8, b.z);
+        this.group.add(block);
+        plate2Mat = new THREE.MeshLambertMaterial({ color: 0x8f8a7e, emissive: 0x000000 });
+        const p2 = s.parts[1]!;
+        const plate2 = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 0.25, 12), plate2Mat);
+        plate2.position.set(p2.x, terrain.heightAt(p2.x, p2.z) + 0.05, p2.z);
+        this.group.add(plate2);
+      }
+      if (s.kind === 'blocks') {
+        // The marked cells (pale slabs), the 3 blocks (moved by the snap) and the reset lever.
+        for (const c of s.parts.slice(3, 6)) {
+          const slab = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), PUMICE);
+          slab.position.set(c.x, terrain.heightAt(c.x, c.z) + 0.05, c.z);
+          this.group.add(slab);
+        }
+        for (const c of s.parts.slice(0, 3)) {
+          const cube = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), STONE);
+          cube.position.set(c.x, terrain.heightAt(c.x, c.z) + 0.9, c.z);
+          stones.push(cube);
+          this.group.add(cube);
+        }
+        const l = s.parts[6]!;
+        const y = terrain.heightAt(l.x, l.z);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.5), STONE);
+        post.position.set(l.x, y + 0.5, l.z);
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), WOOD);
+        handle.position.set(l.x, y + 1.5, l.z);
+        handle.rotation.z = 0.6;
+        this.group.add(post, handle);
+      }
+      if (s.kind === 'plate' || s.kind === 'tide' || s.kind === 'twins') {
         plateMat = new THREE.MeshLambertMaterial({ color: 0x8f8a7e, emissive: 0x000000 });
         const p = s.parts[0]!;
         const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 0.25, 12), plateMat);
         plate.position.set(p.x, terrain.heightAt(p.x, p.z) + 0.05, p.z);
         this.group.add(plate);
       }
-      this.parts.push({ beam, orb, orbMat, gate, gateMat, handles, plateMat, block, flames, pads });
+      this.parts.push({ beam, orb, orbMat, gate, gateMat, handles, plateMat, block, flames, pads, plate2Mat, stones });
     }
   }
 
@@ -150,7 +190,9 @@ export class ShrineMeshes {
         const h = p.handles[i];
         if (h) h.rotation.z = on ? -0.6 : 0.6;
       });
-      if (p.block && v.block) p.block.position.set(v.block.x, this.terrain.heightAt(v.block.x, v.block.z) + (v.block.held ? 1.4 : 0.4), v.block.z);
+      if (p.block && v.block) p.block.position.set(v.block.x, this.terrain.heightAt(v.block.x, v.block.z) + (v.block.held ? 1.4 : p.plate2Mat ? 0.8 : 0.4), v.block.z);
+      p.plate2Mat?.emissive.setHex(v.parts[1] ? 0x2f8a55 : 0x000000);
+      v.blocks?.forEach((k, i) => p.stones[i]?.position.set(k.x, this.terrain.heightAt(k.x, k.z) + 0.9, k.z));
       p.plateMat?.emissive.setHex(v.parts[0] ? 0x2f8a55 : 0x000000);
       p.flames.forEach((f, i) => (f.visible = !!v.parts[i]));
       p.pads.forEach((m, i) => (m.position.y = WATER_LEVEL + SWAMP_SHRINE.padTop - (v.parts[i] ? 0.06 : 0.7)));

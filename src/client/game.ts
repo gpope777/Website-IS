@@ -62,6 +62,9 @@ import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
 import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
+import { quartzAction } from './mountain-ui';
+import { QuartzMeshes } from './scene/quartz';
+import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
 import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
@@ -205,6 +208,12 @@ export class Game {
   private pearls = 0;
   private amberTrees: AmberTree[] = [];
   private amberMeshes: AmberMeshes | null = null;
+  /** Mountain quartz veins, the Cornisa's ledges, veins regrowing for us and quartz carried (S4-C). */
+  private quartzVeins: QuartzVein[] = [];
+  private ledges: Crag[] = [];
+  private quartzMeshes: QuartzMeshes | null = null;
+  private quartzRegrowing: number[] = [];
+  private quartz = 0;
   /** Amber trees regrowing for us, amber carried, Capa level, torch in hand (from the server). */
   private regrowing: number[] = [];
   private amber = 0;
@@ -394,7 +403,11 @@ export class Game {
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
     const forest = generateShrines(this.terrain, seed, this.crags);
-    this.shrines = [...forest, ...generateCoastShrines(this.terrain, seed), ...generateSwampShrines(this.terrain, seed)];
+    this.shrines = [...forest, ...generateCoastShrines(this.terrain, seed), ...generateSwampShrines(this.terrain, seed), ...generateMountainShrines(this.terrain, seed)];
+    this.ledges = corniceLedges(this.terrain, seed);
+    this.quartzVeins = generateQuartzVeins(this.terrain, seed);
+    this.quartzMeshes = new QuartzMeshes(this.quartzVeins);
+    this.scene.add(this.quartzMeshes.group);
     this.entrance = generateEntrance(this.terrain, seed, this.crags, forest);
     this.chests = generateChests(this.terrain, seed);
     this.chestMeshes = new ChestMeshes(this.chests);
@@ -423,7 +436,7 @@ export class Game {
     this.scene.add(this.coastMeshes.group, this.gustFx.mesh);
     this.swampMeshes = new SwampDungeonMeshes({ ...this.swampDoor, y: this.terrain.heightAt(this.swampDoor.x, this.swampDoor.z) }, t.shadows);
     this.scene.add(this.swampMeshes.group, this.flameFx.mesh);
-    this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
+    this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows, this.ledges);
     this.zones = allZones(this.terrain, seed, this.entrance);
     const [nearPatch, farPatch, swampPatch] = terrainPatches(t.terrainSegments);
     this.ground = buildTerrainMesh(this.terrain, nearPatch!);
@@ -636,7 +649,7 @@ export class Game {
     const pads = this.shrines.flatMap((s) => (s.kind === 'lilies' ? lilyPadCrags(s, this.shrineViews.find((v) => v.id === s.id)?.parts ?? s.parts.map(() => true)) : []));
     const stumps = this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []));
     const planks = plankCrags(this.dungeon.swamp.planks);
-    this.climbList = [...this.crags, ...bare, ...this.vines, ...pads, ...stumps, ...planks];
+    this.climbList = [...this.crags, ...bare, ...this.vines, ...pads, ...stumps, ...planks, ...this.ledges];
   }
 
   private syncVines(vines: Crag[]): void {
@@ -676,6 +689,9 @@ export class Game {
     if (self.travel !== null && self.travel !== this.travelLeft) this.hud.toast(`Viajando… ${self.travel} s`);
     this.travelLeft = self.travel;
     this.amberMeshes?.sync(self.amber);
+    this.quartzRegrowing = self.quartz;
+    this.quartzMeshes?.sync(self.quartz);
+    this.quartz = self.inv.quartz ?? 0;
     this.cleared = self.shrines;
     this.opened = self.chests;
     this.weapon = self.weapon;
@@ -900,6 +916,8 @@ export class Game {
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
     const sa = this.swampAct();
     if (sa?.t === 'amber') return this.conn.send({ t: 'amber', id: sa.id });
+    const qa = this.quartzAct();
+    if (qa) return this.conn.send({ t: 'quartz', id: qa.id });
     const fa = this.fogataAct();
     if (fa?.t === 'fogata') return this.conn.send({ t: 'fogata', id: fa.id });
     if (fa?.t === 'travel') return this.conn.send({ t: 'travel', to: 'heart' });
@@ -971,7 +989,7 @@ export class Game {
     const b = this.body;
     if (!b || this.dead) return null;
     const h = this.heart && this.structures.position(this.heart.id);
-    return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon });
+    return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon, quartz: this.quartz });
   }
 
   /** A swamp fogata within reach (light it, or go back to the Heart). */
@@ -994,6 +1012,13 @@ export class Game {
     if (!b || this.dead) return null;
     const h = this.heart && this.structures.position(this.heart.id);
     return swampAction({ pos: b, trees: this.amberTrees, regrowing: this.regrowing, heart: h ? { x: h.x, z: h.z } : null, amber: this.amber, capa: this.capa });
+  }
+
+  /** A quartz vein we are up beside (S4-C). */
+  private quartzAct(): ReturnType<typeof quartzAction> {
+    const b = this.body;
+    if (!b || this.dead) return null;
+    return quartzAction(b, this.quartzVeins, this.quartzRegrowing);
   }
 
   /** A bare shrine rock beside us, if any (Enredadera wraps it instead of growing a new vine). */
@@ -1304,6 +1329,8 @@ export class Game {
     if (ca) return this.hud.setPrompt(`E · ${ca.label}`);
     const sa = this.swampAct();
     if (sa) return this.hud.setPrompt(`E · ${sa.label}`);
+    const qa = this.quartzAct();
+    if (qa) return this.hud.setPrompt(`E · ${qa.label}`);
     const fa = this.fogataAct();
     if (fa) return this.hud.setPrompt(fa.t === 'hint' ? `${NAMES.fogata[0]!.toUpperCase()}${NAMES.fogata.slice(1)} apagada · ${fa.label}` : `E · ${fa.label}`);
     const ra = this.rescueAct();

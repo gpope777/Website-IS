@@ -6,7 +6,7 @@ const STONE = new THREE.MeshLambertMaterial({ color: 0x5c5a55, flatShading: true
 const FLAME = new THREE.MeshBasicMaterial({ color: 0xff8a2a, fog: false });
 const EMBER = new THREE.MeshBasicMaterial({ color: 0xffd36b, fog: false });
 
-/** Swamp fogatas: a ring of stones, and a flame once someone lights it. */
+/** Swamp fogatas and mountain refugios: a ring of stones (walls for a refugio), and a flame once someone lights it. */
 export class FogataMeshes {
   readonly group = new THREE.Group();
   private readonly flames: THREE.Group[] = [];
@@ -15,7 +15,17 @@ export class FogataMeshes {
     const stone = new THREE.DodecahedronGeometry(0.28, 0);
     const cone = new THREE.ConeGeometry(0.45, 1.3, 6);
     const core = new THREE.ConeGeometry(0.22, 0.8, 5);
+    const wall = new THREE.BoxGeometry(3.2, 1.6, 0.5);
     for (const f of spots) {
+      if (f.refugio) {
+        // A refugio: three low stone walls around the ring, open to the south.
+        for (const [dx, dz, ry] of [[0, -1.8, 0], [-1.8, 0, Math.PI / 2], [1.8, 0, Math.PI / 2]] as const) {
+          const w = new THREE.Mesh(wall, STONE);
+          w.position.set(f.x + dx, f.y + 0.6, f.z + dz);
+          w.rotation.y = ry;
+          this.group.add(w);
+        }
+      }
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
         const s = new THREE.Mesh(stone, STONE);

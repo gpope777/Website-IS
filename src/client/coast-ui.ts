@@ -1,4 +1,5 @@
 import { CHEST, type Chest } from '../shared/coast-shrines';
+import { MOUNTAIN_SHRINE } from '../shared/mountain-shrines';
 import { UPGRADE } from '../shared/items';
 import { NAMES } from '../shared/names';
 import type { CageView, ShrineView } from '../shared/protocol';
@@ -13,10 +14,14 @@ export interface CoastCtx {
   heart: { x: number; z: number } | null;
   pearls: number;
   weapon: number;
+  /** Quartz carried (levels 4–5). */
+  quartz?: number;
 }
 
 const c = UPGRADE.cost;
 const UPGRADE_LABEL = `Mejorar el arma (${c.pearl} ${NAMES.pearl}s, ${c.stone} piedra, ${c.wood} madera)`;
+const q = UPGRADE.costHigh;
+const UPGRADE_HIGH = `Mejorar el arma (${q.quartz} ${NAMES.quartz}, ${q.stone} piedra, ${q.wood} madera)`;
 
 /** A sunken chest within reach (diving), else the weapon upgrade at the Heart. The server re-checks. */
 export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: string } | { t: 'upgrade'; label: string } | null {
@@ -24,7 +29,9 @@ export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: strin
   const ch = x.chests.find((k) => !x.opened.includes(k.id) && Math.hypot(k.x - p.x, k.z - p.z) <= CHEST.reach && p.y <= k.y + CHEST.above);
   if (ch) return { t: 'chest', id: ch.id, label: 'Abrir el cofre' };
   const h = x.heart;
-  if (h && x.pearls >= c.pearl && x.weapon < UPGRADE.pearlMax && Math.hypot(h.x - p.x, h.z - p.z) <= HEART.tendReach) return { t: 'upgrade', label: UPGRADE_LABEL };
+  if (!h || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return null;
+  if (x.pearls >= c.pearl && x.weapon < UPGRADE.pearlMax) return { t: 'upgrade', label: UPGRADE_LABEL };
+  if ((x.quartz ?? 0) >= q.quartz && x.weapon >= UPGRADE.pearlMax && x.weapon < UPGRADE.max) return { t: 'upgrade', label: UPGRADE_HIGH };
   return null;
 }
 
@@ -52,6 +59,12 @@ export function shrinePartAt(
       const i = s.parts.findIndex((p) => Math.hypot(p.x - b.x, p.z - b.z) <= SHRINE.partReach);
       if (i === 3) return { id: s.id, part: 4, open, label: 'Coger una antorcha' };
       if (i >= 0) return { id: s.id, part: i + 1, open, label: torch ? 'Encender el brasero' : 'Hace falta fuego' };
+    }
+    if (s.kind === 'blocks') {
+      const i = (v?.blocks ?? []).findIndex((k) => Math.hypot(k.x - b.x, k.z - b.z) <= SHRINE.partReach);
+      if (i >= 0) return { id: s.id, part: i + 1, open, label: 'Empujar el bloque' };
+      const lever = s.parts[MOUNTAIN_SHRINE.lever - 1];
+      if (lever && Math.hypot(lever.x - b.x, lever.z - b.z) <= SHRINE.partReach) return { id: s.id, part: MOUNTAIN_SHRINE.lever, open, label: 'Tirar de la palanca' };
     }
     if (s.kind === 'tide' && v?.block) {
       const k = v.block;

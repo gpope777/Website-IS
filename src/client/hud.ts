@@ -1,4 +1,5 @@
 import { NAMES } from '../shared/names';
+import { FOGATA } from '../shared/fogatas';
 import { ITEM_LABELS, ITEMS, type Inventory } from '../shared/items';
 import type { ErrorCode } from '../shared/protocol';
 import type { Vitals } from '../shared/survival';
@@ -198,7 +199,8 @@ export class Hud {
   }
 
   showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void }): void {
-    const trips = (h.fogatas ?? []).map((id) => `<button class="secondary" data-a="fogata${id}">Ir a la ${NAMES.fogata} ${id + 1} (5 s, de día)</button>`).join('');
+    const where = (id: number) => (id >= FOGATA.swamp ? `al ${NAMES.refugio} ${id - FOGATA.swamp + 1}` : `a la ${NAMES.fogata} ${id + 1}`);
+    const trips = (h.fogatas ?? []).map((id) => `<button class="secondary" data-a="fogata${id}">Ir ${where(id)} (5 s, de día)</button>`).join('');
     const options = (Object.keys(TIER_LABELS) as Tier[])
       .map((t) => `<option value="${t}" ${t === tier ? 'selected' : ''}>${TIER_LABELS[t]}</option>`)
       .join('');

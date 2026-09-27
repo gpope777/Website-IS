@@ -19,6 +19,11 @@ describe('coastAction', () => {
     expect(coastAction({ ...at, pearls: 2 })).toBeNull();
     expect(coastAction({ ...at, pearls: 3 })).toEqual({ t: 'upgrade', label: 'Mejorar el arma (3 perlas, 10 piedra, 5 madera)' });
     expect(coastAction({ ...at, pearls: 3, weapon: 3 })).toBeNull();
+    // S4-C: levels 4–5 cost quartz.
+    expect(coastAction({ ...at, pearls: 0, weapon: 3, quartz: 3 })).toEqual({ t: 'upgrade', label: 'Mejorar el arma (3 cuarzo, 10 piedra, 5 madera)' });
+    expect(coastAction({ ...at, pearls: 0, weapon: 3, quartz: 2 })).toBeNull();
+    expect(coastAction({ ...at, pearls: 0, weapon: 5, quartz: 9 })).toBeNull();
+    expect(coastAction({ ...at, pearls: 3, weapon: 1, quartz: 9 })?.label).toContain('perlas');
     expect(coastAction({ ...at, pearls: 3, heart: { x: 20, z: 0 } })).toBeNull();
   });
 });
@@ -43,6 +48,14 @@ describe('shrinePartAt', () => {
     expect(shrinePartAt([sunk], [], [], { x: 8, y: -6, z: 40 }, 'Ana')).toMatchObject({ part: 2, label: 'Tirar de la palanca' });
     expect(shrinePartAt([sunk], [{ id: 4, open: true, parts: [] }], [], { x: 0, y: 0, z: 0 }, 'Ana')).toMatchObject({ part: 0, label: 'Tomar el orbe' });
     expect(shrinePartAt([sunk], [], [], { x: 0, y: 0, z: 0 }, 'Ana')).toMatchObject({ part: 0, label: 'La verja está cerrada' });
+  });
+
+  it('Bloques (S4-C): push a block where it sits now, or pull the reset lever', () => {
+    const cells = Array.from({ length: 6 }, (_, i) => ({ x: 20 + i * 2, z: 0 }));
+    const s = mk(11, 'blocks', [...cells, { x: 40, z: 0 }]);
+    const v = [{ id: 11, open: false, parts: [], blocks: [{ x: 20, z: 10 }, { x: 24, z: 10 }, { x: 28, z: 10 }] }];
+    expect(shrinePartAt([s], v, [], { x: 24, y: 0, z: 11 }, 'Ana')).toMatchObject({ id: 11, part: 2, label: 'Empujar el bloque' });
+    expect(shrinePartAt([s], v, [], { x: 40, y: 0, z: 1 }, 'Ana')).toMatchObject({ part: 7, label: 'Tirar de la palanca' });
   });
 });
 
