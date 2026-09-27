@@ -71,4 +71,7 @@ export const NAMES = {
   maker: 'Gabriel',
   game: 'Bosque',
   credits: 'el sobrino',
+  /** P4-A: progression. */
+  xp: 'Savia',
+  rank: 'Rango',
 } as const;
