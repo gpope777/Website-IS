@@ -48,22 +48,22 @@ export function lookoutTop(t: Terrain): { x: number; y: number; z: number };
 export function withLookout(base: Terrain, open: () => boolean): Terrain;
 ```
 
-- [ ] **Step 1: failing tests.** `fullMoon(0|8|16)` true, `fullMoon(3)` false; `estrellaOut` needs all three. `estrellaAt` stays 20 m from its centre, north of `RIM_LINE`, moves ~2.4 m/s. 4 rounds, harder than the deer's last. `withLookout` closed = base; open: inside the disc base + 140, outside base. `lookoutTop` y = base + 140. `generateFogatas` has 8, id 7 `lookout: true` at the tower with `y` = top. Names test: no "Estrella".
-- [ ] **Step 2: implement.** `FOGATA.count` 8, `FOGATA.lookout` 7.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): reglas puras de la Estrella y el mirador`.
+- [x] **Step 1: failing tests.** `fullMoon(0|8|16)` true, `fullMoon(3)` false; `estrellaOut` needs all three. `estrellaAt` stays 20 m from its centre, north of `RIM_LINE`, moves ~2.4 m/s. 4 rounds, harder than the deer's last. `withLookout` closed = base; open: inside the disc base + 140, outside base. `lookoutTop` y = base + 140. `generateFogatas` has 8, id 7 `lookout: true` at the tower with `y` = top. Names test: no "Estrella".
+- [x] **Step 2: implement.** `FOGATA.count` 8, `FOGATA.lookout` 7.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): reglas puras de la Estrella y el mirador`.
 
 ### Task 2: server — the lookout and the Estrella (protocolo v54)
 
-- [ ] **Step 1: failing tests** (`world-sim-s5h.test.ts`). Before the ending act 26 at the door does what it did; after, it puts you on the top (y ≈ top) with "Subes a …"; fogata 7 lit on the ending and on loading an ending save; from the top A (fogata) channels home; `towerH` = 140 after the ending. Estrella: `snap.estrella` null by day, before the ending, or on a non-full-moon night; set on a full-moon night after the ending; act 18 away → nothing; near → a 4-round `tame` with `beast: 'star'`; winning → `self.star`, `self.steed`, `riding`, saved `star`; riding moves up to 13.9 m/s accepted, 16 refused; act 18 again → "Ya tienes…". Dusk toast on a full-moon day. `decodeClient` mount act 18 ok, 19 refused. Protocol 54.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): el Árbol-torre y la Estrella en el servidor (protocolo v54)`.
+- [x] **Step 1: failing tests** (`world-sim-s5h.test.ts`). Before the ending act 26 at the door does what it did; after, it puts you on the top (y ≈ top) with "Subes a …"; fogata 7 lit on the ending and on loading an ending save; from the top A (fogata) channels home; `towerH` = 140 after the ending. Estrella: `snap.estrella` null by day, before the ending, or on a non-full-moon night; set on a full-moon night after the ending; act 18 away → nothing; near → a 4-round `tame` with `beast: 'star'`; winning → `self.star`, `self.steed`, `riding`, saved `star`; riding moves up to 13.9 m/s accepted, 16 refused; act 18 again → "Ya tienes…". Dusk toast on a full-moon day. `decodeClient` mount act 18 ok, 19 refused. Protocol 54.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(aventura): el Árbol-torre y la Estrella en el servidor (protocolo v54)`.
 
 ### Task 3: client — Subir, la corriente, the Estrella
 
-- [ ] **Step 1: failing tests.** `mountAction`: near a wild estrella without a star → act 18 "Domar la Estrella"; riding a star → "Bajar de la Estrella". `towerDoorLabel(ending)` → "Subir" / existing. Movement: a star rider runs 13 m/s; a body leaving the lookout disc gliding keeps its stamina until it lands.
-- [ ] **Step 2: implement** (terrain `withLookout` next to `withGrieta`; the door's contextual label; hud `where(7)` "a la cima de el Árbol-torre"; `SteedMeshes` draws `star` poses as a spinning `PaperActor` of `enemy14.png`; wild estrella from the snapshot; body `star` flag; `corriente` flag).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): cliente del Árbol-torre y la Estrella`.
+- [x] **Step 1: failing tests.** `mountAction`: near a wild estrella without a star → act 18 "Domar la Estrella"; riding a star → "Bajar de la Estrella". `towerDoorLabel(ending)` → "Subir" / existing. Movement: a star rider runs 13 m/s; a body leaving the lookout disc gliding keeps its stamina until it lands.
+- [x] **Step 2: implement** (terrain `withLookout` next to `withGrieta`; the door's contextual label; hud `where(7)` "a la cima de el Árbol-torre"; `SteedMeshes` draws `star` poses as a spinning `PaperActor` of `enemy14.png`; wild estrella from the snapshot; body `star` flag; `corriente` flag).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): cliente del Árbol-torre y la Estrella`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF: "Aventura completa — estado" at the top, "Slice 5 — resumen" before S5-A, "## Slice 5 · S5-H — …"; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF: "Aventura completa — estado" at the top, "Slice 5 — resumen" before S5-A, "## Slice 5 · S5-H — …"; one short comment on PR #3.

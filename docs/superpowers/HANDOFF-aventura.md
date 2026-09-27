@@ -1,5 +1,8 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
+## Aventura completa — estado (LEER PRIMERO)
+La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 979, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 54**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia). Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G) y el balance de El Marchito (S5-F).
+
 **Branch:** `aventura/slice-1` (pushed to origin).
 
 **Read first:**
@@ -845,6 +848,19 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Bloqueos: ninguno.
 - Qué probar: subir al Pico, bajar hacia el canal, correr y pulsar B; ¿se entiende que el canal te lleva? ¿14 m/s es divertido o da miedo en móvil? Constantes: `SNOWSLIDE` en `src/shared/snowslide.ts`.
 
+## Slice 5 — resumen (LEER PRIMERO)
+- **S5-A a S5-H: todos hechos, ninguno bloqueado.** Rama `aventura/resto`, PR draft #3. Nada mergeado ni desplegado. Con esto **la historia de la Aventura está completa**.
+- Tests finales: npm test 979, test:workers 12, check + build verdes. **PROTOCOL_VERSION = 54.** Todos los campos guardados nuevos son opcionales (`fogOpen`, `towerDay0`, `pillars`, `corruptSeen`, `invasion3`, `towerOpen`, `ending`, `endingNames`, `raidsOff`, `credits`, `star`): las partidas viejas cargan.
+- **Qué hay:** S5-A las Tierras Corruptas al norte (el Borde, la Ceniza, el Espinar, el Lago Negro), la niebla que abre el dragón y la torre que crece en el horizonte · S5-B rayos marchitos, bestias de ceniza, espinas negras, arma 6 / Capa 4 y la fogata de la Ceniza · S5-C los 4 Pilares-raíz, el agua del Lago Negro, zonas 18–21 y La Flecha · S5-D Invasión 3 en el Corazón y la defensa aérea del dragón · S5-E la Torre (4 pisos, aliados blancos, escalera) · S5-F El Marchito en 3 fases en la Copa · S5-G el final (tarjetas, créditos, zonas limpias, torre blanca, el Guardián, la Grieta, asedios suaves con interruptor) · S5-H el Árbol-torre (mirador, fogata 7, la corriente) y la Estrella (luna llena, 4 rondas, montura de 13 m/s).
+- **Decidido por Claude — revisar (lo gordo):**
+  - **Asedios tras el final: ENCENDIDOS** (anulación del spec, decidida por el orquestador): ×0,6, sin tenientes, y "Noches de asedio: encendidas / apagadas" en el Menú junto al Corazón. El spec decía apagados con "Noches de desafío" para volverlos.
+  - El Marchito: con raíces ×0,1 (no 0,2), núcleo corriendo ×0,1, 1 rayo en solitario; la Llamarada cuenta como golpe al Corazón Negro.
+  - La Carrera de ceniza es un disco, no una tira; el agua del Lago Negro no depende del pilar; la Copa es un disco r 22; los suelos de la Torre son planos.
+  - La Grieta es una muesca (no una rampa); la Torre ya no se re-entra tras el final (su puerta sube al mirador); el mirador está a 140 m y la subida al planear es "la corriente" (planeador gratis hasta tocar suelo) en vez de un anillo de 4 s.
+  - La Estrella **sustituye al ciervo** (una sola montura de tierra por jugador); luna llena = `día % 8 === 0`; da vueltas en un círculo de 20 m en la Ceniza.
+- **Balance a revisar en juego:** vida y carga de La Flecha; Invasión 3 (voluntad 390–858, ×1,5 bestias, 6 rayos); El Marchito solo ~6 min (objetivo 8) y en co-op; ×0,6 de los asedios tras el final; rondas de la Estrella (4, última de 0,55 rad) y 13/14 m/s; si desde el mirador se llega planeando a algún sitio útil.
+- **Orden de prueba de toda la historia (mundo nuevo → créditos):** Corazón y primer asedio → combate y Raíz-madre (Enredadera) → ciervo → Invasión 1 → Costa: pez, santuarios, ballena, mazmorra (Viento), El Antenón → Invasión 2 y rescate del Tragón → Pantano: rana, santuarios, ámbar/Capa, mazmorra (Fuego), El Zancudo, fogatas → Montañas: Peldaños, frío, santuarios/cuarzo, mazmorra (Piedra), El Cucurucho, la Escalera, dragón en tormenta, tobogán → Tierras: niebla con el dragón, la Ceniza y su fogata, arma 6 / Capa 4, los 4 Pilares, La Flecha → Invasión 3 → la Torre → El Marchito → tarjetas y créditos (y entrar con alguien que no estaba) → el Guardián, la Grieta, el interruptor de asedios → subir al Árbol-torre y planear → esperar una luna llena (día 8, 16…) y domar la Estrella. Atajo: poner `ending: true` en el guardado para probar solo el post-juego.
+
 ## Slice 5 · S5-A — las Tierras Corruptas, la niebla del dragón y la torre del horizonte — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-aventura-S5-A-tierras-niebla-torre.md` (bc3de62).
 - Commits: 5d91763 (T1 terreno + nombres), f827b35 (T2 el Borde solo volando), 8c0100f (T3 puerta de niebla, torre por día, protocolo v44), f9b7fc5 (T4 cliente: trozos, colores, niebla), ffcc0c1 (T5 torre del horizonte).
@@ -1025,3 +1041,22 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: vencer al Marchito (o poner `ending: true` en el guardado) con dos jugadores y uno desconectado; ver las tarjetas, saltarlas con ✕, que los créditos suban legibles en móvil; entrar con el desconectado. ¿Se ve la torre blanca desde lejos? Hablar con el Guardián. Bajar por la Grieta andando y volver a subir. Un atardecer tras el final: ¿×0,6 se nota? Apagar y encender los asedios desde el Menú junto al Corazón. Constantes: `ENDING` en `src/shared/ending.ts`, `GRIETA` en `src/shared/corrupt-lands.ts`.
+
+## Slice 5 · S5-H — el Árbol-torre y la Estrella — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S5-H-arbol-torre-estrella.md` (38beb6a).
+- Commits: 6acf207 (T1 reglas puras: `src/shared/estrella.ts`, `LOOKOUT`/`withLookout` en `ending.ts`, fogata 7), 6b7c8bc (T2 servidor, protocolo v54), 8283f61 (T3 cliente).
+- Tests: npm test 979 (antes 963), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 54**. Campo guardado nuevo opcional: `SavedPlayer.star`. Las partidas viejas cargan; una con `ending: true` enciende la fogata 7 al cargar.
+- Cómo funciona:
+  - **El Árbol-torre (Idea de Claude):** tras el final, A / E en la puerta de la torre → **"Subir al Árbol-torre"**: apareces en la cima (un disco de 7 m, 140 m sobre la meseta; el terreno se levanta con `withLookout`, así que arriba se anda normal). La torre se dibuja entera (140 m). La cima es la **fogata 7**, encendida por el final: A allí de día → vuelta al Corazón, y el Menú del Corazón dice "Ir a la cima del Árbol-torre". Montado: "Bájate antes de subir".
+  - **La corriente:** al salir de la cima (andando o planeando) el planeador no gasta aguante hasta tocar suelo.
+  - **La Estrella** (`enemy14.png`, papel de 2,2 m): tras el final, en noches de **luna llena** (`día % 8 === 0`) rueda en un círculo de 20 m en la Ceniza. Al atardecer de ese día, a todos: "Luna llena esta noche. Algo rueda por la Ceniza". A / E a ≤ 4 m → **"Domar la Estrella"** (acto de montura 18): el anillo, **4 rondas** (los amigos cerca calman, como siempre). Ganada, **es tu montura de tierra en lugar del ciervo**: mismos Montar / Bajar / asiento de pasajero / llamada desde la Ceniza, **13 m/s** corriendo (7 al paso), tope del servidor 14.
+- Decidido por Claude — revisar:
+  - **Estrella = tu ciervo cambiado** ("Tu ciervo vuelve a su claro"): no hay dos monturas de tierra. La llamada desde la Ceniza sigue diciendo "ciervo".
+  - **La puerta de la Torre ya no entra** tras el final: sube. La mazmorra está acabada.
+  - La cima a 140 m (no 200) y **la corriente** en vez del anillo de 4 s que rellena aguante una vez; desde 140 m se planea ~600 m, pero el Borde se cruza solo por la Grieta, así que no llega al Corazón planeando.
+  - Sin luna en el cielo: solo el aviso del atardecer. Ella sigue rodando mientras la domas (el anillo se ancla donde empezó, 6 m de correa).
+  - Cambios de regla con tests adaptados (ninguno borrado): versión 53 → 54 en `protocol.test.ts` y `world-sim.test.ts`; fogatas 7 → 8 en `fogatas.test.ts`, `protocol.test.ts` (travel 7 válido, 8 no; acto de montura 18 válido, 19 no) y los arrays de fogatas de `world-sim.test.ts`.
+- Rendimiento móvil: 1 PaperActor por Estrella visible; la llama de la cima sin anillo de piedras.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: con `ending: true`, A en la puerta de la torre → cima; saltar y planear hacia el sur; volver con A en la fogata. Poner la hora en la noche del día 8 (o 16…) y buscar la Estrella en la Ceniza; domarla con y sin un amigo al lado; correr con ella. ¿Se ve bien el papel girando? Constantes: `ESTRELLA` en `src/shared/estrella.ts`, `LOOKOUT` en `src/shared/ending.ts`.
