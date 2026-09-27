@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NAMES } from '../shared/names';
 import { DUNGEON, inside, leverPos } from '../shared/dungeon';
 import type { DungeonView } from '../shared/protocol';
-import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText } from './dungeon-ui';
+import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText, cucuruchoBarText } from './dungeon-ui';
 import { dungeonBlockCell, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON as M } from '../shared/mountain-dungeon';
 
 const entrance = { x: 100, y: 2, z: 0 };
@@ -161,5 +161,17 @@ describe('mountainDungeonAction (S4-E)', () => {
   it('shows the bruto de roca bar', () => {
     expect(rockBarText(mv)).toBeNull();
     expect(rockBarText({ ...mv, elite: { hp: 300, max: 500, charging: false, exposed: true } })).toBe('Bruto de roca 300/500 · expuesto');
+  });
+});
+
+describe('cucuruchoBarText (S4-F)', () => {
+  const mv = emptyDungeonView().mountain;
+  const boss = { hp: 420, max: 420, windup: false, charging: false, stuck: false, alud: [] as { x: number; z: number }[] };
+  it('names the boss and its state', () => {
+    expect(cucuruchoBarText(mv)).toBeNull();
+    expect(cucuruchoBarText({ ...mv, boss })).toBe('El Cucurucho 420/420');
+    expect(cucuruchoBarText({ ...mv, boss: { ...boss, charging: true } })).toBe('El Cucurucho 420/420 · ¡embiste!');
+    expect(cucuruchoBarText({ ...mv, boss: { ...boss, stuck: true } })).toBe('El Cucurucho 420/420 · ¡gorro clavado!');
+    expect(cucuruchoBarText({ ...mv, boss: { ...boss, alud: [{ x: 0, z: 0 }] } })).toBe('El Cucurucho 420/420 · ¡alud!');
   });
 });

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { boulders, dungeonBlockCell, insideMountain, MOUNTAIN_DUNGEON as M } from '../../shared/mountain-dungeon';
 import type { MountainDungeonView } from '../../shared/protocol';
+import { CUCURUCHO } from '../../shared/sim/cucurucho';
 
 const ROCK = new THREE.MeshLambertMaterial({ color: 0x6e7680, flatShading: true });
 const DARK = new THREE.MeshBasicMaterial({ color: 0x0c1016 });
@@ -25,6 +26,8 @@ export class MountainDungeonMeshes {
   private readonly altarOrb: THREE.Mesh;
   private readonly exit: THREE.Mesh;
   private readonly rocks: THREE.Mesh[] = [];
+  /** El Cucurucho's alud: 4 dark discs on the floor while the boulders fall. */
+  private readonly shadows: THREE.Mesh[] = [];
 
   constructor(mouth: { x: number; y: number; z: number }, shadows: boolean) {
     // The mouth: a rock arch around a dark doorway, facing the forest (+z).
@@ -130,6 +133,14 @@ export class MountainDungeonMeshes {
       lamp.position.set(X, M.floor + 8, z);
       this.group.add(lamp);
     }
+    const shadow = new THREE.MeshBasicMaterial({ color: 0x1a1020, transparent: true, opacity: 0.6, depthWrite: false, fog: false });
+    for (let i = 0; i < 4; i++) {
+      const d = new THREE.Mesh(new THREE.CircleGeometry(CUCURUCHO.aludR, 20), shadow);
+      d.rotation.x = -Math.PI / 2;
+      d.visible = false;
+      this.shadows.push(d);
+      this.group.add(d);
+    }
   }
 
   sync(view: MountainDungeonView, piedra: boolean): void {
@@ -145,6 +156,12 @@ export class MountainDungeonMeshes {
       if (m) m.userData.to = b; // slides there in animate (0.5 s)
     });
     this.altarOrb.visible = !piedra;
+    const alud = view.boss?.alud ?? [];
+    this.shadows.forEach((d, i) => {
+      const c = alud[i];
+      d.visible = !!c;
+      if (c) d.position.set(c.x, M.floor + 0.05, c.z);
+    });
   }
 
   /** `t` = server time (boulders are a pure function of it); `pillars` stop their lane. */

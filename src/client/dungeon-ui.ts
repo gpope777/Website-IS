@@ -106,6 +106,13 @@ export function zancudoBarText(view: SwampDungeonView): string | null {
   return `${NAMES.bossSwamp} ${b.hp}/${b.max} · ${state}`;
 }
 
+export function cucuruchoBarText(view: MountainDungeonView): string | null {
+  const b = view.boss;
+  if (!b) return null;
+  const state = b.stuck ? ' · ¡gorro clavado!' : b.windup || b.charging ? ' · ¡embiste!' : b.alud.length ? ' · ¡alud!' : '';
+  return `${NAMES.bossMountain} ${b.hp}/${b.max}${state}`;
+}
+
 /** The contextual A / E action around the swamp Raíz-madre (acts 13–17). The server re-checks everything. */
 export function swampDungeonAction(pos: { x: number; z: number }, entrance: { x: number; z: number }, view: SwampDungeonView, fuego: boolean): { act: number; label: string } | null {
   const S = SWAMP_DUNGEON;

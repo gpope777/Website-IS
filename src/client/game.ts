@@ -14,7 +14,7 @@ import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { antenonBarText, bossBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
+import { antenonBarText, bossBarText, cucuruchoBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
 import { MountainDungeonMeshes } from './scene/mountain-dungeon';
 import { mountainEntrance, shelfCrag } from '../shared/mountain-dungeon';
 import { PIEDRA, structureCrags } from '../shared/piedra';
@@ -45,7 +45,9 @@ import { raidText } from './raid-ui';
 import { clearHold, Keyboard, nextPower, POWER_ICON, readMove, type Action, type InputState, KEY_ACTIONS, type PowerChoice } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
-import { STEEP_TEXT } from '../shared/mountains';
+import { STEEP_TEXT, withEscalera } from '../shared/mountains';
+import { ATALAYA } from '../shared/sim/cucurucho';
+import { buildAtalaya, UmbralMeshes } from './scene/umbral';
 import { animFor, createBody, rollInput, staminaFor, stepBody, type Body } from './movement';
 import { Connection, wsUrl, type NetStatus } from './net';
 import { loadTier, saveTier, TIERS, type Tier } from './quality';
@@ -95,6 +97,8 @@ const TRIANGULO_ASPECT = 455 / 469;
 /** El Zancudo (enemy9.png has real transparency); thin lines, so drawn 6 m wide (spec S3 §14.4). */
 const ZANCUDO_IMG = '/enemies/enemy9.png';
 const ZANCUDO_ASPECT = 358 / 291;
+const CUCURUCHO_IMG = '/enemies/enemy13.png';
+const CUCURUCHO_ASPECT = 556 / 601;
 
 interface Remote {
   actor: Puppet;
@@ -159,6 +163,10 @@ export class Game {
   private zarzalKnot: ZarzalKnot | null = null;
   /** The white Zancudo's lantern (a small unfogged glow under it). */
   private farolGlow: THREE.Mesh | null = null;
+  private atalaya: THREE.Mesh | null = null;
+  private umbral: UmbralMeshes | null = null;
+  /** La Escalera del Umbral is up (from the snapshot); the client terrain reads it. */
+  private escaleraUp = false;
   private readonly flameFx = new FlameFx();
   private hasFire = false;
   private fireLeft = 0;
@@ -414,7 +422,9 @@ export class Game {
   private buildWorld(seed: number): void {
     const t = TIERS[this.tier];
     this.seed = seed;
-    this.terrain = withDungeon(createTerrain(seed));
+    this.escaleraUp = false;
+    const plain = withDungeon(createTerrain(seed));
+    this.terrain = withEscalera(plain, () => this.escaleraUp);
     this.spawns = generateResources(this.terrain, seed);
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
@@ -472,6 +482,8 @@ export class Game {
     });
     this.scene.add(buildPines(this.terrain, seed));
     this.zarzalKnot = new ZarzalKnot(this.terrain);
+    this.umbral = new UmbralMeshes(plain);
+    this.scene.add(this.umbral.group);
     this.scene.add(this.zarzalKnot.group);
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
     this.rescueSpot = rescueSite(this.terrain, seed);
@@ -534,12 +546,17 @@ export class Game {
     this.swampMeshes?.sync(m.dungeon.swamp, this.hasFire);
     this.caveMeshes?.sync(m.dungeon.mountain, this.hasStone);
     this.zarzalKnot?.sync(m.zarzalBurnt);
+    if (m.escalera !== this.escaleraUp) {
+      this.escaleraUp = m.escalera;
+      this.rebuildMountains();
+    }
+    this.umbral?.sync(m.escalera);
     this.fogatasLit = m.fogatas;
     this.fogataMeshes?.sync(m.fogatas);
     if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
-    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? rockBarText(m.dungeon.mountain) ?? marchitoBarText(m.marchito));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? rockBarText(m.dungeon.mountain) ?? cucuruchoBarText(m.dungeon.mountain) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     this.fishViews = m.fish;
@@ -572,11 +589,12 @@ export class Game {
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if ((w.kind === 'lieut1' || w.kind === 'lieut2') && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
       else if (w.kind === 'boss3' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.swamp.boss?.grounded ? 0xffe9a0 : 0xffffff);
+      else if (w.kind === 'boss4' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.mountain.boss?.stuck ? 0xffe9a0 : m.dungeon.mountain.boss?.windup ? 0xff9a8a : 0xffffff);
       else if (w.kind === 'boss2' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.coast.boss?.exposed ? 0xffe9a0 : 0xffffff);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
       else if (w.kind === 'elite2' && !r.actor.root.getObjectByName('shield')) {
@@ -648,6 +666,24 @@ export class Game {
       r.anim = a.anim;
       r.seen = m.time;
     } else if (this.farolGlow) this.farolGlow.visible = false;
+    if (m.ally4) {
+      const a = m.ally4;
+      const r = this.remote(this.allies, 3, () => {
+        const paper = new PaperActor(CUCURUCHO_IMG, 1.6, this.camera, CUCURUCHO_ASPECT);
+        paper.setTint(0xf2fff0); // purified: pale paper
+        return paper;
+      });
+      if (r.actor instanceof PaperActor) r.actor.setTint(a.anim === 'attack' ? 0xffffff : 0xf2fff0);
+      if (!this.atalaya) {
+        this.atalaya = buildAtalaya();
+        this.scene.add(this.atalaya);
+      }
+      this.atalaya.visible = true;
+      this.atalaya.position.set(a.x, a.y, a.z);
+      r.buf.push({ t: m.time, x: a.x, y: a.y + ATALAYA.height, z: a.z, yaw: a.yaw });
+      r.anim = a.anim;
+      r.seen = m.time;
+    } else if (this.atalaya) this.atalaya.visible = false;
     const b2 = m.wolves.find((w) => w.kind === 'boss2');
     this.coastMeshes?.telegraph(m.dungeon.coast.boss?.tell ?? null, b2 ? { x: b2.x, z: b2.z, yaw: b2.yaw } : null);
     for (const map of [this.others, this.wolves, this.allies] as Map<unknown, Remote>[]) {
@@ -670,6 +706,20 @@ export class Game {
       root.add(f);
     }
     f.visible = on;
+  }
+
+  /** La Escalera del Umbral changes the terrain: redraw the mountain chunks once (cheap, rare). */
+  private rebuildMountains(): void {
+    const t = this.terrain;
+    if (!t) return;
+    for (const m of this.mountainMeshes) {
+      for (const [mesh, patch] of [[m.detail, m.chunk.detail], [m.silhouette, m.chunk.silhouette]] as const) {
+        const fresh = buildTerrainMesh(t, patch);
+        mesh.geometry.dispose();
+        mesh.geometry = fresh.geometry;
+        (fresh.material as THREE.Material).dispose();
+      }
+    }
   }
 
   private rebuildClimbables(): void {
