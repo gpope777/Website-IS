@@ -35,6 +35,9 @@ import type { StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
 import { PaperActor, type Puppet } from './actors/paper';
+import { guardianAction, guardianLine, raidsMenu } from './ending-ui';
+import { ENDING, guardianSpot } from '../shared/ending';
+import { withGrieta } from '../shared/corrupt-lands';
 import { DungeonMeshes } from './scene/dungeon';
 import { CoastDungeonMeshes, GustFx } from './scene/coast-dungeon';
 import { FlameFx, SwampDungeonMeshes, ZarzalKnot } from './scene/swamp-dungeon';
@@ -117,6 +120,8 @@ const CUCURUCHO_ASPECT = 556 / 601;
 /** El Corazón Negro (enemy8.png, RGBA 638 × 536, 61 % transparent): El Marchito's core in the Copa's phase 3, 2.5 m (spec S5 §11.3). */
 const CORE_IMG = '/enemies/enemy8.png';
 const CORE_ASPECT = 638 / 536;
+const GUARDIAN_IMG = '/enemies/enemy6.png';
+const GUARDIAN_ASPECT = 512 / 280;
 /** The four brotes' tints (Enredadera, Viento, Fuego, Piedra). */
 const BROTE_TINT = [0x7ad07a, 0xbfe6ff, 0xff9a5a, 0xc8b89a];
 
@@ -191,6 +196,11 @@ export class Game {
   private umbral: UmbralMeshes | null = null;
   /** La Escalera del Umbral is up (from the snapshot); the client terrain reads it. */
   private escaleraUp = false;
+  /** S5-G: El Marchito fell (white tower, el Guardián, la Grieta) and the Heart's raids toggle. */
+  private ending = false;
+  private raidsOff = false;
+  private guardian: PaperActor | null = null;
+  private guardianSays = 0;
   private readonly flameFx = new FlameFx();
   private hasFire = false;
   private fireLeft = 0;
@@ -446,6 +456,8 @@ export class Game {
         return this.hud.toast(m.text);
       case 'vision':
         return this.hud.showVision(m.lines);
+      case 'ending':
+        return this.hud.showEnding(m.cards, m.credits);
       case 'hit':
         if (this.heart?.id === m.id) this.heart = { ...this.heart, hp: m.hp };
         this.structures.setHp(m.id, m.hp);
@@ -479,8 +491,9 @@ export class Game {
     const t = TIERS[this.tier];
     this.seed = seed;
     this.escaleraUp = false;
+    this.ending = false;
     const plain = withDungeon(createTerrain(seed));
-    this.terrain = withEscalera(plain, () => this.escaleraUp);
+    this.terrain = withGrieta(withEscalera(plain, () => this.escaleraUp), () => this.ending);
     this.spawns = generateResources(this.terrain, seed);
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
@@ -634,6 +647,14 @@ export class Game {
       this.escaleraUp = m.escalera;
       this.rebuildMountains();
     }
+    if ((m.ending ?? false) !== this.ending) {
+      this.ending = m.ending ?? false;
+      this.rebuildMountains(); // la Grieta
+      this.villainTower?.setWhite(this.ending);
+    }
+    this.raidsOff = m.raidsOff ?? false;
+    if (this.body) this.body.grieta = this.ending;
+    this.syncGuardian();
     this.umbral?.sync(m.escalera);
     this.fogatasLit = m.fogatas;
     this.fog = m.fog;
@@ -842,7 +863,7 @@ export class Game {
   private rebuildMountains(): void {
     const t = this.terrain;
     if (!t) return;
-    for (const m of this.mountainMeshes) {
+    for (const m of [...this.mountainMeshes, ...this.corruptMeshes]) {
       for (const [mesh, patch] of [[m.detail, m.chunk.detail], [m.silhouette, m.chunk.silhouette]] as const) {
         const fresh = buildTerrainMesh(t, patch);
         mesh.geometry.dispose();
@@ -989,6 +1010,8 @@ export class Game {
         onCall: (beast: string) => {
           if (beast === 'deer' || beast === 'frog' || beast === 'fish') this.conn.send({ t: 'call', beast });
         },
+        raids: raidsMenu(this.ending, this.atHeart(), this.raidsOff),
+        onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
           this.trap = nextTrap(this.trap, this.hasFire, this.hasStone);
           this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
@@ -1157,6 +1180,7 @@ export class Game {
     if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
     const pa = this.pillarAct();
     if (pa) return this.conn.send({ t: 'pillar', id: pa.id });
+    if (this.guardianAct()) return this.hud.toast(guardianLine(this.guardianSays++));
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
     if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
@@ -1352,6 +1376,32 @@ export class Game {
     this.conn.send({ t: 'power', x: r2(x), z: r2(z) });
   }
 
+  /** Where the Heart stands (for el Guardián), if it does. */
+  private heartSpot(): { x: number; z: number } | null {
+    const h = this.heart && this.structures.position(this.heart.id);
+    return h ? { x: h.x, z: h.z } : null;
+  }
+
+  private guardianAct(): { label: string } | null {
+    return this.body && !this.dead ? guardianAction(this.body, this.heartSpot(), this.ending) : null;
+  }
+
+  /** S5-G: El Marchito purified, a 3 m paper 8 m east of the Heart (no server state: he just stands there). */
+  private syncGuardian(): void {
+    const h = this.heartSpot();
+    if (!this.ending || !h || !this.terrain) {
+      if (this.guardian) this.guardian.root.visible = false;
+      return;
+    }
+    if (!this.guardian) {
+      this.guardian = new PaperActor(GUARDIAN_IMG, ENDING.guardian.h, this.camera, GUARDIAN_ASPECT);
+      this.scene.add(this.guardian.root);
+    }
+    const g = guardianSpot(h);
+    this.guardian.root.visible = true;
+    this.guardian.setPose(g.x, this.terrain.heightAt(g.x, g.z), g.z, -Math.PI / 2);
+  }
+
   private canTend(): boolean {
     const h = this.heart;
     const s = h && this.structures.position(h.id);
@@ -1540,6 +1590,7 @@ export class Game {
     this.hud.setRing(this.tame ? { needle: ringNeedle(this.tame, this.serverTime), zone: this.tame.zone, width: this.tame.width, round: this.tame.round, rounds: this.tame.rounds } : null);
     this.updatePrompt();
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
+    if (this.guardian?.root.visible) this.guardian.update(dt);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -1672,6 +1723,8 @@ export class Game {
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
     const pa = this.pillarAct();
     if (pa) return this.hud.setPrompt(`E · ${pa.label}`);
+    const ga = this.guardianAct();
+    if (ga) return this.hud.setPrompt(`E · ${ga.label}`);
     const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(this.body, this.towerDoor, this.towerOpen, this.dungeon.tower.final));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma?.act === 17) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio (mantener) · Subir`);

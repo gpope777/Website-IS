@@ -22,27 +22,36 @@ const CRACK_LIT = new THREE.Color(0xc07aff);
 const CRACK_DARK = new THREE.Color(0x140a1c);
 const UP = new THREE.Vector3(0, 1, 0);
 
-/** A twisted 12-sided cone of unit height, dark purple with a violet tip (vertex colours). */
+/** A twisted 12-sided cone of unit height (vertex colours: see `paintTower`). */
 function towerGeometry(): THREE.BufferGeometry {
   const geo = new THREE.ConeGeometry(TOWER.r, 1, 12, 8);
   geo.translate(0, 0.5, 0);
   const pos = geo.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  const body = new THREE.Color(0x2a1638);
-  const tip = new THREE.Color(0x9b5cff);
-  const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
     const a = y * 1.6; // the twist
     const x = pos.getX(i);
     const z = pos.getZ(i);
     pos.setXYZ(i, x * Math.cos(a) - z * Math.sin(a), y, x * Math.sin(a) + z * Math.cos(a));
-    c.copy(body).lerp(tip, Math.max(0, (y - 0.8) / 0.2));
-    colors.set([c.r, c.g, c.b], i * 3);
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
+  paintTower(geo, false);
   geo.computeVertexNormals();
   return geo;
+}
+
+/** Dark purple with a violet tip; after the ending (S5-G) white bark with a green, leafy tip. */
+function paintTower(geo: THREE.BufferGeometry, white: boolean): void {
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const col = geo.attributes.color as THREE.BufferAttribute;
+  const body = new THREE.Color(white ? 0xeeeae0 : 0x2a1638);
+  const tip = new THREE.Color(white ? 0x5fae4a : 0x9b5cff);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    c.copy(body).lerp(tip, Math.max(0, (pos.getY(i) - (white ? 0.7 : 0.8)) / (white ? 0.3 : 0.2)));
+    col.setXYZ(i, c.r, c.g, c.b);
+  }
+  col.needsUpdate = true;
 }
 
 /**
@@ -79,6 +88,11 @@ export class VillainTower {
 
   setOpen(open: boolean): void {
     this.open = open;
+  }
+
+  /** S5-G: the tower turns white (one geometry, shared by the real and sky copies). */
+  setWhite(white: boolean): void {
+    paintTower(this.real.geometry, white);
   }
 
   /** Dark cracks for the broken Pilares-raíz. */

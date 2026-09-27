@@ -296,5 +296,10 @@ canvas { display: block; }
 .vision[hidden] { display: none; }
 .vision p { margin: 4px 0; font-style: italic; font-size: 15px; line-height: 1.35; }
 .vision-close { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.12); color: inherit; font-size: 15px; cursor: pointer; pointer-events: auto; }
+.vision.credits { height: 180px; overflow: hidden; text-align: center; }
+.vision.credits .roll { animation: credits-roll var(--roll, 25s) linear forwards; }
+.vision.credits p { font-style: normal; margin: 14px 0; }
+.vision.credits p:first-child { font-size: 22px; font-weight: 600; }
+@keyframes credits-roll { from { transform: translateY(180px); } to { transform: translateY(-100%); } }
 .touch .vision { top: 64px; }
 .touch .vision p { font-size: 13px; }

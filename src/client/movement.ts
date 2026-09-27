@@ -25,6 +25,8 @@ export interface MoveInput {
 export interface Body {
   /** The Zarzal knot burnt (from the snapshot): its gap no longer slows. */
   thornsOpen?: boolean;
+  /** S5-G: la Grieta is open (the ending, from the snapshot): walkers cross el Borde in it. */
+  grieta?: boolean;
   x: number;
   y: number;
   z: number;
@@ -314,7 +316,7 @@ export function stepBody(
  * Mid-air too, so a jump that hits a riser falls back instead of snapping onto it. Stops the body in place.
  */
 function steepStop(terrain: Terrain, b: Body, to: { x: number; z: number }, grab = false): StepResult['steep'] {
-  if (rimCrossBlocked(b.z, to.z)) {
+  if (rimCrossBlocked(b.z, to.z, to.x, !!b.grieta)) {
     to.z = b.z; // el Borde (S5): only flying crosses it
     b.vz = Math.max(0, b.vz);
     return 'rim';

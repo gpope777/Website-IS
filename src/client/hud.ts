@@ -1,5 +1,6 @@
 import { NAMES } from '../shared/names';
 import { FOGATA } from '../shared/fogatas';
+import { endingSteps, type EndingStep } from './ending-ui';
 import { ITEM_LABELS, ITEMS, type Inventory } from '../shared/items';
 import type { ErrorCode } from '../shared/protocol';
 import type { Vitals } from '../shared/survival';
@@ -36,6 +37,8 @@ export class Hud {
   /** El Marchito's vision card: its ✕ (or Enter) closes it; it also fades by itself. */
   private readonly visionCard = el('div', 'vision');
   private visionTimer: ReturnType<typeof setTimeout> | undefined;
+  /** S5-G: the ending's steps still to show. */
+  private endingQueue: EndingStep[] = [];
   menuOpen = false;
 
   /** True while any overlay panel (menu, death, fatal error) covers the screen. */
@@ -141,14 +144,16 @@ export class Hud {
     this.ring.querySelector('span')!.textContent = `Doma ${r.round + 1}/${r.rounds}`;
   }
 
-  showVision(lines: string[]): void {
+  showVision(lines: string[], ms = 3000 + 2500 * lines.length, toast = true): void {
     this.visionCard.innerHTML = '';
+    const roll = el('div', 'roll');
     for (const line of lines) {
       const p = el('p', '');
       p.textContent = line;
-      this.visionCard.appendChild(p);
-      this.toast(line);
+      roll.appendChild(p);
+      if (toast) this.toast(line);
     }
+    this.visionCard.appendChild(roll);
     const close = el('button', 'vision-close');
     close.textContent = '✕';
     close.setAttribute('aria-label', 'Cerrar visión');
@@ -160,12 +165,27 @@ export class Hud {
     this.visionCard.appendChild(close);
     this.visionCard.hidden = false;
     clearTimeout(this.visionTimer);
-    this.visionTimer = setTimeout(() => this.hideVision(), 3000 + 2500 * lines.length);
+    this.visionTimer = setTimeout(() => this.hideVision(), ms);
   }
 
   hideVision(): void {
     clearTimeout(this.visionTimer);
     this.visionCard.hidden = true;
+    this.visionCard.classList.remove('credits');
+    const next = this.endingQueue.shift();
+    if (next) this.showStep(next);
+  }
+
+  /** S5-G: the long vision one card at a time, then the scrolling credits; ✕ / Enter skips a step. */
+  showEnding(cards: string[], credits: string[]): void {
+    this.endingQueue = endingSteps(cards, credits);
+    this.showStep(this.endingQueue.shift()!);
+  }
+
+  private showStep(step: EndingStep): void {
+    this.showVision(step.lines, step.ms, !step.credits);
+    this.visionCard.classList.toggle('credits', step.credits);
+    if (step.credits) this.visionCard.style.setProperty('--roll', `${step.ms / 1000}s`);
   }
 
   setPrompt(text: string | null): void {
@@ -198,7 +218,7 @@ export class Hud {
     if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
   }
 
-  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void; calls?: { beast: string; label: string }[]; onCall?: (beast: string) => void }): void {
+  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void; calls?: { beast: string; label: string }[]; onCall?: (beast: string) => void; raids?: { label: string; on: boolean } | null; onRaids?: (on: boolean) => void }): void {
     const where = (id: number) => (id === FOGATA.ceniza ? `a ${NAMES.ash}` : id >= FOGATA.swamp ? `al ${NAMES.refugio} ${id - FOGATA.swamp + 1}` : `a la ${NAMES.fogata} ${id + 1}`);
     const trips = (h.fogatas ?? []).map((id) => `<button class="secondary" data-a="fogata${id}">Ir ${where(id)} (5 s, de día)</button>`).join('') + (h.calls ?? []).map((c) => `<button class="secondary" data-a="call-${c.beast}">${c.label}</button>`).join('');
     const options = (Object.keys(TIER_LABELS) as Tier[])
@@ -223,10 +243,11 @@ export class Hud {
        <p>Fogatas del ${NAMES.biomeSwamp.replace(/^el /, '')}: enciéndelas con el ${NAMES.powerFire} o una antorcha de los Candiles. De día, E / A junto a una encendida te lleva al ${NAMES.heart} en 5 s; desde el ${NAMES.heart}, este menú te lleva a ellas. Un golpe o moverte lo corta</p>
        <p>${NAMES.ash.charAt(0).toUpperCase() + NAMES.ash.slice(1)} (${NAMES.biomeCorrupt}): su ${NAMES.fogata} se enciende igual. Junto a ella, este menú llama a tu ciervo, tu rana o tu pez. Los ${NAMES.flier.replace(' ', 's ')}s vuelan: flechas, o el ${NAMES.powerWind} los tira al suelo. Las bestias de allí sueltan ${NAMES.thorn.replace(' ', 's ')}s</p>
        ${trips}
+       ${h.raids ? `<button class="secondary" data-a="raids">${h.raids.label}</button>` : ''}
        <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
        <button class="secondary" data-a="leave">Salir</button>`,
-      { ...Object.fromEntries((h.fogatas ?? []).map((id) => [`fogata${id}`, () => { h.onFogata?.(id); this.hideOverlay(); }])), ...Object.fromEntries((h.calls ?? []).map((c) => [`call-${c.beast}`, () => { h.onCall?.(c.beast); this.hideOverlay(); }])), resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
+      { ...Object.fromEntries((h.fogatas ?? []).map((id) => [`fogata${id}`, () => { h.onFogata?.(id); this.hideOverlay(); }])), ...Object.fromEntries((h.calls ?? []).map((c) => [`call-${c.beast}`, () => { h.onCall?.(c.beast); this.hideOverlay(); }])), raids: () => { if (h.raids) h.onRaids?.(h.raids.on); this.hideOverlay(); }, resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
     );
     this.menuOpen = true;
     this.overlay.querySelector('select')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));
