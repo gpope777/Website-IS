@@ -44,3 +44,13 @@ describe('coast dungeon', () => {
     }
   });
 });
+
+describe('coral pillars', () => {
+  it('keeps feet out of a pillar', () => {
+    const X = C.x;
+    const p = C.pillars[0]!;
+    const open = [true, true, true, true];
+    const to = clampCoast(X + p.x - 3, p.z, X + p.x, p.z, open);
+    expect(Math.hypot(to.x - (X + p.x), to.z - p.z)).toBeGreaterThanOrEqual(C.pillarR + 0.39);
+  });
+});

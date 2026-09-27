@@ -41,6 +41,14 @@ export const COAST_DUNGEON = {
   eliteRoomZ: 120,
   eliteZ: 136,
   bossRoomZ: 150,
+  /** El Antenón's four coral pillars (interior-relative) and their radius. */
+  pillars: [
+    { x: -5, z: 160 },
+    { x: 5, z: 160 },
+    { x: -5, z: 172 },
+    { x: 5, z: 172 },
+  ],
+  pillarR: 1,
   trunkR: 4,
   enterReach: 5,
 } as const;
@@ -88,6 +96,21 @@ export function clampCoast(px: number, pz: number, nx: number, nz: number, gates
     if (pz <= c0) z = c0;
     else if (pz >= c1) z = c1;
     else x = C.x + C.bridgeX;
+  }
+  return outOfPillars(x, z, 0.4);
+}
+
+/** Pushes a point of body radius `body` out of the coral pillars. */
+export function outOfPillars(x: number, z: number, body: number): { x: number; z: number } {
+  for (const p of C.pillars) {
+    const px = C.x + p.x;
+    const d = Math.hypot(x - px, z - p.z);
+    const min = C.pillarR + body;
+    if (d >= min) continue;
+    const ux = d < 1e-4 ? 1 : (x - px) / d;
+    const uz = d < 1e-4 ? 0 : (z - p.z) / d;
+    x = px + ux * min;
+    z = p.z + uz * min;
   }
   return { x, z };
 }
