@@ -83,23 +83,24 @@ export function inRockfall(x: number, z: number): boolean {
 }
 
 /** The lane (0–2) at x, or −1. */
-export function rockfallLane(x: number): number {
-  return M.lanes.findIndex((l) => Math.abs(x - (M.x + l)) <= M.laneHalf);
+export function rockfallLane(x: number, cx: number = M.x): number {
+  return M.lanes.findIndex((l) => Math.abs(x - (cx + l)) <= M.laneHalf);
 }
 
 /**
  * The z of each boulder rolling in `lane` at time t. A pillar (any point within the lane) stops every
- * boulder that would be past it (downstream = lower z).
+ * boulder that would be past it (downstream = lower z). `c` = another corridor (the tower's, S5-E).
  */
-export function boulders(t: number, lane: number, blockers: readonly { x: number; z: number }[]): number[] {
-  const lx = M.x + M.lanes[lane]!;
-  const stop = blockers.filter((b) => Math.abs(b.x - lx) <= M.laneHalf && b.z >= M.rockfall[0] && b.z <= M.rockfall[1]).reduce((m, b) => Math.max(m, b.z), -Infinity);
+export function boulders(t: number, lane: number, blockers: readonly { x: number; z: number }[], c: { x: number; span: readonly [number, number] } = { x: M.x, span: M.rockfall }): number[] {
+  const lx = c.x + M.lanes[lane]!;
+  const [z0, z1] = c.span;
+  const stop = blockers.filter((b) => Math.abs(b.x - lx) <= M.laneHalf && b.z >= z0 && b.z <= z1).reduce((m, b) => Math.max(m, b.z), -Infinity);
   const off = (lane * M.every) / M.lanes.length;
-  const travel = (M.rockfall[1] - M.rockfall[0]) / M.roll;
+  const travel = (z1 - z0) / M.roll;
   const out: number[] = [];
   const last = Math.floor((t - off) / M.every);
   for (let k = last; k >= 0 && t - (k * M.every + off) <= travel; k--) {
-    const z = M.rockfall[1] - M.roll * (t - (k * M.every + off));
+    const z = z1 - M.roll * (t - (k * M.every + off));
     if (z >= stop) out.push(z);
   }
   return out;
