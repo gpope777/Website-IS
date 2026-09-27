@@ -12,7 +12,7 @@ import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANG
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
-import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
+import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isCorruptLandZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
@@ -1276,7 +1276,7 @@ export class WorldSim {
     p.shrines = [...cleared, id];
     // The shrine's light cleanses the corrupt zone of its own biome nearest it, never a Raíz-madre's
     // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo, mountain 14 El Cucurucho).
-    const biome = (i: number) => (isMountainZone(i) ? 'mountain' : isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
+    const biome = (i: number) => (isCorruptLandZone(i) ? 'tierras' : isMountainZone(i) ? 'mountain' : isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
     const mine = s.id >= MOUNTAIN_SHRINE.firstId ? 'mountain' : s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
     // A Piedra pillar raised ≤2 m from a 15–17 root crushes it (onStone); zone 14 is cleansed by beating El Cucurucho (stepCucuruchoFight).
     const roots: number[] = [0, COAST_ZONES.root, SWAMP_ZONES.root, MOUNTAIN_ZONES.root];
@@ -1380,7 +1380,7 @@ export class WorldSim {
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
     // Coast roots wither to Viento, not Enredadera (see onGust).
-    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !isMountainZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
+    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !isMountainZone(z.id) && !isCorruptLandZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     // Swamp roots (11–13) burn to Fuego (see flameThings); zone 10 is cleansed by beating El Zancudo (stepZancudoFight).
     const knot = inside(DUNGEON.knot);

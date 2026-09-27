@@ -94,6 +94,7 @@ export function withDungeon(base: Terrain): Terrain {
   return {
     heightAt: (x, z) => (inDungeon(x, z, DUNGEON.pad) ? DUNGEON.floor : inCoastDungeon(x, z, COAST_DUNGEON.pad) ? coastFloor(x, z) : inSwampDungeon(x, z, SWAMP_DUNGEON.pad) ? swampFloor(x, z) : inMountainDungeon(x, z, MOUNTAIN_DUNGEON.pad) ? MOUNTAIN_DUNGEON.floor : base.heightAt(x, z)),
     density: (x, z) => base.density(x, z),
+    ...(base.waterAt ? { waterAt: (x: number, z: number) => base.waterAt!(x, z) } : {}),
   };
 }
 

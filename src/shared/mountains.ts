@@ -75,5 +75,6 @@ export function withEscalera(base: Terrain, on: () => boolean): Terrain {
   return {
     heightAt: (x, z) => (on() && inEscalera(x, z) ? base.heightAt(x, -HALF) + (ESCALERA.rise * mountainDepth(z)) / ESCALERA.len : base.heightAt(x, z)),
     density: (x, z) => base.density(x, z),
+    ...(base.waterAt ? { waterAt: (x: number, z: number) => base.waterAt!(x, z) } : {}),
   };
 }

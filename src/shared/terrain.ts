@@ -35,7 +35,7 @@ export const CORRUPT_LANDS = { x0: -HALF, x1: HALF, z0: -HALF - 420, z1: -HALF -
 /** The tower's plateau: |x| < half, d ≥ d, flat at E(0) + top. */
 export const TOWER_FOOT = { half: 30, d: 170, top: 30, blend: 6 } as const;
 
-/** el Lago Negro's basin (dry in S5-A; its water comes with its pillar). */
+/** el Lago Negro's basin (dry in S5-A; S5-C fills it: see `BLACK_LAKE`). */
 export interface Basin {
   x: number;
   z: number;
@@ -60,6 +60,16 @@ export interface Terrain {
   heightAt(x: number, z: number): number;
   /** Vegetation density 0..1: clearings vs dense groves. */
   density(x: number, z: number): number;
+  /** Water surface here (S5-C: el Lago Negro sits above the sea). Absent: `WATER_LEVEL` everywhere. */
+  waterAt?(x: number, z: number): number;
+}
+
+/** el Lago Negro's water (S5-C): its surface sits `dry` metres under the basin's rim level. */
+export const BLACK_LAKE = { dry: 4 } as const;
+
+/** The water surface at (x, z): the sea's level, or the Lago Negro's inside its circle. */
+export function waterLevel(t: Terrain, x: number, z: number): number {
+  return t.waterAt ? t.waterAt(x, z) : WATER_LEVEL;
 }
 
 export interface Islet {
@@ -370,6 +380,11 @@ export function createTerrain(seed: number): Terrain {
     },
     density(x, z) {
       return noise.fbm(x * 0.02 + 500, z * 0.02 + 500, 3);
+    },
+    waterAt(x, z) {
+      if (Math.hypot(x - cf.lake.x, z - cf.lake.z) >= cf.lake.r) return WATER_LEVEL;
+      if (Number.isNaN(lakeTop)) lakeTop = main(cf.lake.x, -HALF) + C.rimFoot;
+      return lakeTop - BLACK_LAKE.dry;
     },
   };
 }

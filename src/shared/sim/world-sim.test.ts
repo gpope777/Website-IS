@@ -3764,7 +3764,7 @@ describe('swamp shrines (S3-C)', () => {
     sim.step(0.1);
     expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
     expect(sim.corrupt()).not.toContain(13); // zone 13 sits on the Nenúfares shore
-    expect(sim.corrupt()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17].filter((i) => sim.zones.some((z) => z.id === i)));
+    expect(sim.corrupt()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21].filter((i) => sim.zones.some((z) => z.id === i))); // Rule change (S5-C): + Tierras zones.
   });
 
   it('swamp orbs never cleanse the swamp root; with 11–13 clean they cleanse nothing', () => {
@@ -3795,7 +3795,7 @@ describe('swamp shrines (S3-C)', () => {
 
   it('new worlds have swamp zones 10–13 corrupt; old saves load with them corrupt', () => {
     const sim = setup('Ana');
-    expect(sim.corrupt().slice(-8, -4)).toEqual([10, 11, 12, 13]); // Rule change (S4-D): mountain zones follow.
+    expect(sim.corrupt().slice(-12, -8)).toEqual([10, 11, 12, 13]); // Rule change (S4-D, S5-C): mountain and Tierras zones follow.
     const w = newWorld(42, 'salt');
     w.cleansed = [0, 6];
     const old = new WorldSim(w);
@@ -4914,7 +4914,7 @@ describe('quartz and weapon levels 4–5 (S4-C)', () => {
 describe('mountain corruption (S4-D)', () => {
   it('new worlds have 14–17 corrupt; old saves load with them corrupt', () => {
     const sim = setup('Ana');
-    expect(snap(sim, 'Ana').corrupt.slice(-4)).toEqual([14, 15, 16, 17]);
+    expect(snap(sim, 'Ana').corrupt.slice(-8, -4)).toEqual([14, 15, 16, 17]); // Rule change (S5-C): Tierras zones 18–21 follow.
     const w = newWorld(42, 'salt');
     w.cleansed = [0, 6, 10];
     expect(new WorldSim(w).corrupt()).toEqual(expect.arrayContaining([14, 15, 16, 17]));

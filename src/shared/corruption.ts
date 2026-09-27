@@ -2,6 +2,8 @@ import { createRng } from './rng';
 import { inBog } from './swamp';
 import { generateSwampShrines } from './swamp-shrines';
 import { slopeAt } from './mountains';
+import { pillarSites } from './pillars';
+import { TOWER } from './corrupt-lands';
 import { coastFeatures, HALF, inForest, inSwamp, LAGUNA, MOUNTAINS, mountainFeatures, SWAMP, swampFeatures, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
@@ -77,7 +79,34 @@ export function isSwampZone(id: number): boolean {
 export const MOUNTAIN_ZONES = { firstId: 14, root: 14, r: 16, rootR: 18, rootX: -70, rootD: 140, gentle: 20 } as const;
 
 export function isMountainZone(id: number): boolean {
-  return id >= MOUNTAIN_ZONES.firstId;
+  return id >= MOUNTAIN_ZONES.firstId && id < CORRUPT_ZONES.firstId;
+}
+
+/**
+ * Tierras Corruptas zones (Slice 5 §6): fixed ids 18–21. 18 = la Torre's foot (r 30, cleansed only when
+ * El Marchito falls); 19–21 sit on the Enredadera, Viento (the lake's middle) and Fuego Pilares-raíz and
+ * clean when their pillar breaks. The Piedra pillar has no zone of its own.
+ */
+export const CORRUPT_ZONES = { firstId: 18, tower: 18, towerR: 30, r: 18 } as const;
+
+export function isCorruptLandZone(id: number): boolean {
+  return id >= CORRUPT_ZONES.firstId;
+}
+
+/** The zone a broken pillar cleans (19–21), or null (Piedra). */
+export function pillarZone(pillar: number): number | null {
+  return pillar < 3 ? CORRUPT_ZONES.firstId + 1 + pillar : null;
+}
+
+export function generateCorruptZones(seed: number): Zone[] {
+  const s = pillarSites(seed);
+  const { r } = CORRUPT_ZONES;
+  return [
+    { id: 18, x: TOWER.x, z: TOWER.z, r: CORRUPT_ZONES.towerR },
+    { id: 19, x: s.cores[0]!.x, z: s.cores[0]!.z, r },
+    { id: 20, x: s.anchor.x, z: s.anchor.z, r },
+    { id: 21, x: s.cores[2]!.x, z: s.cores[2]!.z, r },
+  ];
 }
 
 export function generateMountainZones(terrain: Terrain, seed: number): Zone[] {
@@ -150,9 +179,9 @@ export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
   ];
 }
 
-/** Forest, coast, swamp and mountain zones: the one list client and server share. */
+/** Forest, coast, swamp, mountain and Tierras zones: the one list client and server share. */
 export function allZones(terrain: Terrain, seed: number, entrance: { x: number; z: number }): Zone[] {
-  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed), ...generateSwampZones(terrain, seed), ...generateMountainZones(terrain, seed)];
+  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed), ...generateSwampZones(terrain, seed), ...generateMountainZones(terrain, seed), ...generateCorruptZones(seed)];
 }
 
 /** Extra raid brutes: +1 per 2 corrupt coast zones while the coast Raíz-madre (zone 6) is corrupt. */
