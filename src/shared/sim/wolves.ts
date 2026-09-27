@@ -51,6 +51,8 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   /** El Triángulo, the mountains' lieutenant (see sim/lieutenant.ts): wolf speed, kicks 12 every 2 s. */
   elite4: { hp: 500, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
   lieut2: { hp: 340, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
+  /** La Flecha, the Tierras' lieutenant (see sim/lieutenant.ts): wolf speed, kicks 12 every 2 s, and the clavada. */
+  lieut3: { hp: 360, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
   /** El Zancudo, the swamp dungeon's boss (see sim/zancudo.ts): hovers, dives for 14 every ~9 s. */
   boss3: { hp: 380, run: 3, damage: 14, reach: 1.8, biteCooldown: 8 },
   /** El Cucurucho, the mountain dungeon's boss (see sim/cucurucho.ts): pokes 8 every 4 s up close, charges from range. */
@@ -58,7 +60,7 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   /** El rayo marchito, the flying common enemy of the Tierras (see sim/rayo.ts): hovers, dives for 10 every 3 s. */
   rayo: { hp: 60, run: 9, damage: 10, reach: 1.6, biteCooldown: 3 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el '), rayo: `un ${NAMES.flier}` };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), lieut3: NAMES.lieutenant3.replace(/^La /, 'la '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el '), rayo: `un ${NAMES.flier}` };
 
 export interface Wolf {
   id: number;
@@ -91,6 +93,13 @@ export interface Wolf {
   diveX?: number;
   diveZ?: number;
   grounded?: number;
+  /** La Flecha (sim/lieutenant.ts): seconds to the next clavada; the red line's end and its tell left; the dash's end (`clav`); seconds stuck; who the dash already hit. */
+  clavIn?: number;
+  aim?: { x: number; z: number };
+  aimFor?: number;
+  clav?: { x: number; z: number; stuck: boolean };
+  stuck?: number;
+  dashHit?: string[];
 }
 
 /** Speed factor while slowed by spikes. */

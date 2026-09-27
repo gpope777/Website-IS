@@ -158,6 +158,7 @@ export const VISION = {
   swamp: (name: string) => ['La niebla se espesa. Una voz, cerca y lejos a la vez:', `«¿Te gusta mi niebla, ${name}?»`, '«Aquí no se ve nada. Justo como me gusta.»'],
   knot: (names: string) => [`Arde el nudo y ${NAMES.swampGate} cruje.`, `«Quemar mi seto. Qué educados, ${names}.»`, '«Pasad. El pantano no se va a quejar. Yo sí.»'],
   triangulo: (names: string) => ['Un eco entre las piedras:', `«Mis rocas… ${names}, sube a por mí, a ver.»`],
+  flecha: (names: string) => ['Un silbido que se aleja hacia el norte:', `«Mi flecha… Suban, ${names}. Arriba se acaba.»`],
   gata: (names: string) => ['Un bufido lejos, entre la niebla:', `«Mi gata… ${names}, esto no queda así.»`],
   purified: (names: string) => ['Una voz como hojas secas:', `«Así que muerden, las ramitas. ${names}.»`, '«Iré a ver ese Corazón yo mismo.»'],
   purified2: (names: string) => ['La voz, más cerca, con sal:', `«Primero el papel, ahora la cáscara. ${names}.»`, `«La costa era mía. El ${NAMES.heart} también lo será.»`],

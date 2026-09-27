@@ -4850,7 +4850,7 @@ describe('mountain shrines and refugios (S4-C)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(47);
+    expect(PROTOCOL_VERSION).toBe(48);
   });
 });
 
@@ -5047,7 +5047,64 @@ describe('El Triángulo (S4-D)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(47);
+    expect(PROTOCOL_VERSION).toBe(48);
+  });
+});
+
+describe('La Flecha (S5-C)', () => {
+  const night = (opts: { raidN?: number; corruptSeen?: boolean; cleansed?: number[] }, names = ['Ana']) => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, opts);
+    const sim = new WorldSim(w);
+    for (const n of names) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    const heart = plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('La Flecha guía el asedio esta noche'));
+    stepTo(sim, 0.81);
+    return { sim, heart, warn, fl: sim.wolfList.find((x) => x.kind === 'lieut3') };
+  };
+
+  it('leads raid 2 (raidN % 3 === 2) once las Tierras are seen and zone 18 is corrupt', () => {
+    const a = night({ raidN: 1, corruptSeen: true });
+    expect(a.warn).toBe(true);
+    expect(a.fl?.hp).toBe(360);
+    expect(a.fl?.raid).toBe(true);
+    for (const o of [{ raidN: 1 }, { raidN: 2, corruptSeen: true }, { raidN: 1, corruptSeen: true, cleansed: [18] }]) {
+      const b = night(o);
+      expect(b.warn).toBe(false);
+      expect(b.fl).toBeUndefined();
+    }
+  });
+
+  it('shows her red line while she aims', () => {
+    const { sim, fl } = night({ raidN: 1, corruptSeen: true });
+    (sim as unknown as { wolves: Wolf[] }).wolves = [fl as Wolf];
+    put(sim, 'Ana', fl!.x + 8, fl!.z);
+    let aim: { x: number; z: number } | undefined;
+    for (let i = 0; i < 90 && !aim; i++) {
+      sim.step(0.1);
+      put(sim, 'Ana', fl!.x + 8, fl!.z);
+      aim = snap(sim, 'Ana').wolves.find((x) => x.kind === 'lieut3')?.aim;
+    }
+    expect(aim).toBeDefined();
+  });
+
+  it('when she falls the raid flees, the near player gets 2 espinas negras, the far one none, and a vision', () => {
+    const { sim, fl } = night({ raidN: 1, corruptSeen: true }, ['Ana', 'Leo']);
+    put(sim, 'Ana', fl!.x + 5, fl!.z);
+    put(sim, 'Leo', fl!.x + 100, fl!.z);
+    msgs(sim);
+    (fl as Wolf).hp = 0;
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Mi flecha') && l.includes('Arriba se acaba')))).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.thorn).toBe(2);
+    expect(sim.getPlayer('Leo')!.inv.thorn ?? 0).toBe(0);
+    for (let i = 0; i < 32; i++) sim.step(0.1);
+    expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut3')).toEqual([]);
   });
 });
 

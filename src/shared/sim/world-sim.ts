@@ -9,7 +9,7 @@ import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, corruptFeatures, WATER_LEVEL, waterLevel, type Terrain } from '../terrain';
 import { ASH_RUN, ashHurts, LAKE_PILLAR, lidUp, PILLAR, pillarSites, THICKET, thicketHurts, type PillarSites } from '../pillars';
-import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
+import { FLECHA, flechaLeads, GATA, gataLeads, hasteNear, rockTarget, stepFlecha, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
@@ -427,7 +427,7 @@ export class WorldSim {
   private readonly netReady = new Map<number, number>();
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
-  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean; tri?: boolean } | null = null;
+  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean; tri?: boolean; flecha?: boolean } | null = null;
   private raidN: number;
   private swampSeen: boolean;
   private mountainsSeen: boolean;
@@ -451,6 +451,8 @@ export class WorldSim {
   private gataId: number | null = null;
   /** El Triángulo in tonight's raid (S4-D) and his rock timer. */
   private triId: number | null = null;
+  /** La Flecha leading tonight's raid (S5-C). Live-only. */
+  private flechaId: number | null = null;
   private rockIn = 0;
   /** Seconds left of a raid fleeing after she fell. */
   private raidFlee = 0;
@@ -704,6 +706,12 @@ export class WorldSim {
           if (bit) this.bite(bit, ENEMY.lieut1.damage, w);
           continue;
         }
+        if (w.kind === 'lieut3') {
+          const ev = stepFlecha(w, targets, this.structures, goal, this.terrain, dt, this.rng);
+          if (ev.bite) this.bite(ev.bite, ENEMY.lieut3.damage, w);
+          for (const n of ev.hits) this.bite(n, FLECHA.dashDamage, w);
+          continue;
+        }
         if (w.kind === 'lieut2') {
           const bit = stepTriangulo(w, targets, goal, this.terrain, dt, this.rng);
           if (bit) this.bite(bit, ENEMY.lieut2.damage, w);
@@ -774,7 +782,7 @@ export class WorldSim {
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
-      .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid, ...(w.burn && w.hp > 0 ? { burning: true as const } : {}) }));
+      .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid, ...(w.burn && w.hp > 0 ? { burning: true as const } : {}), ...(w.aim && w.hp > 0 ? { aim: { x: r2(w.aim.x), z: r2(w.aim.z) } } : {}), ...((w.stuck ?? 0) > 0 && w.hp > 0 ? { stuck: true as const } : {}) }));
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
     const sh = this.shield;
@@ -3448,7 +3456,8 @@ export class WorldSim {
       this.raidN++;
       this.raid.gata = gataLeads(this.raidN, this.swampSeen, corrupt);
       this.raid.tri = triLeads(this.raidN, this.mountainsSeen, corrupt);
-      const lead = this.raid.gata ? NAMES.lieutenant1 : this.raid.tri ? NAMES.lieutenant2 : '';
+      this.raid.flecha = flechaLeads(this.raidN, this.corruptSeen, corrupt);
+      const lead = this.raid.gata ? NAMES.lieutenant1 : this.raid.tri ? NAMES.lieutenant2 : this.raid.flecha ? NAMES.lieutenant3 : '';
       const coast = (coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '') + (lead ? `. ${lead} guía el asedio esta noche` : '');
       this.say(
         this.purified
@@ -3464,6 +3473,7 @@ export class WorldSim {
       this.raid = null;
       this.gataId = null;
       this.triId = null;
+      this.flechaId = null;
       this.raidFlee = 0;
       if (heart && heart.hp > 0) {
         this.raidLevel++;
@@ -3494,11 +3504,11 @@ export class WorldSim {
       }
     }
     // La Gata Araña (or El Triángulo) walks in behind the pack.
-    const lead: EnemyKind | null = this.raid?.gata ? 'lieut1' : this.raid?.tri ? 'lieut2' : null;
+    const lead: EnemyKind | null = this.raid?.gata ? 'lieut1' : this.raid?.tri ? 'lieut2' : this.raid?.flecha ? 'lieut3' : null;
     if (lead) {
       for (let tries = 0; tries < 20; tries++) {
         const ang = dir + (this.rng() - 0.5) * 0.8;
-        const d = RAID.spawnMax + (lead === 'lieut1' ? GATA.behind : TRIANGULO.behind);
+        const d = RAID.spawnMax + (lead === 'lieut1' ? GATA.behind : lead === 'lieut2' ? TRIANGULO.behind : FLECHA.behind);
         const x = heart.x + Math.sin(ang) * d;
         const z = heart.z + Math.cos(ang) * d;
         if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
@@ -3506,6 +3516,7 @@ export class WorldSim {
           w.raid = true;
           this.wolves.push(w);
           if (lead === 'lieut1') this.gataId = w.id;
+          else if (lead === 'lieut3') this.flechaId = w.id;
           else [this.triId, this.rockIn] = [w.id, TRIANGULO.rockEvery];
           break;
         }
@@ -3517,21 +3528,22 @@ export class WorldSim {
   private stepGataFall(dt: number): void {
     if (this.raidFlee > 0) {
       this.raidFlee = Math.max(0, this.raidFlee - dt);
-      if (this.raidFlee === 0) this.wolves = this.wolves.filter((w) => !w.raid || w.kind === 'lieut1' || w.kind === 'lieut2');
+      if (this.raidFlee === 0) this.wolves = this.wolves.filter((w) => !w.raid || w.kind === 'lieut1' || w.kind === 'lieut2' || w.kind === 'lieut3');
       return;
     }
     const gata = this.gataId !== null;
-    const id = gata ? this.gataId : this.triId;
+    const flecha = !gata && this.flechaId !== null;
+    const id = gata ? this.gataId : flecha ? this.flechaId : this.triId;
     const g = id === null ? undefined : this.wolves.find((w) => w.id === id);
     if (id === null || (g && g.hp > 0)) return;
-    this.gataId = this.triId = null;
+    this.gataId = this.triId = this.flechaId = null;
     if (!g) return;
     this.raidFlee = GATA.fleeFor;
     const present = this.activeNames().filter((n) => {
       const p = this.players.get(n);
       return !!p && !p.dead && Math.hypot(p.x - g.x, p.z - g.z) <= GATA.present;
     });
-    const [who, item, n, label] = gata ? [NAMES.lieutenant1, 'amber', GATA.amber, NAMES.amber] as const : [NAMES.lieutenant2, 'quartz', TRIANGULO.quartz, NAMES.quartz] as const;
+    const [who, item, n, label] = gata ? [NAMES.lieutenant1, 'amber', GATA.amber, NAMES.amber] as const : flecha ? [NAMES.lieutenant3, 'thorn', FLECHA.thorns, NAMES.thorn] as const : [NAMES.lieutenant2, 'quartz', TRIANGULO.quartz, NAMES.quartz] as const;
     for (const name of present) {
       const p = this.players.get(name)!;
       p.inv = addItem(p.inv, item, n);
@@ -3539,7 +3551,7 @@ export class WorldSim {
     }
     this.say(`${who} cae. ${gata ? 'Su manada' : 'El asedio'} huye`);
     const names = joinNames(present.length ? present : this.activeNames());
-    this.vision(gata ? VISION.gata(names) : VISION.triangulo(names));
+    this.vision(gata ? VISION.gata(names) : flecha ? VISION.flecha(names) : VISION.triangulo(names));
   }
 
   /** A beast running away from a point (a raider from the Heart, a wolf from fire). */
