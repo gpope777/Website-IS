@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import type { GlowSource } from './patches';
+
+const FIRE_GLOW = { r: 11, color: 0xff8a3a };
+const HEART_GLOW = { r: 9, color: 0x9ae07a };
 import type { Structure } from '../../shared/protocol';
 import type { Circle } from '../movement';
 
@@ -16,6 +20,7 @@ const MAX_FIRE_LIGHTS = 8;
 export class StructureMeshes {
   readonly group = new THREE.Group();
   private readonly byId = new Map<number, THREE.Object3D>();
+  private readonly glowing = new Map<number, { r: number; color: number }>();
   private readonly fires: { flame: THREE.Mesh; light: THREE.PointLight | null; seed: number }[] = [];
 
   has(id: number): boolean {
@@ -29,6 +34,7 @@ export class StructureMeshes {
     obj.rotation.y = s.rot;
     this.group.add(obj);
     this.byId.set(s.id, obj);
+    if (s.kind === 'campfire' || s.kind === 'fire' || s.kind === 'heart') this.glowing.set(s.id, s.kind === 'heart' ? HEART_GLOW : FIRE_GLOW);
     if (s.kind === 'heart') this.setHp(s.id, s.hp);
     if (s.kind === 'campfire') return [{ x: s.x, z: s.z, r: 0.6 }];
     if (s.kind === 'heart') return [{ x: s.x, z: s.z, r: 1.2 }];
@@ -41,6 +47,17 @@ export class StructureMeshes {
   remove(id: number): void {
     this.byId.get(id)?.removeFromParent();
     this.byId.delete(id);
+    this.glowing.delete(id);
+  }
+
+  /** V2-B: fires and the Corazón as glow points (spec §5.5). */
+  glowSources(): GlowSource[] {
+    const out: GlowSource[] = [];
+    for (const [id, g] of this.glowing) {
+      const p = this.byId.get(id)?.position;
+      if (p) out.push({ x: p.x, y: p.y, z: p.z, ...g });
+    }
+    return out;
   }
 
   /** Heart only: the crown turns grey when withered. */

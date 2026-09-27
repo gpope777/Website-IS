@@ -134,6 +134,7 @@ async function main() {
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text().slice(0, 300)));
     await page.goto(`${BASE}/?perf=1&mundo=perf`);
     await page.click('button[type=submit]');
     await page.waitForFunction(() => window.__perf?.ready(), null, { timeout: 180_000, polling: 500 });

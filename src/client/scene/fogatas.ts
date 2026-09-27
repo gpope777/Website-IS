@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Fogata } from '../../shared/fogatas';
+import type { GlowSource } from './patches';
 
 const STONE = new THREE.MeshLambertMaterial({ color: 0x5c5a55, flatShading: true });
 /** Lit fogatas glow through the fog (no real lights: phones). */
@@ -43,6 +44,11 @@ export class FogataMeshes {
       this.group.add(flame);
       this.flames.push(flame);
     }
+  }
+
+  /** V2-B: lit fogatas as glow points. */
+  glowSources(): GlowSource[] {
+    return this.flames.filter((f) => f.visible).map((f) => ({ x: f.position.x, y: f.position.y, z: f.position.z, r: 12, color: 0xff8a3a }));
   }
 
   sync(lit: readonly boolean[]): void {

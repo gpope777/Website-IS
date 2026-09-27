@@ -73,6 +73,7 @@ const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
 const OFFER_KEY = 'bosque.tierOffer';
 
 import { DayLight } from './scene/sky';
+import { patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
 import { biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
@@ -404,6 +405,7 @@ export class Game {
   private readonly skyLook = newLook();
   private readonly lookTarget = newLook();
   private lookFresh = false;
+  private patchIn = 0;
   private body: Body | null = null;
   private me: Actor | null = null;
   private myName = '';
@@ -1954,9 +1956,25 @@ export class Game {
     this.updatePrompt();
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
     this.light.dome.follow(this.camera, this.camera.far);
+    this.worldShaders(b.x, b.z, dt);
     this.packNear();
     if (this.guardian?.root.visible) this.guardian.update(dt);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** V2-B: glow points each frame; height fog/glow patches on new Lambert materials every 2 s. */
+  private worldShaders(x: number, z: number, dt: number): void {
+    const t = TIERS[this.tier];
+    this.patchIn -= dt;
+    if (this.patchIn <= 0) {
+      this.patchIn = 2;
+      patchTree(this.scene, { heightFog: t.heightFog, glow: t.glowPoints });
+    }
+    const sources = [...this.structures.glowSources(), ...(this.fogataMeshes?.glowSources() ?? [])];
+    setGlows(pickGlows(sources, x, z, t.glowPoints), 1.6 * (1 - 0.75 * this.light.daylight));
+    const fogCol = (this.scene.fog as THREE.Fog | null)?.color;
+    if (fogCol) WORLD_UNIFORMS.fogSunCol.value.copy(fogCol).lerp(this.skyLook.sun, 0.6 * this.light.daylight);
+    WORLD_UNIFORMS.fogSunDir.value.copy(this.light.sunDirection);
   }
 
   private grassNear(g: { mesh: THREE.InstancedMesh; near: NearInstances }): THREE.InstancedMesh {
