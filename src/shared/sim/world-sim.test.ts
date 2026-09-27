@@ -15,6 +15,7 @@ import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
+import { FROG } from '../frog';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
@@ -3436,5 +3437,108 @@ describe('the rescue (S2-H)', () => {
     (sim as unknown as Priv).wolves.push(w);
     for (let i = 0; i < 3 && w.hp === 200; i++) sim.step(0.1);
     expect(w.hp).toBe(200 - ALLY.damage - ALLY.rage);
+  });
+});
+
+describe('taming la Rana', () => {
+  const atFrog = (sim: WorldSim, name: string, dx = 1) => put(sim, name, sim.frogHome.x + dx, sim.frogHome.z);
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const chase = (sim: WorldSim, name: string, upTo: number = FROG.pads) => {
+    for (let i = 0; i < upTo; i++) {
+      const r = sim.frogPads[i]!;
+      put(sim, name, r.x + 1, r.z);
+      sim.step(0.1);
+    }
+  };
+  const tapPerfect = (sim: WorldSim, name: string) => {
+    const t = snap(sim, name).self.tame!;
+    const at = t.start + t.zone / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle(name, { t: 'mount', act: 1, at });
+  };
+
+  it('A near the frog starts the lily-pad chase; far away does nothing', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana', FROG.reach + 3);
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toMatchObject({ i: 0, beast: 'frog' });
+    expect(texts(sim)).toContain('Salta al agua. Sigue los 3 nenúfares, 6 s cada uno');
+    expect(snap(sim, 'Ana').frogs.some((f) => f.owner === null)).toBe(true);
+  });
+
+  it('pads count in order; the last one starts the 3-round ring', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    const second = sim.frogPads[1]!;
+    put(sim, 'Ana', second.x, second.z);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.race!.i).toBe(0);
+    chase(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.race).toBeNull();
+    expect(self.tame).toMatchObject({ round: 0, rounds: 3, beast: 'frog', speed: FROG.rounds[0].speed });
+  });
+
+  it('too slow: it gets away, 3 s before another try', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    for (let i = 0; i < FROG.padTime * 10 + 2; i++) sim.step(0.1);
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    expect(texts(sim)).toContain('Se escapa');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    for (let i = 0; i < FROG.retry * 10 + 2; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).not.toBeNull();
+  });
+
+  it('three good taps: the frog is yours and you ride it', () => {
+    const sim = setup('Ana', 'Leo');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    chase(sim, 'Ana');
+    tapPerfect(sim, 'Ana');
+    tapPerfect(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.tame!.round).toBe(2);
+    tapPerfect(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.tame).toBeNull();
+    expect(self.frog).toBe(true);
+    expect(self.onFrog).toBe(true);
+    expect(sim.getPlayer('Ana')!.frog).toBeDefined();
+    const last = sim.frogPads[FROG.pads - 1]!;
+    put(sim, 'Leo', last.x + 3, last.z);
+    expect(snap(sim, 'Leo').players.find((p) => p.name === 'Ana')!.ride).toBe('frog');
+  });
+
+  it('a bad tap sends it off; you only tame one frog', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    chase(sim, 'Ana');
+    const t = snap(sim, 'Ana').self.tame!;
+    const at = t.start + (t.zone + Math.PI) / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 1, at });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(texts(sim)).toContain('Se sacude y se va. Otra vez');
+    sim.getPlayer('Ana')!.frog = { x: 0, z: 0 };
+    for (let i = 0; i < 40; i++) sim.step(0.1);
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    expect(texts(sim)).toContain('Ya tienes rana');
+  });
+
+  it('the fish race still says it is the fish', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', sim.fishHome.x + 1, sim.fishHome.z);
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).toMatchObject({ i: 0, beast: 'fish' });
   });
 });

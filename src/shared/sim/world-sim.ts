@@ -13,6 +13,7 @@ import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon,
 import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
+import { FROG, frogPads, wildFrog } from '../frog';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
@@ -78,6 +79,8 @@ export interface SavedPlayer {
   steed?: { x: number; z: number };
   /** Tamed giant fish and where it waits. Optional: older saves have none. */
   fish?: { x: number; z: number };
+  /** Tamed frog and where it waits. Optional: older saves have none. */
+  frog?: { x: number; z: number };
   /** Sunken chest ids opened. Optional: older saves have none. */
   chests?: number[];
   /** Weapon upgrade level 0–3. Optional: older saves have none. */
@@ -148,7 +151,7 @@ interface Live {
   /** Sim time of death; null when alive or after a reconnect (no revive then). Never saved. */
   deadAt: number | null;
   /** Taming round in progress (live-only). `start` and `zone` are rounded as the client sees them. */
-  tame: { round: number; start: number; zone: number; beast: 'deer' | 'fish'; ax: number; az: number } | null;
+  tame: { round: number; start: number; zone: number; beast: Beast; ax: number; az: number } | null;
   /** Sim time the deer lets you try again. */
   tameReadyAt: number;
   /** On the deer. Live-only: a reconnect starts on foot beside it. */
@@ -162,14 +165,17 @@ interface Live {
   /** Sitting behind this rider (live only: the deer carries two). */
   seat: string | null;
   /** The fish's ring race in progress (live-only). */
-  race: { i: number; deadline: number } | null;
+  race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null;
   /** Sim time the wild fish lets you race again. */
   raceReadyAt: number;
   /** On the giant fish (live-only, like `riding`). */
   fish: boolean;
+  /** On the frog (live-only). */
+  frog: boolean;
 }
 
-const roundsOf = (beast: 'deer' | 'fish') => (beast === 'fish' ? FISH.rounds : MOUNT.rounds);
+type Beast = 'deer' | 'fish' | 'frog';
+const roundsOf = (beast: Beast): readonly { speed: number; width: number }[] => (beast === 'fish' ? FISH.rounds : beast === 'frog' ? FROG.rounds : MOUNT.rounds);
 
 export function newWorld(seed: number, salt: string): SavedWorld {
   return { version: 1, seed, salt, time: DAY_LENGTH * 0.33, nextStructureId: 1, structures: [], resources: {}, players: [], raidLevel: 0 };
@@ -197,6 +203,9 @@ export class WorldSim {
   /** Where the wild giant fish waits, and its race rings (seeded). */
   readonly fishHome: { x: number; z: number };
   readonly fishRings: readonly { x: number; z: number }[];
+  /** Where the wild frog waits, and its lily pads (seeded). */
+  readonly frogHome: { x: number; z: number };
+  readonly frogPads: readonly { x: number; z: number }[];
   /** Where the wild whale spouts, and where the tamed one swims back to (seeded). */
   readonly whaleHome: { x: number; z: number };
   private readonly whale: { x: number; z: number; yaw: number };
@@ -311,6 +320,8 @@ export class WorldSim {
     this.coastEntrance = coastEntrance(saved.seed);
     this.fishHome = wildFish(this.terrain, saved.seed);
     this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
+    this.frogHome = wildFrog(this.terrain, saved.seed);
+    this.frogPads = frogPads(this.terrain, saved.seed, this.frogHome);
     this.whaleHome = wildWhale(this.terrain, saved.seed);
     this.whaleTamed = !!saved.whale;
     this.whale = saved.whale ? { ...saved.whale } : { ...this.whaleHome, yaw: 0 };
@@ -379,7 +390,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, windReadyAt: 0, boostCeil: -Infinity, boostUntil: 0, boosted: false, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, windReadyAt: 0, boostCeil: -Infinity, boostUntil: 0, boosted: false, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false, frog: false };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -526,7 +537,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -547,7 +558,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -1235,9 +1246,10 @@ export class WorldSim {
     if (l.seat) return; // sitting behind someone: only getting off
     if (this.seatOf(p.name) !== null) return act === 11 ? this.leaveWhale(p, l) : undefined; // aboard: only getting off
     if (act === 1 && !l.tame && this.whaleTame) return this.whaleTap(p, at);
+    if (act >= 12) return this.onFrogAct(p, l, act);
     if (act >= 9) return this.onWhaleAct(p, l, act);
     if (act >= 6) return this.onFishAct(p, l, act);
-    if (l.fish || l.race) return; // on (or chasing) the fish: no deer
+    if (l.fish || l.frog || l.race) return; // on (or chasing) the fish or the frog: no deer
     if (act === 4) return this.board(p, l);
     if (act === 0) {
       if (l.tame || Math.hypot(this.wild.x - p.x, this.wild.z - p.z) > MOUNT.reach) return;
@@ -1263,6 +1275,11 @@ export class WorldSim {
         l.fish = true;
         if (this.invasion2 === 'none') this.invasion2 = 'pending';
         return this.tell(p.name, 'El pez es tuyo. B para bucear, A en la orilla para bajar');
+      }
+      if (t.beast === 'frog') {
+        p.frog = { x: r2(p.x), z: r2(p.z) };
+        l.frog = true;
+        return this.tell(p.name, 'La rana es tuya. B para el salto alto, A para bajar');
       }
       p.steed = { x: r2(p.x), z: r2(p.z) };
       l.riding = true;
@@ -1324,6 +1341,13 @@ export class WorldSim {
       l.graceCap = MOUNT.maxSpeed;
       return;
     }
+    if (l.frog) {
+      l.frog = false;
+      l.rodeUntil = this.time + FROG.grace;
+      l.graceCap = FROG.maxSpeed;
+      p.frog = { x: r2(p.x), z: r2(p.z) };
+      return;
+    }
     if (l.fish) {
       l.fish = false;
       l.rodeUntil = this.time + FISH.grace;
@@ -1339,14 +1363,14 @@ export class WorldSim {
     p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
-  private nextRound(l: Live, round: number, beast: 'deer' | 'fish', ax: number, az: number): void {
+  private nextRound(l: Live, round: number, beast: Beast, ax: number, az: number): void {
     l.tame = { round, start: r2(this.time), zone: r2(this.rng() * Math.PI * 2), beast, ax, az };
   }
 
   private throwOff(p: SavedPlayer, l: Live): void {
-    const fish = l.tame?.beast === 'fish';
+    const chased = l.tame?.beast === 'fish' || l.tame?.beast === 'frog';
     l.tame = null;
-    if (fish) {
+    if (chased) {
       l.raceReadyAt = this.time + FISH.retry;
       return this.tell(p.name, 'Se sacude y se va. Otra vez');
     }
@@ -1380,7 +1404,7 @@ export class WorldSim {
     if (l.race || l.tame || l.riding || l.fish || Math.hypot(this.fishHome.x - p.x, this.fishHome.z - p.z) > FISH.reach) return;
     if (p.fish) return this.tell(p.name, 'Ya tienes pez');
     if (this.time + EPS < l.raceReadyAt) return this.tell(p.name, 'El pez aún recela');
-    l.race = { i: 0, deadline: this.time + FISH.ringTime };
+    l.race = { i: 0, deadline: this.time + FISH.ringTime, beast: 'fish' };
     this.tell(p.name, `Sale disparado. Pasa por los ${FISH.rings} anillos, ${FISH.ringTime} s cada uno`);
   }
 
@@ -1394,14 +1418,16 @@ export class WorldSim {
         l.race = null;
         continue;
       }
-      const ring = this.fishRings[r.i]!;
-      if (Math.hypot(ring.x - p.x, ring.z - p.z) <= FISH.ringR) {
+      const frog = r.beast === 'frog';
+      const list = frog ? this.frogPads : this.fishRings;
+      const ring = list[r.i]!;
+      if (Math.hypot(ring.x - p.x, ring.z - p.z) <= (frog ? FROG.padR : FISH.ringR)) {
         r.i++;
-        r.deadline = this.time + FISH.ringTime;
-        if (r.i < this.fishRings.length) continue;
+        r.deadline = this.time + (frog ? FROG.padTime : FISH.ringTime);
+        if (r.i < list.length) continue;
         l.race = null;
-        this.nextRound(l, 0, 'fish', ring.x, ring.z);
-        this.tell(p.name, 'Lo alcanzas. Ahora, cálmalo');
+        this.nextRound(l, 0, r.beast, ring.x, ring.z);
+        this.tell(p.name, frog ? 'La alcanzas. Ahora, cálmala' : 'Lo alcanzas. Ahora, cálmalo');
       } else if (this.time > r.deadline + EPS) {
         l.race = null;
         l.raceReadyAt = this.time + FISH.retry;
@@ -1419,6 +1445,36 @@ export class WorldSim {
       const f = o.fish;
       if (!f || this.live.get(o.name)?.fish || !near(f.x, f.z)) continue;
       out.push({ owner: o.name, x: f.x, y: WATER_LEVEL, z: f.z, yaw: 0 });
+    }
+    return out;
+  }
+
+  /** La Rana's acts: 12 start the lily-pad chase, 13 get on, 14 get off (anywhere: it waits there). */
+  private onFrogAct(p: SavedPlayer, l: Live, act: number): void {
+    if (act === 14) return l.frog ? this.dismount(p, l) : undefined;
+    const busy = l.frog || l.fish || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z);
+    if (act === 13) {
+      const f = p.frog;
+      if (!f || busy || Math.hypot(f.x - p.x, f.z - p.z) > FROG.reach) return;
+      l.frog = true;
+      return;
+    }
+    if (busy || Math.hypot(this.frogHome.x - p.x, this.frogHome.z - p.z) > FROG.reach) return;
+    if (p.frog) return this.tell(p.name, 'Ya tienes rana');
+    if (this.time + EPS < l.raceReadyAt) return this.tell(p.name, 'La rana aún recela');
+    l.race = { i: 0, deadline: this.time + FROG.padTime, beast: 'frog' };
+    this.tell(p.name, `Salta al agua. Sigue los ${FROG.pads} nenúfares, ${FROG.padTime} s cada uno`);
+  }
+
+  /** The wild frog plus every parked (not ridden) tamed one in view. */
+  private frogViews(near: (x: number, z: number) => boolean): SteedView[] {
+    const out: SteedView[] = [];
+    const h = this.frogHome;
+    if (near(h.x, h.z)) out.push({ owner: null, x: r2(h.x), y: r2(this.terrain.heightAt(h.x, h.z)), z: r2(h.z), yaw: 0 });
+    for (const o of this.players.values()) {
+      const f = o.frog;
+      if (!f || this.live.get(o.name)?.frog || !near(f.x, f.z)) continue;
+      out.push({ owner: o.name, x: f.x, y: r2(Math.max(this.terrain.heightAt(f.x, f.z), WATER_LEVEL)), z: f.z, yaw: 0 });
     }
     return out;
   }
@@ -1854,7 +1910,9 @@ export class WorldSim {
       seat: l.seat,
       fish: !!p.fish,
       onFish: l.fish,
-      race: l.race ? { i: l.race.i, deadline: r2(l.race.deadline) } : null,
+      race: l.race ? { i: l.race.i, deadline: r2(l.race.deadline), beast: l.race.beast } : null,
+      frog: !!p.frog,
+      onFrog: l.frog,
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
       whaleSeat: this.seatOf(p.name),
