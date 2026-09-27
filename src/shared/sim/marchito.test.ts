@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMarchito, joinNames, marchitoWill, MARCHITO, pickDefenses, stepMarchito, VISION, type MarchitoEvent } from './marchito';
+import { createMarchito, joinNames, marchitoWill, MARCHITO, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type MarchitoEvent } from './marchito';
 import { ENEMY } from './wolves';
 
 const heart = { x: 0, z: 0 };
@@ -85,5 +85,50 @@ describe('El Marchito', () => {
     const m = createMarchito(0, 0, 0, [], marchitoWill(3));
     expect(m.hp).toBe(540);
     expect(m.max).toBe(540);
+  });
+});
+
+describe('El Marchito, Invasion 2', () => {
+  it('breaks only the nearest quarter when asked', () => {
+    const all = [s(1, 'heart', 0), s(2, 'wall', 3), s(3, 'wall', 9), s(4, 'spikes', 5), s(5, 'campfire', 20), s(6, 'wall', 30)];
+    expect(pickDefenses(all, heart, 0.25)).toEqual([2, 4]);
+    expect(pickDefenses([s(1, 'wall', 4)], heart, 0.25)).toEqual([1]);
+  });
+
+  it('comes with a fifth more voluntad', () => {
+    expect(thiefWill(1)).toBe(Math.round(1.2 * marchitoWill(1)));
+    expect(thiefWill(4)).toBe(Math.round(1.2 * marchitoWill(4)));
+  });
+
+  it('walks to the Tragón and grabs it after grabFor seconds', () => {
+    const m = createMarchito(20, 0, 0, [], thiefWill(1));
+    const ev: unknown[] = [];
+    let at = 0;
+    for (let i = 0; i < 400 && !ev.length; i++) {
+      const e = stepThief(m, { x: 0, z: 0 }, [], flat, 0.1);
+      if (e) {
+        ev.push(e);
+        at = i;
+      }
+      if (i === 100) expect(m.grab).toBeGreaterThan(0);
+    }
+    expect(ev).toEqual([{ t: 'grabbed' }]);
+    expect(m.left).toBe(true);
+    expect(at).toBeGreaterThan(MARCHITO.grabFor * 10);
+    expect(stepThief(m, { x: 0, z: 0 }, [], flat, 0.1)).toBeNull();
+  });
+
+  it('swipes a player in reach, and a stun stops the grab', () => {
+    const m = createMarchito(1, 0, 0, []);
+    expect(stepThief(m, { x: 0, z: 0 }, [player('Ana', 2)], flat, 0.1)).toEqual({ t: 'swipe', name: 'Ana' });
+    m.stun = 1;
+    const g = m.grab;
+    stepThief(m, { x: 0, z: 0 }, [], flat, 0.5);
+    expect(m.grab).toBe(g);
+  });
+
+  it('says the lines with names', () => {
+    expect(VISION.stolen('Ana').join(' ')).toContain('Vengan a por él al mar, Ana');
+    expect(VISION.rescued('Ana y Leo').join(' ')).toContain('Ana y Leo');
   });
 });
