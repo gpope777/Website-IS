@@ -68,3 +68,26 @@ describe('stall panel (T6-A)', () => {
     expect(stallListHtml([], { x: 0, z: 0 })).toContain('No hay puestos.');
   });
 });
+
+describe('Encargos in the panels (T6-D)', () => {
+  it('owner: Vendo/Busco toggle and Busco rows', () => {
+    const s = newStall(1, 'Ana', 0, 0, 0, 0);
+    s.shelves[0] = { mode: 'want', give: 'stone', n: 12, want: 'quartz', m: 3, stock: 12 };
+    const h = stallHtml(s, { stone: 20 });
+    expect(h).toContain('Busco 3 cuarzo, pago 12 piedra · pagos para 1');
+    expect(h).toContain('data-a="mode-0" disabled'); // has pay set aside
+    expect(h).toContain('data-a="mode-1">');
+    expect(h).toContain('Apartar +12');
+  });
+
+  it('buyer: Busco shelves with Entregar; Menú lists what a Puesto wants', () => {
+    const s = newStall(1, 'Ana', 0, 0, 0, 0);
+    s.shelves[1] = { mode: 'want', give: 'stone', n: 12, want: 'quartz', m: 3, stock: 24 };
+    const h = buyHtml(s, { quartz: 1 });
+    expect(h).toContain('Busca 3 cuarzo, paga 12 piedra · 2 veces');
+    expect(h).toContain('data-a="deliver-1" disabled');
+    expect(h).toContain('No te llega: cuarzo.');
+    expect(buyHtml(s, { quartz: 3 })).toContain('data-a="deliver-1">');
+    expect(stallListHtml([s], { x: 0, z: 0 })).toContain('busca cuarzo');
+  });
+});

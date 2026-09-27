@@ -80,10 +80,11 @@ import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '..
 import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
 import { bookHtml } from './book-ui';
+import { merchantAction, merchantHtml } from './merchant-ui';
 import { buyHtml, nextItem, stallAction, stallHtml, stallListHtml } from './stall-ui';
 import { addLine, bumpLine, cycleLine, tradeHtml, tradeTarget } from './trade-ui';
 import { StallMeshes } from './scene/stalls';
-import { STALL, type Stall, type TradeLine } from '../shared/shop';
+import { MERCHANT, STALL, type Stall, type TradeLine } from '../shared/shop';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -198,6 +199,9 @@ export class Game {
   private stalls = new Map<number, Stall>();
   /** T6-A: the owner's panel is open on this Puesto id. */
   private stallOpen: number | null = null;
+  /** T6-D: where the Buhonero stands (from the snapshot). */
+  private merchantSpot: { x: number; z: number } | null = null;
+  private merchantOpen = false;
   /** T6-C: my open trade, as the server last told it. */
   private trade: TradeView | null = null;
   private readonly graves = new GraveMeshes();
@@ -675,6 +679,7 @@ export class Game {
     const s = this.stalls.get(id);
     if (!s) return;
     this.stallOpen = id;
+    this.merchantOpen = false;
     const inv = this.lastSelf?.inv ?? {};
     const actions: Record<string, () => void> = {
       back: () => {
@@ -686,7 +691,10 @@ export class Game {
     };
     if (s.owner !== this.myName) {
       // T6-B: someone else's Puesto: the buy panel.
-      s.shelves.forEach((_, i) => (actions[`buy-${i}`] = () => this.conn.send({ t: 'buy', stall: id, shelf: i })));
+      s.shelves.forEach((_, i) => {
+        actions[`buy-${i}`] = () => this.conn.send({ t: 'buy', stall: id, shelf: i });
+        actions[`deliver-${i}`] = () => this.conn.send({ t: 'deliver', stall: id, shelf: i });
+      });
       return this.hud.showSkills(buyHtml(s, inv), actions);
     }
     s.shelves.forEach((sh, i) => {
@@ -703,10 +711,24 @@ export class Game {
       actions[`n-${i}-inc`] = () => set({ n: clamp(sh.n + 1) });
       actions[`m-${i}-dec`] = () => set({ m: clamp(sh.m - 1) });
       actions[`m-${i}-inc`] = () => set({ m: clamp(sh.m + 1) });
+      actions[`mode-${i}`] = () => this.conn.send({ t: 'stallSet', shelf: i, give: sh.give, n: sh.n, want: sh.want, m: sh.m, mode: sh.mode === 'want' ? 'sell' : 'want' });
       actions[`stock-${i}`] = () => this.conn.send({ t: 'stallStock', shelf: i });
       actions[`take-${i}`] = () => this.conn.send({ t: 'stallTake', shelf: i });
     });
     this.hud.showSkills(stallHtml(s, inv), actions);
+  }
+
+  /** T6-D: the Buhonero's table; redrawn when the tratos left change. */
+  private showMerchant(): void {
+    this.merchantOpen = true;
+    const actions: Record<string, () => void> = {
+      back: () => {
+        this.merchantOpen = false;
+        this.hud.hideOverlay();
+      },
+    };
+    MERCHANT.deals.forEach((_, i) => (actions[`deal-${i}`] = () => this.conn.send({ t: 'deal', id: i })));
+    this.hud.showSkills(merchantHtml(this.lastSelf?.inv ?? {}, this.lastSelf?.deals ?? MERCHANT.perDay), actions);
   }
 
   private addStructure(s: Structure): void {
@@ -919,6 +941,20 @@ export class Game {
       r.anim = a.anim;
       r.seen = m.time;
     } else if (this.atalaya) this.atalaya.visible = false;
+    // T6-D: el Buhonero: the Tragón's paper, tinted like a traveller.
+    this.merchantSpot = m.merchant ?? null;
+    if (m.merchant) {
+      const a = m.merchant;
+      const r = this.remote(this.allies, 20, () => {
+        const paper = new PaperActor(TRAGON_IMG, 1.5, this.camera);
+        paper.setTint(0xffd9a8);
+        return paper;
+      });
+      r.buf.push({ t: m.time, x: a.x, y: this.terrain?.heightAt(a.x, a.z) ?? 0, z: a.z, yaw: 0 });
+      r.anim = 'idle';
+      r.seen = m.time;
+    }
+    if (this.merchantOpen && this.hud.menuOpen && m.self.deals !== this.lastSelf?.deals) queueMicrotask(() => this.showMerchant());
     // S5-E: the white allies on their tower floors (pale paper; the Zancudo carries its farol).
     let farol = false;
     for (const a of m.dungeon.tower?.allies ?? []) {
@@ -1323,6 +1359,12 @@ export class Game {
       if (document.pointerLockElement) document.exitPointerLock();
       return this.showStall(st.s.id);
     }
+    if (merchantAction(b, this.merchantSpot)) {
+      this.releaseInputs();
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.stallOpen = null;
+      return this.showMerchant();
+    }
     const res = this.nearestResource();
     if (res) return this.conn.send({ t: 'harvest', id: res.id });
     // T6-C: nothing else under A: Cambiar with the nearest player.
@@ -1339,6 +1381,7 @@ export class Game {
       return;
     }
     this.stallOpen = null;
+    this.merchantOpen = false;
     this.releaseInputs();
     if (document.pointerLockElement) document.exitPointerLock();
     const inv = this.lastSelf?.inv ?? {};
