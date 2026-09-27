@@ -1102,3 +1102,23 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: subir a Rango 3, aprender Pies ligeros y Planeo largo, planear; trepar con lluvia con Trepador; olvidar en el Corazón con 5 bayas; montar con Pastor y galopar (que no te devuelva el servidor). Constantes: `SKILL_FX` en `src/shared/progression.ts`.
+
+## Progresión · P4-C — Aspecto — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-progresion-P4-C-aspecto.md` (8195f7f).
+- Commits: 0a4f53f (T1 reglas puras: `COLORS`, `HAT_IDS`, `hatUnlocked`, `unlockedHats`, `isLook`, `HAT_HINTS` en `src/shared/progression.ts`; nombres en `names.ts`), 755d6fb (T2 servidor, protocolo v57), 35e2f93 (T3 cliente: tinte, sombreros, pantalla Aspecto), 0204173 (sombrero bien puesto tras verlo en navegador).
+- Tests: npm test 1026 (antes 1017), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 57**. Campo guardado nuevo, opcional: `SavedPlayer.look`. Las partidas viejas cargan en naranja y sin sombrero.
+- Cómo funciona:
+  - **Menú → Aspecto:** fila de 8 círculos de color y botones de sombrero ("Sin sombrero" + 6; los bloqueados en gris con su pista, "Se gana con Piedra"). Tocar aplica al momento. Mensaje `{ t: 'look', color, hat }`; el servidor valida rango y que el sombrero esté ganado (si no, lo dice con la pista).
+  - Sombreros: **Hoja** Rango 2 · **Caracola** Viento · **Corona de ámbar** Capa 3 · **Cuernos de cuarzo** Piedra · **Aureola blanca** El Marchito vencido en el mundo · **Estrella** la Estrella domada. Nunca se vuelven a bloquear.
+  - Los demás reciben `look` en el snapshot solo si no es el de por defecto; el propio lleva `look` y `hats` (los ganados).
+- Modelo: `robot.glb` tiene `Grey` (juntas, 1 594 vértices), `Main` (naranja, 5 056) y `Black`. El color vive en `Main`: **solo se clona `Main`** (una copia por jugador, solo si elige otro color que el naranja). Visto en navegador: todo el cuerpo cambia; las juntas grises siguen grises, que queda bien.
+- Rendimiento móvil: clonar el material no añade draw calls; cada sombrero es **una malla fusionada con un material** (1 draw call) → ≤4 más con 4 jugadores. Geometrías y materiales de sombrero compartidos; la copia de `Main` se libera cuando el jugador se va (`Actor.dispose`). Cero luces, cero pastillas.
+- Decidido por Claude — revisar:
+  - Los 8 colores: Naranja (el original), Azul, Verde, Rojo, Morado, Hueso, Carbón, Rosa.
+  - Formas: Hoja (hoja plana + rabito), Caracola (cono + anillo), Corona de ámbar (aro + 2 puntas), Cuernos de cuarzo (2 conos), Aureola (aro flotante, sin sombra de luz), Estrella (octaedro aplastado).
+  - El sombrero va en el nodo `Head` a la altura de la cúpula (`Head_end` × 1,3) y a tamaño ×2 (la cabeza mide ~0,8 m).
+  - "Aureola blanca" usa el `ending` del mundo (El Marchito vencido), igual que la Savia de P4-A.
+  - Cambio de regla con tests adaptados (ninguno borrado): versión 56 → 57 en `protocol.test.ts`, `world-sim.test.ts`, `world-sim-s5h.test.ts`, `world-sim-p4a.test.ts` y `world-sim-p4b.test.ts`.
+- Verificado en navegador (Chromium headless, `npm run dev:server`): Ana azul con Hoja y Bea roja con Cuernos de cuarzo, una junto a la otra; los colores y sombreros se ven sobre la cabeza y siguen al robot. El panel Aspecto se ve bien a 900 px. No probado en móvil real.
+- Bloqueos: ninguno.
+- Qué probar: elegir color con otro jugador delante; ganar Rango 2 y ponerse la Hoja; tocar un sombrero bloqueado (sale la pista). Constantes: `COLORS`, `HAT_IDS` en `progression.ts`; formas en `src/client/actors/hats.ts`.

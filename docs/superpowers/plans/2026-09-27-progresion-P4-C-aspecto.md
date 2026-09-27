@@ -1,6 +1,6 @@
 # Progresión · P4-C: Aspecto — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** the third plan of subproject #4 (spec §5, row P4-C of §11). Every player picks **1 of 8 colours** (a per-player copy of the robot's `Main` material) and **1 of 6 hats** (or none), each hat a simple primitive mesh tied to the `Head` node so it follows the animation. Hats unlock with story milestones. The choice is saved, sent to everyone in the snapshot and validated by the server. A new **Aspecto** screen in the Menú.
 
@@ -44,22 +44,22 @@ export function unlockedHats(p): number[];
 export const HAT_HINTS: Record<HatId, string>; // "Se gana con Piedra"
 ```
 
-- [ ] **Step 1: failing tests.** 8 distinct colours; 6 hats; `isLook(0,0)`, `isLook(7,6)` true, `isLook(8,0)`, `isLook(1.5,0)`, `isLook(0,7)` false; hat 0 always; Hoja needs Rango 2; Caracola `viento`; Ámbar `capaLvl 3`; Cuarzo `piedra`; Aureola `ending`; Estrella `star`; `NAMES.look`, a name per colour and hat.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): reglas puras del Aspecto`.
+- [x] **Step 1: failing tests.** 8 distinct colours; 6 hats; `isLook(0,0)`, `isLook(7,6)` true, `isLook(8,0)`, `isLook(1.5,0)`, `isLook(0,7)` false; hat 0 always; Hoja needs Rango 2; Caracola `viento`; Ámbar `capaLvl 3`; Cuarzo `piedra`; Aureola `ending`; Estrella `star`; `NAMES.look`, a name per colour and hat.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(progresion): reglas puras del Aspecto`.
 
 ### Task 2: server — `look` message, save and snapshot (protocolo v57)
 
-- [ ] **Step 1: failing tests** (`world-sim-p4c.test.ts`). Protocol 57; `decodeClient` accepts `{t:'look',color:3,hat:0}`, rejects colour 8 / hat 7 / strings. A new player: `self.look` = {0,0}, `self.hats` = []; others see no `look`. `look` colour 5 hat 0 → saved, seen by Bea as `look: {color:5,hat:0}`. Hat 4 (Cuarzo) without Piedra → refused with toast, look unchanged; with Piedra → accepted, `self.hats` includes 4. An old save without `look` loads with the default.
-- [ ] **Step 2: implement** (`onLook`; `PlayerView.look?`; `SelfState.look`, `SelfState.hats`).
-- [ ] **Step 3:** green (adapt 56 → 57 in version tests, noted), self-review, commit `feat(progresion): Aspecto en el servidor (protocolo v57)`.
+- [x] **Step 1: failing tests** (`world-sim-p4c.test.ts`). Protocol 57; `decodeClient` accepts `{t:'look',color:3,hat:0}`, rejects colour 8 / hat 7 / strings. A new player: `self.look` = {0,0}, `self.hats` = []; others see no `look`. `look` colour 5 hat 0 → saved, seen by Bea as `look: {color:5,hat:0}`. Hat 4 (Cuarzo) without Piedra → refused with toast, look unchanged; with Piedra → accepted, `self.hats` includes 4. An old save without `look` loads with the default.
+- [x] **Step 2: implement** (`onLook`; `PlayerView.look?`; `SelfState.look`, `SelfState.hats`).
+- [x] **Step 3:** green (adapt 56 → 57 in version tests, noted), self-review, commit `feat(progresion): Aspecto en el servidor (protocolo v57)`.
 
 ### Task 3: client — tint, hats on `Head`, the Aspecto screen
 
-- [ ] **Step 1: failing tests.** `hats.ts`: `makeHat(n)` returns one `Mesh` (1 draw call) for 1–6, null for 0, same geometry object on two calls (cached). `look-ui.ts`: `lookHtml(look, unlocked)` has 8 `data-a="color-i"` swatches (the current one `on`), hats "Sin sombrero" + 6, locked ones `locked` with their hint, "Volver".
-- [ ] **Step 2: implement.** `Actor.setLook(color, hat)`: on first colour ≠ 0 clone `Main` on every mesh of this actor that uses it (one clone shared by the actor's meshes), set `.color`; colour 0 restores the shared original; hat mesh added under the `Head` node at `Head_end`'s position, scaled by the inverse of the bone's world scale; `dispose()` disposes the clone. `game.ts`: remote actors and `me` call `setLook`; Menú "Aspecto" button → panel → `{ t: 'look', color, hat }`.
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): pantalla Aspecto y sombreros en la cabeza`.
+- [x] **Step 1: failing tests.** `hats.ts`: `makeHat(n)` returns one `Mesh` (1 draw call) for 1–6, null for 0, same geometry object on two calls (cached). `look-ui.ts`: `lookHtml(look, unlocked)` has 8 `data-a="color-i"` swatches (the current one `on`), hats "Sin sombrero" + 6, locked ones `locked` with their hint, "Volver".
+- [x] **Step 2: implement.** `Actor.setLook(color, hat)`: on first colour ≠ 0 clone `Main` on every mesh of this actor that uses it (one clone shared by the actor's meshes), set `.color`; colour 0 restores the shared original; hat mesh added under the `Head` node at `Head_end`'s position, scaled by the inverse of the bone's world scale; `dispose()` disposes the clone. `game.ts`: remote actors and `me` call `setLook`; Menú "Aspecto" button → panel → `{ t: 'look', color, hat }`.
+- [x] **Step 3:** green, self-review, commit `feat(progresion): pantalla Aspecto y sombreros en la cabeza`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; headless screenshot of two players in different colours (Playwright from a scratch dir, `npm run dev:server`), report only what is seen; push; HANDOFF "## Progresión · P4-C — …"; one short comment on PR #3.
+- [x] Full suite green; headless screenshot of two players in different colours (Playwright from a scratch dir, `npm run dev:server`), report only what is seen; push; HANDOFF "## Progresión · P4-C — …"; one short comment on PR #3.
