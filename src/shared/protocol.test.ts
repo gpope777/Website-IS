@@ -54,7 +54,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -114,7 +114,7 @@ describe('power and shrine protocol', () => {
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -136,7 +136,7 @@ describe('mount protocol', () => {
     ok({ t: 'mount', act: 14 });
     bad('{"t":"mount","act":15}');
     bad('{"t":"mount","act":-1}');
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -147,7 +147,7 @@ describe('chest and upgrade protocol', () => {
     bad('{"t":"chest","id":-1}');
     bad('{"t":"chest","id":1.5}');
     bad('{"t":"chest"}');
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -157,14 +157,14 @@ describe('S2-F protocol', () => {
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'viento' }))).toEqual({ t: 'power', x: 1, z: 2, kind: 'viento' });
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'enredadera' }))).toEqual({ t: 'power', x: 1, z: 2, kind: 'enredadera' });
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'rayo' }))).toBeNull();
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
 describe('rescue protocol (S2-H)', () => {
   it('decodes the cage release', () => {
     ok({ t: 'rescue' });
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -174,7 +174,7 @@ describe('amber and capa protocol (S3-C)', () => {
     ok({ t: 'capa' });
     bad('{"t":"amber","id":-1}');
     bad('{"t":"amber","id":"1"}');
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -184,7 +184,7 @@ describe('swamp dungeon and Fuego protocol (S3-E)', () => {
     bad(JSON.stringify({ t: 'dungeon', act: 26 })); // S4-E: acts 18–25 are the mountain cave's
     ok({ t: 'power', x: 1, z: 2, kind: 'fuego' });
     ok({ t: 'place', kind: 'fire', x: 1, z: 2, rot: 0 });
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -198,7 +198,7 @@ describe('fogatas protocol (S3-G)', () => {
     bad(JSON.stringify({ t: 'travel', to: -1 }));
     bad(JSON.stringify({ t: 'travel', to: 'casa' }));
     bad(JSON.stringify({ t: 'fogata', id: 6 }));
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });
 
@@ -209,6 +209,6 @@ describe('mountain dungeon and Piedra protocol (S4-E)', () => {
     ok({ t: 'power', x: 1, z: 2, kind: 'piedra' });
     ok({ t: 'place', kind: 'tower', x: 1, z: 2, rot: 0 });
     bad(JSON.stringify({ t: 'place', kind: 'pillar', x: 1, z: 2, rot: 0 }));
-    expect(PROTOCOL_VERSION).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 });

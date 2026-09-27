@@ -4,7 +4,7 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 39;
+export const PROTOCOL_VERSION = 40;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -40,7 +40,7 @@ export interface DungeonView {
   mountain: MountainDungeonView;
 }
 /** The mountain interior: gates (levers, high plate, blocks, bruto de roca), levers pulled, the plate weighted, where the two blocks sit, and the bruto de roca's bar. */
-export interface MountainDungeonView { gates: boolean[]; levers: boolean[]; plate: boolean; blocks: { x: number; z: number }[]; elite: { hp: number; max: number; charging: boolean; exposed: boolean } | null }
+export interface MountainDungeonView { gates: boolean[]; levers: boolean[]; plate: boolean; blocks: { x: number; z: number }[]; elite: { hp: number; max: number; charging: boolean; exposed: boolean } | null; /** El Cucurucho while it fights: winding up, charging, hat stuck, the alud's marked circles. */ boss: { hp: number; max: number; windup: boolean; charging: boolean; stuck: boolean; alud: { x: number; z: number }[] } | null }
 /** The swamp interior: gates (levers, thorns, gas lamps, bruto de turba), levers pulled, Llamaradas the thorns took (0–3), lamps lit, boardwalk planks still up, and the bruto de turba's bar. */
 export interface SwampDungeonView { gates: boolean[]; levers: boolean[]; thorn: number; lamps: boolean[]; planks: boolean[]; elite: { hp: number; max: number; charging: boolean; burning: boolean } | null; /** El Zancudo while it fights: on the floor, winding a dive (its shadow), who it clings to. */ boss: { hp: number; max: number; grounded: boolean; diving: boolean; shadow: { x: number; z: number } | null; latch: string | null } | null; /** Gas vents flaring right now. */ vents: boolean[] }
 /** The coast interior: gates (levers, fan, plate, bruto escudado), levers pulled, the pumice block, the plate, and the bruto escudado's bar. */

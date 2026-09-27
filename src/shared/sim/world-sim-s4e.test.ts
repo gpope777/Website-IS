@@ -243,7 +243,7 @@ describe('bruto de roca and charges into pillars (S4-E)', () => {
     expect(mview(sim).gates[3]).toBe(true);
     put(sim, 'Ana', M.x, M.bossRoomZ + 5);
     sim.step(0.1);
-    expect(toasts(sim)).toContain('La sala está en calma. Algo con gorro duerme bajo el hielo');
+    expect(toasts(sim).some((t) => t.startsWith('El Cucurucho despierta'))).toBe(true); // S4-F: the quiet room now wakes the boss
   });
 
   it('a charging elite that meets a pillar is stunned 5 s', () => {

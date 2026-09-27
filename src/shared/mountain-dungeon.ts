@@ -7,7 +7,7 @@ import type { Cell } from './mountain-shrines';
  * La cueva de la Montaña (spec S4 §11): a fourth interior off the map, along +z, cold blue light.
  * Hall with two levers → gate 0 → Piedra altar → the high plate on a 3 m shelf (weighted = gate 1 open)
  * → the block room (2 blocks onto 2 slots, gate 2) → the rockfall corridor (no gate: pillars shield
- * you) → the bruto de roca (gate 3) → El Cucurucho's room (S4-F).
+ * you) → the bruto de roca (gate 3) → El Cucurucho's room (sim/cucurucho.ts).
  */
 export const MOUNTAIN_DUNGEON = {
   x: HALF + 600,

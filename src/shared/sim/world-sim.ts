@@ -32,6 +32,7 @@ import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type P
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
+import { createCucurucho, CUCURUCHO, hatFront, stepCucurucho, stickCucurucho, type Cucurucho } from './cucurucho';
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
@@ -130,6 +131,8 @@ export interface SavedWorld {
   purified3?: boolean;
   /** The Zarzal knot burnt: a walking path into the swamp for everyone. Optional: older saves have the knot whole. */
   zarzalBurnt?: boolean;
+  /** El Cucurucho was beaten and its white copy keeps an atalaya by the Heart. Optional: older saves have none. */
+  purified4?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): owed since someone tamed a fish, the Tragón taken, or rescued. Optional: older saves have none. */
@@ -328,7 +331,6 @@ export class WorldSim {
     cells: MOUNTAIN_DUNGEON.blocks.starts.map((c) => [c[0], c[1]] as const) as Cell[],
     blocksDone: false,
     eliteDown: false,
-    bossSaid: false,
     hitAt: new Map<string, number>(),
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
@@ -360,6 +362,9 @@ export class WorldSim {
   /** The Zarzal knot burnt (saved), and the Llamaradas it has taken so far (live-only). */
   zarzalBurnt: boolean;
   private knotBurns = 0;
+  /** El Cucurucho beaten (saved); the boss itself is live-only. */
+  purified4: boolean;
+  private boss4: Cucurucho | null = null;
   /** Swamp fogatas (from the seed) and which are lit (saved). */
   readonly fogataSpots: readonly Fogata[];
   private fogatas: boolean[];
@@ -449,6 +454,7 @@ export class WorldSim {
     this.purified2 = saved.purified2 ?? false;
     this.purified3 = saved.purified3 ?? false;
     this.zarzalBurnt = saved.zarzalBurnt ?? false;
+    this.purified4 = saved.purified4 ?? false;
     this.fogataSpots = generateFogatas(this.terrain, saved.seed);
     this.fogatas = this.fogataSpots.map((_, i) => saved.fogatas?.[i] ?? false);
     this.invasion = saved.invasion ?? 'none';
@@ -679,6 +685,7 @@ export class WorldSim {
     this.stepBossFight(dt);
     this.stepAntenonFight(dt);
     this.stepZancudoFight(dt);
+    this.stepCucuruchoFight(dt);
     this.stepAlly(dt);
     this.stepAlly2(dt);
     this.stepAlly3(dt);
@@ -715,6 +722,8 @@ export class WorldSim {
     if (b2 && near(b2.x, b2.z)) wolves.push({ id: b2.id, kind: b2.kind, x: r2(b2.x), y: r2(b2.y), z: r2(b2.z), yaw: r2(b2.yaw), anim: b2.anim, raid: false });
     const b3 = this.boss3;
     if (b3 && near(b3.x, b3.z)) wolves.push({ id: b3.id, kind: b3.kind, x: r2(b3.x), y: r2(b3.y), z: r2(b3.z), yaw: r2(b3.yaw), anim: b3.anim, raid: false });
+    const b4 = this.boss4;
+    if (b4 && near(b4.x, b4.z)) wolves.push({ id: b4.id, kind: b4.kind, x: r2(b4.x), y: r2(b4.y), z: r2(b4.z), yaw: r2(b4.yaw), anim: b4.anim, raid: false });
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const pe = this.peat;
     if (pe && near(pe.x, pe.z)) wolves.push({ id: pe.id, kind: pe.kind, x: r2(pe.x), y: r2(pe.y), z: r2(pe.z), yaw: r2(pe.yaw), anim: pe.anim, raid: false, ...(pe.burn && pe.hp > 0 ? { burning: true as const } : {}) });
@@ -758,6 +767,7 @@ export class WorldSim {
       ...(this.purified2 ? { purified2: true } : {}),
       ...(this.purified3 ? { purified3: true } : {}),
       ...(this.zarzalBurnt ? { zarzalBurnt: true } : {}),
+      ...(this.purified4 ? { purified4: true } : {}),
       ...(this.fogatas.some(Boolean) ? { fogatas: [...this.fogatas] } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
@@ -1166,7 +1176,7 @@ export class WorldSim {
     // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo, mountain 14 El Cucurucho).
     const biome = (i: number) => (isMountainZone(i) ? 'mountain' : isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
     const mine = s.id >= MOUNTAIN_SHRINE.firstId ? 'mountain' : s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
-    // A Piedra pillar raised ≤2 m from a 15–17 root crushes it (onStone). S4-F: El Cucurucho cleanses 14.
+    // A Piedra pillar raised ≤2 m from a 15–17 root crushes it (onStone); zone 14 is cleansed by beating El Cucurucho (stepCucuruchoFight).
     const roots: number[] = [0, COAST_ZONES.root, SWAMP_ZONES.root, MOUNTAIN_ZONES.root];
     const ids = this.corrupt().filter((i) => !roots.includes(i) && biome(i) === mine);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
@@ -1303,7 +1313,7 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
@@ -1359,12 +1369,12 @@ export class WorldSim {
   }
 
   private flameEnemies(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
       this.strike(p.name, w, FUEGO.damage, w === this.boss3);
       // Bosses, El Marchito and the cage's anchors take the scorch but do not catch fire.
-      if (w === this.boss || w === this.boss2 || w === this.boss3 || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
+      if (w === this.boss || w === this.boss2 || w === this.boss3 || w === this.boss4 || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
       w.burn = FUEGO.burnFor;
       if (w.kind === 'wolf') this.scare(w, p.x, p.z);
     }
@@ -1451,7 +1461,7 @@ export class WorldSim {
 
   /** Every enemy that can be hit (beasts, elites, bosses, El Marchito, the cage's anchors). */
   private allFoes(): Wolf[] {
-    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
   }
 
   /** Piedra: Alzar a stone pillar 4 m toward the aim (2 m grid). Max 3 per player (the oldest crumbles), 120 s each. */
@@ -1619,6 +1629,7 @@ export class WorldSim {
     if (this.rock && this.rock.id === id) return this.rock;
     if (this.boss2 && this.boss2.id === id) return this.boss2;
     if (this.boss3 && this.boss3.id === id) return this.boss3;
+    if (this.boss4 && this.boss4.id === id) return this.boss4;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
@@ -1641,6 +1652,11 @@ export class WorldSim {
       dmg *= ELITE.frontMult;
       const bl = this.live.get(name);
       if (bl) this.hint(name, bl, 'La losa para casi todo. Que se estrelle contra un pilar, o párale');
+    }
+    if (w === this.boss4 && by && hatFront(this.boss4, by.x, by.z)) {
+      dmg *= CUCURUCHO.frontMult;
+      const bl = this.live.get(name);
+      if (bl) this.hint(name, bl, 'El gorro para casi todo. Un pilar en su embestida, o párale');
     }
     if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
   }
@@ -2439,6 +2455,7 @@ export class WorldSim {
       plate: m.plate,
       blocks: m.cells.map((c) => dungeonBlockCell(c)),
       elite: this.rock && this.rock.hp > 0 ? { hp: Math.round(this.rock.hp), max: ENEMY.elite4.hp, charging: this.rock.windup > 0 || this.rock.charge > 0, exposed: this.rock.exposed > 0 } : null,
+      boss: this.boss4 && this.boss4.hp > 0 ? { hp: Math.round(this.boss4.hp), max: ENEMY.boss4.hp, windup: this.boss4.windup > 0, charging: this.boss4.charge > 0, stuck: this.boss4.exposed > 0, alud: this.boss4.alud.map((c) => ({ x: r2(c.x), z: r2(c.z) })) } : null,
     };
     return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp, mountain };
   }
@@ -2570,6 +2587,38 @@ export class WorldSim {
     if (p && drain && !p.dead) this.hurt(p, drain.dmg);
   }
 
+  /** El Cucurucho lives while someone alive is in its room; an empty room resets it. Beaten once: purified, zone 14 clean (El Triángulo stops), a vision. */
+  private stepCucuruchoFight(dt: number): void {
+    const c = this.boss4;
+    if (c && c.hp <= 0 && !this.purified4) {
+      this.purified4 = true;
+      this.say(`${NAMES.bossMountain} cae y se queda blanco como la nieve. Ahora vigila el ${NAMES.heart}`);
+      this.cleanse(MOUNTAIN_ZONES.root, `La ${NAMES.mountainRoot} deja de supurar morado. ${NAMES.lieutenant2} se queda sin montaña`);
+      this.vision(VISION.purified4(joinNames(this.activeNames())));
+    }
+    if (this.purified4) {
+      if (c && c.hp <= 0) {
+        stepCucurucho(c, [], [], dt);
+        if (c.deadFor >= CUCURUCHO.corpseTime) this.boss4 = null;
+      } else this.boss4 = null;
+      return;
+    }
+    const fighters = this.targets().filter((t) => !t.dead && inMountainBossRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.boss4 = null;
+      return;
+    }
+    if (!this.boss4) {
+      this.boss4 = createCucurucho();
+      this.say(`${NAMES.bossMountain} despierta. El gorro para casi todo: que embista contra un pilar`);
+    }
+    const b = this.boss4;
+    const pillars = this.structures.filter((s) => s.kind === 'pillar' && inMountainBossRoom(s.x, s.z));
+    const { hits, stuck } = stepCucurucho(b, fighters, pillars, dt);
+    if (stuck) this.say(`¡Contra el pilar! El gorro de ${NAMES.bossMountain.replace(/^El /, 'el ')} se clava. Ahora sí`);
+    for (const hit of hits) this.bite(hit.name, hit.dmg, b);
+  }
+
   /** The bruto escudado, like the forest elite: lives while someone is in its room; once down, gate 3 opens. */
   private stepShieldFight(dt: number): void {
     const g = this.coastLive;
@@ -2626,13 +2675,9 @@ export class WorldSim {
     if (pe.hp > 0 && !pe.burn && inMudPool(pe.x, pe.z)) pe.hp = Math.min(ENEMY.elite3.hp, pe.hp + SWAMP_DUNGEON.regen * dt);
   }
 
-  /** The bruto de roca, like the other elites (its slab and wall crash live in elite.ts). Once down, gate 3 opens; the next room waits for S4-F. */
+  /** The bruto de roca, like the other elites (its slab and wall crash live in elite.ts). Once down, gate 3 opens (El Cucurucho's room). */
   private stepRockFight(dt: number): void {
     const g = this.mountainLive;
-    if (!g.bossSaid && this.targets().some((t) => !t.dead && inMountainBossRoom(t.x, t.z))) {
-      g.bossSaid = true;
-      this.say('La sala está en calma. Algo con gorro duerme bajo el hielo');
-    }
     const e = this.rock;
     if (e && e.hp <= 0) {
       if (!g.eliteDown) {
@@ -3152,8 +3197,9 @@ export class WorldSim {
       if (w === this.rock) this.rock.exposed = ELITE.exposedFor;
       if (w === this.boss2) this.boss2.exposed = Math.max(this.boss2.exposed, ANTENON.parryFor);
       if (w === this.boss3) groundZancudo(this.boss3, ZANCUDO.parryFall);
+      if (w === this.boss4) stickCucurucho(this.boss4, CUCURUCHO.parryFor);
       this.strike(name, w, BLOCK.parryDamage);
-      this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : w === this.boss3 ? 'Parada: cae al suelo' : 'Parada');
+      this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : w === this.boss3 ? 'Parada: cae al suelo' : w === this.boss4 ? 'Parada: el gorro se levanta' : 'Parada');
       return false;
     }
     this.hurt(p, out.dmg);

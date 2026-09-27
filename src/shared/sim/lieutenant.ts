@@ -59,7 +59,7 @@ export function hasteNear(gata: { x: number; z: number } | null, x: number, z: n
  * El Triángulo (spec S4 §7): the second lieutenant. Once anyone has seen the mountains and while
  * their Raíz-madre (zone 14) is corrupt, he leads raids with raidN % 3 === 1 (from the 4th; the Gata
  * takes the multiples of 3). He walks like the Gata and throws rocks at player structures, never at
- * the Heart. S4-F: beating El Cucurucho cleanses 14, and with it he stops coming.
+ * the Heart. Beating El Cucurucho cleanses 14, and with it he stops coming.
  */
 export const TRIANGULO = { hp: 340, damage: 12, every: 3, offset: 1, rockEvery: 6, rockRange: 25, rockDamage: 40, quartz: 2, present: 40, behind: 12 } as const;
 
