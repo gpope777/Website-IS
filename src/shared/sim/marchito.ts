@@ -165,6 +165,7 @@ export const VISION = {
   purified4: (names: string) => ['La voz, con eco de piedra:', `«Mi gorro… ${names}. Mi montaña, mi triángulo.»`, '«Subid, subid. Arriba solo queda el cielo. Y es mío.»'],
   mountains: (name: string) => ['El viento baja de las cumbres. La voz, arriba:', `«Qué alto, ${name}. Qué frío.»`, '«Aquí arriba no hay niebla. Hay piedra. Y hay caída.»'],
   escalera: (names: string) => ['La roca se asienta en escalones. La voz, con eco:', `«Una escalera. Para todos. Qué detalle, ${names}.»`, '«Así me subís la montaña más rápido. Ya bajaréis.»'],
+  fog: (name: string) => ['La niebla se abre como una cortina vieja. La voz, muy lejos:', `«Ya vienes. Bien. Te espero arriba, ${name}.»`],
   dragon: (name: string) => ['Un trueno, y luego la voz:', `«Mi dragón… Eso sí que no, ${name}.»`],
   arrive: [`${NAMES.villain} entra en el claro. No se le puede matar.`, '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],
   laugh: [`${NAMES.villain} se ríe como una rama al partirse.`, '«Solo vine a mirar. La próxima vez me quedo.»'],

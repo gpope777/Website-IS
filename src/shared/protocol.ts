@@ -4,7 +4,10 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 43;
+export const PROTOCOL_VERSION = 44;
+
+/** S5-A: the muro de niebla's state in the snapshot. */
+export type FogState = 'closed' | 'ready' | 'open';
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide', 'slide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -107,7 +110,7 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The white Cucurucho's atalaya by the Heart (anim 'attack' while it throws). */ ally4: AllyView | null; /** La Escalera del Umbral is up: a ramp in los Peldaños (see withEscalera). */ escalera: boolean; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; /** The wild dragon while it circles the Pico (owner null) and parked tamed ones. */ dragons: SteedView[]; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The white Cucurucho's atalaya by the Heart (anim 'attack' while it throws). */ ally4: AllyView | null; /** La Escalera del Umbral is up: a ramp in los Peldaños (see withEscalera). */ escalera: boolean; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; /** The wild dragon while it circles the Pico (owner null) and parked tamed ones. */ dragons: SteedView[]; /** S5-A: the fog north of the rim: closed, ready (the 4 Raíces-madre purified: a dragon rider opens it) or open. */ fog: FogState; /** S5-A: El Marchito's tower height (m). */ towerH: number; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }

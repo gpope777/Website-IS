@@ -1,7 +1,7 @@
 import { RIM_LINE } from '../shared/corrupt-lands';
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
-import { coastFeatures, createTerrain, HALF, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, CORRUPT_LANDS, createTerrain, HALF, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk, inBravas, wildFish } from '../shared/fish';
 import { FROG, frogStepOk } from '../shared/frog';
 import { DRAGON } from '../shared/dragon';
@@ -695,6 +695,17 @@ describe('flying el Dragón', () => {
     c.noLand = true;
     run(fwd, 10, flat, none, 0, [], c);
     expect(c.y).toBeCloseTo(6, 1);
+  });
+
+  it('S5-A: once the fog lets it pass, it flies into las Tierras up to their north edge', () => {
+    const b = dragonBody(0, -HALF - 199, 10);
+    b.fogPass = true;
+    run(fwd, 2, flat, none, 0, [], b);
+    expect(b.z).toBeLessThan(-HALF - 215);
+    const c = dragonBody(0, CORRUPT_LANDS.z0 + 5, 10);
+    c.fogPass = true;
+    run(fwd, 2, flat, none, 0, [], c);
+    expect(c.z).toBeGreaterThanOrEqual(CORRUPT_LANDS.z0 + 2);
   });
 });
 

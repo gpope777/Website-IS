@@ -24,7 +24,7 @@ import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
-import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
+import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type FogState, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
 import { DAY_LENGTH, dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
@@ -252,6 +252,9 @@ export class Game {
   /** Swamp fogatas (from the seed), which are lit, and seconds left of our channel (from the server). */
   private fogataSpots: Fogata[] = [];
   private fogatasLit: boolean[] = [];
+  /** S5-A: the muro de niebla and El Marchito's tower height (from the server). */
+  private fog: FogState = 'closed';
+  private towerH = 60;
   private fogataMeshes: FogataMeshes | null = null;
   private travelLeft: number | null = null;
   /** Las Montañas: when the next "too steep" toast may show (ms). */
@@ -567,6 +570,8 @@ export class Game {
     }
     this.umbral?.sync(m.escalera);
     this.fogatasLit = m.fogatas;
+    this.fog = m.fog;
+    this.towerH = m.towerH;
     this.fogataMeshes?.sync(m.fogatas);
     if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
@@ -1230,6 +1235,7 @@ export class Game {
     const wd = this.whaleDraw;
     b.wet = this.seed !== null && wetAt(weatherAt(this.seed, Math.floor(this.serverTime / DAY_LENGTH))); // mountain rock (S4-B)
     const hs = this.heart && this.structures.position(this.heart.id);
+    b.fogPass = this.fog !== 'closed';
     b.noLand = !!this.raid && !!hs && Math.hypot(hs.x - b.x, hs.z - b.z) <= DRAGON.heartNoLand;
     let res: ReturnType<typeof stepBody>;
     if (this.tame?.beast === 'dragon' && this.pico) {

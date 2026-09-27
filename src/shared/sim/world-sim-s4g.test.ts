@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerMsg } from '../protocol';
 import { DRAGON, dragonPos, FOG_TEXT } from '../dragon';
-import { HALF } from '../terrain';
+import { CORRUPT_LANDS, HALF } from '../terrain';
+import { fogText } from '../corrupt-lands';
+import { NAMES } from '../names';
 import { mountainEntrance } from '../mountain-dungeon';
 import { weatherAt } from '../weather';
 import { DAY_LENGTH, newWorld, WorldSim } from './world-sim';
@@ -159,7 +161,65 @@ describe('flying the dragon on the server (S4-G)', () => {
     a.y = sim.terrain.heightAt(0, a.z) + 10;
     sim.drain();
     expect(fly(sim, 0, a.y, -5)).toBe(false);
-    expect(toasts(sim)).toContain(FOG_TEXT);
+    // S5-A: the fog now names the missing Raíz-madre (intentional text change; FOG_TEXT is the fallback).
+    expect(toasts(sim)).toContain(fogText(`${NAMES.forestRoot} del Bosque`));
+    expect(FOG_TEXT).toBeTruthy();
+  });
+
+  describe('S5-A: the fog gate', () => {
+    const roots = (sim: WorldSim, n: number) => Object.assign(sim as unknown as Record<string, boolean>, { purified: n > 0, purified2: n > 1, purified3: n > 2, purified4: n > 3 });
+    const toRim = (sim: WorldSim) => {
+      const a = sim.getPlayer('Ana')!;
+      a.x = 0;
+      a.z = -HALF - 199;
+      a.y = Math.min(DRAGON.maxY, sim.terrain.heightAt(0, a.z) + 20);
+      sim.drain();
+    };
+    const north = (sim: WorldSim) => {
+      const a = sim.getPlayer('Ana')!;
+      return fly(sim, 0, Math.min(DRAGON.maxY, Math.max(a.y - 1, sim.terrain.heightAt(0, a.z - 5) + 3)), -5);
+    };
+
+    it('with 3 Raíces-madre it names the Montaña and holds', () => {
+      const sim = flying();
+      roots(sim, 3);
+      toRim(sim);
+      expect(north(sim)).toBe(false);
+      expect(toasts(sim)).toContain(fogText(NAMES.mountainRoot));
+      expect(snap(sim, 'Ana').fog).toBe('closed');
+    });
+
+    it('with all 4 it opens for the world, saves, and the Tierras are open to fly to their north edge', () => {
+      const sim = flying();
+      roots(sim, 4);
+      toRim(sim);
+      expect(snap(sim, 'Ana').fog).toBe('ready');
+      expect(north(sim)).toBe(true);
+      expect(toasts(sim).join(' ')).toContain('Ana');
+      expect(snap(sim, 'Ana').fog).toBe('open');
+      expect(sim.save().fogOpen).toBe(true);
+      for (let i = 0; i < 30; i++) expect(north(sim)).toBe(true);
+      expect(sim.getPlayer('Ana')!.z).toBeLessThan(-HALF - 340);
+      const a = sim.getPlayer('Ana')!;
+      a.z = CORRUPT_LANDS.z0 + 4;
+      a.y = sim.terrain.heightAt(0, a.z) + 10;
+      expect(north(sim)).toBe(false);
+    });
+
+    it('old saves: closed, and the tower starts at 60 m today and grows a metre a day', () => {
+      const old = flying().save();
+      delete old.towerDay0;
+      delete old.fogOpen;
+      const sim = new WorldSim(old);
+      sim.connect('Ana');
+      expect(snap(sim, 'Ana').fog).not.toBe('open');
+      expect(snap(sim, 'Ana').towerH).toBe(60);
+      sim.time += DAY_LENGTH * 3;
+      expect(snap(sim, 'Ana').towerH).toBe(63);
+      const again = new WorldSim(sim.save());
+      again.connect('Ana');
+      expect(snap(again, 'Ana').towerH).toBe(63);
+    });
   });
 
   it('A gets off only once landed; A beside it gets back on', () => {

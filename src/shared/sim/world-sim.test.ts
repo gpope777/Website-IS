@@ -4850,7 +4850,7 @@ describe('mountain shrines and refugios (S4-C)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(43);
+    expect(PROTOCOL_VERSION).toBe(44);
   });
 });
 
@@ -5047,7 +5047,7 @@ describe('El Triángulo (S4-D)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(43);
+    expect(PROTOCOL_VERSION).toBe(44);
   });
 });
 

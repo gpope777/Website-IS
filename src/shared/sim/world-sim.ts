@@ -22,7 +22,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
-import { rimCrossBlocked } from '../corrupt-lands';
+import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight } from '../corrupt-lands';
 import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -158,6 +158,10 @@ export interface SavedWorld {
   mountainsSeen?: boolean;
   /** Which swamp fogatas are lit (ids from the seed). Optional: older saves have them all dark. */
   fogatas?: boolean[];
+  /** S5-A: a dragon rider with the 4 Raíces-madre purified opened the fog. Optional. */
+  fogOpen?: boolean;
+  /** S5-A: the day El Marchito's tower started growing (set on load when missing). */
+  towerDay0?: number;
 }
 
 export interface Grave extends GraveView {
@@ -419,6 +423,10 @@ export class WorldSim {
   private raidN: number;
   private swampSeen: boolean;
   private mountainsSeen: boolean;
+  /** S5-A: the fog north of the rim is open (flying into las Tierras Corruptas). */
+  fogOpen: boolean;
+  /** S5-A: the tower's first day. */
+  readonly towerDay0: number;
   /** La Gata Araña's wolf id while she leads a raid. */
   private gataId: number | null = null;
   /** El Triángulo in tonight's raid (S4-D) and his rock timer. */
@@ -467,6 +475,8 @@ export class WorldSim {
     this.raidN = saved.raidN ?? 0;
     this.swampSeen = saved.swampSeen ?? false;
     this.mountainsSeen = saved.mountainsSeen ?? false;
+    this.fogOpen = saved.fogOpen ?? false;
+    this.towerDay0 = saved.towerDay0 ?? Math.floor(saved.time / DAY_LENGTH);
     this.purified = saved.purified ?? false;
     this.purified2 = saved.purified2 ?? false;
     this.purified3 = saved.purified3 ?? false;
@@ -758,7 +768,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -781,6 +791,8 @@ export class WorldSim {
       ...(this.raidN ? { raidN: this.raidN } : {}),
       ...(this.swampSeen ? { swampSeen: true } : {}),
       ...(this.mountainsSeen ? { mountainsSeen: true } : {}),
+      ...(this.fogOpen ? { fogOpen: true } : {}),
+      towerDay0: this.towerDay0,
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
       ...(this.purified2 ? { purified2: true } : {}),
@@ -945,8 +957,16 @@ export class WorldSim {
    */
   private onFly(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>, moved: number, elapsed: number): void {
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL);
-    const fog = inFog(m.z);
-    if (fog) this.hint(p.name, l, FOG_TEXT);
+    if (!this.fogOpen && inFog(m.z)) {
+      // S5-A: the fog gives way to a rider with the 4 Raíces-madre purified, once, for the world.
+      if (!missingRoot(this)) {
+        this.fogOpen = true;
+        this.vision(VISION.fog(p.name));
+      }
+    }
+    const fog = inFog(m.z, this.fogOpen);
+    const missing = missingRoot(this);
+    if (fog) this.hint(p.name, l, this.fogOpen ? FOG_EDGE_TEXT : missing ? fogText(missing) : FOG_TEXT);
     const band = m.y >= ground - 1 && m.y <= DRAGON.maxY + 1 && (m.y <= ground + DRAGON.serverCeil || m.y <= p.y);
     const low = this.noLanding(m.x, m.z) && m.y < ground + DRAGON.raidFloor && m.y < p.y;
     if (!inMap(m.x, m.z, 2) || fog || inAnyDungeon(m.x, m.z) || !band || low || moved > DRAGON.maxSpeed * elapsed + 1) {

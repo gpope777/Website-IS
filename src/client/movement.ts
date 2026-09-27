@@ -63,6 +63,8 @@ export interface Body {
   dragon?: boolean;
   /** A raid near the Heart: the dragon keeps DRAGON.noLandY up (the server refuses lower). */
   noLand?: boolean;
+  /** S5-A: the muro de niebla lets this flier through (open, or ready for a rider with the 4 Raíces-madre). */
+  fogPass?: boolean;
   /** On your belly down the snow (S4-H tobogán). */
   sliding?: boolean;
   /** Seconds the slide has been on a flat (< SNOWSLIDE.stopDeg) off the chute. */
@@ -543,7 +545,7 @@ function stepDragon(b: Body, input: MoveInput, camYaw: number, dt: number, terra
   b.vz += (wz * DRAGON.fly - b.vz) * k;
   if (moving) b.facing = Math.atan2(wx, wz);
   const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
-  if (inFog(to.z)) {
+  if (inFog(to.z, !!b.fogPass)) {
     b.vz = Math.max(0, b.vz); // the muro de niebla: north is closed
     to.z = b.z;
   }

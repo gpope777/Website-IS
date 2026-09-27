@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, CORRUPT_LANDS, corruptFeatures, createTerrain, HALF, inCorrupt, inMap, MOUNTAINS } from './terrain';
 import { slopeAt, smoothAt, steepBlocked } from './mountains';
-import { RIM_LINE, rimCrossBlocked } from './corrupt-lands';
+import { missingRoot, RIM_LINE, rimCrossBlocked, towerHeight } from './corrupt-lands';
+import { NAMES } from './names';
 
 const SEEDS = [7, 12345];
 const zAt = (d: number) => CORRUPT_LANDS.z1 - d;
@@ -107,5 +108,24 @@ describe('las Tierras Corruptas: rules', () => {
     const s = corruptFeatures(42).steps;
     expect(steepBlocked(t, s.x, zAt(s.d0 - 1), s.x, zAt(s.d0 + 2))).toBe(true);
     expect(steepBlocked(t, s.x, zAt(s.d0 + 2), s.x, zAt(s.d0 - 1))).toBe(false);
+  });
+});
+
+describe('la Torre and the fog gate (S5-A)', () => {
+  it('the tower grows a metre a day, 60 → 140', () => {
+    expect(towerHeight(5, 5)).toBe(60);
+    expect(towerHeight(45, 5)).toBe(100);
+    expect(towerHeight(500, 5)).toBe(140);
+    expect(towerHeight(2, 5)).toBe(60);
+  });
+
+  it('names the first missing Raíz-madre, Bosque → Costa → Pantano → Montaña', () => {
+    const w = (n: number) => ({ purified: n > 0, purified2: n > 1, purified3: n > 2, purified4: n > 3 });
+    expect(missingRoot(w(0))).toContain(NAMES.forestRoot);
+    expect(missingRoot(w(1))).toBe(NAMES.coastRoot);
+    expect(missingRoot(w(2))).toBe(NAMES.swampRoot);
+    expect(missingRoot(w(3))).toBe(NAMES.mountainRoot);
+    expect(missingRoot(w(4))).toBeNull();
+    expect(missingRoot({ ...w(4), purified2: false })).toBe(NAMES.coastRoot);
   });
 });

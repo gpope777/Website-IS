@@ -1,4 +1,4 @@
-import { HALF, MOUNTAINS, mountainFeatures, PICO, type Terrain } from './terrain';
+import { HALF, MOUNTAINS, mountainFeatures, PICO, type Terrain, CORRUPT_LANDS } from './terrain';
 import { weatherAt } from './weather';
 
 /** El Dragón Marchito: the flying mount (spec S4 §10). Circles the Pico on storm days once El Cucurucho is purified. */
@@ -84,9 +84,11 @@ export function dragonCeil(ground: number): number {
   return Math.min(ground + DRAGON.ceil, DRAGON.maxY);
 }
 
-/** The muro de niebla: north of the mountains' rim (the Tierras Corruptas, Slice 5). */
-export function inFog(z: number): boolean {
-  return z < -HALF - MOUNTAINS.rimFrom;
+/**
+ * The muro de niebla: north of the mountains' rim until it opens (S5-A), then only the Tierras' north edge.
+ */
+export function inFog(z: number, open = false): boolean {
+  return open ? z < CORRUPT_LANDS.z0 + 2 : z < -HALF - MOUNTAINS.rimFrom;
 }
 
 /** Can a player at `p` leap onto the wild dragon at `time`? On the Pico's top, with the dragon passing below on your side. */
