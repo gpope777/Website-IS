@@ -13,6 +13,7 @@ import { CIENAGA } from '../coast';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
+import { FISH } from '../fish';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -1427,11 +1428,11 @@ describe('riding the deer', () => {
     sim.getPlayer('Ana')!.steed = { x: 6, z: 5 };
     let s = snap(sim, 'Leo');
     expect(s.steeds.filter((v) => v.owner === 'Ana')).toHaveLength(1);
-    expect(s.players.find((p) => p.name === 'Ana')!.ride).toBe(false);
+    expect(s.players.find((p) => p.name === 'Ana')!.ride).toBeNull();
     sim.handle('Ana', { t: 'mount', act: 2 });
     s = snap(sim, 'Leo');
     expect(s.steeds.filter((v) => v.owner === 'Ana')).toHaveLength(0);
-    expect(s.players.find((p) => p.name === 'Ana')!.ride).toBe(true);
+    expect(s.players.find((p) => p.name === 'Ana')!.ride).toBe('deer');
     put(sim, 'Leo', sim.wild.x, sim.wild.z + 2);
     expect(snap(sim, 'Leo').steeds.some((v) => v.owner === null)).toBe(true);
   });
@@ -1978,5 +1979,111 @@ describe('the deer carries two', () => {
     expect(self(sim, 'Ana').seat).toBe('Leo');
     sim.handle('Ana', { t: 'mount', act: 2 });
     expect(self(sim, 'Ana').riding).toBe(false);
+  });
+});
+
+describe('taming the giant fish', () => {
+  const atFish = (sim: WorldSim, name: string, dx = 1) => put(sim, name, sim.fishHome.x + dx, sim.fishHome.z);
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const race = (sim: WorldSim, name: string, upTo: number = FISH.rings) => {
+    for (let i = 0; i < upTo; i++) {
+      const r = sim.fishRings[i]!;
+      put(sim, name, r.x + 1, r.z);
+      sim.step(0.1);
+    }
+  };
+  const tapPerfect = (sim: WorldSim, name: string) => {
+    const t = snap(sim, name).self.tame!;
+    const at = t.start + t.zone / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle(name, { t: 'mount', act: 1, at });
+  };
+
+  it('A near the fish starts the ring race; far away does nothing', () => {
+    const sim = setup('Ana');
+    atFish(sim, 'Ana', FISH.reach + 3);
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    atFish(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).toMatchObject({ i: 0 });
+    expect(snap(sim, 'Ana').fish.some((f) => f.owner === null)).toBe(true);
+  });
+
+  it('rings count in order; the last one starts the 2-round ring', () => {
+    const sim = setup('Ana');
+    atFish(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    const r2nd = sim.fishRings[1]!;
+    put(sim, 'Ana', r2nd.x, r2nd.z); // skipping ring 1 does not count
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.race!.i).toBe(0);
+    race(sim, 'Ana', 3);
+    expect(snap(sim, 'Ana').self.race!.i).toBe(3);
+    race(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.race).toBeNull();
+    expect(self.tame).toMatchObject({ round: 0, rounds: 2, speed: FISH.rounds[0].speed, width: FISH.rounds[0].width });
+  });
+
+  it('too slow: it gets away, and needs 3 s before another try', () => {
+    const sim = setup('Ana');
+    atFish(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    for (let i = 0; i < FISH.ringTime * 10 + 2; i++) sim.step(0.1);
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    expect(texts(sim)).toContain('Se escapa');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    for (let i = 0; i < FISH.retry * 10 + 2; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).not.toBeNull();
+  });
+
+  it('two good taps: the fish is yours and you ride it', () => {
+    const sim = setup('Ana', 'Leo');
+    put(sim, 'Leo', 0, 0);
+    atFish(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    race(sim, 'Ana');
+    tapPerfect(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.tame!.round).toBe(1);
+    tapPerfect(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.tame).toBeNull();
+    expect(self.fish).toBe(true);
+    expect(self.onFish).toBe(true);
+    expect(self.riding).toBe(false);
+    expect(sim.getPlayer('Ana')!.fish).toBeDefined();
+    const last = sim.fishRings[FISH.rings - 1]!;
+    put(sim, 'Leo', last.x + 3, last.z);
+    expect(snap(sim, 'Leo').players.find((p) => p.name === 'Ana')!.ride).toBe('fish');
+  });
+
+  it('a bad tap sends it off; a friend nearby widens the zone', () => {
+    const sim = setup('Ana', 'Leo');
+    atFish(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    race(sim, 'Ana');
+    const last = sim.fishRings[FISH.rings - 1]!;
+    expect(snap(sim, 'Ana').self.tame!.width).toBe(FISH.rounds[0].width);
+    put(sim, 'Leo', last.x - 2, last.z);
+    expect(snap(sim, 'Ana').self.tame!.width).toBeCloseTo(FISH.rounds[0].width * MOUNT.calmWidth, 2);
+    const t = snap(sim, 'Ana').self.tame!;
+    const at = t.start + (t.zone + Math.PI) / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 1, at });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(sim.getPlayer('Ana')!.fish).toBeUndefined();
+    expect(texts(sim)).toContain('Se sacude y se va. Otra vez');
+  });
+
+  it('you only tame one fish', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.fish = { x: 0, z: HALF + 70 };
+    atFish(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    expect(texts(sim)).toContain('Ya tienes pez');
   });
 });

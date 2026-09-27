@@ -9,6 +9,7 @@ import { CORRUPTION, generateZones, nearestZone, raidDirFrom, zoneAt, type Zone 
 import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
+import { FISH, fishRings, wildFish } from '../fish';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -67,6 +68,8 @@ export interface SavedPlayer {
   enredadera?: boolean;
   /** Tamed deer and where it is parked. Optional: older saves have none. */
   steed?: { x: number; z: number };
+  /** Tamed giant fish and where it waits. Optional: older saves have none. */
+  fish?: { x: number; z: number };
 }
 
 export interface SavedWorld {
@@ -117,7 +120,7 @@ interface Live {
   /** Sim time of death; null when alive or after a reconnect (no revive then). Never saved. */
   deadAt: number | null;
   /** Taming round in progress (live-only). `start` and `zone` are rounded as the client sees them. */
-  tame: { round: number; start: number; zone: number } | null;
+  tame: { round: number; start: number; zone: number; beast: 'deer' | 'fish'; ax: number; az: number } | null;
   /** Sim time the deer lets you try again. */
   tameReadyAt: number;
   /** On the deer. Live-only: a reconnect starts on foot beside it. */
@@ -128,7 +131,15 @@ interface Live {
   hintAt: number;
   /** Sitting behind this rider (live only: the deer carries two). */
   seat: string | null;
+  /** The fish's ring race in progress (live-only). */
+  race: { i: number; deadline: number } | null;
+  /** Sim time the wild fish lets you race again. */
+  raceReadyAt: number;
+  /** On the giant fish (live-only, like `riding`). */
+  fish: boolean;
 }
+
+const roundsOf = (beast: 'deer' | 'fish') => (beast === 'fish' ? FISH.rounds : MOUNT.rounds);
 
 export function newWorld(seed: number, salt: string): SavedWorld {
   return { version: 1, seed, salt, time: DAY_LENGTH * 0.33, nextStructureId: 1, structures: [], resources: {}, players: [], raidLevel: 0 };
@@ -149,6 +160,9 @@ export class WorldSim {
   readonly entrance: { x: number; y: number; z: number };
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
   readonly wild: { x: number; y: number; z: number };
+  /** Where the wild giant fish waits, and its race rings (seeded). */
+  readonly fishHome: { x: number; z: number };
+  readonly fishRings: readonly { x: number; z: number }[];
   /** Corruption zones (spec §3), seeded; zone 0 is on the Raíz-madre. */
   readonly zones: readonly Zone[];
   /** Zone ids cleansed (saved). */
@@ -217,6 +231,8 @@ export class WorldSim {
     this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, this.shrines);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...this.shrines, this.entrance]);
+    this.fishHome = wildFish(this.terrain, saved.seed);
+    this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
     this.zones = generateZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
     this.shrineLive = this.shrines.map(() => ({ pulled: [null, null], openUntil: -Infinity, pressed: false }));
@@ -277,7 +293,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, hintAt: 0, seat: null };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -389,6 +405,7 @@ export class WorldSim {
     this.stepEliteFight(dt);
     this.stepBossFight(dt);
     this.stepAlly(dt);
+    this.stepRace();
     this.stepTaming();
     this.stepSeats();
     this.stepInvasion(dt);
@@ -405,7 +422,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding, seat: ol.seat });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : null, seat: ol.seat });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -421,7 +438,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), marchito, corrupt: this.corrupt() };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), marchito, corrupt: this.corrupt() };
   }
 
   drain(): Outgoing[] {
@@ -822,25 +839,33 @@ export class WorldSim {
     if (p.dead) return;
     if (act === 5) return this.dismount(p, l);
     if (l.seat) return; // sitting behind someone: only getting off
+    if (act >= 6) return this.onFishAct(p, l, act);
+    if (l.fish || l.race) return; // on (or chasing) the fish: no deer
     if (act === 4) return this.board(p, l);
     if (act === 0) {
       if (l.tame || Math.hypot(this.wild.x - p.x, this.wild.z - p.z) > MOUNT.reach) return;
       if (p.steed) return this.tell(p.name, 'Ya tienes montura');
       if (this.time + EPS < l.tameReadyAt) return this.tell(p.name, 'El ciervo aún resopla');
-      this.nextRound(l, 0);
+      this.nextRound(l, 0, 'deer', this.wild.x, this.wild.z);
       return this.tell(p.name, 'El ciervo se encabrita. Pulsa cuando la aguja pase por la zona');
     }
     if (act === 1) {
       const t = l.tame;
       if (!t || at === undefined) return;
-      const round = MOUNT.rounds[t.round]!;
+      const rounds = roundsOf(t.beast);
+      const round = rounds[t.round]!;
       const timely = at >= t.start - EPS && at >= this.time - MOUNT.early && at <= this.time + MOUNT.late;
-      if (!timely || !inZone(ringAngle(round.speed, at - t.start), t.zone, this.tameWidth(p, t.round))) return this.throwOff(p, l);
-      if (t.round + 1 < MOUNT.rounds.length) {
-        this.nextRound(l, t.round + 1);
+      if (!timely || !inZone(ringAngle(round.speed, at - t.start), t.zone, this.tameWidth(p, t))) return this.throwOff(p, l);
+      if (t.round + 1 < rounds.length) {
+        this.nextRound(l, t.round + 1, t.beast, t.ax, t.az);
         return this.tell(p.name, 'Aguanta');
       }
       l.tame = null;
+      if (t.beast === 'fish') {
+        p.fish = { x: r2(p.x), z: r2(p.z) };
+        l.fish = true;
+        return this.tell(p.name, 'El pez es tuyo. B para bucear, A en la orilla para bajar');
+      }
       p.steed = { x: r2(p.x), z: r2(p.z) };
       l.riding = true;
       return this.tell(p.name, 'El ciervo es tuyo. A para bajar, A junto a él para montar');
@@ -906,24 +931,78 @@ export class WorldSim {
     p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
-  private nextRound(l: Live, round: number): void {
-    l.tame = { round, start: r2(this.time), zone: r2(this.rng() * Math.PI * 2) };
+  private nextRound(l: Live, round: number, beast: 'deer' | 'fish', ax: number, az: number): void {
+    l.tame = { round, start: r2(this.time), zone: r2(this.rng() * Math.PI * 2), beast, ax, az };
   }
 
   private throwOff(p: SavedPlayer, l: Live): void {
+    const fish = l.tame?.beast === 'fish';
     l.tame = null;
+    if (fish) {
+      l.raceReadyAt = this.time + FISH.retry;
+      return this.tell(p.name, 'Se sacude y se va. Otra vez');
+    }
     l.tameReadyAt = this.time + MOUNT.retry;
     this.tell(p.name, 'Te tira al suelo. Otra vez');
   }
 
-  /** Zone width for this round; a friend near the deer calms it. */
-  private tameWidth(p: SavedPlayer, round: number): number {
-    const w = MOUNT.rounds[round]!.width;
+  /** Zone width for this round; a friend near the beast calms it. */
+  private tameWidth(p: SavedPlayer, t: NonNullable<Live['tame']>): number {
+    const w = roundsOf(t.beast)[t.round]!.width;
     for (const [n, ol] of this.live) {
       const o = this.players.get(n)!;
-      if (n !== p.name && !o.dead && ol.awayFor === null && Math.hypot(o.x - this.wild.x, o.z - this.wild.z) <= MOUNT.calmReach) return w * MOUNT.calmWidth;
+      if (n !== p.name && !o.dead && ol.awayFor === null && Math.hypot(o.x - t.ax, o.z - t.az) <= MOUNT.calmReach) return w * MOUNT.calmWidth;
     }
     return w;
+  }
+
+  /** The giant fish's acts: 6 start the ring race, 7 get on, 8 get off. */
+  private onFishAct(p: SavedPlayer, l: Live, act: number): void {
+    if (act !== 6) return; // 7 / 8: riding (Task 3)
+    if (l.race || l.tame || l.riding || l.fish || Math.hypot(this.fishHome.x - p.x, this.fishHome.z - p.z) > FISH.reach) return;
+    if (p.fish) return this.tell(p.name, 'Ya tienes pez');
+    if (this.time + EPS < l.raceReadyAt) return this.tell(p.name, 'El pez aún recela');
+    l.race = { i: 0, deadline: this.time + FISH.ringTime };
+    this.tell(p.name, `Sale disparado. Pasa por los ${FISH.rings} anillos, ${FISH.ringTime} s cada uno`);
+  }
+
+  /** Ring race: the next ring counts when a validated position is inside it, before the deadline. */
+  private stepRace(): void {
+    for (const [name, l] of this.live) {
+      const r = l.race;
+      if (!r) continue;
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null) {
+        l.race = null;
+        continue;
+      }
+      const ring = this.fishRings[r.i]!;
+      if (Math.hypot(ring.x - p.x, ring.z - p.z) <= FISH.ringR) {
+        r.i++;
+        r.deadline = this.time + FISH.ringTime;
+        if (r.i < this.fishRings.length) continue;
+        l.race = null;
+        this.nextRound(l, 0, 'fish', ring.x, ring.z);
+        this.tell(p.name, 'Lo alcanzas. Ahora, cálmalo');
+      } else if (this.time > r.deadline + EPS) {
+        l.race = null;
+        l.raceReadyAt = this.time + FISH.retry;
+        this.tell(p.name, 'Se escapa');
+      }
+    }
+  }
+
+  /** The wild fish plus every parked (not ridden) tamed one in view. */
+  private fishViews(near: (x: number, z: number) => boolean): SteedView[] {
+    const out: SteedView[] = [];
+    const h = this.fishHome;
+    if (near(h.x, h.z)) out.push({ owner: null, x: r2(h.x), y: WATER_LEVEL, z: r2(h.z), yaw: 0 });
+    for (const o of this.players.values()) {
+      const f = o.fish;
+      if (!f || this.live.get(o.name)?.fish || !near(f.x, f.z)) continue;
+      out.push({ owner: o.name, x: f.x, y: WATER_LEVEL, z: f.z, yaw: 0 });
+    }
+    return out;
   }
 
   /** The wild deer plus every parked (not ridden) tamed one in view. */
@@ -941,7 +1020,8 @@ export class WorldSim {
   private tameView(p: SavedPlayer, l: Live): SelfState['tame'] {
     const t = l.tame;
     if (!t) return null;
-    return { round: t.round, rounds: MOUNT.rounds.length, start: t.start, speed: MOUNT.rounds[t.round]!.speed, zone: t.zone, width: r2(this.tameWidth(p, t.round)) };
+    const rounds = roundsOf(t.beast);
+    return { round: t.round, rounds: rounds.length, start: t.start, speed: rounds[t.round]!.speed, zone: t.zone, width: r2(this.tameWidth(p, t)) };
   }
 
   /** Dying, wandering off or waiting too long ends a taming. */
@@ -950,7 +1030,7 @@ export class WorldSim {
       if (!l.tame) continue;
       const p = this.players.get(name)!;
       if (p.dead || l.awayFor !== null) l.tame = null;
-      else if (Math.hypot(this.wild.x - p.x, this.wild.z - p.z) > MOUNT.leash || this.time - l.tame.start > MOUNT.roundTimeout) this.throwOff(p, l);
+      else if (Math.hypot(l.tame.ax - p.x, l.tame.az - p.z) > MOUNT.leash || this.time - l.tame.start > MOUNT.roundTimeout) this.throwOff(p, l);
     }
   }
 
@@ -1121,6 +1201,9 @@ export class WorldSim {
       riding: l.riding,
       steed: !!p.steed,
       seat: l.seat,
+      fish: !!p.fish,
+      onFish: l.fish,
+      race: l.race ? { i: l.race.i, deadline: r2(l.race.deadline) } : null,
     };
   }
 

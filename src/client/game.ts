@@ -339,7 +339,7 @@ export class Game {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
-      r.ride = p.ride && !p.dead;
+      r.ride = p.ride === 'deer' && !p.dead;
       r.seat = p.dead ? null : p.seat;
       r.seen = m.time;
     }
