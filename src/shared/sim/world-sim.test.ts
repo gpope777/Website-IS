@@ -4,6 +4,7 @@ import { STRUCTURE_HP } from '../items';
 import { BLOCK, BOW } from './combat';
 import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
+import { ENREDADERA } from '../enredadera';
 import { AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -803,5 +804,90 @@ describe('shrines', () => {
     again.connect('Ana');
     expect(snap(again, 'Ana').self.shrines).toEqual([]);
     expect(snap(again, 'Ana').shrines).toHaveLength(3);
+  });
+});
+
+describe('Enredadera', () => {
+  function caster(...names: string[]) {
+    const sim = setup(...names);
+    for (const n of names) sim.getPlayer(n)!.shrines = [0];
+    return sim;
+  }
+  const cast = (sim: WorldSim, x: number, z: number) => sim.handle('Ana', { t: 'power', x, z });
+
+  it('needs a cleared shrine', () => {
+    const sim = setup('Ana');
+    cast(sim, 2, 0);
+    expect(snap(sim, 'Ana').vines).toEqual([]);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Aún no tienes ese poder' });
+  });
+
+  it('grows a climbable vine, with a cooldown, one per player', () => {
+    const sim = caster('Ana');
+    cast(sim, 2, 0);
+    const s = snap(sim, 'Ana');
+    expect(s.vines).toHaveLength(1);
+    expect(s.vines[0]).toMatchObject({ x: 2, z: 0, r: ENREDADERA.r });
+    expect(s.self.powerLeft).toBe(ENREDADERA.cooldown);
+    cast(sim, -2, 0);
+    expect(snap(sim, 'Ana').vines[0]!.x).toBe(2);
+    for (let i = 0; i < ENREDADERA.cooldown * 10 + 1; i++) sim.step(0.1);
+    cast(sim, -2, 0);
+    expect(snap(sim, 'Ana').vines.map((v) => v.x)).toEqual([-2]);
+  });
+
+  it('refuses far targets and water, and vines wither after a while', () => {
+    const sim = caster('Ana');
+    cast(sim, 20, 0);
+    expect(snap(sim, 'Ana').vines).toEqual([]);
+    cast(sim, 2, 0);
+    for (let i = 0; i < ENREDADERA.life * 10 + 1; i++) sim.step(0.1);
+    expect(snap(sim, 'Ana').vines).toEqual([]);
+  });
+
+  it('the server accepts climbing a fresh vine', () => {
+    const sim = caster('Ana');
+    const g = sim.terrain.heightAt(0.5, 0);
+    sim.handle('Ana', { t: 'move', x: 0.5, y: g + 6, z: 0, yaw: 0, anim: 'climb' });
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+    cast(sim, 2, 0);
+    sim.handle('Ana', { t: 'move', x: 0.5, y: g + 6, z: 0, yaw: 0, anim: 'climb' });
+    expect(snap(sim, 'Ana').self.fix).toBe(false);
+    expect(sim.getPlayer('Ana')!.y).toBe(g + 6);
+  });
+
+  it('wraps the smooth shrine rock so its orb can be reached', () => {
+    const sim = caster('Ana');
+    const s = sim.shrines.find((x) => x.kind === 'ledge')!;
+    put(sim, 'Ana', s.x + s.pillar!.r + 1, s.z);
+    cast(sim, s.x, s.z);
+    expect(snap(sim, 'Ana').vines.map((v) => v.id)).toEqual([s.pillar!.id]);
+    expect(sim.climbables().filter((c) => c.id === s.pillar!.id).map((c) => !!c.bare)).toEqual([false]);
+  });
+
+  it('walls near a vine regrow', () => {
+    const saved = newWorld(42, 'salt');
+    const y = 1;
+    saved.structures = [
+      { id: 1, kind: 'wall', x: 4, y, z: 0, rot: 0, owner: 'Ana', hp: 50 },
+      { id: 2, kind: 'wall', x: -40, y, z: 0, rot: 0, owner: 'Ana', hp: 50 },
+    ];
+    const sim = new WorldSim(saved);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    sim.getPlayer('Ana')!.shrines = [0];
+    cast(sim, 2, 0);
+    msgs(sim);
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    const hits = msgs(sim).filter((m) => m.t === 'hit');
+    expect(hits).toContainEqual({ t: 'hit', id: 1, hp: 50 + 2 * ENREDADERA.regen });
+    expect(hits.some((m) => m.t === 'hit' && m.id === 2)).toBe(false);
+  });
+
+  it('the dead cannot cast', () => {
+    const sim = caster('Ana');
+    sim.getPlayer('Ana')!.dead = true;
+    cast(sim, 2, 0);
+    expect(snap(sim, 'Ana').vines).toEqual([]);
   });
 });

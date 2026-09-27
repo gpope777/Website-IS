@@ -2,6 +2,7 @@ import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
+import { ENREDADERA, planVine } from '../enredadera';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -87,6 +88,8 @@ interface Live {
   fix: boolean;
   /** Live-only combat state (roll i-frames, guard, bow cooldown). Never saved. */
   guard: Guard;
+  /** Sim time Enredadera can be cast again. Live-only. */
+  powerReadyAt: number;
   /** Sim time of death; null when alive or after a reconnect (no revive then). Never saved. */
   deadAt: number | null;
 }
@@ -117,6 +120,9 @@ export class WorldSim {
   private readonly graves: Grave[];
   private nextGraveId: number;
   raidLevel: number;
+  private vines: (Crag & { owner: string; until: number })[] = [];
+  private nextVineId: number = ENREDADERA.idBase;
+  private regenClock = 0;
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
   private raid: { phase: 'warn' | 'active'; dir: number } | null = null;
@@ -185,7 +191,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0 };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -230,7 +236,7 @@ export class WorldSim {
       case 'shrine':
         return this.onShrine(p, msg.id, msg.part);
       case 'power':
-        return;
+        return this.onPower(p, l, msg.x, msg.z);
       case 'hello':
         return; // the room handles hello
     }
@@ -264,6 +270,7 @@ export class WorldSim {
     }
 
     this.stepShrines();
+    this.stepVines(dt);
     this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
     if (!night && this.wasNight) this.wolves = [];
@@ -305,7 +312,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: [], shrines: this.shrineViews() };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews() };
   }
 
   drain(): Outgoing[] {
@@ -327,6 +334,13 @@ export class WorldSim {
       raidLevel: this.raidLevel,
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
     };
+  }
+
+  /** Everything you can climb or stand on: crags, shrine rocks (bare unless wrapped) and live vines. */
+  climbables(): Crag[] {
+    const wrapped = new Set(this.vines.map((v) => v.id));
+    const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
+    return [...this.crags, ...bare, ...this.vines];
   }
 
   heart(): Structure | undefined {
@@ -359,7 +373,7 @@ export class WorldSim {
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
     const inBounds = Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
-    const cragCeiling = cragsNear(this.crags, m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
+    const cragCeiling = cragsNear(this.climbables(), m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
     // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
     // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
     const yOk = m.y > ground - 1 && (m.y < ground + 4 || m.y < cragCeiling || m.y <= p.y);
@@ -512,6 +526,37 @@ export class WorldSim {
     if (cleared.length === 0) this.tell(p.name, 'Despierta la Enredadera: H o 🌿 hace crecer una enredadera trepable');
   }
 
+  private onPower(p: SavedPlayer, l: Live, x: number, z: number): void {
+    if (p.dead) return;
+    if (!(p.shrines ?? []).length) return this.tell(p.name, 'Aún no tienes ese poder');
+    if (this.time + EPS < l.powerReadyAt) return this.tell(p.name, `La enredadera aún no brota (${Math.ceil(l.powerReadyAt - this.time - EPS)} s)`);
+    if (Math.hypot(x - p.x, z - p.z) > ENREDADERA.reach || Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4) return this.tell(p.name, 'Demasiado lejos');
+    const others = this.vines.filter((v) => v.owner !== p.name);
+    const wrapped = new Set(others.map((v) => v.id));
+    const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
+    const plan = planVine(this.terrain, [...this.crags, ...others], bare, r2(x), r2(z), this.nextVineId);
+    if (!plan) return this.tell(p.name, 'No hay sitio para crecer');
+    if (plan.id === this.nextVineId) this.nextVineId++;
+    this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
+    l.powerReadyAt = this.time + ENREDADERA.cooldown;
+    this.tell(p.name, 'Crece una enredadera');
+  }
+
+  /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */
+  private stepVines(dt: number): void {
+    this.vines = this.vines.filter((v) => v.until > this.time);
+    this.regenClock += dt;
+    const report = this.regenClock >= 1 - EPS;
+    if (report) this.regenClock = 0;
+    if (!this.vines.length) return;
+    for (const s of this.structures) {
+      if (s.kind !== 'wall' || s.hp >= STRUCTURE_HP.wall) continue;
+      if (!this.vines.some((v) => Math.hypot(v.x - s.x, v.z - s.z) <= ENREDADERA.regenRadius)) continue;
+      s.hp = Math.min(STRUCTURE_HP.wall, s.hp + ENREDADERA.regen * dt);
+      if (report || s.hp === STRUCTURE_HP.wall) this.outbox.push({ to: null, msg: { t: 'hit', id: s.id, hp: Math.round(s.hp) } });
+    }
+  }
+
   private shrineOpen(id: number): boolean {
     return this.shrines[id]!.kind === 'ledge' || this.time < this.shrineLive[id]!.openUntil;
   }
@@ -575,7 +620,7 @@ export class WorldSim {
       fix,
       reviveLeft: p.dead && l.deadAt !== null ? Math.max(0, Math.ceil(REVIVE.window - (this.time - l.deadAt) - EPS)) : 0,
       shrines: [...(p.shrines ?? [])],
-      powerLeft: 0,
+      powerLeft: Math.max(0, Math.ceil(l.powerReadyAt - this.time - EPS)),
     };
   }
 
