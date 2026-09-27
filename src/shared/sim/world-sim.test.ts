@@ -4,7 +4,7 @@ import { STRUCTURE_HP } from '../items';
 import { BLOCK, BOW } from './combat';
 import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
-import { AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, WorldSim } from './world-sim';
+import { AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
   const sim = new WorldSim(newWorld(42, 'salt'));
@@ -588,5 +588,66 @@ describe('graves', () => {
     const g = sim.save().graves!;
     expect(g).toHaveLength(GRAVE.max);
     expect(g[0]!.id).toBe(2);
+  });
+});
+
+describe('revive', () => {
+  function pair() {
+    const sim = setup('Ana', 'Leo');
+    put(sim, 'Ana', 10, 10);
+    put(sim, 'Leo', 11, 10);
+    return sim;
+  }
+
+  it('a teammate in reach gets you up with your backpack', () => {
+    const sim = pair();
+    const ana = sim.getPlayer('Ana')!;
+    ana.inv = { stone: 4 };
+    down(sim, 'Ana');
+    expect(ana.dead).toBe(true);
+    expect(snap(sim, 'Ana').self.reviveLeft).toBe(REVIVE.window);
+    sim.handle('Leo', { t: 'revive', name: 'Ana' });
+    expect(ana.dead).toBe(false);
+    expect(ana.vitals.health).toBe(REVIVE.health);
+    expect(ana.vitals.hunger).toBeGreaterThanOrEqual(REVIVE.floor);
+    expect(ana.vitals.warmth).toBeGreaterThanOrEqual(REVIVE.floor);
+    expect(ana.inv).toEqual({ stone: 4 });
+    expect(ana.x).toBe(10);
+    expect(snap(sim, 'Ana').self.reviveLeft).toBe(0);
+    expect(snap(sim, 'Ana').graves).toEqual([]);
+    sim.step(0.1);
+    expect(ana.dead).toBe(false); // does not starve again at once
+  });
+
+  it('too far, self, dead reviver or live target: nothing happens', () => {
+    const sim = pair();
+    const ana = down(sim, 'Ana');
+    put(sim, 'Leo', 15, 10);
+    sim.handle('Leo', { t: 'revive', name: 'Ana' });
+    expect(ana.dead).toBe(true);
+    sim.handle('Ana', { t: 'revive', name: 'Ana' });
+    expect(ana.dead).toBe(true);
+    put(sim, 'Leo', 11, 10);
+    const leo = down(sim, 'Leo');
+    sim.handle('Leo', { t: 'revive', name: 'Ana' });
+    expect(ana.dead).toBe(true);
+    sim.handle('Leo', { t: 'respawn' });
+    put(sim, 'Leo', 11, 10);
+    const hp = leo.vitals.health;
+    sim.handle('Ana', { t: 'revive', name: 'Leo' });
+    expect(leo.vitals.health).toBe(hp);
+    sim.handle('Leo', { t: 'revive', name: 'Nadie' });
+    expect(ana.dead).toBe(true);
+  });
+
+  it('after the window it is too late', () => {
+    const sim = pair();
+    const ana = down(sim, 'Ana');
+    for (let i = 0; i < REVIVE.window * 10 + 2; i++) sim.step(0.1);
+    expect(snap(sim, 'Ana').self.reviveLeft).toBe(0);
+    sim.drain();
+    sim.handle('Leo', { t: 'revive', name: 'Ana' });
+    expect(ana.dead).toBe(true);
+    expect(sim.drain().some((o) => o.to === 'Leo' && o.msg.t === 'toast' && o.msg.text === 'Ya es tarde')).toBe(true);
   });
 });

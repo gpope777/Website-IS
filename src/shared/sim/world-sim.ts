@@ -213,7 +213,7 @@ export class WorldSim {
       case 'shoot':
         return this.onShoot(p, l, msg.id);
       case 'revive':
-        return;
+        return this.onRevive(p, msg.name);
       case 'hello':
         return; // the room handles hello
     }
@@ -447,6 +447,23 @@ export class WorldSim {
     g.bowReadyAt = this.time + BOW.cooldown;
     l.anim = 'bow';
     if (hitWolf(w, BOW.damage)) this.say(`${p.name} derrotó a ${ENEMY_LABELS[w.kind]}`);
+  }
+
+  private onRevive(p: SavedPlayer, name: string): void {
+    const t = this.players.get(name);
+    const tl = this.live.get(name);
+    if (p.dead || !t || !t.dead || !tl || name === p.name || tl.deadAt === null) return;
+    if (Math.hypot(t.x - p.x, t.z - p.z) > REVIVE.reach) return;
+    if (this.time - tl.deadAt > REVIVE.window + EPS) return this.tell(p.name, 'Ya es tarde');
+    t.dead = false;
+    t.vitals = { health: REVIVE.health, hunger: Math.max(t.vitals.hunger, REVIVE.floor), warmth: Math.max(t.vitals.warmth, REVIVE.floor) };
+    tl.deadAt = null;
+    tl.guard = newGuard();
+    tl.anchorX = t.x;
+    tl.anchorZ = t.z;
+    tl.anchorAt = this.time;
+    tl.lastAcceptedAt = this.time;
+    this.say(`${p.name} levantó a ${t.name}`);
   }
 
   private onRespawn(p: SavedPlayer, l: Live): void {
