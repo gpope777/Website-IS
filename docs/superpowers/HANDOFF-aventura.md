@@ -315,3 +315,26 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador: no (solo tests + build).
 - Bloqueos: ninguno.
 - Qué probar: ir a la playa y buscar la mancha morada; pasar una noche dentro (más bestias). Tomar un orbe de la Costa y ver qué mancha desaparece. En casa, al atardecer: "Algo sube de la costa" y dos brutos de más; tras limpiar dos zonas de la Costa, uno. Constantes: `COAST_ZONES`, `coastRaidBrutes` en `corruption.ts`.
+
+## Slice 2 · S2-E — la Ballena — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-E-ballena.md`.
+- Commits: 11fe1dc (T1 reglas: `src/shared/whale.ts`), a244788 (T2 doma entre varios, protocolo v18), 2b55824 (T3 asientos, piloto, aguas bravas, vuelta a casa), 5d8edc9 (T4 cliente).
+- Tests: npm test 388 (antes 368), test:workers 12, check + build verdes. PROTOCOL_VERSION = 18. Campo guardado nuevo opcional `SavedWorld.whale` (dónde flota la ballena domada): las partidas viejas cargan con la ballena salvaje.
+- Cómo funciona:
+  - **Ballena salvaje:** una por mundo, sembrada en el mar hondo (≥8 m de fondo, lejos de islotes y aguas bravas). Resopla un chorro alto que se ve desde lejos (el `snap.whale` va siempre, a todos).
+  - **Doma (decisión de Gabriel: nunca solo):** A a ≤10 m. Con uno solo: "Con uno solo no se deja. Hacen falta dos". Con dos o más a ≤10 m sale el anillo del ciervo a **todos** los de alrededor, **4 rondas** (2,2 → 4,8 rad/s, zona 1,2 → 0,55), zona ×(1 + 0,4 por jugador extra, hasta 3). Cualquiera pulsa; el primer toque bueno cuenta y el de un amigo que llega tarde a esa ronda se ignora (no la estropea). Un toque malo, 8 s sin tocar o quedarse menos de dos: "La ballena se sumerge. Otra vez en 10 s".
+  - **Es del mundo:** "La ballena es del mundo. A junto a ella para subir".
+  - **4 asientos:** A a ≤5 m sube al primer libre; el primero **pilota** ("Llevas la ballena"). Quinto: "No queda sitio". El servidor coloca a los pasajeros cada tick e ignora sus `move` (salvo mirar). Si el piloto baja, el siguiente pasa a pilotar.
+  - **Pilotar:** 5 m/s, sprint 7 (tope del servidor 8), en la superficie, nunca con menos de 3 m de fondo ("La ballena no cabe"). **Cruza las aguas bravas**: es la llave de la isla de la mazmorra.
+  - **Bajar:** A (E/M). Caes al agua 3 m al costado; si tu pez espera a ≤8 m, vuelves a estar encima. Subir desde el pez lo deja esperando donde estabas. Morir, irse o entrar en la mazmorra te baja.
+  - **Vuelta a casa:** sin nadie encima durante 10 min de tiempo con alguien conectado, reaparece en su sitio.
+- Decisiones/desvíos:
+  - Sin mensaje nuevo: `mount` gana los actos 9 (domar), 10 (subir) y 11 (bajar); el acto 1 sirve también para la ballena. La doma es estado del mundo y se muestra como `self.tame` con `beast: 'whale'`, así el anillo del cliente no cambia.
+  - "En rango" = vivo, conectado y a ≤10 m (no se exige ir en pez: al mar hondo solo se llega en pez o ballena).
+  - La salvaje está quieta en el servidor; el cliente la mece. Volver a casa es un salto (una ruta nadando podría encallar en un islote); el cliente la suaviza.
+  - El cuerpo del piloto es el asiento 0 (1,6 m delante del centro); girar en el sitio hace pivotar la ballena alrededor del piloto.
+  - Figura de cajas azul oscuro con chorro blanco (alto si es salvaje, bajo si es domada; desaparece al sumergirse).
+  - Cambio de regla con test adaptado: versión de protocolo en los tests → 18.
+- Verificado en navegador: no (solo tests + build).
+- Bloqueos: ninguno.
+- Qué probar: con dos jugadores en pez, ir al chorro del mar hondo, A, calmarla entre los dos (¿4 rondas son muchas?). Probar solo (debe negarse). Subir los dos, pilotar hasta la isla cruzando las aguas bravas, intentar entrar en los bajíos (se para), bajar junto al pez. Dejarla lejos 10 min y ver que vuelve. Constantes: `WHALE` en `src/shared/whale.ts`.
