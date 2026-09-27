@@ -6,7 +6,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * nearer half of the defenses, swats whoever is in his way, laughs and leaves. He cannot die:
  * his hp is "voluntad", and at 0 he is driven off (the world decides that, not this file).
  */
-export const MARCHITO = { id: 900_000, delay: 20, spawnDist: 28, smashReach: 2.6, smashTime: 2.5, laughFor: 4, maxTime: 120, height: 7, grabFor: 6 } as const;
+export const MARCHITO = { id: 900_000, delay: 20, spawnDist: 28, smashReach: 2.6, smashTime: 2.5, laughFor: 4, maxTime: 120, height: 7, grabFor: 6, channelFor: 90 } as const;
 
 export interface Marchito extends Wolf {
   /** Structure ids still to smash, nearest the Heart first. */
@@ -25,6 +25,8 @@ export interface Marchito extends Wolf {
   max: number;
   /** Invasion 2: seconds spent wrapping the Tragón in roots (null = not a thief). */
   grab: number | null;
+  /** Invasion 3: seconds spent channelling on the Heart (null = not this invasion). */
+  channel: number | null;
 }
 
 /** Voluntad for 1–4 active players: about 10–15 s of one player's blows each. */
@@ -39,6 +41,11 @@ export function thiefWill(players: number): number {
   return Math.round(1.2 * marchitoWill(players));
 }
 
+/** Invasion 3 comes with 1.3× the voluntad (spec S5 §8.2: 390…858). */
+export function heartWill(players: number): number {
+  return Math.round(1.3 * marchitoWill(players));
+}
+
 /** The nearer `frac` (half by default, rounded up) of everything but the Heart. */
 export function pickDefenses(structs: readonly { id: number; kind: string; x: number; z: number }[], heart: { x: number; z: number }, frac = 0.5): number[] {
   const d = (s: { x: number; z: number }) => Math.hypot(s.x - heart.x, s.z - heart.z);
@@ -49,7 +56,7 @@ export function pickDefenses(structs: readonly { id: number; kind: string; x: nu
 export function createMarchito(x: number, y: number, z: number, prey: number[], will: number = ENEMY.marchito.hp): Marchito {
   return {
     id: MARCHITO.id, x, y, z, yaw: 0, hp: will, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle', raid: false, kind: 'marchito', stun: 0,
-    prey: [...prey], smash: 0, laugh: 0, age: 0, taunted: [], left: false, max: will, grab: null,
+    prey: [...prey], smash: 0, laugh: 0, age: 0, taunted: [], left: false, max: will, grab: null, channel: null,
   };
 }
 
@@ -148,6 +155,56 @@ export function stepThief(m: Marchito, goal: { x: number; z: number }, players: 
   return { t: 'grabbed' };
 }
 
+/**
+ * Invasion 3 (spec S5 §8.2): walks to the Heart and channels on it for `channelFor` seconds, then reports
+ * `drained` once, laughs `laughFor` seconds and reports `leave`. He still swipes whoever stands in reach.
+ */
+export function stepChanneler(m: Marchito, heart: { x: number; z: number }, players: readonly WolfTarget[], heightAt: (x: number, z: number) => number, dt: number): { t: 'swipe'; name: string } | { t: 'drained' } | { t: 'leave' } | null {
+  const def = ENEMY.marchito;
+  if (m.left) return null;
+  m.age += dt;
+  m.cooldown = Math.max(0, m.cooldown - dt);
+  if (m.laugh > 0) {
+    m.laugh = Math.max(0, m.laugh - dt);
+    m.anim = 'idle';
+    if (m.laugh > 1e-9) return null;
+    m.left = true;
+    return { t: 'leave' };
+  }
+  if (m.stun > 0) {
+    m.stun = Math.max(0, m.stun - dt);
+    m.anim = 'idle';
+    return null;
+  }
+  const near = players.find((p) => !p.dead && Math.hypot(p.x - m.x, p.z - m.z) <= def.reach);
+  if (near && m.cooldown === 0) {
+    m.cooldown = def.biteCooldown;
+    m.yaw = Math.atan2(near.x - m.x, near.z - m.z);
+    m.anim = 'attack';
+    return { t: 'swipe', name: near.name };
+  }
+  const dx = heart.x - m.x;
+  const dz = heart.z - m.z;
+  const d = Math.hypot(dx, dz);
+  if (d > MARCHITO.smashReach) {
+    const step = Math.min(d - MARCHITO.smashReach * 0.8, def.run * dt);
+    m.x += (dx / d) * step;
+    m.z += (dz / d) * step;
+    m.y = heightAt(m.x, m.z);
+    m.yaw = Math.atan2(dx, dz);
+    m.anim = 'walk';
+    return null;
+  }
+  m.yaw = Math.atan2(dx, dz);
+  m.anim = 'attack';
+  m.channel = (m.channel ?? 0) + dt;
+  if (m.channel + 1e-9 < MARCHITO.channelFor) return null;
+  m.channel = MARCHITO.channelFor;
+  m.laugh = MARCHITO.laughFor;
+  m.anim = 'idle';
+  return { t: 'drained' };
+}
+
 export function joinNames(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? 'nadie';
   return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
@@ -183,5 +240,9 @@ export const VISION = {
   steal: [`${NAMES.villain} sube desde la costa. Esta vez no mira los muros.`, `«Vengo a por el ${NAMES.bossForestShort}.»`],
   stolen: (name: string) => [`${NAMES.villain} envuelve al ${NAMES.bossForestShort} en raíces y se lo lleva.`, `«Me llevo al perrito de papel. Vengan a por él al mar, ${name}.»`],
   driven2: (names: string) => [`${NAMES.villain} retrocede hacia el mar. El ${NAMES.bossForestShort} va con él.`, `«${names}. Los muros, otro día.»`],
+  armed3: ['El último pilar cae. La torre, a lo lejos, se queda a oscuras.', '«Ah. Ahora voy yo.»'],
+  arrive3: [`${NAMES.villain} viene a por el ${NAMES.heart}. Esta vez, del norte.`, '«Nada de muros. Lo quiero a él.»', 'Échenlo antes de que lo envuelva.'],
+  driven3: (names: string) => [`${NAMES.villain} suelta el ${NAMES.heart} y se va hacia la torre.`, `«${names}. Mañana, en mi casa. Traigan a sus bichos blancos.»`],
+  drained3: (names: string) => [`El ${NAMES.heart} queda con un hilo de vida. ${NAMES.villain} se ríe.`, `«Casi, ${names}. Mañana, en mi casa. Traigan a sus bichos blancos, si les quedan ganas.»`],
   rescued: (names: string) => ['La voz, de mal humor:', `«Quédense con su perro de papel, ${names}.»`, '«Muerde más que antes. No es culpa mía.»'],
 };

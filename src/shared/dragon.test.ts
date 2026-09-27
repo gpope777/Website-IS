@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRAGON, dragonCeil, dragonOut, dragonPos, inFog, leapOk, picoOf } from './dragon';
+import { AIR, clawReach, DRAGON, guardTarget, dragonCeil, dragonOut, dragonPos, inFog, leapOk, picoOf } from './dragon';
 import { NAMES } from './names';
 import { createTerrain, HALF } from './terrain';
 import { weatherAt } from './weather';
@@ -52,5 +52,19 @@ describe('el Dragón', () => {
     expect(Math.abs(DRAGON.rounds[4]!.speed)).toBe(5.4);
     expect(NAMES.dragon).toBe('el Dragón');
     expect(NAMES.dragonWild).toBe('el Dragón Marchito');
+  });
+});
+
+describe('air defense (S5-D)', () => {
+  it('the claw reaches 5 m in 3D', () => {
+    expect(clawReach({ x: 0, y: 10, z: 0 }, { x: 4.9, y: 10, z: 0 })).toBe(true);
+    expect(clawReach({ x: 0, y: 10, z: 0 }, { x: 3, y: 5.5, z: 0 })).toBe(false);
+    expect(AIR.claw).toBe(40);
+  });
+  it('a parked dragon picks the nearest living rayo within 12 m', () => {
+    const f = (kind: string, x: number, hp = 60) => ({ kind, x, z: 0, hp });
+    const near = f('rayo', 8);
+    expect(guardTarget({ x: 0, z: 0 }, [f('wolf', 1), f('marchito', 2), f('rayo', 3, 0), f('rayo', 11), near])).toBe(near);
+    expect(guardTarget({ x: 0, z: 0 }, [f('rayo', 13), f('brute', 2)])).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMarchito, joinNames, marchitoWill, MARCHITO, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type MarchitoEvent } from './marchito';
+import { createMarchito, joinNames, marchitoWill, MARCHITO, pickDefenses, stepMarchito, heartWill, stepChanneler, stepThief, thiefWill, VISION, type MarchitoEvent } from './marchito';
 import { ENEMY } from './wolves';
 
 const heart = { x: 0, z: 0 };
@@ -130,5 +130,42 @@ describe('El Marchito, Invasion 2', () => {
   it('says the lines with names', () => {
     expect(VISION.stolen('Ana').join(' ')).toContain('Vengan a por él al mar, Ana');
     expect(VISION.rescued('Ana y Leo').join(' ')).toContain('Ana y Leo');
+  });
+});
+
+describe('El Marchito, Invasion 3 (S5-D)', () => {
+  it('comes with 1.3× voluntad: 390/546/702/858', () => {
+    expect([1, 2, 3, 4].map(heartWill)).toEqual([390, 546, 702, 858]);
+  });
+
+  it('walks to the Heart, channels channelFor seconds, drains once, laughs and leaves', () => {
+    const m = createMarchito(0, 0, -28, [], heartWill(1));
+    expect(m.channel).toBeNull();
+    const ev: unknown[] = [];
+    let drainedAt = -1;
+    for (let i = 0; i < 1400; i++) {
+      const e = stepChanneler(m, { x: 0, z: 0 }, [], flat, 0.1);
+      if (e) ev.push(e);
+      if (e?.t === 'drained') drainedAt = i;
+      if (i === 30) expect(m.channel ?? 0).toBe(0);
+      if (e?.t === 'leave') break;
+    }
+    expect(ev).toEqual([{ t: 'drained' }, { t: 'leave' }]);
+    expect(drainedAt).toBeGreaterThan(MARCHITO.channelFor * 10);
+    expect(m.left).toBe(true);
+    expect(stepChanneler(m, { x: 0, z: 0 }, [], flat, 0.1)).toBeNull();
+  });
+
+  it('swipes a player in reach instead of channelling that tick', () => {
+    const m = createMarchito(1, 0, 0, []);
+    expect(stepChanneler(m, { x: 0, z: 0 }, [player('Ana', 2)], flat, 0.1)).toEqual({ t: 'swipe', name: 'Ana' });
+    expect(m.channel ?? 0).toBe(0);
+  });
+
+  it('has its lines', () => {
+    expect(VISION.armed3.join(' ')).toContain('Ah. Ahora voy yo.');
+    expect(VISION.arrive3.join(' ')).toContain('viene a por el Corazón');
+    expect(VISION.driven3('Ana').join(' ')).toContain('Traigan a sus bichos blancos');
+    expect(VISION.drained3('Ana').join(' ')).toContain('Ana');
   });
 });

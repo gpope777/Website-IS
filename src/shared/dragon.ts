@@ -45,6 +45,32 @@ export const DRAGON = {
   width: 8,
 } as const;
 
+/**
+ * Air defense (spec S5 §8.3): riding, the attack is a claw on a rayo within `reach` m (3D), `claw` damage,
+ * `cooldown` s; a tamed dragon parked within `guardR` m of the Heart at night bites the nearest rayo within
+ * `biteR` m every `every` s.
+ */
+export const AIR = { claw: 40, reach: 5, cooldown: 1, guardR: 30, biteR: 12, every: 3 } as const;
+
+export function clawReach(rider: { x: number; y: number; z: number }, foe: { x: number; y: number; z: number }): boolean {
+  return Math.hypot(foe.x - rider.x, foe.y - rider.y, foe.z - rider.z) <= AIR.reach;
+}
+
+/** The nearest living rayo within `biteR` m of a parked dragon (flat distance). Nothing else. */
+export function guardTarget<T extends { x: number; z: number; hp: number; kind: string }>(dragon: { x: number; z: number }, foes: readonly T[]): T | null {
+  let best: T | null = null;
+  let bd: number = AIR.biteR;
+  for (const f of foes) {
+    if (f.kind !== 'rayo' || f.hp <= 0) continue;
+    const d = Math.hypot(f.x - dragon.x, f.z - dragon.z);
+    if (d <= bd) {
+      bd = d;
+      best = f;
+    }
+  }
+  return best;
+}
+
 export const FOG_TEXT = 'La niebla te devuelve. Aún no';
 
 /** Is the wild dragon out on in-game day `day`? Only on a storm day, and only once El Cucurucho is purified. */
