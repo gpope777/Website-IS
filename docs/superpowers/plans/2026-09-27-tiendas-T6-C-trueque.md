@@ -21,7 +21,7 @@
 - **[D] Distinct materials per side** (3 lines = 3 different materials) and 1–99 per line: simplest valid form; the UI adds up with + anyway.
 - **[D] Trades are live-only**: a room restart cancels them (nothing moved until the close, so nothing is lost).
 - **[D] "No" counter** is per asker → target, live-only; it resets on a "Ver" and after the 60 s wait.
-- **[D] Asking while one of the two is in a dungeon, dead, mounted-on-anything is not blocked except dungeon/dead**; mounting is fine (the 6 m leash is the only movement rule).
+- **[D] Only being dead or in a dungeon blocks a trade**; riding is fine (the 6 m leash is the only movement rule).
 - `npm test && npm run test:workers && npm run check && npm run build` before every commit. Commits end with the Co-Authored-By + Claude-Session lines. Push after each task.
 
 ## File Structure
@@ -41,9 +41,9 @@ export function offerInv(lines: readonly TradeLine[]): Inventory;
 export function trade(a: Inventory, b: Inventory, la: readonly TradeLine[], lb: readonly TradeLine[]): { ok: true; a: Inventory; b: Inventory } | { ok: false; side: 0 | 1; item: ItemId };
 ```
 
-- [ ] **Step 1: failing tests.** `linesOk`: ≤3, distinct, items only, integers 1–99, rejects objects with extra junk types; `trade` swaps, gifts (one side empty) work, short side refused with which side/item, inputs not mutated. **Property:** 500 seeded random pairs of mochilas and offers: `a+b` per material constant, either both change exactly by the offers or neither changes, never negative.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(tiendas): trueque, reglas puras`.
+- [x] **Step 1: failing tests** (`src/shared/trade.test.ts`). `linesOk`: ≤3, distinct, items only, integers 1–99, rejects objects with extra junk types; `trade` swaps, gifts (one side empty) work, short side refused with which side/item, inputs not mutated. **Property:** 500 seeded random pairs of mochilas and offers: `a+b` per material constant, either both change exactly by the offers or neither changes, never negative.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(tiendas): trueque, reglas puras`.
 
 ### Task 2: server — ask/answer/offer/ok/cancel (protocolo v61)
 

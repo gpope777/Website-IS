@@ -116,3 +116,40 @@ export function collectTill(s: Stall, inv: Inventory): ShopResult {
   for (const k of ITEMS) if (count(s.till, k) > 0) out = addItem(out, k, count(s.till, k));
   return { ok: true, stall: { ...s, shelves: s.shelves.map((x) => ({ ...x })), till: {}, log: [...s.log] }, inv: out };
 }
+
+/** T6-C: trueque directo (spec §4). Distances in m, times in s. */
+export const TRADE = { reach: 4, leash: 6, lines: 3, nMax: 99, timeout: 60, askEvery: 5, noMax: 3, noWait: 60 } as const;
+export interface TradeLine { item: ItemId; n: number }
+
+/** Up to 3 lines, distinct materials, whole amounts 1–99. Only the 7 materials: nothing else can be traded. */
+export function linesOk(lines: unknown): lines is TradeLine[] {
+  if (!Array.isArray(lines) || lines.length > TRADE.lines) return false;
+  const seen = new Set<unknown>();
+  for (const l of lines as unknown[]) {
+    if (!l || typeof l !== 'object') return false;
+    const { item, n } = l as { item?: unknown; n?: unknown };
+    if (!isItem(item) || seen.has(item) || typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > TRADE.nMax) return false;
+    seen.add(item);
+  }
+  return true;
+}
+
+export function offerInv(lines: readonly TradeLine[]): Inventory {
+  let o: Inventory = {};
+  for (const l of lines) o = addItem(o, l.item, l.n);
+  return o;
+}
+
+/** Both sides at once, or nothing. Never mutates. */
+export function trade(a: Inventory, b: Inventory, la: readonly TradeLine[], lb: readonly TradeLine[]): { ok: true; a: Inventory; b: Inventory } | { ok: false; side: 0 | 1; item: ItemId } {
+  const short = (inv: Inventory, ls: readonly TradeLine[]) => ls.find((l) => count(inv, l.item) < l.n)?.item;
+  const sa = short(a, la);
+  if (sa) return { ok: false, side: 0, item: sa };
+  const sb = short(b, lb);
+  if (sb) return { ok: false, side: 1, item: sb };
+  let na = removeAll(a, offerInv(la));
+  let nb = removeAll(b, offerInv(lb));
+  for (const l of lb) na = addItem(na, l.item, l.n);
+  for (const l of la) nb = addItem(nb, l.item, l.n);
+  return { ok: true, a: na, b: nb };
+}
