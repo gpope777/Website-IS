@@ -1261,3 +1261,40 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar: ver "Tiendas — resumen", pasos 5–7. Constantes: `MERCHANT`, `RESTOCK_MAX`, `STALL.wantMax` en `src/shared/shop.ts`.
 - Lo siguiente: #2 Mundo y visuales → #7 Pulido.
+
+## Visuales · V2-A — Arnés y gamas — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-visuales-V2-A-arnes-gamas.md` (d184d0f).
+- Commits: 761f42e (T1 puro: campos nuevos de `TierSettings`, `probeVerdict`, `FpsGuard`, `lowerTier`), e73123f (T2 cliente: `?fps=1`, prueba de FPS, bajada automática, gancho `?perf=1`), 0fb394d (T3 arnés `npm run perf` + `scripts/perf/baseline.json`).
+- Tests: npm test 1126 (antes 1111), test:workers 12, check + build verdes. **PROTOCOL_VERSION sigue en 62.** Sin cambio visual ni de juego.
+- Cómo funciona:
+  - **`npm run perf`** (no entra en `npm test`; ~16 min las 3 gamas): construye con `--mode perf` en `scratch/perf/dist`, arranca `wrangler dev` (puerto 8799, estado desechable), crea el mundo `perf` con semilla 42, y en Chromium headless recorre 7 paradas × mediodía/medianoche × 3 gamas leyendo `renderer.info` tras 30 fotogramas. Compara con la base: falla si algo sube >10 % o si una lectura pasa el presupuesto de §3 **y además** empeora. `-- --update` reescribe la base, `-- --tier low` una gama, `-- --shots` PNG en `scratch/perf/shots/`.
+  - **`?fps=1`**: contador arriba a la izquierda ("58 fps · Media", "· ×0,85" si bajó la resolución). También en producción.
+  - **Prueba de FPS** (solo la primera partida, sin gama guardada): 4 s tras entrar, sin los 20 primeros fotogramas; > 33 ms en media/alta → baja un escalón y lo guarda; < 12 ms en baja con táctil → "Esto va sobrado: prueba gráficos Media en el Menú." una vez. Nunca sube sola.
+  - **Bajada en juego:** media de 10 s bajo 24 fps → resolución ×0,85 (hasta 0,7 en baja; un paso en media/alta), luego "Bajé los gráficos." y una gama menos. Un cambio por minuto como mucho. Se aplica al momento resolución, distancia y sombras; hierba y detalle del terreno al volver a entrar.
+  - `window.__perf` solo existe en builds de desarrollo y `--mode perf` (módulo `perf-hook.ts` cargado aparte; el build de producción no lo contiene, comprobado).
+- **Cifras de hoy** (llamadas / triángulos; día = noche en todas: la noche no añade nada hoy):
+
+| Parada | Baja | Media | Alta |
+|---|---|---|---|
+| Bosque | 67 / 529 k | 150 / 1 041 k | 189 / 1 119 k |
+| Costa | 67 / 533 k | 109 / 1 043 k | 109 / 1 123 k |
+| Bajo el agua | 62 / 533 k | 94 / 1 043 k | 94 / 1 123 k |
+| Pantano | 51 / 535 k | 77 / 1 045 k | 77 / 1 125 k |
+| Montañas | 68 / 548 k | 99 / 1 064 k | 107 / 1 152 k |
+| Tierras | 54 / 486 k | 79 / 969 k | 79 / 1 015 k |
+| Mazmorra | 92 / 530 k | 118 / 1 040 k | 134 / 1 118 k |
+| Presupuesto §3 | 120 / 250 k | 180 / 500 k | 260 / 1 200 k |
+
+  - **Llamadas: dentro en todo. Triángulos: baja y media ya pasan del doble** (≈ 530 k y ≈ 1 M en todas partes, casi igual en todos los biomas → es algo que se dibuja entero siempre: la hierba de 2 500/6 000 instancias por todo el mapa y los `InstancedMesh` de árboles sin recorte, spec §5.3). Lo baja V2 de hierba/vegetación. Alta cabe (Montañas 1,15 M, justo).
+  - Montañas: 600 puntos (la nieve de `weather.ts`). Programas 24–41, texturas 8 en todas.
+- Decidido por Claude — revisar:
+  - Playwright como devDependency fija **`playwright-core@1.56.1`** (su Chromium 1194 es el de `/opt/pw-browsers`) en vez de `npm i playwright` en `scratch/perf` como decía el spec: una versión en el lockfile y cero descargas (`playwright-core` no baja navegadores). Chromium: `PERF_CHROMIUM` → `PLAYWRIGHT_BROWSERS_PATH` → `/opt/pw-browsers`; sin ninguno dice "Sin Chromium…" y sale con 0.
+  - Las cifras de hoy son la base aunque ya pasen el presupuesto (spec §3: el plan que toque ese bioma lo baja); por eso "pasa el presupuesto" solo falla si además empeora.
+  - Paradas: sin "hogar" ni "Tierras purificadas simuladas" (no hay look purificado que simular; lo añade su plan). Cámara a 960×540, ratio 1.
+  - Campos nuevos (`grassRadius`, `grassPerChunk`, `waterGrid`, `clouds`, `stars`, `heightFog`, `glowPoints`, `ambient` = luciérnagas, `particles`, `triplanar`, `shadowRadius`) declarados con los números de §3; nadie los lee aún. `grassPerChunk` 2 100/2 700/3 600 ≈ 8 k/30 k/90 k briznas en vista.
+  - Si la prueba no baja nada, guarda la gama adivinada para no volver a probar. Con el almacenamiento bloqueado no prueba.
+  - La bajada de gama en juego no reconstruye el mundo (sería un tirón): aplica lo barato ya y el resto al volver a entrar.
+- Verificado en navegador: sí, el arnés entra al mundo en Chromium headless y hace las 42 lecturas (capturas revisadas: el robot en cada parada). La prueba de FPS y la bajada automática no se vieron en vivo (SwiftShader va a ~2 fps y el arnés las apaga); tienen tests puros.
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono): entrar con `?fps=1`; en un teléfono nuevo (sin gama guardada) mirar si a los 4 s sale "Bajé los gráficos."; jugar 1 min en el bosque y apuntar los fps de Baja; en el Menú probar Media.
+- Lo siguiente: V2-B (según el mapa del spec §12).

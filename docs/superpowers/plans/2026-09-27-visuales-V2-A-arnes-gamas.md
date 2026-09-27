@@ -1,6 +1,6 @@
 # Visuales · V2-A: Arnés y gamas — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** the first plan of subproject #2 (spec §3, §7, §8, row V2-A of §12). Measure before touching anything: a **performance harness** (`npm run perf`) that walks a fixed camera route through every biome at noon and midnight in the three tiers and records draw calls, triangles, points, geometries, textures and programs; the **baseline of today** committed to `scripts/perf/baseline.json`; the **`?fps=1`** on-screen counter for real phones; the **new `TierSettings` fields** (unused yet, no visual change); the **4 s FPS probe** on the first game and the **automatic downgrade** when the game runs under 24 fps for 10 s.
 
@@ -42,22 +42,22 @@ type GuardAction = { kind: 'ratio'; ratio: number } | { kind: 'tier'; tier: Tier
 
 Values (spec §3): grassRadius 35/60/90, grassPerChunk 2100/2700/3600 (≈ 8 k/30 k/90 k in view), waterGrid 1/64/128, clouds 0/1/2, stars no/no/sí, heightFog no/sí/sí, glowPoints 4/8/8, ambient (luciérnagas) 40/120/250, particles 200/400/600, triplanar no/sí/sí, shadowRadius 0/40/60.
 
-- [ ] **Step 1: failing tests** (`quality.test.ts`): every numeric field low ≤ medium ≤ high and every boolean monotone (false→true); shadowRadius 0 iff no shadows; `lowerTier`. `probeVerdict`: ignores the first 20 frames; 40 ms on medium → down; 40 ms on low → keep; 10 ms low+touch → offer, not without touch; < 21 frames → keep. `FpsGuard`: steady 60 fps → nothing; 10 s at 15 fps on low → ratio 0.85, a minute later 0.72, then 0.7, then nothing (low has no lower tier); on medium → one ratio step then `tier: 'low'`; never two actions within 60 s; hidden-tab gaps (dt > 0.5) ignored.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(visuales): campos de gama nuevos, prueba de FPS y bajada automática (puro)`.
+- [x] **Step 1: failing tests** (`quality.test.ts`): every numeric field low ≤ medium ≤ high and every boolean monotone (false→true); shadowRadius 0 iff no shadows; `lowerTier`. `probeVerdict`: ignores the first 20 frames; 40 ms on medium → down; 40 ms on low → keep; 10 ms low+touch → offer, not without touch; < 21 frames → keep. `FpsGuard`: steady 60 fps → nothing; 10 s at 15 fps on low → ratio 0.85, a minute later 0.72, then 0.7, then nothing (low has no lower tier); on medium → one ratio step then `tier: 'low'`; never two actions within 60 s; hidden-tab gaps (dt > 0.5) ignored.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(visuales): campos de gama nuevos, prueba de FPS y bajada automática (puro)`.
 
 ### Task 2: client — `?fps=1`, probe, guard, `?perf=1`
 
-- [ ] **Step 1: failing tests** (`fps-meter.test.ts`): `fpsText(fps, tier, ratio)` → "58 fps · Media" and "22 fps · Baja · ×0,85"; `FpsMeter` averages over 0.5 s.
-- [ ] **Step 2: implement.** `FpsMeter` div (fixed, top-left, `pointer-events: none`) when `?fps=1`. `game.ts`: probe after the first world frame when there was no saved tier; guard every frame; live apply (`setPixelRatio`, camera far, `shadowMap.enabled = false`); `saveTier`; toasts. Perf hook: `window.__perf = { ready(), stop({x, z, y?, yaw, pitch, frac}), release(), info() }` — `stop` holds the body there (no moves sent), fixes the hour; `info()` returns `renderer.info` numbers + `programs`. Gated by the build mode so production has none of it (checked by grepping `dist/` for `__perf`).
-- [ ] **Step 3:** green, self-review, commit `feat(visuales): contador ?fps=1, prueba de FPS en la primera partida y gancho de rendimiento`.
+- [x] **Step 1: failing tests** (`fps-meter.test.ts`): `fpsText(fps, tier, ratio)` → "58 fps · Media" and "22 fps · Baja · ×0,85"; `FpsMeter` averages over 0.5 s.
+- [x] **Step 2: implement.** `FpsMeter` div (fixed, top-left, `pointer-events: none`) when `?fps=1`. `game.ts`: probe after the first world frame when there was no saved tier; guard every frame; live apply (`setPixelRatio`, camera far, `shadowMap.enabled = false`); `saveTier`; toasts. Perf hook: `window.__perf = { ready(), stop({x, z, y?, yaw, pitch, frac}), release(), info() }` — `stop` holds the body there (no moves sent), fixes the hour; `info()` returns `renderer.info` numbers + `programs`. Gated by the build mode so production has none of it (checked by grepping `dist/` for `__perf`).
+- [x] **Step 3:** green, self-review, commit `feat(visuales): contador ?fps=1, prueba de FPS en la primera partida y gancho de rendimiento`.
 
 ### Task 3: the harness and today's baseline
 
-- [ ] **Step 1:** `scripts/perf/run.mjs` (see Architecture): `npm run perf` (`node scripts/perf/run.mjs`), flags `--update`, `--tier low`, `--shots` (PNGs to `scratch/perf/shots/`, git-ignored). Console table + `scratch/perf/perf-report.json`. Exit 1 on a budget/regression failure, 0 otherwise.
-- [ ] **Step 2:** run `npm run perf -- --update`, then `npm run perf` again: identical numbers (determinism check), exit 0. Commit `baseline.json`.
-- [ ] **Step 3:** green, self-review, commit `feat(visuales): arnés npm run perf y cifras de hoy`.
+- [x] **Step 1:** `scripts/perf/run.mjs` (see Architecture): `npm run perf` (`node scripts/perf/run.mjs`), flags `--update`, `--tier low`, `--shots` (PNGs to `scratch/perf/shots/`, git-ignored). Console table + `scratch/perf/perf-report.json`. Exit 1 on a budget/regression failure, 0 otherwise.
+- [x] **Step 2:** run `npm run perf -- --update` (15–16 min las 3 gamas en SwiftShader); la segunda pasada de baja dio las mismas cifras (determinista). Commit `baseline.json`.
+- [x] **Step 3:** green, self-review, commit `feat(visuales): arnés npm run perf y cifras de hoy`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF "## Visuales · V2-A — …" with the baseline table, what the phone test should look at (`?fps=1`), and the decisions; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF "## Visuales · V2-A — …" with the baseline table, what the phone test should look at (`?fps=1`), and the decisions; one short comment on PR #3.
