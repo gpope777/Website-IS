@@ -26,7 +26,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
-import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, TOWER as VILLAIN_TOWER, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
+import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, withGrieta, towerHeight, TOWER as VILLAIN_TOWER, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
 import { AIR, clawReach, DRAGON, dragonOut, guardTarget, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -43,6 +43,7 @@ import { createAtalaya, createCucurucho, CUCURUCHO, hatFront, stepAtalaya, stepC
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
+import { creditLines, ENDING, endingCards, lateCards } from '../ending';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
@@ -139,6 +140,8 @@ export interface SavedPlayer {
   fuego?: boolean;
   /** Has Piedra (mountain dungeon altar). Optional: older saves have none. */
   piedra?: boolean;
+  /** S5-G: has seen the ending's credits (live, or on the first login after). Optional. */
+  credits?: boolean;
 }
 
 export interface SavedWorld {
@@ -197,6 +200,10 @@ export interface SavedWorld {
   towerOpen?: boolean;
   /** S5-F: El Marchito fell in the Copa (the ending, S5-G). Optional. */
   ending?: boolean;
+  /** S5-G: who was in the Copa at the kill (for the credits). Optional. */
+  endingNames?: string[];
+  /** S5-G: the post-ending raids were turned off at the Heart. Optional: on. */
+  raidsOff?: boolean;
 }
 
 export interface Grave extends GraveView {
@@ -459,6 +466,9 @@ export class WorldSim {
   towerOpen: boolean;
   /** El Marchito fell (S5-F): the ending (S5-G). */
   ending: boolean;
+  /** S5-G: the killers' names and the post-ending raids toggle (saved). */
+  private endingNames: string[] = [];
+  raidsOff = false;
   /** Invasion 3 is under way tonight (from its dusk to dawn); `dark` once night fell. Live-only. */
   private inv3: { dark: boolean } | null = null;
   /** When each owner's parked dragon may bite a rayo again (S5 §8.3). Live-only. */
@@ -525,7 +535,7 @@ export class WorldSim {
     this.seed = saved.seed;
     this.salt = saved.salt;
     this.time = saved.time;
-    this.terrain = withEscalera(withDungeon(createTerrain(saved.seed)), () => this.escalera);
+    this.terrain = withGrieta(withEscalera(withDungeon(createTerrain(saved.seed)), () => this.escalera), () => this.ending);
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
@@ -578,6 +588,8 @@ export class WorldSim {
     this.invasion3 = saved.invasion3 ?? (this.pillarsBroken.every(Boolean) ? 'pending' : 'none');
     this.towerOpen = saved.towerOpen ?? false;
     this.ending = saved.ending ?? false;
+    this.endingNames = saved.endingNames ?? [];
+    this.raidsOff = saved.raidsOff ?? false;
     this.rescue = rescueSite(this.terrain, saved.seed);
     this.anchors = [0, 1, 2].map((i) => saved.anchors?.[i] ?? false);
     this.buildAnchors();
@@ -633,6 +645,11 @@ export class WorldSim {
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
+    if (this.ending && !p.credits) {
+      // S5-G: whoever missed the kill gets the credits on their first login after.
+      p.credits = true;
+      this.outbox.push({ to: name, msg: { t: 'ending', cards: lateCards(this.endingNames), credits: creditLines(this.endingNames.length ? joinNames(this.endingNames) : 'vosotros') } });
+    }
     return { t: 'welcome', you: name, seed: this.seed, time: this.time, self: this.selfState(p, l), structures: this.structures.map((s) => ({ ...s })), gone };
   }
 
@@ -699,6 +716,8 @@ export class WorldSim {
         return this.onCall(p, l, msg.beast);
       case 'pillar':
         return this.onPillar(p, l, msg.id);
+      case 'raids':
+        return; // S5-G Task 3
       case 'hello':
         return; // the room handles hello
     }
@@ -906,7 +925,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -946,6 +965,8 @@ export class WorldSim {
       ...(this.invasion3 === 'none' ? {} : { invasion3: this.invasion3 }),
       ...(this.towerOpen ? { towerOpen: true } : {}),
       ...(this.ending ? { ending: true } : {}),
+      ...(this.endingNames.length ? { endingNames: [...this.endingNames] } : {}),
+      ...(this.raidsOff ? { raidsOff: true } : {}),
       ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
       ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
@@ -1005,7 +1026,7 @@ export class WorldSim {
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
-    if (!l.dragon && rimCrossBlocked(p.z, m.z)) {
+    if (!l.dragon && rimCrossBlocked(p.z, m.z, m.x, this.ending)) {
       // S5: el Borde only crosses flying (the dragon's gate is in onFly).
       this.hint(p.name, l, STEEP_TEXT.rim);
       l.fix = true;
@@ -2481,15 +2502,32 @@ export class WorldSim {
     if (won) this.winFinal();
   }
 
-  /** El Marchito falls: the ending (S5-G). */
+  /** El Marchito falls: the ending (S5-G, spec §10). */
   private winFinal(): void {
     if (this.ending) return;
     this.ending = true;
     this.clearCopaRayos();
     const names = this.targets().filter((t) => !t.dead && inCopa(t.x, t.z)).map((t) => t.name);
+    this.endingNames = names.length ? names : this.activeNames();
+    const who = joinNames(this.endingNames);
     this.say(`${upFirst(NAMES.blackHeart)} se parte. ${NAMES.villain} se encoge hasta ser una ramita`);
-    this.vision(VISION.final(joinNames(names.length ? names : this.activeNames())));
-    // S5-G: the long vision, the credits, the white tower, every zone clean, el Guardián, raids off.
+    // Every zone clean at once (0–21), with one toast.
+    for (const z of this.zones) this.cleansed.add(z.id);
+    this.say('Todas las raíces marchitas se secan a la vez');
+    // The long vision and the credits to everyone online; the rest get them on their next login (connect).
+    const msg: ServerMsg = { t: 'ending', cards: endingCards(who), credits: creditLines(who) };
+    for (const n of this.live.keys()) {
+      this.players.get(n)!.credits = true;
+      this.outbox.push({ to: n, msg });
+    }
+    // Everyone in the Torre is put back at the Heart.
+    for (const n of this.live.keys()) {
+      const p = this.players.get(n)!;
+      if (!inTowerDungeon(p.x, p.z)) continue;
+      const h = this.heart();
+      const sp = h ? { x: h.x + ENDING.home, z: h.z } : this.spawnFor(n);
+      this.teleport(p, this.live.get(n)!, sp.x, sp.z);
+    }
   }
 
   /** A swipe (rolled or parried like a bite), a root line (rolled; a parry only blocks) or the trail (always). */
@@ -4227,7 +4265,7 @@ export class WorldSim {
   /** He comes once the Tragón fell, when there is a Heart and someone out in the world to see it. */
   private stepInvasion(dt: number): void {
     const h = this.heart();
-    if (this.invasion === 'pending' && !this.marchito && h && this.time + EPS >= this.invasionAt) {
+    if (this.invasion === 'pending' && !this.ending && !this.marchito && h && this.time + EPS >= this.invasionAt) {
       const watcher = this.targets().some((t) => !t.dead && !inAnyDungeon(t.x, t.z));
       if (watcher) this.startInvasion(h);
     }
@@ -4247,7 +4285,7 @@ export class WorldSim {
   /** Invasion 2 (Slice 2 §8): at dusk, once someone tamed a fish, he comes up from the coast for the purified Tragón. */
   private stepInvasion2(dt: number): void {
     const h = this.heart();
-    if (this.invasion2 === 'pending' && !this.marchito && this.invasion === 'done' && this.purified && h && h.hp > 0) {
+    if (this.invasion2 === 'pending' && !this.ending && !this.marchito && this.invasion === 'done' && this.purified && h && h.hp > 0) {
       const f = dayFraction(this.time);
       const watcher = this.targets().some((t) => !t.dead && !inAnyDungeon(t.x, t.z));
       if (!isNight(f) && f >= RAID.warnAt && watcher) this.startTheft(h);
@@ -4344,7 +4382,7 @@ export class WorldSim {
     const h = this.heart();
     const f = dayFraction(this.time);
     const night = isNight(f);
-    if (this.invasion3 === 'pending' && !this.inv3 && !this.marchito && h && h.hp > 0 && !night && f >= RAID.warnAt) {
+    if (this.invasion3 === 'pending' && !this.ending && !this.inv3 && !this.marchito && h && h.hp > 0 && !night && f >= RAID.warnAt) {
       const watcher = this.targets().some((t) => !t.dead && !inAnyDungeon(t.x, t.z));
       if (watcher) this.startInvasion3(h);
     }

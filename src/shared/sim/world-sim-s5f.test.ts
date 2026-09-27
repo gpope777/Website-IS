@@ -287,7 +287,7 @@ describe('phase 3 — el Corazón Negro and the victory (S5-F)', () => {
     expect(c.mode).toBe('run');
   });
 
-  it('the core at 0: ending saved, a vision with the names, and the Copa is calm after', () => {
+  it('the core at 0: ending saved, the ending cards with the names, and the Copa is calm after', () => {
     const sim = inCopa('Ana');
     const b = phase3(sim);
     const c = b.core!;
@@ -299,7 +299,8 @@ describe('phase 3 — el Corazón Negro and the victory (S5-F)', () => {
     sim.handle('Ana', { t: 'attack', id: FINAL.coreId });
     const out = msgs(sim);
     expect(sim.ending).toBe(true);
-    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Ana')))).toBe(true);
+    // S5-G: the short vision became the long one (the 'ending' message's cards).
+    expect(out.some((m) => m.t === 'ending' && m.cards.some((l) => l.includes('Ana')))).toBe(true);
     expect(sim.save().ending).toBe(true);
     run(sim, 8);
     expect(boss(sim)).toBeNull();

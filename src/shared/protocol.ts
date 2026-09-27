@@ -4,7 +4,7 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 52;
+export const PROTOCOL_VERSION = 53;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
@@ -131,7 +131,9 @@ export type ClientMsg =
   /** At the lit Ceniza fogata (S5-B): bring your own parked deer, frog or fish there. */
   | { t: 'call'; beast: CallBeast }
   /** S5-C: start pulling Pilar-raíz `id`'s core (A held 3 s, beside it). */
-  | { t: 'pillar'; id: number };
+  | { t: 'pillar'; id: number }
+  /** S5-G: at the Heart after the ending, turn the post-ending raids on or off (world setting). */
+  | { t: 'raids'; on: boolean };
 
 export type CallBeast = 'deer' | 'frog' | 'fish';
 export const CALL_BEASTS: readonly CallBeast[] = ['deer', 'frog', 'fish'];
@@ -139,14 +141,16 @@ export const CALL_BEASTS: readonly CallBeast[] = ['deer', 'frog', 'fish'];
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The white Cucurucho's atalaya by the Heart (anim 'attack' while it throws). */ ally4: AllyView | null; /** La Escalera del Umbral is up: a ramp in los Peldaños (see withEscalera). */ escalera: boolean; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; /** The wild dragon while it circles the Pico (owner null) and parked tamed ones. */ dragons: SteedView[]; /** S5-A: the fog north of the rim: closed, ready (the 4 Raíces-madre purified: a dragon rider opens it) or open. */ fog: FogState; /** S5-A: El Marchito's tower height (m). */ towerH: number; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** S5-C: los Pilares-raíz. */ pillars: PillarView; /** S5-D: the tower's door is open (the dawn after Invasion 3). */ towerOpen: boolean; /** The root cage while the Tragón is taken. */ cage: CageView | null }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The white Cucurucho's atalaya by the Heart (anim 'attack' while it throws). */ ally4: AllyView | null; /** La Escalera del Umbral is up: a ramp in los Peldaños (see withEscalera). */ escalera: boolean; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; /** The wild dragon while it circles the Pico (owner null) and parked tamed ones. */ dragons: SteedView[]; /** S5-A: the fog north of the rim: closed, ready (the 4 Raíces-madre purified: a dragon rider opens it) or open. */ fog: FogState; /** S5-A: El Marchito's tower height (m). */ towerH: number; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** S5-C: los Pilares-raíz. */ pillars: PillarView; /** S5-D: the tower's door is open (the dawn after Invasion 3). */ towerOpen: boolean; /** S5-G: El Marchito fell (white tower, el Guardián, la Grieta). */ ending: boolean; /** S5-G: the post-ending raids are turned off at the Heart. */ raidsOff: boolean; /** The root cage while the Tragón is taken. */ cage: CageView | null }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
   | { t: 'built'; s: Structure }
   | { t: 'toast'; text: string }
   /** El Marchito speaks: a few lines shown as a vision card. */
-  | { t: 'vision'; lines: string[] };
+  | { t: 'vision'; lines: string[] }
+  /** S5-G: the ending — the long vision's cards one by one, then the scrolling credits (once per player). */
+  | { t: 'ending'; cards: string[]; credits: string[] };
 
 export const NAME_RE = /^[\p{L}\p{N} _-]{1,16}$/u;
 export const PIN_RE = /^\d{4}$/;
@@ -237,6 +241,8 @@ export function decodeClient(raw: string): ClientMsg | null {
       return (CALL_BEASTS as readonly unknown[]).includes(m.beast) ? { t: 'call', beast: m.beast as CallBeast } : null;
     case 'pillar':
       return id(m.id) && m.id < 4 ? { t: 'pillar', id: m.id } : null;
+    case 'raids':
+      return typeof m.on === 'boolean' ? { t: 'raids', on: m.on } : null;
     default:
       return null;
   }

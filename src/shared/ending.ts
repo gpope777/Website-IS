@@ -1,4 +1,5 @@
 import { NAMES } from './names';
+import { joinNames } from './sim/marchito';
 
 /**
  * The ending (spec S5 §10, S5-G): the long vision, the credits, el Guardián by the Heart and the post-ending raids.
@@ -33,9 +34,10 @@ export function creditLines(names: string): string[] {
   return [NAMES.game, names, `Dibujos: ${NAMES.credits}`, `Hecho por ${NAMES.maker}`, 'Gracias por jugar'];
 }
 
-/** What someone who wasn't online sees on their first login after. */
-export function lateCards(names: string): string[] {
-  return [`Mientras dormías, ${names} vencieron a ${NAMES.villain}.`, `${up(NAMES.villainTower)} se ha vuelto blanca y ${NAMES.guardian} espera junto al Corazón.`];
+/** What someone who wasn't online sees on their first login after (`names`: who was in the Copa; empty for old saves). */
+export function lateCards(names: readonly string[]): string[] {
+  const first = names.length ? `Mientras dormías, ${joinNames(names)} ${names.length > 1 ? 'vencieron' : 'venció'} a ${NAMES.villain}.` : `${NAMES.villain} ya no está. Lo vencisteis vosotros.`;
+  return [first, `${up(NAMES.villainTower)} se ha vuelto blanca y ${NAMES.guardian} espera junto al Corazón.`];
 }
 
 /** El Guardián's six lines (post-game hints), in order. */

@@ -21,7 +21,9 @@ describe('the ending cards and credits (S5-G)', () => {
   });
 
   it('late cards say who did it while you slept', () => {
-    expect(lateCards('Ana y Bea')[0]).toBe(`Mientras dormías, Ana y Bea vencieron a ${NAMES.villain}.`);
+    expect(lateCards(['Ana', 'Bea'])[0]).toBe(`Mientras dormías, Ana y Bea vencieron a ${NAMES.villain}.`);
+    expect(lateCards(['Ana'])[0]).toBe(`Mientras dormías, Ana venció a ${NAMES.villain}.`);
+    expect(lateCards([])[0]).toContain('vosotros');
   });
 
   it('six distinct Guardián lines; he stands 8 m east of the Heart', () => {
