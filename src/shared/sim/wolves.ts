@@ -125,3 +125,70 @@ export function hitWolf(w: Wolf, dmg: number): boolean {
   w.target = null;
   return true;
 }
+
+export const RAID = {
+  /** Warning starts at this day fraction; night (the attack) starts at 0.8. */
+  warnAt: 0.72,
+  base: 4,
+  perLevel: 2,
+  perPlayer: 2,
+  maxWave: 20,
+  spawnMin: 45,
+  spawnMax: 60,
+  aggro: 10,
+  structReach: 2.2,
+  heartReach: 2.6,
+  damage: 12,
+  cooldown: 1.2,
+} as const;
+
+export interface RaidGoal {
+  heartId: number;
+  x: number;
+  z: number;
+  /** Wall sample points (3 per wall) that stop the march. */
+  blockers: { id: number; x: number; z: number }[];
+}
+
+export type RaidHit = { player: string } | { structure: number } | null;
+
+/** Corrupted raider: not scared of fire, fights players who come close, otherwise marches on the Heart and chews what blocks it. */
+export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terrain: Terrain, dt: number, rng: () => number): RaidHit {
+  if (w.hp <= 0) {
+    stepWolf(w, [], terrain, dt, rng);
+    return null;
+  }
+  const near = targets
+    .filter((t) => !t.dead && Math.hypot(t.x - w.x, t.z - w.z) < RAID.aggro)
+    .map((t) => ({ ...t, fires: false }));
+  if (near.length) {
+    const bit = stepWolf(w, near, terrain, dt, rng);
+    return bit ? { player: bit } : null;
+  }
+  w.target = null;
+  w.cooldown = Math.max(0, w.cooldown - dt);
+  const dx = goal.x - w.x;
+  const dz = goal.z - w.z;
+  const d = Math.max(Math.hypot(dx, dz), 1e-4);
+  w.yaw = Math.atan2(dx / d, dz / d);
+  const victim = d < RAID.heartReach ? goal.heartId : goal.blockers.find((b) => Math.hypot(b.x - w.x, b.z - w.z) < RAID.structReach)?.id;
+  if (victim !== undefined) {
+    w.anim = 'attack';
+    if (w.cooldown > 0) return null;
+    w.cooldown = RAID.cooldown;
+    return { structure: victim };
+  }
+  const nx = w.x + (dx / d) * WOLF.run * dt;
+  const nz = w.z + (dz / d) * WOLF.run * dt;
+  if (terrain.heightAt(nx, nz) >= WATER_LEVEL) {
+    w.x = nx;
+    w.z = nz;
+  } else {
+    // ponytail: sidestep water by walking perpendicular; real pathfinding if raiders get stuck in playtest
+    w.x += (dz / d) * WOLF.run * dt;
+    w.z -= (dx / d) * WOLF.run * dt;
+  }
+  w.y = terrain.heightAt(w.x, w.z);
+  w.anim = 'run';
+  return null;
+}

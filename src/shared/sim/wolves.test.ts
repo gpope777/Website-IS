@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../terrain';
-import { createWolf, hitWolf, stepWolf, WOLF, type WolfTarget } from './wolves';
+import { createWolf, hitWolf, RAID, stepRaider, stepWolf, WOLF, type RaidGoal, type WolfTarget } from './wolves';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const rng = () => 0.5;
@@ -59,5 +59,50 @@ describe('wolves', () => {
     expect(hitWolf(w, 5)).toBe(false);
     expect(w.anim).toBe('dead');
     expect(stepWolf(w, [target(1)], flat, 0.1, rng)).toBeNull();
+  });
+});
+
+const goal = (extra: Partial<RaidGoal> = {}): RaidGoal => ({ heartId: 99, x: 0, z: 0, blockers: [], ...extra });
+const raider = (x: number, z = 0) => {
+  const w = createWolf(1, x, z, flat, rng);
+  w.raid = true;
+  return w;
+};
+
+describe('raiders', () => {
+  it('march to the heart when no player is near', () => {
+    const w = raider(30);
+    stepRaider(w, [target(-50)], goal(), flat, 0.1, rng);
+    expect(w.x).toBeLessThan(30);
+    expect(w.anim).toBe('run');
+  });
+
+  it('chew the heart in reach, with a cooldown', () => {
+    const w = raider(1);
+    expect(stepRaider(w, [], goal(), flat, 0.1, rng)).toEqual({ structure: 99 });
+    expect(stepRaider(w, [], goal(), flat, 0.1, rng)).toBeNull();
+    let hit = null;
+    for (let i = 0; i < 20 && !hit; i++) hit = stepRaider(w, [], goal(), flat, 0.1, rng);
+    expect(hit).toEqual({ structure: 99 });
+  });
+
+  it('stop and chew a wall in the way', () => {
+    const w = raider(10);
+    const g = goal({ blockers: [{ id: 7, x: 9, z: 0 }] });
+    expect(stepRaider(w, [], g, flat, 0.1, rng)).toEqual({ structure: 7 });
+    expect(w.x).toBe(10);
+  });
+
+  it('turn on a nearby player and ignore campfire fear', () => {
+    const w = raider(10);
+    const hit = stepRaider(w, [target(11, 0, { fires: true })], goal(), flat, 0.1, rng);
+    expect(w.target).toBe('Ana');
+    expect(hit).toEqual({ player: 'Ana' });
+  });
+
+  it('ignore players beyond aggro range', () => {
+    const w = raider(10);
+    stepRaider(w, [target(10 + RAID.aggro + 5)], goal(), flat, 0.1, rng);
+    expect(w.target).toBeNull();
   });
 });
