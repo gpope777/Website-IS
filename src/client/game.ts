@@ -60,7 +60,7 @@ import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
 import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
-import { buildTerrainMesh, buildThorns, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
+import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
@@ -226,6 +226,8 @@ export class Game {
   private ground: THREE.Mesh | null = null;
   private farGround: THREE.Mesh | null = null;
   private swampGround: THREE.Mesh | null = null;
+  /** Las Montañas: per chunk, a detail mesh near the player or its silhouette (only one of them visible). */
+  private mountainMeshes: { chunk: MountainChunk; detail: THREE.Mesh; silhouette: THREE.Mesh }[] = [];
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
   private rescueMeshes: RescueMeshes | null = null;
@@ -423,6 +425,15 @@ export class Game {
     this.scene.add(this.farGround);
     this.swampGround = buildTerrainMesh(this.terrain, swampPatch!); // el Pantano: coarse, fogged
     this.scene.add(this.swampGround, buildThorns(this.terrain, seed));
+    const ground = this.terrain;
+    this.mountainMeshes = mountainChunks(t.terrainSegments).map((chunk) => {
+      const detail = buildTerrainMesh(ground, chunk.detail);
+      const silhouette = buildTerrainMesh(ground, chunk.silhouette);
+      detail.visible = false;
+      this.scene.add(detail, silhouette);
+      return { chunk, detail, silhouette };
+    });
+    this.scene.add(buildPines(this.terrain, seed));
     this.zarzalKnot = new ZarzalKnot(this.terrain);
     this.scene.add(this.zarzalKnot.group);
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
@@ -1139,6 +1150,13 @@ export class Game {
     this.syncFrogs();
     this.syncWhale(dt);
 
+    for (const m of this.mountainMeshes) {
+      const near = chunkDetailed(m.chunk, b.x, b.z);
+      if (m.detail.visible !== near) {
+        m.detail.visible = near;
+        m.silhouette.visible = !near;
+      }
+    }
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     const fog = swampFog(b.x, b.z);
     this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog);

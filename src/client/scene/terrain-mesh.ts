@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { COAST, COAST_Z0, HALF, SOUTH, SWAMP, WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
+import { CHUTE, COAST, COAST_Z0, HALF, MOUNTAINS, mountainDepth, mountainFeatures, PELDANOS, SOUTH, SWAMP, WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
+import { slopeAt, STEEP } from '../../shared/mountains';
 import { inCienaga } from '../../shared/coast';
 import { ZARZAL, zarzalAt } from '../../shared/swamp';
 import { createRng } from '../../shared/rng';
@@ -17,6 +18,48 @@ export interface Patch {
   z1: number;
   segX: number;
   segZ: number;
+  /** Explicit row positions (z, ascending, from z0 to z1): overrides the even `segZ` spacing. */
+  rows?: number[];
+}
+
+/** A mountain chunk: its detail mesh (within MOUNTAIN_LOD of the player) or its low-poly silhouette. */
+export interface MountainChunk {
+  detail: Patch;
+  silhouette: Patch;
+}
+
+/** The mountains draw in detail within this many metres of the player; beyond, a 16 × 16 silhouette per chunk. */
+export const MOUNTAIN_LOD = 160;
+const CHUNK = 120;
+
+/**
+ * 4 chunks of 120 m across the mountains. Detail columns match the forest's cell (the seam has no cracks);
+ * rows are fine in los Peldaños, with one exactly on each riser edge, and ×2 beyond.
+ */
+export function mountainChunks(segments: number): MountainChunk[] {
+  const cell = WORLD_SIZE / segments;
+  const ds: number[] = [];
+  for (let d = 0; d < MOUNTAINS.faldas; d += cell) ds.push(d);
+  for (let k = 0; k < PELDANOS.steps; k++) ds.push(PELDANOS.first + PELDANOS.pitch * k, PELDANOS.first + PELDANOS.pitch * k + PELDANOS.run);
+  const depth = MOUNTAINS.z1 - MOUNTAINS.z0;
+  for (let d = MOUNTAINS.faldas; d < depth; d += cell * 2) ds.push(d);
+  ds.push(depth);
+  ds.sort((a, b) => a - b);
+  const rows = ds.filter((d, i) => i === 0 || d - ds[i - 1]! > 0.05).map((d) => -HALF - d).reverse();
+  rows[0] = MOUNTAINS.z0;
+  rows[rows.length - 1] = MOUNTAINS.z1;
+  const out: MountainChunk[] = [];
+  for (let x0 = MOUNTAINS.x0; x0 < MOUNTAINS.x1 - 1; x0 += CHUNK) {
+    const box = { x0, x1: x0 + CHUNK, z0: MOUNTAINS.z0, z1: MOUNTAINS.z1 };
+    out.push({ detail: { ...box, segX: Math.round(CHUNK / cell), segZ: rows.length - 1, rows }, silhouette: { ...box, segX: 16, segZ: 16 } });
+  }
+  return out;
+}
+
+/** Should this chunk draw in detail for a player at (x, z)? */
+export function chunkDetailed(c: MountainChunk, x: number, z: number): boolean {
+  const { x0, x1, z0, z1 } = c.detail;
+  return Math.hypot(Math.max(x0 - x, 0, x - x1), Math.max(z0 - z, 0, z - z1)) < MOUNTAIN_LOD;
 }
 
 /**
@@ -36,10 +79,11 @@ export function terrainPatches(segments: number): Patch[] {
 }
 
 export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(patch.x1 - patch.x0, patch.z1 - patch.z0, patch.segX, patch.segZ);
+  const geo = new THREE.PlaneGeometry(patch.x1 - patch.x0, patch.z1 - patch.z0, patch.segX, patch.rows ? patch.rows.length - 1 : patch.segZ);
   geo.rotateX(-Math.PI / 2);
   geo.translate((patch.x0 + patch.x1) / 2, 0, (patch.z0 + patch.z1) / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
+  if (patch.rows) for (let i = 0; i < pos.count; i++) pos.setZ(i, patch.rows[Math.floor(i / (patch.segX + 1))]!); // row 0 is the smallest z
   const colors = new Float32Array(pos.count * 3);
   const grass = new THREE.Color(0x4f7a3a);
   const dark = new THREE.Color(0x2f5a2a);
@@ -52,6 +96,11 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
   const thorn = new THREE.Color(0x5b4a55);
   const mound = new THREE.Color(0x2f4a28);
   const laguna = new THREE.Color(0x1f2a24);
+  const alpine = new THREE.Color(0x5d7a45);
+  const cliff = new THREE.Color(0x85847c);
+  const slab = new THREE.Color(0x9c9c98);
+  const snow = new THREE.Color(0xeef2f6);
+  const packed = new THREE.Color(0xdde6ea);
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -68,6 +117,14 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
     }
     if (x < -HALF) tmp.copy(h > WATER_LEVEL + 0.5 ? mound : h < WATER_LEVEL - 2 ? laguna : bog);
     if (x < ZARZAL.x1 && zarzalAt(terrain, x, z)) tmp.lerp(thorn, 0.8);
+    if (z < -HALF && Math.abs(x) <= HALF) {
+      const d = mountainDepth(z);
+      tmp.copy(alpine).lerp(dark, terrain.density(x, z) * 0.5);
+      if (d >= MOUNTAINS.faldas && Math.abs(x) < CHUTE.half + 1) tmp.copy(packed);
+      else if (d > 130) tmp.lerp(snow, Math.min(1, (d - 130) / 20));
+      if (d < PELDANOS.first + PELDANOS.pitch * (PELDANOS.steps - 1) + PELDANOS.run + 0.5) tmp.copy(slab); // los Peldaños (smoothAt)
+      else if (slopeAt(terrain, x, z) > STEEP.deg) tmp.lerp(cliff, 0.85);
+    }
     colors.set([tmp.r, tmp.g, tmp.b], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -123,6 +180,30 @@ export function buildThorns(terrain: Terrain, seed: number, count = 220): THREE.
     const s = 0.7 + a * 0.9;
     q.setFromEuler(e.set((b - 0.5) * 0.8, a * 6.28, (a - 0.5) * 0.8));
     m.compose(v.set(x, Math.max(terrain.heightAt(x, z), WATER_LEVEL) + 0.5 * s, z), q, sc.set(s, s, s));
+    mesh.setMatrixAt(n++, m);
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  return mesh;
+}
+
+/** Decorative pines on the Faldas' gentle slopes, away from the chute and the paredes: one draw call, no collision. */
+export function buildPines(terrain: Terrain, seed: number, count = 150): THREE.InstancedMesh {
+  const mesh = new THREE.InstancedMesh(new THREE.ConeGeometry(1.1, 4.5, 6), new THREE.MeshLambertMaterial({ color: 0x2c4a32 }), count);
+  const { paredes } = mountainFeatures(seed);
+  const rng = createRng(seed ^ 0x9171e5);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const sc = new THREE.Vector3();
+  let n = 0;
+  for (let tries = 0; n < count && tries < count * 10; tries++) {
+    const x = (rng() - 0.5) * 2 * (HALF - MOUNTAINS.sideRim - 5);
+    const z = -HALF - (MOUNTAINS.faldas + 2 + rng() * (MOUNTAINS.cumbre - MOUNTAINS.faldas));
+    const s = 0.7 + rng() * 0.7;
+    if (Math.abs(x) < CHUTE.half + CHUTE.blend + 2 || slopeAt(terrain, x, z) > 30) continue;
+    if (paredes.some((p) => Math.hypot(x - p.x, z - p.z) < p.rt + p.w + 1)) continue;
+    m.compose(v.set(x, terrain.heightAt(x, z) + 2.1 * s, z), q, sc.set(s, s, s));
     mesh.setMatrixAt(n++, m);
   }
   mesh.count = n;
