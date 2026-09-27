@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, createTerrain, HALF, inMap, inMountains, MOUNTAINS, mountainFeatures, PELDANOS, PICO, SWAMP } from './terrain';
 import { generateCrags } from './crags';
+import { slopeAt, smoothAt, steepBlocked } from './mountains';
 import snapshot from './terrain-s3.snapshot.json';
 
 const SEEDS = [42, 7, 1234];
@@ -85,5 +86,46 @@ describe('las Montañas: terrain', () => {
     expect(clampMap(0, -HALF - 400, 3)).toEqual({ x: 0, z: MOUNTAINS.z0 + 3 });
     expect(clampMap(-HALF - 300, 100, 3)).toEqual({ x: SWAMP.x0 + 3, z: 100 });
     expect(clampMap(HALF + 10, -HALF - 50, 3)).toEqual({ x: HALF - 3, z: -HALF - 50 });
+  });
+});
+
+describe('las Montañas: the steep rule', () => {
+  const t = createTerrain(42);
+  const { paredes } = mountainFeatures(42);
+  const z = (d: number) => -HALF - d;
+  const mid = PELDANOS.first + PELDANOS.run / 2;
+
+  it('slopeAt: flat terrace tops, near-vertical risers, walkable Faldas, steep paredes', () => {
+    expect(slopeAt(t, 0, z(6))).toBeLessThan(15);
+    expect(slopeAt(t, 0, z(mid))).toBeGreaterThan(70);
+    let ok = 0;
+    let n = 0;
+    for (let x = -HALF + 50; x < HALF - 50; x += 13)
+      for (let d = 45; d < 118; d += 7) {
+        if (paredes.some((p) => Math.hypot(x - p.x, z(d) - p.z) < p.rt + p.w + 2)) continue;
+        n++;
+        if (slopeAt(t, x, z(d)) < 30) ok++;
+      }
+    expect(ok / n).toBeGreaterThan(0.85);
+    const p = paredes[0]!;
+    expect(slopeAt(t, p.x + p.rt + p.w / 2, p.z)).toBeGreaterThan(50);
+  });
+
+  it('smoothAt: los Peldaños only', () => {
+    expect(smoothAt(0, z(mid))).toBe(true);
+    expect(smoothAt(0, z(60))).toBe(false);
+    expect(smoothAt(0, -HALF + 5)).toBe(false);
+  });
+
+  it('steepBlocked: uphill onto a riser only', () => {
+    expect(steepBlocked(t, 0, -HALF + 0.5, 0, z(mid))).toBe(true);
+    expect(steepBlocked(t, 0, z(mid), 0, -HALF + 0.5)).toBe(false);
+    expect(steepBlocked(t, 0, z(5), 0, z(8))).toBe(false);
+    expect(steepBlocked(t, 0, z(5), 5, z(5))).toBe(false);
+    expect(steepBlocked(t, 0, 0, 0, 5)).toBe(false);
+    expect(steepBlocked(t, 0, -HALF + 0.5, 0, z(mid), 89)).toBe(false);
+    const p = paredes[0]!;
+    const out = p.rt + p.w + 1;
+    expect(steepBlocked(t, p.x + out, p.z, p.x + p.rt + 1, p.z)).toBe(true);
   });
 });

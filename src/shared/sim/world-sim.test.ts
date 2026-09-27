@@ -8,7 +8,7 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
-import { HALF, LAGUNA, RIVER, WATER_LEVEL } from '../terrain';
+import { HALF, LAGUNA, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../terrain';
 const LAGUNA_EDGE = { x: LAGUNA.x, z: LAGUNA.z - LAGUNA.rz - 6 };
 import { inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { CIENAGA, depthAt } from '../coast';
@@ -4664,5 +4664,50 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
       sim.step(FUEGO.cooldown + 0.05);
     }
     expect(seen).toBe(true);
+  });
+});
+
+describe('las Montañas: the steep rule on the server', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const zd = (d: number) => -HALF - d;
+  const moveTo = (sim: WorldSim, x: number, z: number, y = sim.terrain.heightAt(x, z)) => {
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+    const p = sim.getPlayer('Ana')!;
+    return p.x === x && p.z === z;
+  };
+
+  it('walkers cannot walk up los Peldaños; down is fine', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, -HALF + 0.5);
+    expect(moveTo(sim, 0, zd(PELDANOS.first + PELDANOS.run + 1))).toBe(false);
+    expect(texts(sim)).toContain('Roca lisa. Sin agarre');
+    put(sim, 'Ana', 0, zd(PELDANOS.first + PELDANOS.run + 1));
+    expect(moveTo(sim, 0, -HALF + 0.5)).toBe(true);
+  });
+
+  it('walkers cross the seam onto flat ground', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, -HALF + 1);
+    expect(moveTo(sim, 0, -HALF - 0.5)).toBe(true);
+  });
+
+  it('the deer does not climb a pared', () => {
+    const sim = setup('Ana');
+    const p = mountainFeatures(42).paredes[0]!;
+    const out = p.x + p.rt + p.w + 1;
+    put(sim, 'Ana', out, p.z);
+    sim.getPlayer('Ana')!.steed = { x: out, z: p.z };
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    expect(moveTo(sim, out - 4, p.z)).toBe(false);
+    expect(texts(sim)).toContain('El ciervo no trepa');
+  });
+
+  it('the frog jumps onto the first terrace', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, -HALF + 0.5);
+    sim.getPlayer('Ana')!.frog = { x: 0, z: -HALF + 0.5 };
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    expect(moveTo(sim, 0, zd(PELDANOS.first + PELDANOS.run + 4))).toBe(true);
   });
 });
