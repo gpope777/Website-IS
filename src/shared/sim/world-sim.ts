@@ -23,7 +23,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
-import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
+import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, TOWER as VILLAIN_TOWER, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
 import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -40,7 +40,7 @@ import { createAtalaya, createCucurucho, CUCURUCHO, hatFront, stepAtalaya, stepC
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
-import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
+import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
@@ -77,6 +77,9 @@ const EPS = 1e-6;
 
 const upFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida', fire: 'Hoguera lista. Ya arderá', tower: 'Torre alzada. Desde arriba se ve lejos', pillar: 'Se alza un pilar' };
+
+/** S5-D: Invasion 3's raid is half again as big, with a flock of rayos; a raid rayo's dive on a structure deals `rayoStruct`. */
+export const INVASION3 = { raidMult: 1.5, rayos: 6, rayoStruct: 10 } as const;
 
 export interface SavedPlayer {
   name: string;
@@ -168,6 +171,10 @@ export interface SavedWorld {
   pillars?: number[];
   /** S5-C: someone has walked las Tierras Corruptas (La Flecha can lead raids). */
   corruptSeen?: boolean;
+  /** S5-D: Invasion 3 owed (the 4th Pilar-raíz broke) or over. Optional: older saves have none. */
+  invasion3?: 'pending' | 'done';
+  /** S5-D: the tower's door opened (the dawn after Invasion 3). Optional. */
+  towerOpen?: boolean;
 }
 
 export interface Grave extends GraveView {
@@ -402,6 +409,12 @@ export class WorldSim {
   invasion: 'none' | 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): none yet, owed (a fish was tamed), the Tragón taken, or rescued. */
   invasion2: 'none' | 'pending' | 'taken' | 'rescued';
+  /** Invasion 3 (S5 §8): none yet, owed since the 4th pillar broke, or over. */
+  invasion3: 'none' | 'pending' | 'done';
+  /** The tower's door is open (S5 §8.2). */
+  towerOpen: boolean;
+  /** Invasion 3 is under way tonight (from its dusk to dawn); `dark` once night fell. Live-only. */
+  private inv3: { dark: boolean } | null = null;
   /** The cage's anchors broken so far (saved while taken). */
   private anchors: boolean[];
   /** Live anchor records (kind 'anchor') for the ones still standing; their PV is live-only. */
@@ -427,7 +440,7 @@ export class WorldSim {
   private readonly netReady = new Map<number, number>();
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
-  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean; tri?: boolean; flecha?: boolean } | null = null;
+  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean; tri?: boolean; flecha?: boolean; /** Invasion 3: ×1.5 and rayos. */ big?: boolean } | null = null;
   private raidN: number;
   private swampSeen: boolean;
   private mountainsSeen: boolean;
@@ -514,6 +527,8 @@ export class WorldSim {
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
     this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
+    this.invasion3 = saved.invasion3 ?? (this.pillarsBroken.every(Boolean) ? 'pending' : 'none');
+    this.towerOpen = saved.towerOpen ?? false;
     this.rescue = rescueSite(this.terrain, saved.seed);
     this.anchors = [0, 1, 2].map((i) => saved.anchors?.[i] ?? false);
     this.buildAnchors();
@@ -690,6 +705,7 @@ export class WorldSim {
     const targets = this.targets();
     const goal = this.raidGoal();
     const gata = this.wolves.find((w) => w.id === this.gataId && w.hp > 0) ?? null;
+    let marks: WolfTarget[] | undefined; // Invasion 3: raid rayos also dive at structures
     for (const w of this.wolves) {
       if (w.flee && w.fleeFrom && w.hp > 0) {
         this.flee(w, w.fleeFrom, dt);
@@ -723,6 +739,13 @@ export class WorldSim {
               this.damageStructure(id, TRIANGULO.rockDamage);
             }
           }
+          continue;
+        }
+        if (w.kind === 'rayo') {
+          marks ??= [...targets, ...this.structures.filter((s) => s.kind !== 'heart').map((s) => ({ name: `#${s.id}`, x: s.x, z: s.z, dead: false, fires: false }))];
+          const bit = stepRayo(w, marks, this.terrain, dt, this.rng);
+          if (bit?.startsWith('#')) this.damageStructure(Number(bit.slice(1)), INVASION3.rayoStruct);
+          else if (bit) this.bite(bit, ENEMY.rayo.damage, w);
           continue;
         }
         w.haste = hasteNear(gata, w.x, w.z);
@@ -764,6 +787,7 @@ export class WorldSim {
     this.stepSeats();
     this.stepInvasion(dt);
     this.stepInvasion2(dt);
+    this.stepInvasion3(dt);
     this.stepGuards();
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
@@ -804,12 +828,12 @@ export class WorldSim {
     for (const a of this.anchorFoes) if (a.hp > 0 && near(a.x, a.z)) wolves.push({ id: a.id, kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: 0, anim: 'idle', raid: false });
     const mm = this.marchito;
     if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
-    const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0, ...(mm.grab !== null ? { grab: r2(Math.min(1, mm.grab / MARCHITO.grabFor)) } : {}) } : null;
+    const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0, ...(mm.grab !== null ? { grab: r2(Math.min(1, mm.grab / MARCHITO.grabFor)) } : {}), ...(mm.channel !== null ? { channel: r2(Math.min(1, mm.channel / MARCHITO.channelFor)) } : {}) } : null;
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -846,6 +870,8 @@ export class WorldSim {
       ...(this.fogatas.some(Boolean) ? { fogatas: [...this.fogatas] } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
+      ...(this.invasion3 === 'none' ? {} : { invasion3: this.invasion3 }),
+      ...(this.towerOpen ? { towerOpen: true } : {}),
       ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
       ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
@@ -3380,7 +3406,10 @@ export class WorldSim {
       return !!o && !o.dead && Math.hypot(o.x - c.x, o.z - c.z) <= 40;
     });
     this.vision(VISION.pillar[id]!(joinNames(near.length ? near : this.activeNames())));
-    // S5-D: the 4th Pilar-raíz arms Invasión 3 (SavedWorld.invasion3 = 'pending', vision «Ah. Ahora voy yo.»).
+    if (n === PILLAR.count && this.invasion3 === 'none') {
+      this.invasion3 = 'pending';
+      this.vision(VISION.armed3);
+    }
   }
 
   /** Thorns round the Enredadera pillar, hot ash round the Fuego one (only while they stand); also calls the Fuego pillar's rayo guards. */
@@ -3485,7 +3514,8 @@ export class WorldSim {
   private spawnRaiders(heart: Structure, dir: number): void {
     const extra = Math.max(0, this.activeCount() - 1);
     const full = Math.min(RAID.maxWave, RAID.base + RAID.perLevel * this.raidLevel + RAID.perPlayer * extra);
-    const n = this.purified ? Math.max(1, Math.ceil(full * RAID.cleansed)) : full;
+    const n0 = this.purified ? Math.max(1, Math.ceil(full * RAID.cleansed)) : full;
+    const n = this.raid?.big ? Math.ceil(n0 * INVASION3.raidMult) : n0;
     // Coast pressure (Slice 2 §6.4): extra brutes on top, until the coast Raíz-madre is purified (S2-G).
     const extraBrutes = coastRaidBrutes(this.corrupt());
     for (let i = 0; i < n + extraBrutes; i++) {
@@ -3502,6 +3532,14 @@ export class WorldSim {
           break;
         }
       }
+    }
+    // Invasion 3: a flock of rayos in front of the pack.
+    for (let i = 0; this.raid?.big && i < INVASION3.rayos; i++) {
+      const ang = dir + (i / (INVASION3.rayos - 1) - 0.5) * 0.8;
+      const { x, z } = clampMap(heart.x + Math.sin(ang) * (RAID.spawnMin - 10), heart.z + Math.cos(ang) * (RAID.spawnMin - 10), 5);
+      const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, 'rayo');
+      w.raid = true;
+      this.wolves.push(w);
     }
     // La Gata Araña (or El Triángulo) walks in behind the pack.
     const lead: EnemyKind | null = this.raid?.gata ? 'lieut1' : this.raid?.tri ? 'lieut2' : this.raid?.flecha ? 'lieut3' : null;
@@ -3692,7 +3730,7 @@ export class WorldSim {
       if (watcher) this.startInvasion(h);
     }
     const m = this.marchito;
-    if (!m || m.grab !== null || this.activeCount() === 0) return; // the world sleeps (or it is Invasion 2)
+    if (!m || m.grab !== null || m.channel !== null || this.activeCount() === 0) return; // the world sleeps (or it is Invasion 2/3)
     const structs = this.structures.filter((s) => m.prey.includes(s.id));
     const ev = stepMarchito(m, structs, this.targets(), (x, z) => this.terrain.heightAt(x, z), dt);
     if (!ev) return;
@@ -3796,6 +3834,52 @@ export class WorldSim {
     if (wreck) this.vision(VISION.stolen(joinNames(this.activeNames())));
   }
 
+  /**
+   * Invasion 3 (S5 §8): at the dusk warning after the 4th pillar broke, he comes from the north for the Heart
+   * itself, with a big raid. Driven off or not, the dawn after it opens the tower.
+   */
+  private stepInvasion3(dt: number): void {
+    const h = this.heart();
+    const f = dayFraction(this.time);
+    const night = isNight(f);
+    if (this.invasion3 === 'pending' && !this.inv3 && !this.marchito && h && h.hp > 0 && !night && f >= RAID.warnAt) {
+      const watcher = this.targets().some((t) => !t.dead && !inAnyDungeon(t.x, t.z));
+      if (watcher) this.startInvasion3(h);
+    }
+    if (!this.inv3) return;
+    if (night) this.inv3.dark = true;
+    else if (this.inv3.dark) {
+      this.inv3 = null;
+      if (this.marchito && this.marchito.channel !== null) this.marchito = null;
+      this.invasion3 = 'done';
+      this.towerOpen = true;
+      this.say(`Amanece. La puerta de ${NAMES.villainTower} se abre`);
+      return;
+    }
+    const m = this.marchito;
+    if (!m || m.channel === null || this.activeCount() === 0 || !h) return;
+    const ev = stepChanneler(m, h, this.targets(), (x, z) => this.terrain.heightAt(x, z), dt);
+    if (!ev) return;
+    if (ev.t === 'swipe') this.bite(ev.name, ENEMY.marchito.damage, m);
+    else if (ev.t === 'drained') {
+      if (h.hp > 1) {
+        h.hp = 1;
+        this.outbox.push({ to: null, msg: { t: 'hit', id: h.id, hp: 1 } });
+      }
+      this.vision(VISION.drained3(joinNames(this.activeNames())));
+    } else this.marchito = null;
+  }
+
+  private startInvasion3(h: Structure): void {
+    const dir = Math.atan2(VILLAIN_TOWER.x - h.x, VILLAIN_TOWER.z - h.z);
+    const { x, z } = clampMap(h.x + Math.sin(dir) * MARCHITO.spawnDist, h.z + Math.cos(dir) * MARCHITO.spawnDist, 6);
+    this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, [], heartWill(this.activeCount()));
+    this.marchito.channel = 0;
+    this.inv3 = { dark: false };
+    if (this.raid?.phase === 'warn') Object.assign(this.raid, { dir, big: true });
+    this.vision(VISION.arrive3);
+  }
+
   private startInvasion(h: Structure): void {
     const dir = this.rootDir(h);
     const { x, z } = clampMap(h.x + Math.sin(dir) * MARCHITO.spawnDist, h.z + Math.cos(dir) * MARCHITO.spawnDist, 6);
@@ -3821,6 +3905,11 @@ export class WorldSim {
     if (m.grab !== null) {
       this.vision(VISION.driven2(joinNames(m.taunted)));
       return this.endTheft(false);
+    }
+    if (m.channel !== null) {
+      this.vision(VISION.driven3(joinNames(m.taunted)));
+      this.marchito = null;
+      return;
     }
     this.vision(VISION.driven(joinNames(m.taunted)));
     this.endInvasion();
