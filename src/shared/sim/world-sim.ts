@@ -1558,7 +1558,7 @@ export class WorldSim {
     if (this.umbralCasts < UMBRAL.casts) return this.tell(p.name, `La roca cruje (${this.umbralCasts}/${UMBRAL.casts})`);
     this.escalera = true;
     this.say(`${upFirst(NAMES.stairs)} se alza en ${NAMES.mountainGate}. Ahora se sube a pie`);
-    // S4-H: the Escalera vision.
+    this.vision(VISION.escalera(joinNames(this.activeNames())));
   }
 
   /** A pillar goes back into the ground. */
@@ -3157,11 +3157,13 @@ export class WorldSim {
       this.swampSeen = true;
       this.vision(VISION.swamp(scout));
     }
-    if (!this.mountainsSeen && this.activeNames().some((n) => {
+    const climber = this.mountainsSeen ? undefined : this.activeNames().find((n) => {
       const p = this.players.get(n);
       return !!p && !p.dead && inMountains(p.x, p.z);
-    })) {
-      this.mountainsSeen = true; // S4-H: the first-entry vision («Qué alto…») goes here.
+    });
+    if (climber) {
+      this.mountainsSeen = true;
+      this.vision(VISION.mountains(climber));
     }
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
