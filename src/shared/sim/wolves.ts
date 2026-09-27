@@ -36,10 +36,12 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   boss: { hp: 300, run: 2.8, damage: 12, reach: 3.2, biteCooldown: 3.2 },
   /** The bruto reforzado, the dungeon's mini-boss (see sim/elite.ts). */
   elite: { hp: 420, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
+  /** The bruto escudado, the coast dungeon's mini-boss: the elite with a front shield (see sim/elite.ts). */
+  elite2: { hp: 420, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
   /** El Marchito in person (see sim/marchito.ts): hp is his voluntad (the 4-player cap; see marchitoWill), he never dies. */
   marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, marchito: `${NAMES.villain}` };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, marchito: `${NAMES.villain}` };
 
 export interface Wolf {
   id: number;

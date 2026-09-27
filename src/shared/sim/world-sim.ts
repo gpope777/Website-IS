@@ -6,7 +6,8 @@ import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
 import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
-import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
+import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
+import { COAST_DUNGEON, coastEntrance, inChasm, inCoastDungeon, insideCoast } from '../coast-dungeon';
 import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
@@ -76,6 +77,8 @@ export interface SavedPlayer {
   chests?: number[];
   /** Weapon upgrade level 0–3. Optional: older saves have none. */
   weaponLvl?: number;
+  /** Has Viento (coast dungeon altar). Optional: older saves have none. */
+  viento?: boolean;
 }
 
 export interface SavedWorld {
@@ -125,6 +128,12 @@ interface Live {
   guard: Guard;
   /** Sim time Enredadera can be cast again. Live-only. */
   powerReadyAt: number;
+  /** Sim time Viento can be cast again. Live-only. */
+  windReadyAt: number;
+  /** Glider lift from a gust: the highest accepted y until `boostUntil`; `boosted` = used this flight. */
+  boostCeil: number;
+  boostUntil: number;
+  boosted: boolean;
   /** Sim time of death; null when alive or after a reconnect (no revive then). Never saved. */
   deadAt: number | null;
   /** Taming round in progress (live-only). `start` and `zone` are rounded as the client sees them. */
@@ -170,6 +179,8 @@ export class WorldSim {
   readonly chests: readonly Chest[];
   /** The Raíz-madre's trunk in the world (the dungeon entrance). */
   readonly entrance: { x: number; y: number; z: number };
+  /** The coast Raíz-madre's trunk, on the dungeon island. */
+  readonly coastEntrance: { x: number; z: number };
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
   readonly wild: { x: number; y: number; z: number };
   /** Where the wild giant fish waits, and its race rings (seeded). */
@@ -213,6 +224,16 @@ export class WorldSim {
   };
   /** The bruto reforzado while someone is in its room. Live-only. */
   private elite: Elite | null = null;
+  /** The coast interior (live-only, like the forest one): levers, gates, the pumice block, the bruto escudado. */
+  private readonly coastLive = {
+    pulled: [null, null] as (number | null)[],
+    gate: false,
+    fan: false,
+    plate: false,
+    eliteDown: false,
+    calm: false,
+    block: { ...insideCoast(COAST_DUNGEON.blockStart) },
+  };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null }[];
   private readonly players = new Map<string, SavedPlayer>();
@@ -260,6 +281,7 @@ export class WorldSim {
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...forest, this.entrance]);
     this.island = coastFeatures(saved.seed).island;
+    this.coastEntrance = coastEntrance(saved.seed);
     this.fishHome = wildFish(this.terrain, saved.seed);
     this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
     this.whaleHome = wildWhale(this.terrain, saved.seed);
@@ -325,7 +347,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, windReadyAt: 0, boostCeil: -Infinity, boostUntil: 0, boosted: false, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -438,6 +460,7 @@ export class WorldSim {
     this.stepSpikes(dt);
     this.stepNets();
     this.stepDungeon();
+    this.stepCoastDungeon();
     this.stepEliteFight(dt);
     this.stepBossFight(dt);
     this.stepAlly(dt);
@@ -581,10 +604,10 @@ export class WorldSim {
       p.fish = { x: r2(p.x), z: r2(p.z) };
       return;
     }
-    const inBounds = inDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
-    const through = clampStep(p.x, p.z, m.x, m.z, this.gates());
+    const inBounds = inAnyDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
+    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
-    const wallOk = !inDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
+    const wallOk = !inAnyDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
     const cragCeiling = cragsNear(this.climbables(), m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
     // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
@@ -813,7 +836,7 @@ export class WorldSim {
     if (p.dead) return;
     if (!p.enredadera) return this.tell(p.name, 'Aún no tienes ese poder');
     if (this.time + EPS < l.powerReadyAt) return this.tell(p.name, `La enredadera aún no brota (${Math.ceil(l.powerReadyAt - this.time - EPS)} s)`);
-    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : !inMap(x, z, 4);
+    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : inCoastDungeon(p.x, p.z) ? !inCoastDungeon(x, z, -1) : !inMap(x, z, 4);
     if (Math.hypot(x - p.x, z - p.z) > ENREDADERA.reach || offMap) return this.tell(p.name, 'Demasiado lejos');
     const others = this.vines.filter((v) => v.owner !== p.name);
     const wrapped = new Set(others.map((v) => v.id));
@@ -907,6 +930,7 @@ export class WorldSim {
       this.teleport(p, l, DUNGEON.x, DUNGEON.entryZ + 1.5);
       return this.tell(p.name, `Dentro de la ${NAMES.forestRoot}. Huele a papel viejo`);
     }
+    if (act >= 8) return this.onCoastDungeon(p, l, act, near);
     if (!inDungeon(p.x, p.z)) return;
     if (act === 1) {
       if (!near(DUNGEON.x, DUNGEON.entryZ, DUNGEON.exitReach)) return;
@@ -957,6 +981,65 @@ export class WorldSim {
     }
   }
 
+  /** The coast Raíz-madre: 8 enter, 9 leave, 10/11 levers, 12 the Viento altar. */
+  private onCoastDungeon(p: SavedPlayer, l: Live, act: number, near: (x: number, z: number, r: number) => boolean): void {
+    const C = COAST_DUNGEON;
+    const e = this.coastEntrance;
+    if (act === 8) {
+      if (!near(e.x, e.z, C.trunkR + C.enterReach)) return;
+      this.teleport(p, l, C.x, C.entryZ + 1.5);
+      return this.tell(p.name, `Dentro de la ${NAMES.coastRoot}. Huele a sal y a raíz mojada`);
+    }
+    if (!inCoastDungeon(p.x, p.z)) return;
+    const g = this.coastLive;
+    if (act === 9) {
+      if (!near(C.x, C.entryZ, C.exitReach)) return;
+      return this.teleport(p, l, e.x, e.z - (C.trunkR + 2));
+    }
+    if (act === 10 || act === 11) {
+      const i = act - 10;
+      const lever = insideCoast(C.levers[i]!);
+      if (!near(lever.x, lever.z, C.leverReach) || g.gate) return;
+      g.pulled[i] = this.time;
+      const other = g.pulled[1 - i];
+      if (other != null && this.time - other <= C.leverWindow + EPS) {
+        g.gate = true;
+        return this.say('La verja de raíces se abre. Gotea');
+      }
+      return this.tell(p.name, 'La raíz cede. Falta la otra');
+    }
+    if (act === 12) {
+      if (!g.gate || !near(C.x, C.altarZ, C.altarReach) || p.viento) return;
+      p.viento = true;
+      this.tell(p.name, `Despierta el ${NAMES.powerWind}: J cambia de poder (o mantén pulsado el botón de poder), H lanza una ráfaga`);
+    }
+  }
+
+  /** Which of the four coast gates are open: levers, fan, plate, the bruto escudado. */
+  private coastGates(): boolean[] {
+    const g = this.coastLive;
+    return [g.gate, g.fan, g.plate, g.eliteDown];
+  }
+
+  /** The chasm spits fallers back to its near edge; the plate reads the block. */
+  private stepCoastDungeon(): void {
+    const C = COAST_DUNGEON;
+    const g = this.coastLive;
+    for (const [name, l] of this.live) {
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null || !inChasm(p.x, p.z) || p.y > C.floor - C.fallBelow) continue;
+      this.teleport(p, l, p.x, C.fallBack);
+      p.vitals = damage(p.vitals, C.fallDamage);
+      this.tell(name, 'El hueco te escupe arriba. Sin viento no se cruza');
+      if (p.vitals.health <= 0) this.kill(p);
+    }
+    const plate = insideCoast(C.plate);
+    if (!g.plate && Math.hypot(g.block.x - plate.x, g.block.z - plate.z) <= C.plateRadius) {
+      g.plate = true;
+      this.say('La piedra pómez pisa la losa. La verja se abre');
+    }
+  }
+
   private onMount(p: SavedPlayer, l: Live, act: number, at: number | undefined): void {
     if (p.dead) return;
     if (act === 5) return this.dismount(p, l);
@@ -997,7 +1080,7 @@ export class WorldSim {
     }
     if (act === 2) {
       const st = p.steed;
-      if (!st || l.riding || l.tame || inDungeon(p.x, p.z) || Math.hypot(st.x - p.x, st.z - p.z) > MOUNT.reach) return;
+      if (!st || l.riding || l.tame || inAnyDungeon(p.x, p.z) || Math.hypot(st.x - p.x, st.z - p.z) > MOUNT.reach) return;
       l.riding = true;
       return;
     }
@@ -1006,7 +1089,7 @@ export class WorldSim {
 
   /** Sit behind the nearest rider in reach whose seat is free. */
   private board(p: SavedPlayer, l: Live): void {
-    if (l.riding || l.tame || inDungeon(p.x, p.z)) return;
+    if (l.riding || l.tame || inAnyDungeon(p.x, p.z)) return;
     const taken = new Set([...this.live.values()].flatMap((o) => (o.seat ? [o.seat] : [])));
     let best: SavedPlayer | null = null;
     for (const [n, ol] of this.live) {
@@ -1100,7 +1183,7 @@ export class WorldSim {
     }
     if (act === 7) {
       const f = p.fish;
-      if (!f || l.fish || l.riding || l.tame || l.race || inDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FISH.reach) return;
+      if (!f || l.fish || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FISH.reach) return;
       l.fish = true;
       return;
     }
@@ -1202,7 +1285,7 @@ export class WorldSim {
 
   /** First free seat (the first aboard pilots). From the fish: it waits where you were. */
   private boardWhale(p: SavedPlayer, l: Live): void {
-    if (!this.whaleTamed || l.riding || l.tame || l.race || inDungeon(p.x, p.z) || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.reach) return;
+    if (!this.whaleTamed || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z) || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.reach) return;
     const free = this.whaleSeats.indexOf(null);
     if (free < 0) return this.tell(p.name, 'No queda sitio');
     if (l.fish) {
@@ -1355,7 +1438,15 @@ export class WorldSim {
     const e = this.elite;
     const elite = e && e.hp > 0 ? { hp: Math.round(e.hp), max: ENEMY.elite.hp, charging: e.windup > 0 || e.charge > 0 } : null;
     const carry = (c: { x: number; z: number; held: string | null }) => ({ x: r2(c.x), z: r2(c.z), held: c.held });
-    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite };
+    const c = this.coastLive;
+    const coast = {
+      gates: this.coastGates(),
+      levers: c.pulled.map((t) => t != null && (c.gate || this.time - t <= COAST_DUNGEON.leverWindow + EPS)),
+      block: { x: r2(c.block.x), z: r2(c.block.z) },
+      plate: c.plate,
+      elite: null,
+    };
+    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast };
   }
 
   /** Which of the five dungeon gates are open. */
@@ -1508,6 +1599,8 @@ export class WorldSim {
       shrines: [...(p.shrines ?? [])],
       powerLeft: Math.max(0, Math.ceil(l.powerReadyAt - this.time - EPS)),
       power: !!p.enredadera,
+      viento: !!p.viento,
+      windLeft: Math.max(0, Math.ceil(l.windReadyAt - this.time - EPS)),
       tame: this.tameView(p, l),
       riding: l.riding,
       steed: !!p.steed,
@@ -1522,7 +1615,7 @@ export class WorldSim {
   }
 
   private nearFire(x: number, z: number, r = FIRE_RADIUS): boolean {
-    if (inDungeon(x, z)) return true; // warm inside the Raíz-madre
+    if (inAnyDungeon(x, z)) return true; // warm inside the Raíz-madre
     return this.structures.some((s) => {
       const d = Math.hypot(s.x - x, s.z - z);
       return (s.kind === 'campfire' && d < r) || (s.kind === 'heart' && s.hp > 0 && d < HEART.warmRadius);
@@ -1559,7 +1652,7 @@ export class WorldSim {
     const corrupt = this.corrupt();
     for (const a of anchors) {
       const zn = zoneAt(this.zones, a.x, a.z);
-      if (!zn || !corrupt.includes(zn.id) || inDungeon(a.x, a.z)) continue;
+      if (!zn || !corrupt.includes(zn.id) || inAnyDungeon(a.x, a.z)) continue;
       for (let i = 0; i < CORRUPTION.extraWolves; i++) {
         for (let tries = 0; tries < 10; tries++) {
           const ang = this.rng() * Math.PI * 2;
@@ -1729,7 +1822,7 @@ export class WorldSim {
   private stepInvasion(dt: number): void {
     const h = this.heart();
     if (this.invasion === 'pending' && !this.marchito && h && this.time + EPS >= this.invasionAt) {
-      const watcher = this.targets().some((t) => !t.dead && !inDungeon(t.x, t.z));
+      const watcher = this.targets().some((t) => !t.dead && !inAnyDungeon(t.x, t.z));
       if (watcher) this.startInvasion(h);
     }
     const m = this.marchito;

@@ -2,14 +2,14 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer or the giant fish. */ ride: 'deer' | 'fish' | 'whale' | null; /** Sitting behind this rider on their deer. */ seat: string | null }
-export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'marchito';
+export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'elite2' | 'marchito';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
@@ -30,7 +30,11 @@ export interface DungeonView {
   lantern: CarryView;
   lit: boolean;
   elite: { hp: number; max: number; charging: boolean } | null;
+  /** The coast Raíz-madre. */
+  coast: CoastDungeonView;
 }
+/** The coast interior: gates (levers, fan, plate, bruto escudado), levers pulled, the pumice block, the plate, and the bruto escudado's bar. */
+export interface CoastDungeonView { gates: boolean[]; levers: boolean[]; block: { x: number; z: number }; plate: boolean; elite: { hp: number; max: number; exposed: boolean; charging: boolean } | null }
 /** The purified boss guarding the Heart. */
 export interface AllyView { x: number; y: number; z: number; yaw: number; anim: WolfAnim }
 /** A deer (or giant fish) standing in the world: the wild one (`owner` null) or a parked, tamed one. */
@@ -43,7 +47,10 @@ export interface WhaleView { x: number; z: number; yaw: number; tamed: boolean; 
 export interface MarchitoView { will: number; max: number; laughing: boolean }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race: next ring index (rings come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number } | null; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–3). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race: next ring index (rings come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number } | null; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–3). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null }
+
+export const POWER_KINDS = ['enredadera', 'viento'] as const;
+export type PowerKind = (typeof POWER_KINDS)[number];
 
 export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
 
@@ -60,10 +67,11 @@ export type ClientMsg =
   | { t: 'block'; on: boolean }
   | { t: 'shoot'; id: number }
   | { t: 'revive'; name: string }
-  | { t: 'power'; x: number; z: number }
+  /** Cast the chosen power at (x, z): absent kind = Enredadera (older clients). */
+  | { t: 'power'; x: number; z: number; kind?: PowerKind }
   /** part 0 = take the orb, 1/2 = pull lever 1/2 (Hundido: 2 = the seabed one), Islote: 1–3 = turn a wheel, Marea: 1 = pick up / drop the pumice block */
   | { t: 'shrine'; id: number; part: number }
-  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier */
+  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier, 8 = enter the coast Raíz-madre, 9 = leave it, 10/11 = pull its levers, 12 = take Viento at its altar */
   | { t: 'dungeon'; act: number }
   /** 0 = start taming the wild deer, 1 = tap the ring at sim time `at`, 2 = get on your deer, 3 = get off, 4 = sit behind the nearest rider, 5 = get off the seat, 6 = start the fish's ring race, 7 = get on your fish, 8 = get off the fish, 9 = start taming the whale (needs 2+), 10 = board the whale, 11 = leave the whale */
   | { t: 'mount'; act: number; at?: number }
@@ -142,11 +150,13 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'revive':
       return typeof m.name === 'string' && NAME_RE.test(m.name) ? { t: 'revive', name: m.name } : null;
     case 'power':
-      return num(m.x) && num(m.z) ? { t: 'power', x: m.x, z: m.z } : null;
+      if (!num(m.x) || !num(m.z)) return null;
+      if (m.kind === undefined) return { t: 'power', x: m.x, z: m.z };
+      return (POWER_KINDS as readonly unknown[]).includes(m.kind) ? { t: 'power', x: m.x, z: m.z, kind: m.kind as PowerKind } : null;
     case 'shrine':
       return id(m.id) && id(m.part) && (m.part as number) <= 3 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
-      return id(m.act) && (m.act as number) <= 7 ? { t: 'dungeon', act: m.act as number } : null;
+      return id(m.act) && (m.act as number) <= 12 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':
       if (!id(m.act) || (m.act as number) > 11) return null;
       if (m.act === 1) return num(m.at) ? { t: 'mount', act: 1, at: m.at } : null;

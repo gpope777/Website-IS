@@ -16,6 +16,7 @@ import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
+import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -2728,5 +2729,90 @@ describe('riding the whale', () => {
     expect(snap(sim, 'Ana').whale.x).not.toBeCloseTo(sim.whaleHome.x, 0);
     for (let i = 0; i < 15; i++) sim.step(1);
     expect(snap(sim, 'Ana').whale.x).toBeCloseTo(sim.whaleHome.x, 1);
+  });
+});
+
+describe('coast dungeon (S2-F)', () => {
+  const C = COAST_DUNGEON;
+  const act = (sim: WorldSim, name: string, a: number) => sim.handle(name, { t: 'dungeon', act: a });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  function enter(sim: WorldSim, name = 'Ana') {
+    const e = sim.coastEntrance;
+    put(sim, name, e.x, e.z + 3);
+    act(sim, name, 8);
+  }
+  const move = (sim: WorldSim, name: string, x: number, z: number, y = C.floor) => sim.handle(name, { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+
+  it('A at the island trunk takes you inside, and back out', () => {
+    const sim = setup('Ana');
+    act(sim, 'Ana', 8);
+    expect(sim.getPlayer('Ana')!.x).toBe(0);
+    enter(sim);
+    const p = sim.getPlayer('Ana')!;
+    expect(p.x).toBe(C.x);
+    expect(p.y).toBe(C.floor);
+    expect(texts(sim).some((t) => t.includes(NAMES.coastRoot))).toBe(true);
+    act(sim, 'Ana', 9);
+    expect(Math.hypot(p.x - sim.coastEntrance.x, p.z - sim.coastEntrance.z)).toBeLessThan(C.trunkR + C.enterReach);
+  });
+
+  it('two levers open gate 0; the altar wakes Viento (saved)', () => {
+    const sim = setup('Ana', 'Bea');
+    enter(sim, 'Ana');
+    enter(sim, 'Bea');
+    act(sim, 'Ana', 12);
+    expect(sim.getPlayer('Ana')!.viento).toBeUndefined();
+    const l0 = insideCoast(C.levers[0]);
+    const l1 = insideCoast(C.levers[1]);
+    put(sim, 'Ana', l0.x, l0.z);
+    put(sim, 'Bea', l1.x, l1.z);
+    act(sim, 'Ana', 10);
+    expect(snap(sim, 'Ana').dungeon.coast.gates[0]).toBe(false);
+    sim.step(1);
+    act(sim, 'Bea', 11);
+    expect(snap(sim, 'Ana').dungeon.coast.gates[0]).toBe(true);
+    put(sim, 'Ana', C.x, C.altarZ);
+    act(sim, 'Ana', 12);
+    expect(snap(sim, 'Ana').self.viento).toBe(true);
+    expect(sim.save().players.find((p) => p.name === 'Ana')!.viento).toBe(true);
+  });
+
+  it('shut gates and the channel stop walkers; the bridge does not', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    put(sim, 'Ana', C.x, 31.5);
+    sim.step(1.1);
+    move(sim, 'Ana', C.x, 32.5);
+    expect(sim.getPlayer('Ana')!.z).toBe(31.5);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+    put(sim, 'Ana', C.x, C.channel[0] - 0.4);
+    sim.step(1.1);
+    move(sim, 'Ana', C.x, C.channel[0] + 0.4);
+    expect(sim.getPlayer('Ana')!.z).toBe(C.channel[0] - 0.4);
+    put(sim, 'Ana', C.x - 10.5, C.channel[0] - 0.4);
+    sim.step(1.1); // re-anchor after the test teleport
+    move(sim, 'Ana', C.x - 10.5, C.channel[0] + 0.4);
+    expect(sim.getPlayer('Ana')!.z).toBe(C.channel[0] + 0.4);
+  });
+
+  it('falling into the chasm puts you back at its edge, 10 PV poorer', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    put(sim, 'Ana', C.x, 100);
+    const p = sim.getPlayer('Ana')!;
+    expect(p.y).toBe(C.floor - C.pitDepth);
+    const hp = p.vitals.health;
+    sim.step(0.1);
+    expect(p.z).toBe(C.fallBack);
+    expect(p.y).toBe(C.floor);
+    expect(p.vitals.health).toBeCloseTo(hp - C.fallDamage, 0);
+  });
+
+  it('warm inside; old saves load without viento', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    expect(snap(sim, 'Ana').self.viento).toBe(false);
+    const again = new WorldSim(sim.save());
+    expect(again.getPlayer('Ana')!.viento).toBeUndefined();
   });
 });

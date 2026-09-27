@@ -1,5 +1,6 @@
 import { NAMES } from '../shared/names';
 import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
+import { COAST_DUNGEON, insideCoast } from '../shared/coast-dungeon';
 import type { CarryView, DungeonView, MarchitoView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
@@ -7,6 +8,7 @@ export function emptyDungeonView(): DungeonView {
   return {
     gate: false, gates: [false, false, false, false, false], levers: [false, false], purified: false, boss: null, plate: false,
     block: { ...inside(DUNGEON.blockStart), held: null }, lantern: { ...inside(DUNGEON.lantern), held: null }, lit: false, elite: null,
+    coast: { gates: [false, false, false, false], levers: [false, false], block: insideCoast(COAST_DUNGEON.blockStart), plate: false, elite: null },
   };
 }
 
