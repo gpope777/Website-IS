@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
 import { createTerrain, type Terrain } from '../shared/terrain';
+import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { PROTOCOL_VERSION, r2, type Anim, type HeartView, type RaidView, type ServerMsg, type Structure } from '../shared/protocol';
 import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
@@ -15,12 +16,13 @@ import { raidText } from './raid-ui';
 import { clearHold, Keyboard, readMove, type Action, type InputState, KEY_ACTIONS } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
-import { animFor, createBody, rollInput, stepBody, type Body } from './movement';
+import { animFor, createBody, rollInput, STAMINA, stepBody, type Body } from './movement';
 import { Connection, wsUrl, type NetStatus } from './net';
 import { loadTier, saveTier, TIERS, type Tier } from './quality';
 import { DayLight } from './scene/sky';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
+import { buildCrags } from './scene/crags';
 import { buildTerrainMesh, buildWater } from './scene/terrain-mesh';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
@@ -70,6 +72,9 @@ export class Game {
   private seed: number | null = null;
   private terrain: Terrain | null = null;
   private spawns: ResourceSpawn[] = [];
+  private crags: Crag[] = [];
+  /** Resource spawns inside a crag: hidden and uncollided on the client. */
+  private readonly buried = new Set<number>();
   private resMeshes: ResourceMeshes | null = null;
   private body: Body | null = null;
   private me: Actor | null = null;
@@ -206,13 +211,19 @@ export class Game {
     this.terrain = createTerrain(seed);
     this.spawns = generateResources(this.terrain, seed);
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
-    this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group);
-    for (const s of this.spawns) if (s.kind !== 'bush') this.colliders.add(`r${s.id}`, { x: s.x, z: s.z, r: s.radius });
+    this.crags = generateCrags(this.terrain, seed);
+    this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows));
+    for (const s of this.spawns) {
+      if (cragsNear(this.crags, s.x, s.z, 0.3).length) {
+        this.buried.add(s.id);
+        this.resMeshes.setGone(s.id, true);
+      } else if (s.kind !== 'bush') this.colliders.add(`r${s.id}`, { x: s.x, z: s.z, r: s.radius });
+    }
   }
 
   private setGone(id: number, gone: boolean): void {
     const s = this.spawns[id];
-    if (!s || this.gone.has(id) === gone) return;
+    if (!s || this.buried.has(id) || this.gone.has(id) === gone) return;
     if (gone) this.gone.add(id);
     else this.gone.delete(id);
     this.resMeshes?.setGone(id, gone);
@@ -271,7 +282,7 @@ export class Game {
     this.hud.setVitals(self.vitals);
     this.hud.setInventory(self.inv);
     if (self.fix && this.body) {
-      Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0 });
+      Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, gliding: false });
     }
     if (self.dead && !this.dead) this.showDeath();
     if (!self.dead && this.dead) this.hud.hideOverlay(); // revived by a teammate: close the death panel
@@ -513,7 +524,8 @@ export class Game {
     let mv = this.dead || this.hud.menuOpen ? IDLE_INPUT : readMove(this.input);
     if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
-    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z));
+    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.crags);
+    this.hud.setStamina(b.stamina / STAMINA.max, b.tired);
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';
     if (now < this.attackUntil) anim = 'attack';
@@ -575,7 +587,12 @@ export class Game {
     if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const res = this.nearestResource();
-    this.hud.setPrompt(res ? `E · ${HARVEST[res.kind].label}` : null);
+    if (res) return this.hud.setPrompt(`E · ${HARVEST[res.kind].label}`);
+    const b = this.body;
+    const wall = b && !b.climb && b.onGround ? cragsNear(this.crags, b.x, b.z, 1).find((c) => b.y < c.top - 0.6) : undefined;
+    if (wall) return this.hud.setPrompt(b!.tired ? 'Sin aliento' : 'Empuja contra la roca para trepar');
+    if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
+    this.hud.setPrompt(null);
   }
 
   // ---------------------------------------------------------------- desktop mouse

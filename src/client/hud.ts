@@ -24,6 +24,7 @@ export class Hud {
   private readonly overlay = el('div', 'overlay');
   private readonly heartRow = el('div', 'stat');
   private readonly raidLine = el('div', 'raid-line');
+  private readonly stamina = el('div', 'stamina');
   menuOpen = false;
 
   /** True while any overlay panel (menu, death, fatal error) covers the screen. */
@@ -47,7 +48,8 @@ export class Hud {
     this.banner.hidden = true;
     this.prompt.hidden = true;
     this.overlay.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine);
+    this.stamina.hidden = true;
+    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.stamina);
     parent.append(this.root, this.overlay);
   }
 
@@ -58,6 +60,15 @@ export class Hud {
       (row.querySelector('.val') as HTMLElement).textContent = String(v[k]);
       row.classList.toggle('low', v[k] < 25);
     }
+  }
+
+  /** Stamina ring by the player; hidden when full, red while tired. */
+  setStamina(frac: number, tired: boolean): void {
+    const full = frac >= 1 && !tired;
+    if (this.stamina.hidden !== full) this.stamina.hidden = full;
+    if (full) return;
+    this.stamina.style.setProperty('--p', `${Math.round(frac * 100)}%`);
+    this.stamina.classList.toggle('tired', tired);
   }
 
   setInventory(inv: Inventory): void {
@@ -122,6 +133,7 @@ export class Hud {
     this.panel(
       `<h2>Menú</h2>
        <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
+       <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
