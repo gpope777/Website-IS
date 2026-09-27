@@ -7,6 +7,7 @@ import type { ServerMsg } from '../protocol';
 import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, leverPos } from '../dungeon';
 import { BOSS } from './boss';
+import { ALLY } from './ally';
 import { PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -1130,5 +1131,39 @@ describe('boss', () => {
     const old = new WorldSim(saved);
     old.connect('Ana');
     expect(snap(old, 'Ana').dungeon.purified).toBe(false);
+  });
+});
+
+describe('purified defender', () => {
+  it('no defender until the boss is purified, and none without a living Heart', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally).toBeNull();
+    const saved = sim.save();
+    saved.purified = true;
+    saved.structures = [];
+    const bare = new WorldSim(saved);
+    bare.connect('Ana');
+    bare.step(0.1);
+    expect(snap(bare, 'Ana').ally).toBeNull();
+  });
+
+  it('with both, it waits by the Heart for everyone and bites raiders during a raid', () => {
+    const sim = setup('Ana', 'Leo');
+    const h = plantHeart(sim);
+    sim.purified = true;
+    put(sim, 'Leo', 200, 200);
+    sim.step(0.1);
+    expect(snap(sim, 'Leo').ally).toMatchObject({ x: h.x + ALLY.home, z: h.z });
+    put(sim, 'Ana', 150, 150);
+    sim.heart()!.hp = 100_000;
+    stepTo(sim, 0.81);
+    const w = sim.wolfList.find((x) => x.raid)!;
+    const full = w.hp;
+    w.stun = 100; // hold it still beside the Heart
+    Object.assign(w, { x: h.x + 4, z: h.z });
+    for (let i = 0; i < 15; i++) sim.step(0.1);
+    expect(w.hp).toBeLessThanOrEqual(full - ALLY.damage);
   });
 });
