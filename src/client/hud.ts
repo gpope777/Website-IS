@@ -24,6 +24,7 @@ export class Hud {
   private readonly overlay = el('div', 'overlay');
   private readonly heartRow = el('div', 'stat');
   private readonly raidLine = el('div', 'raid-line');
+  private readonly bossLine = el('div', 'raid-line boss-line');
   private readonly stamina = el('div', 'stamina');
   menuOpen = false;
 
@@ -45,11 +46,12 @@ export class Hud {
     this.heartRow.hidden = true;
     stats.appendChild(this.heartRow);
     this.raidLine.hidden = true;
+    this.bossLine.hidden = true;
     this.banner.hidden = true;
     this.prompt.hidden = true;
     this.overlay.hidden = true;
     this.stamina.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.stamina);
+    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.bossLine, this.stamina);
     parent.append(this.root, this.overlay);
   }
 
@@ -94,6 +96,11 @@ export class Hud {
   setRaid(text: string | null): void {
     this.raidLine.hidden = !text;
     if (text) this.raidLine.textContent = text;
+  }
+
+  setBoss(text: string | null): void {
+    this.bossLine.hidden = !text;
+    if (text) this.bossLine.textContent = text;
   }
 
   setPrompt(text: string | null): void {

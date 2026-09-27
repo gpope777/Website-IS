@@ -4,7 +4,7 @@ import { createTerrain, type Terrain } from '../shared/terrain';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { dungeonAction } from './dungeon-ui';
+import { bossBarText, dungeonAction } from './dungeon-ui';
 import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type Structure } from '../shared/protocol';
 import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
@@ -12,6 +12,8 @@ import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
+import { PaperActor, type Puppet } from './actors/paper';
+import { DungeonMeshes } from './scene/dungeon';
 import { CameraRig } from './camera-rig';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
@@ -31,8 +33,11 @@ import { buildTerrainMesh, buildWater } from './scene/terrain-mesh';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
 
+/** The nephew's drawing used for el Tragón de Papel (and, purified, the Heart's defender). */
+const TRAGON_IMG = '/enemies/enemy1.png';
+
 interface Remote {
-  actor: Actor;
+  actor: Puppet;
   buf: InterpBuffer;
   anim: string;
   seen: number;
@@ -70,6 +75,9 @@ export class Game {
   private readonly graves = new GraveMeshes();
   private readonly others = new Map<string, Remote>();
   private readonly wolves = new Map<number, Remote>();
+  /** The purified Tragón by the Heart (at most one, key 0). */
+  private readonly allies = new Map<number, Remote>();
+  private dungeonMeshes: DungeonMeshes | null = null;
   private readonly gone = new Set<number>();
   private light: DayLight;
   private kits: { robot: ModelKit; fox: ModelKit } | null = null;
@@ -232,6 +240,8 @@ export class Game {
     this.crags = generateCrags(this.terrain, seed);
     this.shrines = generateShrines(this.terrain, seed, this.crags);
     this.entrance = generateEntrance(this.terrain, seed, this.crags, this.shrines);
+    this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
+    this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
     this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
@@ -271,6 +281,8 @@ export class Game {
     this.syncVines(m.vines);
     this.shrineViews = m.shrines;
     this.dungeon = m.dungeon;
+    this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
+    this.hud.setBoss(bossBarText(m.dungeon));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     if (!this.kits) return;
     for (const p of m.players) {
@@ -280,13 +292,25 @@ export class Game {
       r.seen = m.time;
     }
     for (const w of m.wolves) {
-      const r = this.remote(this.wolves, w.id, () => new Actor(this.kits!.fox, WOLF_CLIPS));
-      r.actor.root.scale.setScalar(w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
+      const r = this.remote(this.wolves, w.id, () => (w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : new Actor(this.kits!.fox, WOLF_CLIPS)));
+      if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
+      else r.actor.root.scale.setScalar(w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
       r.seen = m.time;
     }
-    for (const map of [this.others, this.wolves] as Map<unknown, Remote>[]) {
+    if (m.ally) {
+      const a = m.ally;
+      const r = this.remote(this.allies, 0, () => {
+        const paper = new PaperActor(TRAGON_IMG, 1.6, this.camera);
+        paper.setTint(0xf2fff0); // purified: pale paper
+        return paper;
+      });
+      r.buf.push({ t: m.time, x: a.x, y: a.y, z: a.z, yaw: a.yaw });
+      r.anim = a.anim;
+      r.seen = m.time;
+    }
+    for (const map of [this.others, this.wolves, this.allies] as Map<unknown, Remote>[]) {
       for (const [k, r] of map) {
         if (r.seen === m.time) continue;
         r.actor.dispose();
@@ -318,7 +342,7 @@ export class Game {
     }
   }
 
-  private remote<K>(map: Map<K, Remote>, key: K, make: () => Actor): Remote {
+  private remote<K>(map: Map<K, Remote>, key: K, make: () => Puppet): Remote {
     let r = map.get(key);
     if (!r) {
       r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0 };
@@ -467,7 +491,8 @@ export class Game {
     this.marker.visible = !!locked;
     if (locked) {
       const p = this.wolves.get(locked.id)!.actor.root.position;
-      this.marker.position.set(p.x, p.y + 1.6 + Math.sin(performance.now() / 200) * 0.08, p.z);
+      const tall = this.wolves.get(locked.id)!.actor instanceof PaperActor ? 4.9 : 1.6;
+      this.marker.position.set(p.x, p.y + tall + Math.sin(performance.now() / 200) * 0.08, p.z);
       // Soft lock: ease the camera so it sits behind us looking at the target.
       const want = yawTo(b.x, b.z, locked.x, locked.z) + Math.PI;
       const diff = Math.atan2(Math.sin(want - this.rig.yaw), Math.cos(want - this.rig.yaw));
@@ -649,14 +674,16 @@ export class Game {
     for (const r of this.others.values()) this.animateRemote(r, rt, dt);
     for (const r of this.wolves.values()) {
       this.animateRemote(r, rt, dt);
-      r.actor.root.rotation.z = r.anim === 'dead' ? Math.PI / 2 : 0; // fox has no death clip: tip it over
+      if (!(r.actor instanceof PaperActor)) r.actor.root.rotation.z = r.anim === 'dead' ? Math.PI / 2 : 0; // fox has no death clip: tip it over
     }
+    for (const r of this.allies.values()) this.animateRemote(r, rt, dt);
 
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
     this.hud.setRaid(raidText(this.raid, this.rig.yaw));
     this.structures.animate(performance.now() / 1000);
     this.shrineMeshes?.animate(performance.now() / 1000);
+    this.dungeonMeshes?.animate(performance.now() / 1000);
     this.rig.apply(this.camera, b, terrain);
     this.updatePrompt();
     this.renderer.render(this.scene, this.camera);
