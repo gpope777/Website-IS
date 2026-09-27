@@ -166,6 +166,14 @@ export const VISION = {
   mountains: (name: string) => ['El viento baja de las cumbres. La voz, arriba:', `«Qué alto, ${name}. Qué frío.»`, '«Aquí arriba no hay niebla. Hay piedra. Y hay caída.»'],
   escalera: (names: string) => ['La roca se asienta en escalones. La voz, con eco:', `«Una escalera. Para todos. Qué detalle, ${names}.»`, '«Así me subís la montaña más rápido. Ya bajaréis.»'],
   fog: (name: string) => ['La niebla se abre como una cortina vieja. La voz, muy lejos:', `«Ya vienes. Bien. Te espero arriba, ${name}.»`],
+  corrupt: (name: string) => ['Ceniza bajo los pies. La voz, en casa:', `«Mi casa. Limpien los pies, ${name}.»`],
+  /** One per Pilar-raíz (0 Enredadera, 1 Viento, 2 Fuego, 3 Piedra). */
+  pillar: [
+    (names: string) => ['Las espinas se secan de golpe. La voz:', `«Eso me dolió, ${names}. Era mi seto favorito.»`],
+    (names: string) => ['El lago burbujea negro. La voz, mojada:', `«Eso me dolió, ${names}. Y ahora huele a pez.»`],
+    (names: string) => ['La ceniza se enfría. La voz:', `«Eso me dolió, ${names}. Quemarme a mí. Con fuego.»`],
+    (names: string) => ['La piedra se parte en lo alto. La voz, más cerca:', `«Eso me dolió, ${names}. Ya no queda nada entre ustedes y yo.»`],
+  ] as readonly ((names: string) => string[])[],
   dragon: (name: string) => ['Un trueno, y luego la voz:', `«Mi dragón… Eso sí que no, ${name}.»`],
   arrive: [`${NAMES.villain} entra en el claro. No se le puede matar.`, '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],
   laugh: [`${NAMES.villain} se ríe como una rama al partirse.`, '«Solo vine a mirar. La próxima vez me quedo.»'],

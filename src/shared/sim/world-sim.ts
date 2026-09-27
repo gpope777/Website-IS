@@ -7,12 +7,13 @@ import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
 import { createRng } from '../rng';
-import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, corruptFeatures, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, corruptFeatures, WATER_LEVEL, waterLevel, type Terrain } from '../terrain';
+import { ASH_RUN, ashHurts, LAKE_PILLAR, lidUp, PILLAR, pillarSites, THICKET, thicketHurts, type PillarSites } from '../pillars';
 import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
-import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isCorruptLandZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
+import { pillarZone, allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isCorruptLandZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
@@ -31,7 +32,7 @@ import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaCost, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
+import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
@@ -163,6 +164,10 @@ export interface SavedWorld {
   fogOpen?: boolean;
   /** S5-A: the day El Marchito's tower started growing (set on load when missing). */
   towerDay0?: number;
+  /** S5-C: Pilares-raíz broken (ids 0–3). Optional: older saves have none. */
+  pillars?: number[];
+  /** S5-C: someone has walked las Tierras Corruptas (La Flecha can lead raids). */
+  corruptSeen?: boolean;
 }
 
 export interface Grave extends GraveView {
@@ -230,6 +235,8 @@ interface Live {
   frog: boolean;
   /** On the dragon (live-only, S4-G). */
   dragon: boolean;
+  /** S5-C: pulling a Pilar-raíz's core: which, and when it gives. Live-only. */
+  pull?: { id: number; at: number } | null;
 }
 
 type Beast = 'deer' | 'fish' | 'frog' | 'dragon';
@@ -424,6 +431,16 @@ export class WorldSim {
   private raidN: number;
   private swampSeen: boolean;
   private mountainsSeen: boolean;
+  /** S5-C: someone walked las Tierras. */
+  corruptSeen: boolean;
+  /** S5-C: where the Pilares-raíz and their parts are (seeded). */
+  readonly pillarSpots: PillarSites;
+  /** S5-C: which Pilares-raíz are broken (saved). */
+  private pillarsBroken: boolean[];
+  /** S5-C: progress on the standing pillars (live-only, like the Zarzal knot): roots bridged, gusts on the miasma, Llamaradas on the cocoon, rayo guards out. */
+  private pillarLive = { roots: [false, false, false], miasma: 0, burns: 0, guards: false };
+  /** S5-C: the Lago Negro's anchor (kind 'anchor', PV live-only) while it holds. */
+  private lakeAnchor: Wolf | null = null;
   /** S5-A: the fog north of the rim is open (flying into las Tierras Corruptas). */
   fogOpen: boolean;
   /** Game day the Espinar last got its day beasts (live only: a restart may spawn them again). */
@@ -478,6 +495,10 @@ export class WorldSim {
     this.raidN = saved.raidN ?? 0;
     this.swampSeen = saved.swampSeen ?? false;
     this.mountainsSeen = saved.mountainsSeen ?? false;
+    this.corruptSeen = saved.corruptSeen ?? false;
+    this.pillarSpots = pillarSites(saved.seed);
+    this.pillarsBroken = [0, 1, 2, 3].map((i) => saved.pillars?.includes(i) ?? false);
+    if (!this.pillarsBroken[1]) this.lakeAnchor = this.makeLakeAnchor();
     this.fogOpen = saved.fogOpen ?? false;
     this.towerDay0 = saved.towerDay0 ?? Math.floor(saved.time / DAY_LENGTH);
     this.purified = saved.purified ?? false;
@@ -610,6 +631,8 @@ export class WorldSim {
         return this.onTravel(p, l, msg.to);
       case 'call':
         return this.onCall(p, l, msg.beast);
+      case 'pillar':
+        return this.onPillar(p, l, msg.id);
       case 'hello':
         return; // the room handles hello
     }
@@ -637,6 +660,7 @@ export class WorldSim {
         p.vitals = damage(p.vitals, ZARZAL.dps * dt);
         this.hint(p.name, l, `${upFirst(NAMES.swampGate)} muerde. Las espinas no respetan al ciervo`);
       }
+      this.pillarHazards(p, l, dt);
       if (p.vitals.health <= 0) this.kill(p);
       else this.pickUpGraves(p);
     }
@@ -652,6 +676,7 @@ export class WorldSim {
 
     this.stepShrines();
     this.stepTravel(night);
+    this.stepPulls();
     this.stepVines(dt);
     this.stepPillars();
     this.stepRaid(night);
@@ -766,6 +791,8 @@ export class WorldSim {
     if (rk && near(rk.x, rk.z)) wolves.push({ id: rk.id, kind: rk.kind, x: r2(rk.x), y: r2(rk.y), z: r2(rk.z), yaw: r2(rk.yaw), anim: rk.anim, raid: false, ...(rk.burn && rk.hp > 0 ? { burning: true as const } : {}) });
     const el = this.elite;
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
+    const la = this.lakeAnchor;
+    if (la && near(la.x, la.z)) wolves.push({ id: la.id, kind: la.kind, x: r2(la.x), y: r2(la.y), z: r2(la.z), yaw: 0, anim: 'idle', raid: false });
     for (const a of this.anchorFoes) if (a.hp > 0 && near(a.x, a.z)) wolves.push({ id: a.id, kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: 0, anim: 'idle', raid: false });
     const mm = this.marchito;
     if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
@@ -774,7 +801,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -798,6 +825,8 @@ export class WorldSim {
       ...(this.swampSeen ? { swampSeen: true } : {}),
       ...(this.mountainsSeen ? { mountainsSeen: true } : {}),
       ...(this.fogOpen ? { fogOpen: true } : {}),
+      ...(this.corruptSeen ? { corruptSeen: true } : {}),
+      ...(this.pillarsBroken.some(Boolean) ? { pillars: [0, 1, 2, 3].filter((i) => this.pillarsBroken[i]) } : {}),
       towerDay0: this.towerDay0,
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
@@ -898,7 +927,7 @@ export class WorldSim {
     if (l.fish) {
       // The fish: water only (no Ciénaga, no aguas bravas), from the seabed + 0.5 up to the surface, cap 15.
       const wet = fishStepOk(this.terrain, this.island, m.x, m.z);
-      const depthOk = m.y >= fishFloor(this.terrain, m.x, m.z) - 0.3 && m.y <= WATER_LEVEL + 0.5;
+      const depthOk = m.y >= fishFloor(this.terrain, m.x, m.z) - 0.3 && m.y <= waterLevel(this.terrain, m.x, m.z) + 0.5;
       if (!wet || !depthOk || moved > FISH.maxSpeed * elapsed + 1) {
         l.fix = true;
         return;
@@ -912,7 +941,7 @@ export class WorldSim {
     const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
     const wallOk = !inAnyDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
-    const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
+    const ground = Math.max(this.terrain.heightAt(m.x, m.z), waterLevel(this.terrain, m.x, m.z) - 0.9);
     const cragCeiling = cragsNear(this.climbables(), m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
     // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
     // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
@@ -920,9 +949,9 @@ export class WorldSim {
     const lifted = this.time < l.boostUntil && m.y <= l.boostCeil; // a gust's lift while gliding
     // ponytail: the frog's high jump is only a ceiling (ground + FROG.ceil), no server jump physics.
     const yOk = m.y > ground - 1 && (m.y < ground + (l.frog ? FROG.ceil : 4) || (!l.riding && !l.frog && m.y < cragCeiling) || m.y <= p.y || lifted);
-    const dryOk = l.frog ? frogMoveOk(this.terrain, p, m, m.y > Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL) + 0.5, this.climbables()) : !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
+    const dryOk = l.frog ? frogMoveOk(this.terrain, p, m, m.y > Math.max(this.terrain.heightAt(m.x, m.z), waterLevel(this.terrain, m.x, m.z)) + 0.5, this.climbables()) : !l.riding || this.terrain.heightAt(m.x, m.z) >= waterLevel(this.terrain, m.x, m.z) - 0.6;
     // The sea past 4 m turns swimmers back (they may only head shallower); gliders fly over it.
-    const swimming = m.y < WATER_LEVEL - 0.5;
+    const swimming = m.y < waterLevel(this.terrain, m.x, m.z) - 0.5;
     const seaOk = !swimming || deepStepOk(this.terrain, p.x, p.z, m.x, m.z);
     if (!seaOk) this.hint(p.name, l, 'La corriente te devuelve');
     // Las Montañas: no walking or riding uphill onto a cell over 50° (the client stops at 45°). The frog's high jump is exempt.
@@ -962,7 +991,7 @@ export class WorldSim {
    * Never into the fog north of the rim nor into a dungeon; in a raid, never low near the Heart.
    */
   private onFly(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>, moved: number, elapsed: number): void {
-    const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL);
+    const ground = Math.max(this.terrain.heightAt(m.x, m.z), waterLevel(this.terrain, m.x, m.z));
     if (!this.fogOpen && inFog(m.z)) {
       // S5-A: the fog gives way to a rider with the 4 Raíces-madre purified, once, for the world.
       if (!missingRoot(this)) {
@@ -1054,6 +1083,7 @@ export class WorldSim {
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < l.punchReadyAt) return;
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     if (w.kind === 'rayo' && !rayoLow(w, this.terrain.heightAt(w.x, w.z))) return this.hint(p.name, l, 'Vuela alto. Flechas, o viento');
+    if (w === this.lakeAnchor && !this.diving(p, w)) return this.hint(p.name, l, 'Está en el fondo. Bucea con el pez');
     l.punchReadyAt = this.time + PUNCH.cooldown;
     l.anim = 'attack';
     this.strike(p.name, w, PUNCH.damage * weaponMult(p.weaponLvl ?? 0));
@@ -1240,6 +1270,7 @@ export class WorldSim {
     const g = l.guard;
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < g.bowReadyAt) return;
     if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range * (this.onTower(p) ? TOWER.rangeMult : 1) || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
+    if (w === this.lakeAnchor && !this.diving(p, w)) return this.hint(p.name, l, 'Está en el fondo. Bucea con el pez');
     g.bowReadyAt = this.time + BOW.cooldown;
     l.anim = 'bow';
     this.strike(p.name, w, BOW.damage * weaponMult(p.weaponLvl ?? 0), true);
@@ -1373,12 +1404,16 @@ export class WorldSim {
     const others = this.vines.filter((v) => v.owner !== p.name);
     const wrapped = new Set(others.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
+    const tended = this.tendRoot(p, x, z);
     const plan = planVine(this.terrain, [...this.crags, ...others], bare, r2(x), r2(z), this.nextVineId);
-    if (!plan) return this.tell(p.name, 'No hay sitio para crecer');
+    if (!plan) {
+      if (tended) l.powerReadyAt = this.time + ENREDADERA.cooldown;
+      return tended ? undefined : this.tell(p.name, 'No hay sitio para crecer');
+    }
     if (plan.id === this.nextVineId) this.nextVineId++;
     this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
-    this.tell(p.name, 'Crece una enredadera');
+    if (!tended) this.tell(p.name, 'Crece una enredadera');
     // Coast roots wither to Viento, not Enredadera (see onGust).
     const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !isMountainZone(z.id) && !isCorruptLandZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
@@ -1404,7 +1439,7 @@ export class WorldSim {
     l.windReadyAt = this.time + VIENTO.cooldown;
     const dir = gustDir(p.x, p.z, x, z);
     const hits = (tx: number, tz: number, range: number = VIENTO.range) => inGust(p.x, p.z, dir, tx, tz, range);
-    const ground = Math.max(this.terrain.heightAt(p.x, p.z), WATER_LEVEL);
+    const ground = Math.max(this.terrain.heightAt(p.x, p.z), waterLevel(this.terrain, p.x, p.z));
     if (!l.boosted && p.y > ground + 1.5 && !l.riding && !l.fish && this.seatOf(p.name) === null) {
       l.boosted = true;
       l.boostCeil = p.y + VIENTO.boost + 0.5;
@@ -1415,11 +1450,12 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : [])];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
       if (w.kind === 'anchor') {
+        if (w === this.lakeAnchor && !this.diving(p, w)) continue;
         this.strike(p.name, w, VIENTO.damage * RESCUE.gustMult);
         continue;
       }
@@ -1519,6 +1555,11 @@ export class WorldSim {
       if (!isSwampZone(zn.id) || zn.id === SWAMP_ZONES.root || this.cleansed.has(zn.id)) continue;
       if (hits(zn.x, zn.z, FUEGO.rootReach)) this.cleanse(zn.id, 'El fuego seca la raíz marchita. El pantano respira');
     }
+    const fire = this.pillarSpots.cores[2]!;
+    if (!this.pillarsBroken[2] && this.pillarLive.burns < ASH_RUN.burns && hits(fire.x, fire.z, FUEGO.rootReach)) {
+      this.pillarLive.burns++;
+      this.tell(p.name, this.pillarLive.burns < ASH_RUN.burns ? `El capullo de espinas humea (${this.pillarLive.burns}/${ASH_RUN.burns})` : 'El capullo arde. El núcleo queda al aire');
+    }
     if (!this.zarzalBurnt && hits(ZARZAL_KNOT.x, ZARZAL_KNOT.z, FUEGO.rootReach)) {
       this.knotBurns++;
       if (this.knotBurns < FUEGO.burns) this.tell(p.name, `El nudo del ${NAMES.swampGate.replace(/^el /, '')} humea (${this.knotBurns}/${FUEGO.burns})`);
@@ -1567,7 +1608,7 @@ export class WorldSim {
 
   /** Every enemy that can be hit (beasts, elites, bosses, El Marchito, the cage's anchors). */
   private allFoes(): Wolf[] {
-    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : [])];
   }
 
   /** Piedra: Alzar a stone pillar 4 m toward the aim (2 m grid). Max 3 per player (the oldest crumbles), 120 s each. */
@@ -1658,6 +1699,11 @@ export class WorldSim {
   }
 
   private gustThings(p: SavedPlayer, dir: Dir, hits: (x: number, z: number, range?: number) => boolean): void {
+    const wind = this.pillarSpots.cores[1]!;
+    if (!this.pillarsBroken[1] && !this.lakeAnchor && this.pillarLive.miasma < LAKE_PILLAR.miasma && hits(wind.x, wind.z)) {
+      this.pillarLive.miasma++;
+      this.tell(p.name, this.pillarLive.miasma < LAKE_PILLAR.miasma ? `El miasma se aparta (${this.pillarLive.miasma}/${LAKE_PILLAR.miasma})` : 'El miasma se va. El núcleo queda al aire');
+    }
     const C = COAST_DUNGEON;
     const g = this.coastLive;
     if (inCoastDungeon(p.x, p.z)) {
@@ -1749,7 +1795,7 @@ export class WorldSim {
   /** Wolves, raiders or the boss. */
   private enemy(id: number): Wolf | undefined {
     if (this.marchito && this.marchito.id === id) return this.marchito;
-    const anchor = this.anchorFoes.find((a) => a.id === id);
+    const anchor = this.anchorFoes.find((a) => a.id === id) ?? (this.lakeAnchor?.id === id ? this.lakeAnchor : undefined);
     if (anchor) return anchor;
     if (this.elite && this.elite.id === id) return this.elite;
     if (this.shield && this.shield.id === id) return this.shield;
@@ -1765,7 +1811,10 @@ export class WorldSim {
   private strike(name: string, w: Wolf, dmg: number, ranged = false): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w.kind === 'anchor') {
-      if (hitWolf(w, dmg)) this.breakAnchor(w);
+      if (hitWolf(w, dmg)) {
+        if (w === this.lakeAnchor) this.breakLakeAnchor();
+        else this.breakAnchor(w);
+      }
       return;
     }
     if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
@@ -2187,7 +2236,7 @@ export class WorldSim {
     for (const [n, ol] of this.live) {
       const o = this.players.get(n)!;
       if (n === p.name || !(ol.riding || ol.dragon) || o.dead || ol.awayFor !== null || taken.has(n)) continue;
-      if (ol.dragon && o.y > Math.max(this.terrain.heightAt(o.x, o.z), WATER_LEVEL) + 1.5) continue; // landed dragons only
+      if (ol.dragon && o.y > Math.max(this.terrain.heightAt(o.x, o.z), waterLevel(this.terrain, o.x, o.z)) + 1.5) continue; // landed dragons only
       const d = Math.hypot(o.x - p.x, o.z - p.z);
       if (d <= MOUNT.reach && (!best || d < Math.hypot(best.x - p.x, best.z - p.z))) best = o;
     }
@@ -2346,7 +2395,7 @@ export class WorldSim {
     for (const o of this.players.values()) {
       const f = o.fish;
       if (!f || this.live.get(o.name)?.fish || !near(f.x, f.z)) continue;
-      out.push({ owner: o.name, x: f.x, y: WATER_LEVEL, z: f.z, yaw: 0 });
+      out.push({ owner: o.name, x: f.x, y: waterLevel(this.terrain, f.x, f.z), z: f.z, yaw: 0 });
     }
     return out;
   }
@@ -2379,7 +2428,7 @@ export class WorldSim {
   private onDragonAct(p: SavedPlayer, l: Live, act: number): void {
     if (act === 17) {
       if (!l.dragon) return;
-      if (p.y > Math.max(this.terrain.heightAt(p.x, p.z), WATER_LEVEL) + 1.5) return; // only once landed
+      if (p.y > Math.max(this.terrain.heightAt(p.x, p.z), waterLevel(this.terrain, p.x, p.z)) + 1.5) return; // only once landed
       if (this.noLanding(p.x, p.z)) return this.tell(p.name, 'Aquí no se aterriza en pleno asedio');
       return this.dismount(p, l);
     }
@@ -2421,7 +2470,7 @@ export class WorldSim {
     for (const o of this.players.values()) {
       const d = o.dragon;
       if (!d || this.live.get(o.name)?.dragon || !near(d.x, d.z)) continue;
-      out.push({ owner: o.name, x: d.x, y: r2(Math.max(this.terrain.heightAt(d.x, d.z), WATER_LEVEL)), z: d.z, yaw: 0 });
+      out.push({ owner: o.name, x: d.x, y: r2(Math.max(this.terrain.heightAt(d.x, d.z), waterLevel(this.terrain, d.x, d.z))), z: d.z, yaw: 0 });
     }
     return out;
   }
@@ -2434,7 +2483,7 @@ export class WorldSim {
     for (const o of this.players.values()) {
       const f = o.frog;
       if (!f || this.live.get(o.name)?.frog || !near(f.x, f.z)) continue;
-      out.push({ owner: o.name, x: f.x, y: r2(Math.max(this.terrain.heightAt(f.x, f.z), WATER_LEVEL)), z: f.z, yaw: 0 });
+      out.push({ owner: o.name, x: f.x, y: r2(Math.max(this.terrain.heightAt(f.x, f.z), waterLevel(this.terrain, f.x, f.z))), z: f.z, yaw: 0 });
     }
     return out;
   }
@@ -3225,6 +3274,138 @@ export class WorldSim {
     }
   }
 
+  // ---------------------------------------------------------------- S5-C: los Pilares-raíz
+
+  private makeLakeAnchor(): Wolf {
+    const a = this.pillarSpots.anchor;
+    return { id: PILLAR.idBase + 1, x: a.x, y: this.terrain.heightAt(a.x, a.z), z: a.z, yaw: 0, hp: LAKE_PILLAR.anchorHp, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle', raid: false, kind: 'anchor', stun: 0 };
+  }
+
+  /** Close enough in height to the lake anchor: only diving (the fish) gets there. */
+  private diving(p: SavedPlayer, w: Wolf): boolean {
+    return Math.abs(p.y - w.y) <= LAKE_PILLAR.dive;
+  }
+
+  private breakLakeAnchor(): void {
+    this.lakeAnchor = null;
+    this.say(`Se parte la cadena del fondo. El núcleo sube y encalla en la orilla de ${NAMES.blackLake}`);
+  }
+
+  /** Enredadera at one of the thicket's bare roots: a root bridge over the thorns. */
+  private tendRoot(p: SavedPlayer, x: number, z: number): boolean {
+    if (this.pillarsBroken[0]) return false;
+    const k = this.pillarSpots.roots.findIndex((r, i) => !this.pillarLive.roots[i] && Math.hypot(r.x - x, r.z - z) <= THICKET.rootReach);
+    if (k < 0) return false;
+    this.pillarLive.roots[k] = true;
+    const n = this.pillarLive.roots.filter(Boolean).length;
+    this.tell(p.name, `Una raíz cruza las espinas (${n}/3)`);
+    return true;
+  }
+
+  private lidUp(): boolean {
+    const stones = this.structures.filter((s) => s.kind === 'pillar');
+    const on = this.activeNames().flatMap((n) => {
+      const o = this.players.get(n);
+      return o && !o.dead ? [o] : [];
+    });
+    return lidUp(this.pillarSpots, stones, on);
+  }
+
+  /** What still keeps pillar `id` whole (a toast), or null when it can be pulled. `by` doesn't count as standing on the plate. */
+  private pillarBlock(id: number, by: string): string | null {
+    const g = this.pillarLive;
+    if (id === 0) {
+      const n = g.roots.filter(Boolean).length;
+      return n < 3 ? `Las espinas lo abrazan. Faltan raíces (${n}/3)` : null;
+    }
+    if (id === 1) {
+      if (this.lakeAnchor) return 'Una cadena lo sujeta al fondo del lago';
+      return g.miasma < LAKE_PILLAR.miasma ? `El miasma lo envuelve. Viento (${g.miasma}/${LAKE_PILLAR.miasma})` : null;
+    }
+    if (id === 2) return g.burns < ASH_RUN.burns ? `El capullo de espinas aguanta. Fuego (${g.burns}/${ASH_RUN.burns})` : null;
+    const stones = this.structures.filter((s) => s.kind === 'pillar');
+    const others = this.activeNames().flatMap((n) => {
+      const o = this.players.get(n);
+      return n !== by && o && !o.dead ? [o] : [];
+    });
+    return lidUp(this.pillarSpots, stones, others) ? null : 'La tapa no se mueve. Algo tiene que pisar la losa';
+  }
+
+  /** A on a core: start the 3 s pull (spec S5 §5). */
+  private onPillar(p: SavedPlayer, l: Live, id: number): void {
+    const c = this.pillarSpots.cores[id];
+    if (!c || p.dead || l.pull || this.pillarsBroken[id] || inAnyDungeon(p.x, p.z)) return;
+    if (Math.hypot(c.x - p.x, c.z - p.z) > PILLAR.reach) return;
+    const block = this.pillarBlock(id, p.name);
+    if (block) return this.tell(p.name, block);
+    l.pull = { id, at: this.time + PILLAR.hold };
+    this.tell(p.name, `Tiras del núcleo… (${PILLAR.hold} s)`);
+  }
+
+  private stepPulls(): void {
+    for (const [name, l] of this.live) {
+      const t = l.pull;
+      if (!t) continue;
+      const p = this.players.get(name)!;
+      const c = this.pillarSpots.cores[t.id]!;
+      if (p.dead || l.awayFor !== null || this.pillarsBroken[t.id] || Math.hypot(c.x - p.x, c.z - p.z) > PILLAR.reach) {
+        l.pull = null;
+        if (!p.dead) this.tell(name, 'Sueltas el núcleo');
+        continue;
+      }
+      if (this.time + EPS < t.at) continue;
+      l.pull = null;
+      this.breakPillar(t.id);
+    }
+  }
+
+  private breakPillar(id: number): void {
+    this.pillarsBroken[id] = true;
+    const n = this.pillarsBroken.filter(Boolean).length;
+    const power = [NAMES.powerVine, NAMES.powerWind, NAMES.powerFire, NAMES.powerStone][id]!;
+    this.say(`El ${NAMES.rootPillar} de ${power} se parte (${n}/${PILLAR.count})`);
+    const zn = pillarZone(id);
+    if (zn !== null) this.cleanse(zn, 'La ceniza de alrededor se aclara');
+    const c = this.pillarSpots.cores[id]!;
+    const near = this.activeNames().filter((nm) => {
+      const o = this.players.get(nm);
+      return !!o && !o.dead && Math.hypot(o.x - c.x, o.z - c.z) <= 40;
+    });
+    this.vision(VISION.pillar[id]!(joinNames(near.length ? near : this.activeNames())));
+    // S5-D: the 4th Pilar-raíz arms Invasión 3 (SavedWorld.invasion3 = 'pending', vision «Ah. Ahora voy yo.»).
+  }
+
+  /** Thorns round the Enredadera pillar, hot ash round the Fuego one (only while they stand); also calls the Fuego pillar's rayo guards. */
+  private pillarHazards(p: SavedPlayer, l: Live, dt: number): void {
+    if (!inCorrupt(p.x, p.z) || l.dragon) return;
+    const onGround = p.y < this.terrain.heightAt(p.x, p.z) + 1.5;
+    if (!this.pillarsBroken[0] && onGround && !l.fish && thicketHurts(this.pillarSpots, this.pillarLive.roots, p.x, p.z)) {
+      p.vitals = damage(p.vitals, THICKET.dps * dt);
+      this.hint(p.name, l, 'Las espinas negras muerden. Busca sus raíces');
+    }
+    const fire = this.pillarSpots.cores[2]!;
+    if (this.pillarsBroken[2]) return;
+    if (!this.pillarLive.guards && Math.hypot(p.x - fire.x, p.z - fire.z) <= ASH_RUN.r) {
+      this.pillarLive.guards = true;
+      for (let i = 0; i < ASH_RUN.guards; i++) {
+        const a = (i * 2 * Math.PI) / ASH_RUN.guards;
+        const w = createWolf(this.nextWolfId++, fire.x + Math.sin(a) * 6, fire.z + Math.cos(a) * 6, this.terrain, this.rng, 'rayo');
+        w.y += RAYO.fly;
+        this.wolves.push(w);
+      }
+    }
+    const mounted = l.riding || l.frog || l.fish || !!l.seat || this.seatOf(p.name) !== null;
+    if (!mounted && onGround && ashHurts(this.pillarSpots, p.x, p.z)) {
+      p.vitals = damage(p.vitals, ASH_RUN.dps * dt);
+      this.hint(p.name, l, 'La ceniza quema. A pie no se cruza bien');
+    }
+  }
+
+  private pillarView(): PillarView {
+    const g = this.pillarLive;
+    return { broken: [...this.pillarsBroken], roots: [...g.roots], anchor: !!this.lakeAnchor, miasma: g.miasma, burns: g.burns, lid: this.pillarsBroken[3] ? false : this.lidUp() };
+  }
+
   private cleanse(id: number, text: string): void {
     if (this.cleansed.has(id) || !this.zones.some((z) => z.id === id)) return;
     this.cleansed.add(id);
@@ -3249,6 +3430,14 @@ export class WorldSim {
     if (climber) {
       this.mountainsSeen = true;
       this.vision(VISION.mountains(climber));
+    }
+    const walker = this.corruptSeen ? undefined : this.activeNames().find((n) => {
+      const p = this.players.get(n);
+      return !!p && !p.dead && inCorrupt(p.x, p.z);
+    });
+    if (walker) {
+      this.corruptSeen = true;
+      this.vision(VISION.corrupt(walker));
     }
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
