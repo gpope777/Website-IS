@@ -45,3 +45,36 @@ describe('progression (P4-A)', () => {
     expect(NAMES.rank).toBe('Rango');
   });
 });
+
+describe('Proezas y Libro (P4-D)', () => {
+  it('6 feats with names, 11 bosses', async () => {
+    const { FEATS, BOSS_KINDS, FEAT_HAT } = await import('./progression');
+    expect(FEATS).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(NAMES.featNames).toHaveLength(6);
+    expect(NAMES.book).toBe('Libro');
+    expect(NAMES.feats).toBe('Proezas');
+    expect(BOSS_KINDS).toHaveLength(11);
+    expect(FEAT_HAT).toEqual({ 1: 7, 4: 8, 6: 9 });
+  });
+
+  it('bossesOf: saved plus inferred from powers, no repeats, no junk', async () => {
+    const { bossesOf } = await import('./progression');
+    expect(bossesOf({ viento: true }).sort()).toEqual(['boss2', 'elite2']);
+    expect(bossesOf({ enredadera: true, bosses: ['boss', 'lieut1', 'wolf'] }).sort()).toEqual(['boss', 'elite', 'lieut1']);
+    expect(bossesOf({})).toEqual([]);
+  });
+
+  it('3 Proeza hats: 7–9, locked until the feat', async () => {
+    const { isLook, hatUnlocked, HAT_HINTS, HAT_IDS } = await import('./progression');
+    expect(isLook(0, 9)).toBe(true);
+    expect(isLook(0, 10)).toBe(false);
+    expect(HAT_IDS).toHaveLength(9);
+    for (const [h, f] of [[7, 1], [8, 4], [9, 6]] as const) {
+      expect(hatUnlocked({}, h)).toBe(false);
+      expect(hatUnlocked({ feats: [f] }, h)).toBe(true);
+      expect(HAT_HINTS[HAT_IDS[h - 1]!]).toMatch(/Proeza/);
+      expect(NAMES.hatNames[HAT_IDS[h - 1]!]).toBeTruthy();
+    }
+    expect(hatUnlocked({ feats: [2, 3, 5] }, 7)).toBe(false);
+  });
+});

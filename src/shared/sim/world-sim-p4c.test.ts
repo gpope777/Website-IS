@@ -21,7 +21,7 @@ describe('P4-C Aspecto (server)', () => {
     expect(PROTOCOL_VERSION).toBe(57);
     expect(decodeClient(JSON.stringify({ t: 'look', color: 3, hat: 0 }))).toEqual({ t: 'look', color: 3, hat: 0 });
     expect(decodeClient(JSON.stringify({ t: 'look', color: 8, hat: 0 }))).toBeNull();
-    expect(decodeClient(JSON.stringify({ t: 'look', color: 0, hat: 7 }))).toBeNull();
+    expect(decodeClient(JSON.stringify({ t: 'look', color: 0, hat: 10 }))).toBeNull();
     expect(decodeClient(JSON.stringify({ t: 'look', color: '1', hat: 0 }))).toBeNull();
   });
 

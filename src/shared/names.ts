@@ -101,5 +101,12 @@ export const NAMES = {
     cuarzo: 'Cuernos de cuarzo',
     aureola: 'Aureola blanca',
     estrella: 'Estrella',
+    papel: 'Papel doblado',
+    nieve: 'Gorro de nieve',
+    marchita: 'Corona marchita',
   },
+  /** P4-D: the Libro and the Proezas. */
+  book: 'Libro',
+  feats: 'Proezas',
+  featNames: ['Sin un rasguño', 'Pez veloz', 'Pies secos', 'Solo contra el frío', 'Noche entera', 'Corazón quieto'],
 } as const;

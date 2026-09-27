@@ -7,7 +7,7 @@ describe('Aspecto screen (P4-C)', () => {
     expect(h).toContain('<h2>Aspecto</h2>');
     expect(h.match(/data-a="color-/g)).toHaveLength(8);
     expect(h).toContain('class="swatch on" data-a="color-2"');
-    expect(h.match(/data-a="hat-/g)).toHaveLength(7);
+    expect(h.match(/data-a="hat-/g)).toHaveLength(10) // P4-D: "Sin sombrero" + 9;
     expect(h).toContain('Sin sombrero');
     expect(h).toContain('class="hat" data-a="hat-4"');
     expect(h).toContain('class="hat locked" data-a="hat-1"');

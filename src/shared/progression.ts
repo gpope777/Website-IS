@@ -39,6 +39,8 @@ export interface ProgressSource {
   capaLvl?: number;
   ending?: boolean;
   xp?: number;
+  /** P4-D: Proezas done (ids 1–6). */
+  feats?: number[];
 }
 
 export function rankOf(xp: number): number {
@@ -155,8 +157,8 @@ export function canLearn(skills: readonly string[], id: SkillId, rank: number): 
 /** P4-C: player colours (the robot's `Main` material). [0] is the model's own orange. */
 export const COLORS: readonly number[] = [0xc9951e, 0x3f7fd0, 0x4fae4a, 0xc84040, 0x8a5cc8, 0xe8e2d0, 0x2e2e36, 0xe07fb0];
 
-/** P4-C: hat n (1–6) is HAT_IDS[n − 1]; 0 = none. The Proeza hats come in P4-D. */
-export const HAT_IDS = ['hoja', 'caracola', 'ambar', 'cuarzo', 'aureola', 'estrella'] as const;
+/** P4-C: hat n (1–9) is HAT_IDS[n − 1]; 0 = none. 7–9 are the Proeza hats (P4-D). */
+export const HAT_IDS = ['hoja', 'caracola', 'ambar', 'cuarzo', 'aureola', 'estrella', 'papel', 'nieve', 'marchita'] as const;
 export type HatId = (typeof HAT_IDS)[number];
 export interface Look { color: number; hat: number }
 export const DEFAULT_LOOK: Look = { color: 0, hat: 0 };
@@ -172,6 +174,9 @@ export const HAT_HINTS: Record<HatId, string> = {
   cuarzo: `Se gana con ${NAMES.powerStone}`,
   aureola: `Se gana venciendo a ${NAMES.villain}`,
   estrella: `Se gana domando ${NAMES.legendary}`,
+  papel: `Se gana con la Proeza ${NAMES.featNames[0]}`,
+  nieve: `Se gana con la Proeza ${NAMES.featNames[3]}`,
+  marchita: `Se gana con la Proeza ${NAMES.featNames[5]}`,
 };
 
 /** Milestones never go back, so a hat never re-locks. `ending` = El Marchito fell in this world. */
@@ -192,8 +197,39 @@ export function hatUnlocked(p: ProgressSource, hat: number): boolean {
       return !!p.ending;
     case 'estrella':
       return !!p.star;
+    case 'papel':
+      return !!p.feats?.includes(1);
+    case 'nieve':
+      return !!p.feats?.includes(4);
+    case 'marchita':
+      return !!p.feats?.includes(6);
   }
   return false;
 }
 
 export const unlockedHats = (p: ProgressSource): number[] => HAT_IDS.map((_, i) => i + 1).filter((h) => hatUnlocked(p, h));
+
+// ---------------------------------------------------------------- P4-D: Libro y Proezas
+
+/** Proeza ids (spec §7); the name is NAMES.featNames[id − 1]. They give a hat or a seal, never power. */
+export const FEATS = [1, 2, 3, 4, 5, 6] as const;
+/** Proeza → the hat it unlocks. */
+export const FEAT_HAT: Record<number, number> = { 1: 7, 4: 8, 6: 9 };
+/** How much faster than the limit the fish race must be (Pez veloz). */
+export const FEAT_FAST = 0.8;
+/** The Heart's lowest share for Noche entera. */
+export const FEAT_HEART = 0.5;
+/** The Libro's 11 bosses: 4 dungeon bosses, 4 dungeon elites, 3 lieutenants. */
+export const BOSS_KINDS = ['boss', 'elite', 'boss2', 'elite2', 'boss3', 'elite3', 'boss4', 'elite4', 'lieut1', 'lieut2', 'lieut3'] as const;
+const POWER_BOSSES: [keyof ProgressSource, string, string][] = [
+  ['enredadera', 'boss', 'elite'],
+  ['viento', 'boss2', 'elite2'],
+  ['fuego', 'boss3', 'elite3'],
+  ['piedra', 'boss4', 'elite4'],
+];
+/** Bosses beaten: the saved list plus the dungeon's boss and elite for each power held (old saves). */
+export function bossesOf(p: ProgressSource & { bosses?: readonly string[] }): string[] {
+  const out = new Set((p.bosses ?? []).filter((b) => (BOSS_KINDS as readonly string[]).includes(b)));
+  for (const [k, b, e] of POWER_BOSSES) if (p[k]) out.add(b).add(e);
+  return [...out];
+}
