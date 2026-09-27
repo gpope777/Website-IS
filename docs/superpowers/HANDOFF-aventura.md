@@ -517,3 +517,23 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: Candiles solo (¿se puede con 12 s?) y con dos. Nenúfares a pie saltando (¿1,5 s es justo? ¿el hueco de ~2,4 m entre discos se salta?) y en rana. Buscar el ámbar en la niebla, subir a un tocón en rana, comprar la Capa y notar menos daño de noche. Constantes: `SWAMP_SHRINE`, `AMBER` en `src/shared/swamp-shrines.ts`, `CAPA` en `src/shared/items.ts`.
+
+## Slice 3 · S3-D — corrupción del Pantano y La Gata Araña — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-D-corrupcion-gata.md`.
+- Commits: 4763f5e (T1+T2 zonas 10–13 y orbes del Pantano, protocolo v27), 8949370 (T3 La Gata Araña en reglas y servidor, v28), 4d6de0f (T4 cliente).
+- Tests: npm test 545 (antes 528), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 28**. Campos guardados nuevos opcionales `SavedWorld.raidN` y `SavedWorld.swampSeen`: las partidas viejas cargan (contador en 0, zonas 10–13 corruptas).
+- Cómo funciona:
+  - **4 zonas más** (ids fijos 10–13, `generateSwampZones` en `corruption.ts`): 10 = Raíz-madre del Pantano en el centro de la Laguna Negra (r 18); 11 en el montículo seco más lejano de la Laguna; 12 en ciénaga abierta (búsqueda sembrada); 13 en la orilla de los Nenúfares. Mismo tinte, raíz marchita y regla nocturna (+2 bestias por jugador dentro).
+  - **Orbes:** un orbe del Pantano limpia la zona corrupta del Pantano más cercana (11–13, nunca la 10): "La luz del santuario limpia un trozo de pantano". Cada orbe limpia solo zonas de su bioma. La Enredadera y el Viento no limpian el Pantano.
+  - **Contador de asedios** (`raidN`, sube con cada aviso del atardecer) y **Pantano visto** (`swampSeen`, alguien entró en `inSwamp`). Con el Pantano visto y la zona 10 corrupta, **cada 3.er asedio** lo guía **La Gata Araña**: el aviso añade "La Gata Araña guía el asedio esta noche".
+  - **La Gata Araña** (`src/shared/sim/lieutenant.ts`, `EnemyKind 'lieut1'`): recorte de papel de `enemy2.png` (2,6 m). 300 PV, velocidad de lobo, muerde 12 cada 2 s. Sale 10 m por detrás de su manada; persigue al jugador más cercano a ≤28 m; sin nadie, se queda a 14 m del Corazón (no lo muerde). **Aura:** los asaltantes a ≤8 m corren un 20 % más. **Al caer:** el resto del asedio huye (se alejan del Corazón y desaparecen a los 3 s; la noche cuenta como superada), cada jugador vivo a ≤40 m recibe **2 ámbar** y hay visión: «Mi gata… <nombres>, esto no queda así.»
+- Decidido por Claude — revisar:
+  - "Cada 3.er asedio" = asedios cuyo número (contado desde el principio del mundo, 1-based) es múltiplo de 3. El contador cuenta aunque aún nadie haya visto el Pantano.
+  - La visión nombra a los presentes (el spec decía "Ana"; se usan los nombres reales como en las otras visiones).
+  - "Presentes" = vivos a ≤40 m de ella. Sin barra de vida propia ni tinte de aura en el cliente.
+  - T1 y T2 van en un solo commit: al cambiar `isCoastZone` a 6–9, el filtro de orbes del servidor tenía que cambiar a la vez para no dejar tests rojos.
+  - Cambios de regla con tests adaptados (ninguno borrado): "a swamp orb cleanses no zone" ahora espera que limpie la 13; el test de ids de la Costa mira solo los 4 que siguen al bosque; versión de protocolo → 28.
+- **Marcas pendientes:** `// S3-E` (una Llamarada a ≤5 m de la raíz de 11–13 la limpia; junto a la de la Enredadera en `world-sim.ts`), `// S3-F` (vencer a El Zancudo limpia la 10 y con ello la Gata deja de venir).
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: entrar al Pantano, buscar las 4 manchas; tomar un orbe del Pantano y ver cuál desaparece. Forzar el 3.er asedio (en una partida de prueba, `raidN: 2` en el guardado): ¿se ve la Gata en la niebla del atardecer?, ¿se nota el aura?, ¿300 PV es mucho con arma nivel 0? Constantes: `SWAMP_ZONES` en `corruption.ts`, `GATA` en `sim/lieutenant.ts`.

@@ -1,6 +1,6 @@
 # Aventura — Slice 3 · S3-D: corrupción del Pantano y La Gata Araña — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Four swamp corruption zones (ids 10–13) in the same list as the forest's 0–5 and the coast's 6–9. Zone 10 is the **Raíz-madre del Pantano** in the middle of the Laguna Negra; 11 on a montículo, 12 in open bog, 13 on the Nenúfares shore. Same visuals and night rule. **Swamp shrine orbs cleanse the nearest corrupt swamp zone** (11–13, never 10). A **world raid counter** (`SavedWorld.raidN`) and a **swamp-seen flag** (`SavedWorld.swampSeen`): once anyone has entered the swamp and while zone 10 is corrupt, **every 3rd raid is led by La Gata Araña** (`enemy2.png` paper cutout, 300 PV, bites 12 every 2 s, +20 % speed aura for raiders within 8 m, hunts the nearest player instead of the Heart). Beating her makes the rest of the raid flee (gone in 3 s), gives **2 ámbar** to each player present and a vision.
 
@@ -38,17 +38,17 @@ export function isSwampZone(id: number): boolean;  // >= 10
 export function generateSwampZones(terrain: Terrain, seed: number): Zone[]; // ids 10,11,12,13
 // allZones(...) = forest + coast + swamp
 ```
-- [ ] **Step 1: failing tests.** For 4 seeds: `allZones` ends with ids 10–13; 10 at the Laguna centre (r 18); 11 centre on a montículo (dry); 12 in bog (`inBog`); 13 within 4 m of the Nenúfares shore pad (`generateSwampShrines(...)[1].parts[0]`); all four `inSwamp`, no two overlap. `isCoastZone(10) === false`, `isSwampZone(10)`, `isSwampZone(9) === false`. `coastRaidBrutes([6,7,10,11]) === 1` (swamp zones don't count).
-- [ ] **Step 2: implement** (mound farthest from the Laguna that is dry; bog point by seeded search `createRng(seed ^ 0x5a2e0)`, fallback the swamp's centre line).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): zonas corruptas del Pantano (reglas)`.
+- [x] **Step 1: failing tests.** For 4 seeds: `allZones` ends with ids 10–13; 10 at the Laguna centre (r 18); 11 centre on a montículo (dry); 12 in bog (`inBog`); 13 within 4 m of the Nenúfares shore pad (`generateSwampShrines(...)[1].parts[0]`); all four `inSwamp`, no two overlap. `isCoastZone(10) === false`, `isSwampZone(10)`, `isSwampZone(9) === false`. `coastRaidBrutes([6,7,10,11]) === 1` (swamp zones don't count).
+- [x] **Step 2: implement** (mound farthest from the Laguna that is dry; bog point by seeded search `createRng(seed ^ 0x5a2e0)`, fallback the swamp's centre line).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): zonas corruptas del Pantano (reglas)`.
 
 ### Task 2: Server — swamp orbs cleanse (protocol v27)
 
 **Files:** Modify `src/shared/protocol.ts`, `src/shared/sim/world-sim.ts`; Tests `protocol.test.ts`, `world-sim.test.ts`.
 
-- [ ] **Step 1: failing tests.** New world `snap.corrupt` = `[0..13]`. A swamp orb (shrine 6, gate forced open) cleanses the nearest corrupt swamp zone among 11–13 ("La luz del santuario limpia un trozo de pantano"), never 10, never forest/coast. A coast orb never cleanses swamp zones. Enredadera at zone 11's root cleanses nothing. Night rule: a player in zone 11 at dusk brings extra beasts. Old save `cleansed: [0,6]` loads with 10–13 corrupt. Version → 27 (intentional).
-- [ ] **Step 2: implement.** Resolve the `// S3-D` marker in `onShrine`; the vine filter excludes swamp; add `// S3-E` (Llamarada cleanses 11–13) and `// S3-F` (Zancudo cleanses 10) markers.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): corrupción del Pantano en el servidor (protocolo v27)`.
+- [x] **Step 1: failing tests.** New world `snap.corrupt` = `[0..13]`. A swamp orb (shrine 6, gate forced open) cleanses the nearest corrupt swamp zone among 11–13 ("La luz del santuario limpia un trozo de pantano"), never 10, never forest/coast. A coast orb never cleanses swamp zones. Enredadera at zone 11's root cleanses nothing. Night rule: a player in zone 11 at dusk brings extra beasts. Old save `cleansed: [0,6]` loads with 10–13 corrupt. Version → 27 (intentional).
+- [x] **Step 2: implement.** Resolve the `// S3-D` marker in `onShrine`; the vine filter excludes swamp; add `// S3-E` (Llamarada cleanses 11–13) and `// S3-F` (Zancudo cleanses 10) markers.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): corrupción del Pantano en el servidor (protocolo v27)`.
 
 ### Task 3: La Gata Araña (rules + server, protocol v28)
 
@@ -60,16 +60,16 @@ export const GATA = { hp: 300, damage: 12, biteCooldown: 2, aura: 8, haste: 1.2,
 export function gataLeads(raidN: number, swampSeen: boolean, corrupt: readonly number[]): boolean; // swampSeen && corrupt has 10 && raidN % 3 === 0
 export function stepGata(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terrain: Terrain, dt: number, rng: () => number): string | null;
 ```
-- [ ] **Step 1: failing tests.** Pure: `gataLeads` truth table; `stepGata` chases a player at 20 m and bites; with nobody near it walks to the Heart and stops ~14 m away; `stepRaider` with `haste: 1.2` moves 20 % further. Sim: entering `inSwamp` sets `swampSeen` (saved). `raidN` saved and +1 per dusk warning. Raid 3 with swamp seen: warning has "La Gata Araña guía el asedio esta noche", one `lieut1` raider with 300 PV; raid 3 without swamp seen or with zone 10 cleansed: none; raid 2: none. Raiders within 8 m get haste. Killing her: the other raiders vanish within 3 s, a nearby player gets +2 ámbar, a far one doesn't, a vision with "Mi gata". Old save without `raidN` loads (0). Version → 28.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): La Gata Araña guía asedios (protocolo v28)`.
+- [x] **Step 1: failing tests.** Pure: `gataLeads` truth table; `stepGata` chases a player at 20 m and bites; with nobody near it walks to the Heart and stops ~14 m away; `stepRaider` with `haste: 1.2` moves 20 % further. Sim: entering `inSwamp` sets `swampSeen` (saved). `raidN` saved and +1 per dusk warning. Raid 3 with swamp seen: warning has "La Gata Araña guía el asedio esta noche", one `lieut1` raider with 300 PV; raid 3 without swamp seen or with zone 10 cleansed: none; raid 2: none. Raiders within 8 m get haste. Killing her: the other raiders vanish within 3 s, a nearby player gets +2 ámbar, a far one doesn't, a vision with "Mi gata". Old save without `raidN` loads (0). Version → 28.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(aventura): La Gata Araña guía asedios (protocolo v28)`.
 
 ### Task 4: Client — the Gata as a paper cutout
 
 **Files:** Modify `src/client/game.ts`.
-- [ ] **Step 1:** `GATA_IMG = '/enemies/enemy2.png'` (408 × 512, real alpha), `PaperActor(GATA_IMG, 2.6, camera, 408 / 512)` for `lieut1`, white tint (not the boss's weak tint). Health bar label if the HUD lists enemy kinds. `check` + `build` (pure logic already covered).
-- [ ] **Step 2:** green, self-review, commit `feat(aventura): cliente de La Gata Araña`.
+- [x] **Step 1:** `GATA_IMG = '/enemies/enemy2.png'` (408 × 512, real alpha), `PaperActor(GATA_IMG, 2.6, camera, 408 / 512)` for `lieut1`, white tint (not the boss's weak tint). Health bar label if the HUD lists enemy kinds. `check` + `build` (pure logic already covered).
+- [x] **Step 2:** green, self-review, commit `feat(aventura): cliente de La Gata Araña`.
 
 ### Task 5: Ship
 
-- [ ] Push `aventura/resto`; append "Slice 3 · S3-D" to `docs/superpowers/HANDOFF-aventura.md`; one short comment on PR #3. No merge, no deploy.
+- [x] Push `aventura/resto`; append "Slice 3 · S3-D" to `docs/superpowers/HANDOFF-aventura.md`; one short comment on PR #3. No merge, no deploy.
