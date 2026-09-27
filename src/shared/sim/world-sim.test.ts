@@ -10,7 +10,7 @@ import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
 import { HALF, LAGUNA, RIVER, WATER_LEVEL } from '../terrain';
 const LAGUNA_EDGE = { x: LAGUNA.x, z: LAGUNA.z - LAGUNA.rz - 6 };
-import { inBog, ZARZAL, zarzalAt } from '../swamp';
+import { inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { CIENAGA, depthAt } from '../coast';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
@@ -25,7 +25,7 @@ import { VIENTO } from '../viento';
 import { insideSwamp, SWAMP_DUNGEON } from '../swamp-dungeon';
 import { FUEGO, HOGUERA } from '../fuego';
 import { ANTENON, ANTENON_ALLY } from './antenon';
-import { ZANCUDO, type Zancudo } from './zancudo';
+import { FAROL, ZANCUDO, type Zancudo } from './zancudo';
 import { RESCUE } from '../rescue';
 import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
@@ -4458,5 +4458,61 @@ describe('El Zancudo (S3-F)', () => {
     const sim = new WorldSim(newWorld(42, 'salt'));
     expect(sim.purified3).toBe(false);
     expect('purified3' in sim.save()).toBe(false);
+  });
+});
+
+describe('the white Zancudo and the Zarzal knot (S3-F)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  it('none before it is beaten; with purified3 and a Heart its farol sends wolves near the Heart running at night', () => {
+    const sim = setup('Ana');
+    calmCoast(sim);
+    const h = plantHeart(sim);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally3).toBeNull();
+    sim.purified3 = true;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally3).toMatchObject({ x: h.x, z: h.z + FAROL.home });
+    put(sim, 'Ana', 150, 150);
+    sim.heart()!.hp = 100_000;
+    stepTo(sim, 0.81);
+    const w = sim.wolfList.find((x) => x.raid && x.kind === 'wolf')!;
+    Object.assign(w, { x: h.x + 4, z: h.z, flee: 0 });
+    for (let i = 0; i < FAROL.every * 10 + 5 && !w.flee; i++) {
+      if (!w.flee) Object.assign(w, { x: h.x + 4, z: h.z });
+      sim.step(0.1);
+    }
+    expect(w.flee).toBeGreaterThan(0);
+  });
+
+  it('three Llamaradas burn the knot: a gap in the thorns opens for everyone, and stays', () => {
+    const sim = setup('Ana', 'Leo');
+    const K = ZARZAL_KNOT;
+    const p = sim.getPlayer('Ana')!;
+    p.fuego = true;
+    put(sim, 'Ana', K.x + 3, K.z);
+    msgs(sim);
+    for (let i = 1; i <= FUEGO.burns; i++) {
+      sim.handle('Ana', { t: 'power', x: K.x, z: K.z, kind: 'fuego' });
+      if (i < FUEGO.burns) expect(texts(sim).some((t) => t.includes(`(${i}/${FUEGO.burns})`))).toBe(true);
+      sim.step(FUEGO.cooldown + 0.05);
+    }
+    expect(sim.zarzalBurnt).toBe(true);
+    expect(snap(sim, 'Ana').zarzalBurnt).toBe(true);
+    expect(sim.save().zarzalBurnt).toBe(true);
+    let x = -HALF - 5;
+    while (x > -HALF - 55 && !zarzalAt(sim.terrain, x, K.z)) x -= 1;
+    expect(zarzalAt(sim.terrain, x, K.z)).toBe(true);
+    put(sim, 'Leo', x, K.z);
+    const leo = sim.getPlayer('Leo')!;
+    const hp = leo.vitals.health;
+    sim.step(0.5);
+    expect(leo.vitals.health).toBeGreaterThan(hp - 1);
+    expect(new WorldSim(sim.save()).zarzalBurnt).toBe(true);
+  });
+
+  it('old saves load with the knot whole', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(sim.zarzalBurnt).toBe(false);
+    expect('zarzalBurnt' in sim.save()).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
-import { BOG, inBog, ZARZAL, zarzalAt } from '../swamp';
+import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
@@ -118,6 +118,8 @@ export interface SavedWorld {
   purified2?: boolean;
   /** El Zancudo was beaten and its white copy hangs a farol by the Heart. Optional: older saves have none. */
   purified3?: boolean;
+  /** The Zarzal knot burnt: a walking path into the swamp for everyone. Optional: older saves have the knot whole. */
+  zarzalBurnt?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): owed since someone tamed a fish, the Tragón taken, or rescued. Optional: older saves have none. */
@@ -318,6 +320,9 @@ export class WorldSim {
   private ally3: Farol | null = null;
   /** When each of El Zancudo's gas vents last flared (for the client's flash). */
   private readonly ventAt: number[] = [-99, -99, -99, -99];
+  /** The Zarzal knot burnt (saved), and the Llamaradas it has taken so far (live-only). */
+  zarzalBurnt: boolean;
+  private knotBurns = 0;
   /** The purified Tragón by the Heart; live-only, rebuilt from `purified`. */
   private ally: Ally | null = null;
   /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
@@ -392,6 +397,7 @@ export class WorldSim {
     this.purified = saved.purified ?? false;
     this.purified2 = saved.purified2 ?? false;
     this.purified3 = saved.purified3 ?? false;
+    this.zarzalBurnt = saved.zarzalBurnt ?? false;
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
     this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
@@ -529,7 +535,7 @@ export class WorldSim {
         p.vitals = damage(p.vitals, CIENAGA.dps * dt);
         this.hint(p.name, l, 'El barro marchito muerde. A lomos del ciervo no');
       }
-      if (!l.fish && zarzalAt(this.terrain, p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
+      if (!l.fish && zarzalAt(this.terrain, p.x, p.z, this.zarzalBurnt) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
         p.vitals = damage(p.vitals, ZARZAL.dps * dt);
         this.hint(p.name, l, `${upFirst(NAMES.swampGate)} muerde. Las espinas no respetan al ciervo`);
       }
@@ -644,7 +650,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, zarzalBurnt: false, steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, zarzalBurnt: this.zarzalBurnt, steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -670,6 +676,7 @@ export class WorldSim {
       purified: this.purified,
       ...(this.purified2 ? { purified2: true } : {}),
       ...(this.purified3 ? { purified3: true } : {}),
+      ...(this.zarzalBurnt ? { zarzalBurnt: true } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
       ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
@@ -782,7 +789,7 @@ export class WorldSim {
     // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).
     const wading = !mounted && inCienaga(l.anchorX, l.anchorZ) && inCienaga(m.x, m.z);
     // El Zarzal slows walkers and riders; the bog slows walkers (same whole-window rule).
-    const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ) && zarzalAt(this.terrain, m.x, m.z);
+    const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ, this.zarzalBurnt) && zarzalAt(this.terrain, m.x, m.z, this.zarzalBurnt);
     const bogged = !mounted && inBog(this.terrain, l.anchorX, l.anchorZ) && inBog(this.terrain, m.x, m.z);
     const cap = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
@@ -1200,7 +1207,15 @@ export class WorldSim {
       if (!isSwampZone(zn.id) || zn.id === SWAMP_ZONES.root || this.cleansed.has(zn.id)) continue;
       if (hits(zn.x, zn.z, FUEGO.rootReach)) this.cleanse(zn.id, 'El fuego seca la raíz marchita. El pantano respira');
     }
-    // S3-F: the Zarzal knot. S3-G: the fogatas.
+    if (!this.zarzalBurnt && hits(ZARZAL_KNOT.x, ZARZAL_KNOT.z, FUEGO.rootReach)) {
+      this.knotBurns++;
+      if (this.knotBurns < FUEGO.burns) this.tell(p.name, `El nudo del ${NAMES.swampGate.replace(/^el /, '')} humea (${this.knotBurns}/${FUEGO.burns})`);
+      else {
+        this.zarzalBurnt = true;
+        this.say(`El nudo arde y ${NAMES.swampGate} se abre. Hay un paso a pie hacia ${NAMES.biomeSwamp}`); // S3-G: the vision
+      }
+    }
+    // S3-G: the fogatas.
     if (!inSwampDungeon(p.x, p.z)) return;
     const S = SWAMP_DUNGEON;
     const g = this.swampLive;
