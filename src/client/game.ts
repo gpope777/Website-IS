@@ -10,7 +10,7 @@ import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { bossBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, shieldBarText } from './dungeon-ui';
+import { antenonBarText, bossBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, shieldBarText } from './dungeon-ui';
 import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
@@ -55,6 +55,9 @@ import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
 /** The nephew's drawing used for el Tragón de Papel (and, purified, the Heart's defender). */
 const TRAGON_IMG = '/enemies/enemy1.png';
+/** El Antenón (enemy3.png has real transparency: no keying needed). */
+const ANTENON_IMG = '/enemies/enemy3.png';
+const ANTENON_ASPECT = 512 / 353;
 /** El Marchito in person: the tallest of the nephew's drawings, dyed dark. */
 const MARCHITO_IMG = '/enemies/enemy12.png';
 
@@ -384,7 +387,7 @@ export class Game {
     this.dungeon = m.dungeon;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
-    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? marchitoBarText(m.marchito));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     this.fishViews = m.fish;
@@ -409,9 +412,10 @@ export class Game {
     }
     for (const w of m.wolves) {
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
+      else if (w.kind === 'boss2' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.coast.boss?.exposed ? 0xffe9a0 : 0xffffff);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
       else if (w.kind === 'elite2' && !r.actor.root.getObjectByName('shield')) {
         // The bruto escudado: the elite's size plus a sea-blue board in front.
@@ -436,6 +440,21 @@ export class Game {
       r.anim = a.anim;
       r.seen = m.time;
     }
+    if (m.ally2) {
+      const a = m.ally2;
+      const r = this.remote(this.allies, 1, () => {
+        const paper = new PaperActor(ANTENON_IMG, 1.6, this.camera, ANTENON_ASPECT);
+        paper.setTint(0xf2fff0); // purified: pale paper
+        return paper;
+      });
+      if (r.actor instanceof PaperActor) r.actor.setTint(a.anim === 'attack' ? 0xffffff : 0xe6f4ff);
+      if (a.anim === 'attack' && r.anim !== 'attack') this.gustFx.play(a.x, a.y, a.z, a.yaw);
+      r.buf.push({ t: m.time, x: a.x, y: a.y, z: a.z, yaw: a.yaw });
+      r.anim = a.anim;
+      r.seen = m.time;
+    }
+    const b2 = m.wolves.find((w) => w.kind === 'boss2');
+    this.coastMeshes?.telegraph(m.dungeon.coast.boss?.tell ?? null, b2 ? { x: b2.x, z: b2.z, yaw: b2.yaw } : null);
     for (const map of [this.others, this.wolves, this.allies] as Map<unknown, Remote>[]) {
       for (const [k, r] of map) {
         if (r.seen === m.time) continue;

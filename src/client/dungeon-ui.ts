@@ -83,3 +83,11 @@ export function shieldBarText(view: CoastDungeonView): string | null {
   const name = NAMES.eliteCoast.charAt(0).toUpperCase() + NAMES.eliteCoast.slice(1);
   return `${name} ${e.hp}/${e.max} · ${e.exposed ? '¡expuesto!' : e.charging ? '¡carga!' : 'escudo'}`;
 }
+
+/** El Antenón's bar while it fights, with its wind-up called out. */
+export function antenonBarText(view: CoastDungeonView): string | null {
+  const b = view.boss;
+  if (!b) return null;
+  const state = b.tell === 'sweep' ? '¡barrido!' : b.tell === 'charge' ? '¡carga!' : b.exposed ? '¡expuesto!' : 'cáscara';
+  return `${NAMES.bossCoast} ${b.hp}/${b.max} · ${state}`;
+}

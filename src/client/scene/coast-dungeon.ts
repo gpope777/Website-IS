@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { COAST_DUNGEON as C, insideCoast } from '../../shared/coast-dungeon';
 import type { CoastDungeonView } from '../../shared/protocol';
 import { VIENTO } from '../../shared/viento';
+import { ANTENON } from '../../shared/sim/antenon';
 
 const BARK = new THREE.MeshLambertMaterial({ color: 0x3d4a44, flatShading: true });
 const ROOT = new THREE.MeshLambertMaterial({ color: 0x2f3b36, flatShading: true });
@@ -10,6 +11,8 @@ const WALL = new THREE.MeshLambertMaterial({ color: 0x46524c, flatShading: true 
 const SEA = new THREE.MeshLambertMaterial({ color: 0x2f6f8f, transparent: true, opacity: 0.85 });
 const PUMICE = new THREE.MeshLambertMaterial({ color: 0xd9d4c4, flatShading: true });
 const GLOW = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+const CORAL = new THREE.MeshLambertMaterial({ color: 0xe88a9a, flatShading: true });
+const WARN = new THREE.MeshBasicMaterial({ color: 0xff4040, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
 const BEAM = new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.14, depthWrite: false });
 
 /** La Raíz-madre de la Costa: a grey-green trunk on the dungeon island, and its interior. */
@@ -23,6 +26,9 @@ export class CoastDungeonMeshes {
   private readonly altarOrb: THREE.Mesh;
   private readonly exit: THREE.Mesh;
   private fanOpen = false;
+  /** El Antenón's telegraphs: a ring for the sweep, a strip for the charge. */
+  private readonly sweepRing: THREE.Mesh;
+  private readonly chargeStrip: THREE.Mesh;
 
   constructor(entrance: { x: number; y: number; z: number }, shadows: boolean) {
     const r = C.trunkR;
@@ -128,6 +134,21 @@ export class CoastDungeonMeshes {
     this.exit = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.12, 8, 24), GLOW);
     this.exit.position.set(X, C.floor + 1.6, C.entryZ - 1.5);
     this.group.add(altar, this.altarOrb, this.exit);
+    // El Antenón's four coral pillars.
+    for (const p of C.pillars) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(C.pillarR * 0.8, C.pillarR, 7, 7), CORAL);
+      m.position.set(X + p.x, C.floor + 3.5, p.z);
+      m.castShadow = shadows;
+      this.group.add(m);
+    }
+    this.sweepRing = new THREE.Mesh(new THREE.RingGeometry(ANTENON.sweepRadius - 0.3, ANTENON.sweepRadius, 32), WARN);
+    this.sweepRing.rotation.x = -Math.PI / 2;
+    const strip = new THREE.PlaneGeometry(ANTENON.chargeHit * 2, 12);
+    strip.rotateX(-Math.PI / 2);
+    strip.translate(0, 0, 6);
+    this.chargeStrip = new THREE.Mesh(strip, WARN);
+    this.sweepRing.visible = this.chargeStrip.visible = false;
+    this.group.add(this.sweepRing, this.chargeStrip);
     for (const [z, color] of [[C.altarZ, 0xd8f4ff], [70, 0x9fd8e8], [106, 0xbfe8ff], [C.eliteZ, 0xff9a7a], [165, 0x9ab8ff]] as const) {
       const lamp = new THREE.PointLight(color, 24, 36);
       lamp.position.set(X, C.floor + 7, z);
@@ -145,6 +166,16 @@ export class CoastDungeonMeshes {
       if (h) h.rotation.z = on ? -0.6 : 0.6;
     });
     this.altarOrb.visible = !viento;
+  }
+
+  /** Show El Antenón's wind-up where it stands (`at` null = no boss in sight). */
+  telegraph(tell: 'sweep' | 'charge' | null, at: { x: number; z: number; yaw: number } | null): void {
+    this.sweepRing.visible = tell === 'sweep' && !!at;
+    this.chargeStrip.visible = tell === 'charge' && !!at;
+    if (!at) return;
+    this.sweepRing.position.set(at.x, C.floor + 0.05, at.z);
+    this.chargeStrip.position.set(at.x, C.floor + 0.05, at.z);
+    this.chargeStrip.rotation.y = at.yaw;
   }
 
   animate(t: number, dt: number): void {

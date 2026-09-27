@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { NAMES } from '../shared/names';
 import { DUNGEON, inside, leverPos } from '../shared/dungeon';
 import type { DungeonView } from '../shared/protocol';
-import { bossBarText, dungeonAction, eliteBarText, emptyDungeonView } from './dungeon-ui';
+import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView } from './dungeon-ui';
 
 const entrance = { x: 100, y: 2, z: 0 };
 const shut: DungeonView = emptyDungeonView();
@@ -86,5 +87,17 @@ describe('coast dungeon prompts (S2-F)', () => {
     expect(coastDungeonAction(altar, e, open, true)).toBeNull();
     expect(shieldBarText(v)).toBeNull();
     expect(shieldBarText({ ...v, elite: { hp: 300, max: 420, exposed: true, charging: false } })).toBe('Bruto escudado 300/420 · ¡expuesto!');
+  });
+});
+
+describe('antenonBarText', () => {
+  it('shows the shell, the exposure and the wind-ups', () => {
+    const v = emptyDungeonView().coast;
+    expect(antenonBarText(v)).toBeNull();
+    const b = (exposed: boolean, tell: 'sweep' | 'charge' | null) => antenonBarText({ ...v, boss: { hp: 360, max: 360, exposed, tell } });
+    expect(b(false, null)).toBe(`${NAMES.bossCoast} 360/360 · cáscara`);
+    expect(b(true, null)).toBe(`${NAMES.bossCoast} 360/360 · ¡expuesto!`);
+    expect(b(false, 'sweep')).toBe(`${NAMES.bossCoast} 360/360 · ¡barrido!`);
+    expect(b(false, 'charge')).toBe(`${NAMES.bossCoast} 360/360 · ¡carga!`);
   });
 });
