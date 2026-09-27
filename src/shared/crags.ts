@@ -35,7 +35,8 @@ export function generateCrags(terrain: Terrain, seed: number): Crag[] {
       const x = cx + (b - 0.5) * CRAG.cell * 0.6;
       const z = cz + (c - 0.5) * CRAG.cell * 0.6;
       // No crag within 60 m of the Ciénaga: a glide from one must not skip the mud.
-      if (!inForest(x, z, 20) || z > COAST_Z0 - 60 || Math.hypot(x, z) < CRAG.spawnClear) continue;
+      // Nor within 64 m of the west edge: el Zarzal starts 4 m inside it (S3).
+      if (!inForest(x, z, 20) || z > COAST_Z0 - 60 || x < -HALF + 64 || Math.hypot(x, z) < CRAG.spawnClear) continue;
       if (terrain.density(x, z) > CRAG.maxDensity) continue; // clearings, so few trees poke through
       const r = CRAG.minR + d * (CRAG.maxR - CRAG.minR);
       let lo = Infinity;
