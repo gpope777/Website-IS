@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NAMES } from './names';
 
-const FORBIDDEN = /Marchito|Tragón|Raíz-madre|Corazón del Bosque|Enredadera|bruto reforzado|Ciénaga|Pantano|Zarzal/;
+const FORBIDDEN = /Marchito|Tragón|Raíz-madre|Corazón del Bosque|Enredadera|bruto reforzado|Ciénaga|Pantano|Zarzal|Montañas|Peldaños|Cucurucho/;
 
 const SOURCES = import.meta.glob<string>(['../**/*.ts', '!../**/*.test.ts', '!./names.ts'], { query: '?raw', import: 'default', eager: true });
 

@@ -18,6 +18,15 @@ export const RIVER = { z: HALF + 103, half: 8, bank: 2, x0: -HALF - 80, x1: -HAL
 /** La Laguna Negra: an elliptic bowl 5–8 m deep at the swamp's south end. */
 export const LAGUNA = { x: -HALF - 115, z: HALF + 100, rx: 50, rz: 35, bed: WATER_LEVEL - 5, deep: WATER_LEVEL - 8 } as const;
 
+/** Las Montañas (Slice 4): a rectangle north of the forest; `d` = metres north of the forest's rim (spec S4 §3.1). */
+export const MOUNTAINS = { x0: -HALF, x1: HALF, z0: -HALF - 220, z1: -HALF, faldas: 40, cumbre: 120, rimFrom: 200, rimTop: 90, sideRim: 20 } as const;
+/** Los Peldaños: 4 terraces of +6 m; riser k (0..3) spans d ∈ [first + pitch·k, first + pitch·k + run]. */
+export const PELDANOS = { steps: 4, rise: 6, run: 1.5, pitch: 10, first: 1 } as const;
+/** El Pico: a flat disc (radius r) `rise` metres above the forest rim's height at its x, with a skirt. */
+export const PICO = { d: 170, r: 6, skirt: 25, rise: 80 } as const;
+/** The snow chute: a shallow valley |x| < half down the middle, from the Faldas' foot up. */
+export const CHUTE = { half: 4, blend: 6, depth: 2 } as const;
+
 export interface Terrain {
   heightAt(x: number, z: number): number;
   /** Vegetation density 0..1: clearings vs dense groves. */
@@ -38,6 +47,45 @@ export interface Mound {
   top: number;
 }
 
+/** A mountain mesa (pared): flat top of radius rt, a steep face `w` wide, `h` high. */
+export interface Pared {
+  x: number;
+  z: number;
+  rt: number;
+  w: number;
+  h: number;
+}
+
+/** Metres north of the forest's rim. */
+export function mountainDepth(z: number): number {
+  return -HALF - z;
+}
+
+/** Inside the mountains rectangle (north of the forest's rim). */
+export function inMountains(x: number, z: number): boolean {
+  return x > MOUNTAINS.x0 && x < MOUNTAINS.x1 && z > MOUNTAINS.z0 && z < MOUNTAINS.z1;
+}
+
+/** 9 seeded paredes in the Faldas and the Pico near x = 0. Pure seed: client and server agree. */
+export function mountainFeatures(seed: number): { paredes: Pared[]; pico: { x: number; z: number } } {
+  const rng = createRng(seed ^ 0x307a1);
+  const pico = { x: (rng() - 0.5) * 60, z: -HALF - PICO.d };
+  const paredes: Pared[] = [];
+  for (let tries = 0; paredes.length < 9 && tries < 2000; tries++) {
+    const h = 12 + rng() * 13;
+    const angle = ((50 + rng() * 25) * Math.PI) / 180;
+    const w = Math.max(8, Math.min(12, (1.5 * h) / Math.tan(angle))); // faces of 56–78°
+    const rt = 3 + rng() * 3;
+    const R = rt + w;
+    const p: Pared = { x: (rng() - 0.5) * 2 * (HALF - 40 - R), z: -HALF - (50 + R + rng() * Math.max(0, 65 - 2 * R)), rt, w, h };
+    if (Math.abs(p.x) < CHUTE.half + CHUTE.blend + 2 + R) continue;
+    if (paredes.some((o) => Math.hypot(o.x - p.x, o.z - p.z) <= o.rt + o.w + R + 4)) continue;
+    paredes.push(p);
+  }
+  // ponytail: 2000 tries always fit 9 mesas (≤ 36 m wide) in 400 × 65 m; no fallback.
+  return { paredes, pico };
+}
+
 /** Inside the swamp rectangle (west of the forest's edge). */
 export function inSwamp(x: number, z: number): boolean {
   return x < SWAMP.x1 && x > SWAMP.x0 && z > SWAMP.z0 && z < SWAMP.z1;
@@ -51,22 +99,29 @@ export function inRiver(x: number, z: number): boolean {
 // The swamp rectangle has no pad on its east side: it overlaps the main one by 1 m so the seam is walkable.
 const swampRect = (pad: number) => ({ x0: SWAMP.x0 + pad, x1: -HALF + pad + 1, z0: SWAMP.z0 + pad, z1: SWAMP.z1 - pad });
 const mainRect = (pad: number) => ({ x0: -HALF + pad, x1: HALF - pad, z0: -HALF + pad, z1: SOUTH - pad });
+// Same for the mountains on their south side.
+const mountainRect = (pad: number) => ({ x0: MOUNTAINS.x0 + pad, x1: MOUNTAINS.x1 - pad, z0: MOUNTAINS.z0 + pad, z1: -HALF + pad + 1 });
+const rects = (pad: number) => [mainRect(pad), swampRect(pad), mountainRect(pad)];
 
-/** Inside the playable map (forest ∪ coast ∪ swamp), `pad` metres from its edge. */
+/** Inside the playable map (forest ∪ coast ∪ swamp ∪ mountains), `pad` metres from its edge. */
 export function inMap(x: number, z: number, pad: number): boolean {
-  if (Math.abs(x) < HALF - pad && z > -HALF + pad && z < SOUTH - pad) return true;
-  const s = swampRect(pad);
-  return x > s.x0 && x < s.x1 && z > s.z0 && z < s.z1;
+  return rects(pad).some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
 }
 
-/** The nearest point of the map (union of the two rectangles). */
+/** The nearest point of the map (union of the three rectangles; ties go to the forest's). */
 export function clampMap(x: number, z: number, pad: number): { x: number; z: number } {
-  const clampTo = (r: ReturnType<typeof mainRect>) => ({ x: Math.max(r.x0, Math.min(r.x1, x)), z: Math.max(r.z0, Math.min(r.z1, z)) });
   if (inMap(x, z, pad)) return { x, z };
-  const a = clampTo(mainRect(pad));
-  if (x >= -HALF + pad) return a;
-  const b = clampTo(swampRect(pad));
-  return Math.hypot(a.x - x, a.z - z) <= Math.hypot(b.x - x, b.z - z) ? a : b;
+  let best = { x, z };
+  let bestD = Infinity;
+  for (const r of rects(pad)) {
+    const c = { x: Math.max(r.x0, Math.min(r.x1, x)), z: Math.max(r.z0, Math.min(r.z1, z)) };
+    const d = Math.hypot(c.x - x, c.z - z);
+    if (d < bestD) {
+      best = c;
+      bestD = d;
+    }
+  }
+  return best;
 }
 
 /** Forest ground (north of the coast blend), `pad` metres from its edges. Seeded forest things spawn here. */
@@ -116,6 +171,7 @@ export function createTerrain(seed: number): Terrain {
   const { islets, island } = coastFeatures(seed);
   const bumps = [...islets, island];
   const { mounds } = swampFeatures(seed);
+  const { paredes, pico } = mountainFeatures(seed);
   const xRim = (x: number) => {
     const e = Math.abs(x) / HALF;
     return e > 0.85 ? (e - 0.85) * 60 : 0; // hills at the border keep players in
@@ -178,10 +234,40 @@ export function createTerrain(seed: number): Terrain {
     if (d >= RIVER.half + RIVER.bank) return h;
     return Math.min(h, d < RIVER.half ? RIVER.bed : lerp(RIVER.bed, h, (d - RIVER.half) / RIVER.bank));
   };
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+  let picoTop = NaN; // E(pico.x) + PICO.rise, computed on first use (main() needs the closures above)
+  const mountains = (x: number, z: number) => {
+    const d = -HALF - z;
+    const E = main(x, -HALF);
+    let r = 0;
+    for (let k = 0; k < PELDANOS.steps; k++) r += PELDANOS.rise * smooth(clamp01((d - PELDANOS.first - PELDANOS.pitch * k) / PELDANOS.run));
+    if (d > MOUNTAINS.faldas) {
+      const f = d - MOUNTAINS.faldas;
+      r += 16 * smooth(clamp01(f / 80)) + (noise.fbm(x * 0.02 + 900, z * 0.02 + 900, 3) - 0.5) * 12 * clamp01(f / 8);
+      if (d > MOUNTAINS.cumbre) r += 25 * smooth(clamp01((d - MOUNTAINS.cumbre) / 80)) + (noise.fbm(x * 0.01 + 950, z * 0.01 + 950, 3) - 0.5) * 16 * clamp01((d - MOUNTAINS.cumbre) / 20);
+      for (const p of paredes) {
+        const q = Math.hypot(x - p.x, z - p.z);
+        if (q < p.rt + p.w) r += p.h * smooth(clamp01((p.rt + p.w - q) / p.w));
+      }
+      // The snow chute: a shallow valley down the middle.
+      r -= CHUTE.depth * (1 - smooth(clamp01((Math.abs(x) - CHUTE.half) / CHUTE.blend))) * clamp01(f / 5);
+      const side = Math.abs(x) - (HALF - MOUNTAINS.sideRim);
+      if (side > 0) r = lerp(r, MOUNTAINS.rimTop, smooth(clamp01(side / MOUNTAINS.sideRim)) * clamp01(f / 10));
+    }
+    if (d > MOUNTAINS.rimFrom) r = lerp(r, MOUNTAINS.rimTop, smooth(clamp01((d - MOUNTAINS.rimFrom) / (MOUNTAINS.z1 - MOUNTAINS.z0 - MOUNTAINS.rimFrom))));
+    let h = E + r;
+    const q = Math.hypot(x - pico.x, z - pico.z);
+    if (q < PICO.r + PICO.skirt) {
+      if (Number.isNaN(picoTop)) picoTop = main(pico.x, -HALF) + PICO.rise;
+      h = Math.max(h, q <= PICO.r ? picoTop : lerp(picoTop, h, smooth((q - PICO.r) / PICO.skirt)));
+    }
+    return h;
+  };
   return {
     heightAt(x, z) {
       let h: number;
-      if (x >= -HALF) h = main(x, z);
+      if (x >= -HALF && z < -HALF) h = mountains(x, z);
+      else if (x >= -HALF) h = main(x, z);
       else {
         const edge = main(-HALF, z);
         const t = (-HALF - x) / SWAMP.seam;
