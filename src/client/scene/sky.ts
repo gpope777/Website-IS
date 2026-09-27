@@ -14,6 +14,13 @@ export class DayLight {
   private readonly fog: THREE.Fog;
   private readonly bg = new THREE.Color();
   private readonly zenith = new THREE.Color();
+  /** V2-D: the dome's colours now (the water reflects them). */
+  get zenithColor(): THREE.Color {
+    return this.zenith;
+  }
+  get horizonColor(): THREE.Color {
+    return this.bg;
+  }
   private readonly sunDir = new THREE.Vector3();
   readonly dome: SkyDome;
   /** Unit vector toward the sun (for the fog's warm side). */

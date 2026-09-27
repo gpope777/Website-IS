@@ -191,16 +191,6 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
   return mesh;
 }
 
-/** One quad over the whole map, swamp included (the sea is just terrain below WATER_LEVEL). */
-export function buildWater(): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(HALF - SWAMP.x0, SOUTH + HALF);
-  geo.rotateX(-Math.PI / 2);
-  geo.translate((HALF + SWAMP.x0) / 2, 0, (SOUTH - HALF) / 2);
-  const water = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x2f6f8f, transparent: true, opacity: 0.78 }));
-  water.position.y = WATER_LEVEL;
-  return water;
-}
-
 /** El Zarzal's thorns: seeded dark spikes on thorn cells, one draw call. */
 export function buildThorns(terrain: Terrain, seed: number, count = 220): THREE.InstancedMesh {
   const mesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.22, 1.3, 4), new THREE.MeshLambertMaterial({ color: 0x3a2c38 }), count);

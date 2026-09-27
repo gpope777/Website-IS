@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ASH_RUN, pillarSites, THICKET, type PillarSites } from '../../shared/pillars';
 import { corruptFeatures, waterLevel, type Terrain } from '../../shared/terrain';
 import type { PillarView } from '../../shared/protocol';
+import { buildLake } from './water';
 
 const SPIKE = new THREE.MeshLambertMaterial({ color: 0x1a0f22, flatShading: true });
 const CORE = new THREE.MeshBasicMaterial({ color: 0xb070ff });
@@ -10,7 +11,6 @@ const ROOT = new THREE.MeshLambertMaterial({ color: 0x5a3a2a, flatShading: true 
 const BRIDGE = new THREE.MeshLambertMaterial({ color: 0x6a8a3a, flatShading: true });
 const STONE = new THREE.MeshLambertMaterial({ color: 0x6c6670, flatShading: true });
 const CHAIN = new THREE.MeshLambertMaterial({ color: 0x3a3040 });
-const LAKE = new THREE.MeshLambertMaterial({ color: 0x1c1428, transparent: true, opacity: 0.88 });
 const MIASMA = new THREE.MeshBasicMaterial({ color: 0x7a4a8a, transparent: true, opacity: 0.45, depthWrite: false });
 const COCOON = new THREE.MeshLambertMaterial({ color: 0x3a2030, flatShading: true });
 const ASH = new THREE.MeshBasicMaterial({ color: 0xff7a3a, transparent: true, opacity: 0.18, depthWrite: false });
@@ -23,6 +23,7 @@ const THORNS_N = 40;
  */
 export class PillarMeshes {
   readonly group = new THREE.Group();
+  readonly lake: THREE.Mesh;
   private readonly s: PillarSites;
   private readonly spikes: THREE.Mesh[] = [];
   private readonly cores: THREE.Mesh[] = [];
@@ -46,10 +47,8 @@ export class PillarMeshes {
     const y = (x: number, z: number) => terrain.heightAt(x, z);
     const lake = corruptFeatures(seed).lake;
     const surface = waterLevel(terrain, lake.x, lake.z);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(lake.r, 40), LAKE);
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(lake.x, surface, lake.z);
-    this.group.add(water);
+    this.lake = buildLake(terrain, lake.x, lake.z, lake.r, surface); // V2-D: the water shader; clears when purified
+    this.group.add(this.lake);
     this.bed = new THREE.Vector3(s.anchor.x, y(s.anchor.x, s.anchor.z), s.anchor.z);
     this.shore = new THREE.Vector3(s.cores[1]!.x, y(s.cores[1]!.x, s.cores[1]!.z), s.cores[1]!.z);
     for (const c of s.cores) {

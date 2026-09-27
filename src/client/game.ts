@@ -102,9 +102,10 @@ import { QuartzMeshes } from './scene/quartz';
 import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
 import { VillainTower } from './scene/villain-tower';
 import { PillarMeshes } from './scene/pillars';
+import { buildSea, setLakePurify, WATER_UNIFORMS } from './scene/water';
 import { pillarAction } from './corrupt-ui';
 import { pillarSites, type PillarSites } from '../shared/pillars';
-import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, type MountainChunk } from './scene/terrain-mesh';
+import { buildPines, buildTerrainMesh, buildThorns, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
@@ -752,7 +753,7 @@ export class Game {
     this.corruptKey = '';
     this.heal = new HealWaves();
     this.scene.add(this.corruptionMeshes.group);
-    this.scene.add(this.ground, buildWater(), (this.grass = new GrassField(this.terrain, seed, t, this.tier)).group, this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
+    this.scene.add(this.ground, buildSea(this.terrain, seed, t), (this.grass = new GrassField(this.terrain, seed, t, this.tier)).group, this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
     const solid = this.climbList;
     for (const s of this.spawns) {
@@ -2003,6 +2004,14 @@ export class Game {
     this.purify = this.perfStop?.purified ? 1 : this.heal.purify(now);
     LIFE_UNIFORMS.purify.value = this.purify;
     LIFE_UNIFORMS.purifyFrom.value.set(TOWER.x, TOWER.z);
+    // V2-D: the water's sky, sun and clock; el Lago Negro clears with las Tierras.
+    WATER_UNIFORMS.uTime.value = now;
+    WATER_UNIFORMS.uSunDir.value.copy(this.light.sunDirection);
+    WATER_UNIFORMS.uSunCol.value.copy(this.skyLook.sun);
+    WATER_UNIFORMS.uZenith.value.copy(this.light.zenithColor);
+    WATER_UNIFORMS.uHorizon.value.copy(this.light.horizonColor);
+    WATER_UNIFORMS.uDay.value = this.light.daylight;
+    if (this.pillarMeshes) setLakePurify(this.pillarMeshes.lake, this.purify);
     this.grass?.setPurified(this.purify > 0);
     LIFE_UNIFORMS.zones.value.forEach((v, i) => {
       const zn = this.zones[i];
