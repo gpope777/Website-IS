@@ -1,4 +1,5 @@
 /** Progresión P4-A: Savia (XP) and Rango 1–8. Ranks give no combat power (spec #4 §2). */
+import { NAMES } from './names';
 export const PROGRESS = {
   ranks: [0, 80, 220, 420, 680, 980, 1300, 1650],
   shrine: 30,
@@ -76,4 +77,77 @@ export function addKillXp(killDay: { day: number; xp: number } | undefined, day:
   const cur = killDay && killDay.day === day ? killDay.xp : 0;
   const gain = Math.max(0, Math.min(killXp(kind), PROGRESS.killCap - cur));
   return { killDay: { day, xp: cur + gain }, gain };
+}
+
+// ---------------------------------------------------------------- P4-B: Oficios
+
+export type SkillId = 'pies' | 'planeo' | 'pulmon' | 'trepador' | 'mano' | 'fogatero' | 'trampero' | 'ojo' | 'amiga' | 'silbido' | 'mochila' | 'pastor';
+
+/** Three branches of four, bought in order within a branch (Andar, Oficio, Compañía). */
+export const BRANCHES: readonly { name: string; skills: readonly SkillId[] }[] = [
+  { name: NAMES.branches[0], skills: ['pies', 'planeo', 'pulmon', 'trepador'] },
+  { name: NAMES.branches[1], skills: ['mano', 'fogatero', 'trampero', 'ojo'] },
+  { name: NAMES.branches[2], skills: ['amiga', 'silbido', 'mochila', 'pastor'] },
+];
+
+export const SKILL_IDS: readonly SkillId[] = BRANCHES.flatMap((b) => b.skills);
+
+/** The multipliers each oficio applies in its site (spec §4, adapted to the real mechanics: see the P4-B plan). */
+export const SKILL_FX = {
+  /** Pies ligeros: stamina comes back faster. */
+  regen: 1.25,
+  /** Planeo largo: GLIDE.sink ×. */
+  sink: 0.8,
+  /** Pulmón: fast swimming spends ×. */
+  swimFast: 0.5,
+  /** Trepador: climbing spends ×; wet rock climbs at × speed. */
+  climb: 0.75,
+  wetClimb: 0.5,
+  /** Mano buena: +N wood/stone/berries per harvest. */
+  harvest: 1,
+  /** Fogatero: fogata channel seconds. */
+  channel: 2,
+  /** Trampero: spikes/roots hp ×. */
+  trap: 1.3,
+  /** Buen ojo: amber/quartz regrow days. */
+  regrowDays: 1,
+  /** Mano amiga: revive reach ×. */
+  reviveReach: 2,
+  /** Mochila honda: grave pickup radius (m). */
+  gravePickup: 10,
+  /** Pastor: land mount speed ×. */
+  mount: 1.1,
+  /** Bayas to forget every oficio at the Heart. */
+  forgetCost: 5,
+} as const;
+
+/** One dry line per oficio (the Oficios screen). */
+export const SKILL_LINES: Record<SkillId, string> = {
+  pies: 'El aliento vuelve un 25 % más rápido.',
+  planeo: 'Planeando caes un 20 % más despacio.',
+  pulmon: 'Nadar rápido gasta la mitad de aliento.',
+  trepador: 'Trepar gasta un 25 % menos. Con lluvia se trepa, despacio.',
+  mano: 'Madera, piedra y bayas: una más cada vez.',
+  fogatero: 'Viajar por las fogatas tarda 2 s, no 5.',
+  trampero: 'Tus estacas y tus redes aguantan un 30 % más.',
+  ojo: 'El ámbar y el cuarzo te vuelven en 1 día, no en 2.',
+  amiga: 'Levantas a un amigo desde el doble de lejos.',
+  silbido: 'Llamas a tus monturas desde cualquier fogata encendida.',
+  mochila: 'Tu tumba vuelve a ti desde 10 m.',
+  pastor: 'Tu ciervo y tu rana corren un 10 % más.',
+};
+
+export const isSkill = (id: unknown): id is SkillId => typeof id === 'string' && (SKILL_IDS as readonly string[]).includes(id);
+
+export const hasSkill = (p: { skills?: readonly string[] } | undefined, id: SkillId): boolean => !!p?.skills?.includes(id);
+
+/** Oficio points still free at this Rango. */
+export const skillPoints = (rank: number, skills: readonly string[] = []): number => Math.max(0, pointsOf(rank) - skills.length);
+
+export function canLearn(skills: readonly string[], id: SkillId, rank: number): 'ok' | 'owned' | 'order' | 'points' {
+  if (skills.includes(id)) return 'owned';
+  const branch = BRANCHES.find((b) => b.skills.includes(id))!;
+  const i = branch.skills.indexOf(id);
+  if (i > 0 && !skills.includes(branch.skills[i - 1]!)) return 'order';
+  return skillPoints(rank, skills) > 0 ? 'ok' : 'points';
 }

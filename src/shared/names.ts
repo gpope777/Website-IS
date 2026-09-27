@@ -74,4 +74,21 @@ export const NAMES = {
   /** P4-A: progression. */
   xp: 'Savia',
   rank: 'Rango',
+  /** P4-B: the passive skills and their three branches. */
+  skills: 'Oficios',
+  branches: ['Andar', 'Oficio', 'Compañía'],
+  skillNames: {
+    pies: 'Pies ligeros',
+    planeo: 'Planeo largo',
+    pulmon: 'Pulmón',
+    trepador: 'Trepador',
+    mano: 'Mano buena',
+    fogatero: 'Fogatero',
+    trampero: 'Trampero',
+    ojo: 'Buen ojo',
+    amiga: 'Mano amiga',
+    silbido: 'Silbido',
+    mochila: 'Mochila honda',
+    pastor: 'Pastor',
+  },
 } as const;
