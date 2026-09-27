@@ -1,14 +1,15 @@
 import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
-export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack'] as const;
+export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean }
-export interface WolfView { id: number; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
+export type EnemyKind = 'wolf' | 'brute';
+export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface HeartView { id: number; hp: number; max: number }
@@ -25,7 +26,10 @@ export type ClientMsg =
   | { t: 'attack'; id: number }
   | { t: 'eat' }
   | { t: 'respawn' }
-  | { t: 'tend'; id: number };
+  | { t: 'tend'; id: number }
+  | { t: 'roll' }
+  | { t: 'block'; on: boolean }
+  | { t: 'shoot'; id: number };
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
@@ -86,6 +90,12 @@ export function decodeClient(raw: string): ClientMsg | null {
       return { t: 'eat' };
     case 'respawn':
       return { t: 'respawn' };
+    case 'roll':
+      return { t: 'roll' };
+    case 'block':
+      return typeof m.on === 'boolean' ? { t: 'block', on: m.on } : null;
+    case 'shoot':
+      return id(m.id) ? { t: 'shoot', id: m.id } : null;
     default:
       return null;
   }

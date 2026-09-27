@@ -1,5 +1,7 @@
 import { HALF, WATER_LEVEL, type Terrain } from '../terrain';
-import type { WolfAnim } from '../protocol';
+import type { EnemyKind, WolfAnim } from '../protocol';
+
+export type { EnemyKind } from '../protocol';
 
 export const WOLF = {
   hp: 60,
@@ -17,6 +19,21 @@ export const WOLF = {
   corpseTime: 5,
 } as const;
 
+export interface EnemyDef {
+  hp: number;
+  run: number;
+  damage: number;
+  reach: number;
+  biteCooldown: number;
+}
+
+/** Generic enemy table: every hostile beast is a `Wolf` record driven by its kind's stats. */
+export const ENEMY: Record<EnemyKind, EnemyDef> = {
+  wolf: { hp: WOLF.hp, run: WOLF.run, damage: WOLF.damage, reach: WOLF.reach, biteCooldown: WOLF.biteCooldown },
+  brute: { hp: 140, run: 4.2, damage: 22, reach: 2.2, biteCooldown: 2 },
+};
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito' };
+
 export interface Wolf {
   id: number;
   x: number;
@@ -30,6 +47,9 @@ export interface Wolf {
   wander: number;
   anim: WolfAnim;
   raid: boolean;
+  kind: EnemyKind;
+  /** Seconds left stunned (after a parry). */
+  stun: number;
 }
 
 export interface WolfTarget {
@@ -41,8 +61,8 @@ export interface WolfTarget {
   fires: boolean;
 }
 
-export function createWolf(id: number, x: number, z: number, terrain: Terrain, rng: () => number): Wolf {
-  return { id, x, y: terrain.heightAt(x, z), z, yaw: 0, hp: WOLF.hp, target: null, cooldown: 0, deadFor: 0, wander: rng() * Math.PI * 2, anim: 'idle', raid: false };
+export function createWolf(id: number, x: number, z: number, terrain: Terrain, rng: () => number, kind: EnemyKind = 'wolf'): Wolf {
+  return { id, x, y: terrain.heightAt(x, z), z, yaw: 0, hp: ENEMY[kind].hp, target: null, cooldown: 0, deadFor: 0, wander: rng() * Math.PI * 2, anim: 'idle', raid: false, kind, stun: 0 };
 }
 
 const dist = (w: Wolf, t: WolfTarget) => Math.hypot(t.x - w.x, t.z - w.z);
@@ -53,6 +73,12 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     w.anim = 'dead';
     return null;
   }
+  if (w.stun > 0) {
+    w.stun = Math.max(0, w.stun - dt);
+    w.anim = 'idle';
+    return null;
+  }
+  const def = ENEMY[w.kind];
   w.cooldown = Math.max(0, w.cooldown - dt);
 
   const huntable = (t: WolfTarget) => !t.dead && !t.fires;
@@ -78,18 +104,18 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     const d = Math.max(dist(w, scary), 1e-4);
     dirX = (w.x - scary.x) / d;
     dirZ = (w.z - scary.z) / d;
-    speed = WOLF.run;
+    speed = def.run;
     target = null;
   } else if (target) {
     const d = Math.max(dist(w, target), 1e-4);
     dirX = (target.x - w.x) / d;
     dirZ = (target.z - w.z) / d;
-    if (d > WOLF.reach) {
-      speed = WOLF.run;
+    if (d > def.reach) {
+      speed = def.run;
     } else {
       w.yaw = Math.atan2(dirX, dirZ);
       if (w.cooldown === 0) {
-        w.cooldown = WOLF.biteCooldown;
+        w.cooldown = def.biteCooldown;
         bitten = target.name;
       }
     }
@@ -97,7 +123,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     w.wander += (rng() - 0.5) * dt * 1.5;
     dirX = Math.sin(w.wander);
     dirZ = Math.cos(w.wander);
-    speed = WOLF.walk;
+    speed = Math.min(WOLF.walk, def.run);
   }
   w.target = target?.name ?? null;
 
@@ -113,7 +139,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     }
     w.yaw = Math.atan2(dirX, dirZ);
   }
-  w.anim = speed === 0 ? (target ? 'attack' : 'idle') : speed >= WOLF.run ? 'run' : 'walk';
+  w.anim = speed === 0 ? (target ? 'attack' : 'idle') : speed >= def.run ? 'run' : 'walk';
   return bitten;
 }
 
@@ -158,6 +184,12 @@ export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terra
     stepWolf(w, [], terrain, dt, rng);
     return null;
   }
+  if (w.stun > 0) {
+    w.stun = Math.max(0, w.stun - dt);
+    w.anim = 'idle';
+    return null;
+  }
+  const run = ENEMY[w.kind].run;
   const near = targets
     .filter((t) => !t.dead && Math.hypot(t.x - w.x, t.z - w.z) < RAID.aggro)
     .map((t) => ({ ...t, fires: false }));
@@ -178,17 +210,22 @@ export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terra
     w.cooldown = RAID.cooldown;
     return { structure: victim };
   }
-  const nx = w.x + (dx / d) * WOLF.run * dt;
-  const nz = w.z + (dz / d) * WOLF.run * dt;
+  const nx = w.x + (dx / d) * run * dt;
+  const nz = w.z + (dz / d) * run * dt;
   if (terrain.heightAt(nx, nz) >= WATER_LEVEL) {
     w.x = nx;
     w.z = nz;
   } else {
     // ponytail: sidestep water by walking perpendicular; real pathfinding if raiders get stuck in playtest
-    w.x += (dz / d) * WOLF.run * dt;
-    w.z -= (dx / d) * WOLF.run * dt;
+    w.x += (dz / d) * run * dt;
+    w.z -= (dx / d) * run * dt;
   }
   w.y = terrain.heightAt(w.x, w.z);
   w.anim = 'run';
   return null;
+}
+
+/** Raiders hit players and structures with the raid damage; brutes always hit harder. */
+export function raiderDamage(w: Wolf): number {
+  return w.kind === 'brute' ? ENEMY.brute.damage : RAID.damage;
 }

@@ -44,7 +44,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it('is version 2', () => {
-    expect(PROTOCOL_VERSION).toBe(2);
+    expect(PROTOCOL_VERSION).toBe(3);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -54,5 +54,20 @@ describe('aventura protocol', () => {
   it('accepts placing the new kinds', () => {
     expect(decodeClient('{"t":"place","kind":"heart","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'heart' });
     expect(decodeClient('{"t":"place","kind":"spikes","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'spikes' });
+  });
+});
+
+describe('combat protocol', () => {
+  it('decodes roll, block and shoot', () => {
+    expect(decodeClient('{"t":"roll"}')).toEqual({ t: 'roll' });
+    expect(decodeClient('{"t":"block","on":true}')).toEqual({ t: 'block', on: true });
+    expect(decodeClient('{"t":"block","on":"yes"}')).toBeNull();
+    expect(decodeClient('{"t":"shoot","id":4}')).toEqual({ t: 'shoot', id: 4 });
+    expect(decodeClient('{"t":"shoot","id":1.5}')).toBeNull();
+  });
+  it('accepts the new anims', () => {
+    for (const anim of ['roll', 'block', 'bow']) {
+      expect(decodeClient(JSON.stringify({ t: 'move', x: 0, y: 0, z: 0, yaw: 0, anim }))).not.toBeNull();
+    }
   });
 });

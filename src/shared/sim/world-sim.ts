@@ -4,7 +4,7 @@ import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { addItem, BUILD_COST, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
-import { createWolf, hitWolf, RAID, stepRaider, stepWolf, WOLF, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
+import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
 export const TICK_DT = 0.1;
@@ -229,12 +229,12 @@ export class WorldSim {
       if (w.raid) {
         if (!goal) continue;
         const hit = stepRaider(w, targets, goal, this.terrain, dt, this.rng);
-        if (hit && 'player' in hit) this.bite(hit.player, RAID.damage);
-        else if (hit) this.damageStructure(hit.structure, RAID.damage);
+        if (hit && 'player' in hit) this.bite(hit.player, raiderDamage(w));
+        else if (hit) this.damageStructure(hit.structure, raiderDamage(w));
         continue;
       }
       const bit = stepWolf(w, targets, this.terrain, dt, this.rng);
-      if (bit) this.bite(bit, WOLF.damage);
+      if (bit) this.bite(bit, ENEMY[w.kind].damage);
     }
     this.stepSpikes(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
@@ -254,7 +254,7 @@ export class WorldSim {
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
-      .map((w) => ({ id: w.id, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
+      .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
@@ -367,7 +367,7 @@ export class WorldSim {
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     l.punchReadyAt = this.time + PUNCH.cooldown;
     l.anim = 'attack';
-    if (hitWolf(w, PUNCH.damage)) this.outbox.push({ to: null, msg: { t: 'toast', text: `${p.name} derrotó a un lobo` } });
+    if (hitWolf(w, PUNCH.damage)) this.outbox.push({ to: null, msg: { t: 'toast', text: `${p.name} derrotó a ${ENEMY_LABELS[w.kind]}` } });
   }
 
   private onEat(p: SavedPlayer): void {
@@ -485,7 +485,8 @@ export class WorldSim {
         const x = heart.x + Math.sin(ang) * d;
         const z = heart.z + Math.cos(ang) * d;
         if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
-          const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng);
+          const kind: EnemyKind = this.raidLevel >= 1 && i % 3 === 2 ? 'brute' : 'wolf';
+          const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, kind);
           w.raid = true;
           this.wolves.push(w);
           break;

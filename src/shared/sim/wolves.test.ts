@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../terrain';
-import { createWolf, hitWolf, RAID, stepRaider, stepWolf, WOLF, type RaidGoal, type WolfTarget } from './wolves';
+import { createWolf, ENEMY, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type RaidGoal, type WolfTarget } from './wolves';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const rng = () => 0.5;
@@ -104,5 +104,28 @@ describe('raiders', () => {
     const w = raider(10);
     stepRaider(w, [target(10 + RAID.aggro + 5)], goal(), flat, 0.1, rng);
     expect(w.target).toBeNull();
+  });
+});
+
+describe('enemy kinds', () => {
+  it('brutes are tougher and slower than wolves', () => {
+    const b = createWolf(2, 0, 0, flat, rng, 'brute');
+    expect(b.kind).toBe('brute');
+    expect(b.hp).toBe(ENEMY.brute.hp);
+    expect(ENEMY.brute.hp).toBeGreaterThan(ENEMY.wolf.hp);
+    stepWolf(b, [target(10)], flat, 0.1, rng);
+    expect(b.x).toBeCloseTo(ENEMY.brute.run * 0.1);
+    expect(raiderDamage(b)).toBe(ENEMY.brute.damage);
+    expect(raiderDamage(createWolf(3, 0, 0, flat, rng))).toBe(RAID.damage);
+  });
+  it('a stunned enemy neither moves nor bites', () => {
+    const w = createWolf(1, 0, 0, flat, rng);
+    w.stun = 0.5;
+    expect(stepWolf(w, [target(1)], flat, 0.1, rng)).toBeNull();
+    expect(w.x).toBe(0);
+    expect(w.stun).toBeCloseTo(0.4);
+    for (let i = 0; i < 5; i++) stepWolf(w, [target(1)], flat, 0.1, rng);
+    expect(w.stun).toBe(0);
+    expect(stepWolf(w, [target(1)], flat, 0.1, rng)).toBe('Ana');
   });
 });

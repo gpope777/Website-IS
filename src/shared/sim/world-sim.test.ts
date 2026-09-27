@@ -424,4 +424,15 @@ describe('asedios', () => {
     sim.raidLevel = 3;
     expect(new WorldSim(sim.save()).raidLevel).toBe(3);
   });
+
+  it('brutes join raids from siege level 1 and show their kind', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    sim.raidLevel = 1;
+    stepTo(sim, 0.81);
+    const raiders = sim.wolfList.filter((w) => w.raid);
+    expect(raiders.some((w) => w.kind === 'brute')).toBe(true);
+    put(sim, 'Ana', raiders[0]!.x, raiders[0]!.z);
+    expect(snap(sim, 'Ana').wolves[0]).toHaveProperty('kind');
+  });
 });
