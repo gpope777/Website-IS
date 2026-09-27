@@ -39,9 +39,9 @@
 
 ### Task 1: harness — keep the test player alive
 
-- [ ] **Step 1:** `run.mjs` `safeWorld()`: `GET /admin/perf/export` → `time = 0.3 × 360`, players `dead: false`, full vitals → `POST /admin/perf/import`; called before each tier and before a stop when > 100 s passed; then wait `__perf.online()`.
-- [ ] **Step 2:** `perf-hook.ts` gains `online()` (last `NetStatus` is `online` and a welcome arrived after it) and `PerfStop.purified?` (read in Task 5).
-- [ ] **Step 3:** green; full `npm run perf` (3 tiers in one pass) → same calls/triangles as the base and textures stable across tiers. Commit `fix(perf): el jugador del arnés no muere de noche (import seguro)`.
+- [x] **Step 1:** `run.mjs` `safeWorld()`: `GET /admin/perf/export` → `time = 0.3 × 360`, players `dead: false`, full vitals → `POST /admin/perf/import`; called before each tier and before a stop when > 100 s passed; then wait `__perf.online()`.
+- [x] **Step 2:** `perf-hook.ts` gains `online()` (last `NetStatus` is `online` and a welcome arrived after it) and `PerfStop.purified?` (read in Task 5).
+- [x] **Step 3:** green; full `npm run perf` (3 tiers in one pass) → same calls/triangles as the base and textures stable across tiers. Commit `fix(perf): el jugador del arnés no muere de noche (import seguro)`.
 
 ### Task 2: pure — grass placement, ground colours, heal waves
 
@@ -64,25 +64,25 @@ export const HEAL = { secs: 20, band: 2.5, purifySecs: 60 };
 export class HealWaves { sync(corrupt: readonly number[], ending: boolean, now: number): void; front(zone: Zone, now: number): number; purify(now: number): number; }
 ```
 
-- [ ] **Step 1: failing tests** (`ground.test.ts`, `heal.test.ts`): biome of the harness stops; density 0 under water, on the chute, on snow, in Tierras (unless purified), > 0 in open forest; `chunksNear` covers the radius and nothing past `radius + 32√2`; `seedChunk` deterministic, stays in its chunk, n ≤ requested, heights = terrain; snow 0 at 40 m and 1 at 70 m flat, 0 on 45°; wet sand 1 at the waterline, 0 at +0.5; noise bounded. Heal: zones clean on first sync are healed at once; a zone that turns clean grows its front 0 → r+4 in 20 s; `ending` live → all waves + purify 0 → 1 in 60 s; `ending` on first sync → purify 1.
-- [ ] **Step 2: implement.** **Step 3:** green, commit `feat(visuales): hierba por bioma, colores de suelo y olas de sanación (puro)`.
+- [x] **Step 1: failing tests** (`ground.test.ts`, `heal.test.ts`): biome of the harness stops; density 0 under water, on the chute, on snow, in Tierras (unless purified), > 0 in open forest; `chunksNear` covers the radius and nothing past `radius + 32√2`; `seedChunk` deterministic, stays in its chunk, n ≤ requested, heights = terrain; snow 0 at 40 m and 1 at 70 m flat, 0 on 45°; wet sand 1 at the waterline, 0 at +0.5; noise bounded. Heal: zones clean on first sync are healed at once; a zone that turns clean grows its front 0 → r+4 in 20 s; `ending` live → all waves + purify 0 → 1 in 60 s; `ending` on first sync → purify 1.
+- [x] **Step 2: implement.** **Step 3:** green, commit `feat(visuales): hierba por bioma, colores de suelo y olas de sanación (puro)`.
 
 ### Task 3: grass chunks + wind (grass, crowns, pines, awnings)
 
-- [ ] **Step 1:** `patches.ts`: `WIND_UNIFORMS`, `patchGrass(mat, tier)` (wind on `aRoot.z²`, press on high, corruption ash + flower band), `patchSway(mat, opts)`; `patchWorld` composes with an existing `onBeforeCompile` (cache keys joined). Tests on a fake shader: grass chunk injected, keys distinct, world patch after sway keeps both.
-- [ ] **Step 2:** `grass.ts` `GrassField(terrain, seed, tier)`: cache of chunk meshes, `update(x, z)` shows chunks within `grassRadius`, hides/evicts far ones (LRU 64). Remove `buildGrass` and the tufts; sway on trees (crowns above 4.5 m), bushes, pines, awnings.
-- [ ] **Step 3:** green; harness per tier on bosque/costa/montañas with shots; if a tier passes its budget, lower `grassPerChunk` for it. Commit `feat(visuales): hierba con viento en todos los biomas; copas, pinos y toldos al viento`.
+- [x] **Step 1:** `patches.ts`: `WIND_UNIFORMS`, `patchGrass(mat, tier)` (wind on `aRoot.z²`, press on high, corruption ash + flower band), `patchSway(mat, opts)`; `patchWorld` composes with an existing `onBeforeCompile` (cache keys joined). Tests on a fake shader: grass chunk injected, keys distinct, world patch after sway keeps both.
+- [x] **Step 2:** `grass.ts` `GrassField(terrain, seed, tier)`: cache of chunk meshes, `update(x, z)` shows chunks within `grassRadius`, hides/evicts far ones (LRU 64). Remove `buildGrass` and the tufts; sway on trees (crowns above 4.5 m), bushes, pines, awnings.
+- [x] **Step 3:** green; harness per tier on bosque/costa/montañas with shots; if a tier passes its budget, lower `grassPerChunk` for it. Commit `feat(visuales): hierba con viento en todos los biomas; copas, pinos y toldos al viento`.
 
 ### Task 4: ground colours, corruption in the shader and the healing wave
 
-- [ ] **Step 1:** `terrain-mesh.ts` uses `snowAmount`/`wetSand`/mud/dirt/noise; `patchCorrupt(mat, kind)` for terrain (violet + light at the front) and tree crowns; `CORRUPT_UNIFORMS.zones[22]` from `HealWaves` each frame; `tintTerrain` removed.
-- [ ] **Step 2:** green; shots of a corrupt forest zone before/after cleansing (perf hook `heal(id)` in perf builds only drives the wave for the shot). Commit `feat(visuales): nieve, arena mojada, barro y senderos; zonas marchitas en el shader y la ola que sana`.
+- [x] **Step 1:** `terrain-mesh.ts` uses `snowAmount`/`wetSand`/mud/dirt/noise; `patchCorrupt(mat, kind)` for terrain (violet + light at the front) and tree crowns; `CORRUPT_UNIFORMS.zones[22]` from `HealWaves` each frame; `tintTerrain` removed.
+- [x] **Step 2:** green; shots of a corrupt forest zone before/after cleansing (perf hook `heal(id)` in perf builds only drives the wave for the shot). Commit `feat(visuales): nieve, arena mojada, barro y senderos; zonas marchitas en el shader y la ola que sana`.
 
 ### Task 5: Purified end-state
 
-- [ ] **Step 1:** `looks.ts` `PURIFIED` keys + `lookAt` mix by `purify`; `purify` uniform in terrain/grass patches (Tierras ground → pale meadow + golden veins, their grass grows); `PerfStop.purified` forces it; harness stop `purificado`.
-- [ ] **Step 2:** tests for the look mix (purify 0 = tierras, 1 = purificado); green; shots day/night. Commit `feat(visuales): las Tierras purificadas florecen al caer El Marchito`.
+- [x] **Step 1:** `looks.ts` `PURIFIED` keys + `lookAt` mix by `purify`; `purify` uniform in terrain/grass patches (Tierras ground → pale meadow + golden veins, their grass grows); `PerfStop.purified` forces it; harness stop `purificado`.
+- [x] **Step 2:** tests for the look mix (purify 0 = tierras, 1 = purificado); green; shots day/night. Commit `feat(visuales): las Tierras purificadas florecen al caer El Marchito`.
 
 ### Task 6: Ship
 
-- [ ] Full harness `npm run perf` (3 tiers, one pass); `--update` with the new cost; HANDOFF "## Visuales · V2-C — …" with before/after table, decisions, what to test on a phone; push; one short comment on PR #3.
+- [x] Full harness `npm run perf` (3 tiers, one pass); `--update` with the new cost; HANDOFF "## Visuales · V2-C — …" with before/after table, decisions, what to test on a phone; push; one short comment on PR #3.

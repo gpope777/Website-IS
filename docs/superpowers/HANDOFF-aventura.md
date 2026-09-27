@@ -1336,3 +1336,40 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, teléfono, `?fps=1`): fps en Baja en el bosque (debería subir: ~5× menos triángulos); un ciclo día/noche entero; de noche ¿se ven bien los lobos y el Corazón?; encender una fogata de noche y ver el suelo iluminado; ir del bosque a la Costa y al Pantano mirando que el cielo cambie sin saltos.
 - Lo siguiente: V2-C (terreno, hierba y viento).
+
+## Visuales · V2-C — Hierba, viento, suelo y la ola que sana — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-visuales-V2-C-hierba-viento.md` (60d2331).
+- Commits: c65b817 (T1 arnés: import seguro, el jugador de pruebas ya no muere), ba15054 (T2 puro: `scene/ground.ts` hierba por bioma, trozos, nieve/arena mojada/ruido; `scene/heal.ts` olas de sanación), 4498a78 (T3 `scene/grass.ts` hierba por trozos con viento; copas, arbustos, pinos y toldos al viento), 05e0ed1 (T4 colores de suelo; zonas marchitas en el shader y la ola), 75f43e7 (T5 las Tierras purificadas), y el de cierre (base nueva + este texto).
+- Tests: npm test 1164 (antes 1146), test:workers 12, check + build verdes. **PROTOCOL_VERSION sigue en 62.** Nada nuevo en red ni guardado; alturas y colisiones iguales (solo colores y shaders).
+- **Arnés arreglado:** antes de cada gama (y cada 100 s) exporta el mundo, lo pone a media mañana con todos vivos y llenos, y lo importa (endpoint admin que ya existía; la página se reconecta sola y el arnés espera a `__perf.online()`). Pasada entera de 3 gamas estable: texturas 8 (baja) / 11 (media, alta) en todas las paradas. Nada cambia en producción.
+- **Cifras antes → después** (llamadas / triángulos; día = noche):
+
+| Parada | Baja | Media | Alta |
+|---|---|---|---|
+| Bosque | 66 / 113 k → 73 / 185 k | 145 / 314 k → 154 / 429 k | 184 / 568 k → 199 / 813 k |
+| Costa | 62 / 69 k → 64 / 76 k | 97 / 109 k → 99 / 118 k | 97 / 153 k → 101 / 165 k |
+| Bajo el agua | 57 / 69 k → 58 / 70 k | 82 / 109 k → 85 / 109 k | 82 / 153 k → 86 / 155 k |
+| Pantano | 47 / 71 k → 51 / 89 k | 71 / 135 k → 80 / 188 k | 71 / 258 k → 85 / 369 k |
+| Montañas | 63 / 84 k → 70 / 105 k | 87 / 131 k → 94 / 158 k | 95 / 182 k → 102 / 219 k |
+| Tierras | 49 / 22 k → 49 / 22 k | 67 / 35 k → 67 / 35 k | 67 / 45 k → 67 / 45 k |
+| Purificado (nueva) | — → 53 / 56 k | — → 75 / 116 k | — → 83 / 235 k |
+| Mazmorra | 87 / 67 k → 87 / 67 k | 110 / 108 k → 110 / 108 k | 128 / 193 k → 128 / 193 k |
+| Presupuesto §3 | 120 / 250 k | 180 / 500 k | 260 / 1 200 k |
+
+  - **Todo dentro del presupuesto.** Lo más justo: bosque en media (429 k de 500 k). Si hay que bajar, `grassPerChunk` de media (2 700) es el mando. Programas +3/+4 (hierba, balanceo, suelo). Base actualizada con esta pasada.
+- Cómo funciona:
+  - **Hierba** (`scene/grass.ts`): trozos de 32 m sembrados por posición (siempre los mismos), una malla por trozo con la altura del suelo ya puesta (sin texturas en el vértice), un solo material. Se ven los trozos dentro de `grassRadius` (35/60/90 m) y se desvanecen en el último 30 %. Brizna = 7 vértices / 5 triángulos, color raíz→punta por bioma: bosque verde (más rala bajo copas densas), Costa pasto de duna pálido (no en la arena mojada), Pantano juncos oscuros también en el agua poco honda, Montañas corta hasta ~50 m (nada en la nieve, el tobogán, los Peldaños ni pendientes > 35°), Tierras nada (purificadas: pradera pálida con 8 % de flores blancas). Iluminada por arriba en las dos caras.
+  - **Viento** (`scene/patches.ts`, un solo juego de uniforms): baja 1 onda; media/alta 2 ondas + ráfagas; alta además la hierba se aparta de hasta 4 jugadores. Más fuerte con lluvia/tormenta en las Montañas. Las copas de los árboles (sobre 4,5 m), los arbustos, los pinos y el toldo de los Puestos (aletea por delante) usan el mismo viento.
+  - **Suelo:** nieve también por altura (> 55 m sobre el agua) y pendiente (< 35°), arena mojada oscura en la orilla, manchas de barro negro en la ciénaga, tierra pisada bajo las copas más densas, ±6 % de ruido por vértice. Todo en el color de vértice (coste cero en el píxel).
+  - **Zonas marchitas en el shader:** `zones[22]` (x, z, radio, frente) que leen el suelo (morado como antes, mismo decaimiento de `taintAt`), la hierba (ceniza y al 30 % de alto) y las copas (gris violeta). Ahora se ven también en Montañas y Tierras (antes solo bosque/Costa/Pantano). Se quitó `tintTerrain` (recolor en CPU).
+  - **La ola que sana** (`scene/heal.ts`): una zona que se limpia mientras miras sana en 20 s como un frente desde su raíz, con una franja clara en el suelo y puntas blancas (flores) en la hierba del frente. Lo que ya estaba limpio al entrar, limpio. Al caer El Marchito todas las zonas que quedaban hacen la ola a la vez y las Tierras pasan al **look Purificado** en 60 s desde la Torre hacia fuera: suelo de pradera con vetas doradas donde había pizarra/grietas, crece su hierba, cielo y luz de `PURIFIED` en `looks.ts`. Si entras después del final, ya está purificado.
+- Decidido por Claude — revisar:
+  - Hierba = una malla por trozo con alturas horneadas en CPU, no un `InstancedMesh` de trozos leyendo una textura de alturas (spec §5.3): sin lectura de texturas en el vértice (riesgo de móviles viejos, §13), recorte por trozo gratis y alturas exactas. Cuesta 1 llamada por trozo visible (+7 baja, +9 media, +15 alta en el bosque). Memoria: ~0,5 MB por trozo en baja, ~0,9 MB en alta; caché de los visibles + 16.
+  - Las Tierras no tienen hierba hasta purificarse (no se dibujan briznas invisibles). La hierba vieja de conos (`buildGrass`) se fue; `TierSettings.grass` queda sin uso.
+  - Nieve: se suma la regla por altura/pendiente a la de profundidad que ya había (> 130 m). Senderos: "tierra pisada bajo copas densas" (no hay caminos de verdad en el mapa).
+  - Las espinas negras de las Tierras siguen igual tras purificar; el Lago Negro limpio espera al shader de agua (V2-D).
+  - Arnés: parada nueva `purificado` (las Tierras con `purify = 1`, solo en el arnés) y `--ola` (captura una zona del bosque sanando a los 0/5/10/20 s con una limpieza solo en el cliente).
+- Verificado en navegador: sí, capturas del arnés (SwiftShader): bosque con hierba densa verde-amarilla y sombras en alta; Costa con pasto de duna pálido y ralo; Pantano con juncos oscuros en el agua; Montañas con hierba corta y nieve en la cima; bosque de noche oscuro con la hierba apenas visible; zona marchita con suelo morado y hierba ceniza baja, y a los 10 s ya verde tras la ola (la franja clara se ve a los 0–5 s; la raíz seca sigue porque la limpieza fue solo del cliente); Tierras moradas → purificadas: pradera verde con hierba pálida y cielo claro. El viento no se puede ver en una captura; no se probó en movimiento.
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono, `?fps=1`): fps en Baja en el bosque (hay +70 k triángulos de hierba); caminar y mirar que la hierba no "salte" al cargar trozos (se construyen 2 por fotograma); limpiar una zona con Enredadera y ver la ola; ¿la hierba tapa bayas o avisos del suelo?; con lluvia en las Montañas, ¿se mueve más?
+- Lo siguiente: V2-D (agua y vida ambiente).
