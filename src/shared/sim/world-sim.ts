@@ -11,6 +11,7 @@ import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, ty
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
+import { createMarchito, joinNames, MARCHITO, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -73,6 +74,8 @@ export interface SavedWorld {
   graves?: Grave[];
   /** The dungeon boss was beaten and now guards the Heart. Optional: older saves have none. */
   purified?: boolean;
+  /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
+  invasion?: 'pending' | 'done';
 }
 
 export interface Grave extends GraveView {
@@ -150,6 +153,12 @@ export class WorldSim {
   private boss: Boss | null = null;
   /** The purified Tragón by the Heart; live-only, rebuilt from `purified`. */
   private ally: Ally | null = null;
+  /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
+  invasion: 'none' | 'pending' | 'done';
+  /** Sim time a pending invasion may start. Live-only. */
+  private invasionAt: number;
+  /** El Marchito in person, while he is here. Live-only. */
+  private marchito: Marchito | null = null;
   private vines: (Crag & { owner: string; until: number })[] = [];
   private nextVineId: number = ENREDADERA.idBase;
   private regenClock = 0;
@@ -178,6 +187,8 @@ export class WorldSim {
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.raidLevel = saved.raidLevel ?? 0;
     this.purified = saved.purified ?? false;
+    this.invasion = saved.invasion ?? 'none';
+    this.invasionAt = this.time + MARCHITO.delay;
     this.nextStructureId = saved.nextStructureId;
     this.graves = (saved.graves ?? []).map((g) => ({ ...g, inv: { ...g.inv } }));
     this.nextGraveId = 1 + Math.max(0, ...this.graves.map((g) => g.id));
@@ -332,6 +343,7 @@ export class WorldSim {
     this.stepBossFight(dt);
     this.stepAlly(dt);
     this.stepTaming();
+    this.stepInvasion(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
 
@@ -352,11 +364,14 @@ export class WorldSim {
       .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
+    const mm = this.marchito;
+    if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
+    const marchito = mm ? { will: Math.round(mm.hp), max: ENEMY.marchito.hp, laughing: mm.laugh > 0 } : null;
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), marchito: null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), marchito };
   }
 
   drain(): Outgoing[] {
@@ -378,6 +393,7 @@ export class WorldSim {
       raidLevel: this.raidLevel,
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
+      ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
     };
   }
 
@@ -615,11 +631,13 @@ export class WorldSim {
 
   /** Wolves, raiders or the boss. */
   private enemy(id: number): Wolf | undefined {
+    if (this.marchito && this.marchito.id === id) return this.marchito;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
   /** Hurt an enemy for a player; the folded boss shrugs it off. */
   private strike(name: string, w: Wolf, dmg: number): void {
+    if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
     if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
   }
@@ -630,6 +648,11 @@ export class WorldSim {
     if (this.boss && this.boss.hp <= 0 && !this.purified) {
       this.purified = true;
       this.say('El Tragón se deshace en papel limpio. Ahora cuida el Corazón');
+      this.vision(VISION.purified(joinNames(this.activeNames())));
+      if (this.invasion === 'none') {
+        this.invasion = 'pending';
+        this.invasionAt = this.time + MARCHITO.delay;
+      }
     }
     if (this.purified) {
       if (this.boss && this.boss.hp <= 0) {
@@ -1027,6 +1050,65 @@ export class WorldSim {
       this.graves.splice(this.graves.indexOf(g), 1);
       this.tell(p.name, 'Recuperaste tus cosas');
     }
+  }
+
+  // ---------------------------------------------------------------- El Marchito
+
+  /** He comes once the Tragón fell, when there is a Heart and someone out in the world to see it. */
+  private stepInvasion(dt: number): void {
+    const h = this.heart();
+    if (this.invasion === 'pending' && !this.marchito && h && this.time + EPS >= this.invasionAt) {
+      const watcher = this.targets().some((t) => !t.dead && !inDungeon(t.x, t.z));
+      if (watcher) this.startInvasion(h);
+    }
+    const m = this.marchito;
+    if (!m || this.activeCount() === 0) return; // the world sleeps
+    const structs = this.structures.filter((s) => m.prey.includes(s.id));
+    const ev = stepMarchito(m, structs, this.targets(), (x, z) => this.terrain.heightAt(x, z), dt);
+    if (!ev) return;
+    if (ev.t === 'smash') {
+      const s = this.structures.find((x) => x.id === ev.id);
+      if (s) this.wreck(s);
+    } else if (ev.t === 'swipe') this.bite(ev.name, ENEMY.marchito.damage, m);
+    else if (ev.t === 'laugh') this.vision(VISION.laugh);
+    else this.endInvasion();
+  }
+
+  private startInvasion(h: Structure): void {
+    const e = this.entrance;
+    const dir = Math.atan2(e.x - h.x, e.z - h.z);
+    const lim = HALF - 6;
+    const x = Math.max(-lim, Math.min(lim, h.x + Math.sin(dir) * MARCHITO.spawnDist));
+    const z = Math.max(-lim, Math.min(lim, h.z + Math.cos(dir) * MARCHITO.spawnDist));
+    this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, pickDefenses(this.structures, h));
+    this.vision(VISION.arrive);
+  }
+
+  private endInvasion(): void {
+    this.marchito = null;
+    this.invasion = 'done';
+  }
+
+  /** Blows wear his voluntad; at 0 he is driven off. He never dies. */
+  private wearMarchito(name: string, dmg: number): void {
+    const m = this.marchito!;
+    if (m.laugh > 0) return;
+    m.hp = Math.max(0, m.hp - dmg);
+    if (!m.taunted.includes(name)) {
+      m.taunted.push(name);
+      this.tell(name, VISION.taunt(name));
+    }
+    if (m.hp > 0) return;
+    this.vision(VISION.driven(joinNames(m.taunted)));
+    this.endInvasion();
+  }
+
+  private activeNames(): string[] {
+    return [...this.live].filter(([, l]) => l.awayFor === null).map(([n]) => n);
+  }
+
+  private vision(lines: string[]): void {
+    this.outbox.push({ to: null, msg: { t: 'vision', lines } });
   }
 
   private say(text: string): void {

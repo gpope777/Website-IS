@@ -1396,3 +1396,144 @@ describe('riding the deer', () => {
     expect(snap(legacy, 'Ana').self).toMatchObject({ steed: false, riding: false, tame: null });
   });
 });
+
+import { MARCHITO, VISION } from './marchito';
+
+describe('El Marchito', () => {
+  type Priv = { boss: { hp: number } | null; marchito: { x: number; z: number; hp: number; laugh: number } | null; structures: { id: number; kind: string; x: number; y: number; z: number; rot: number; owner: string; hp: number }[] };
+  const priv = (sim: WorldSim) => sim as unknown as Priv;
+  const visions = (m: ServerMsg[]) => m.filter((x): x is Extract<ServerMsg, { t: 'vision' }> => x.t === 'vision');
+
+  /** A base with a Heart and some walls, then the Tragón falls with Ana and Leo online. */
+  function beaten(walls = 4) {
+    const sim = setup('Ana', 'Leo');
+    const h = plantHeart(sim);
+    for (let i = 0; i < walls; i++) priv(sim).structures.push({ id: 700 + i, kind: 'wall', x: h.x + 3 + i * 3, y: 0, z: h.z, rot: 0, owner: 'Ana', hp: STRUCTURE_HP.wall });
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.bossZ - 3);
+    sim.step(0.1);
+    priv(sim).boss!.hp = 0;
+    sim.step(0.1);
+    put(sim, 'Ana', h.x + 60, h.z + 60); // out of his way
+    put(sim, 'Leo', h.x - 60, h.z - 60);
+    return { sim, h };
+  }
+  const arrive = (sim: WorldSim) => {
+    for (let i = 0; i < MARCHITO.delay * 10 + 2 && !priv(sim).marchito; i++) sim.step(0.1);
+  };
+
+  it('beating the Tragón sends a vision naming the players and owes an invasion (saved)', () => {
+    const { sim } = beaten();
+    const v = visions(msgs(sim));
+    expect(v[0]!.lines.join(' ')).toContain('Ana y Leo');
+    expect(sim.invasion).toBe('pending');
+    expect(sim.save().invasion).toBe('pending');
+    expect(new WorldSim(sim.save()).invasion).toBe('pending');
+  });
+
+  it('an old world that already beat the Tragón is never invaded', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const saved = sim.save();
+    saved.purified = true;
+    expect(saved.invasion).toBeUndefined();
+    const old = new WorldSim(saved);
+    old.connect('Ana');
+    for (let i = 0; i < 400; i++) old.step(0.1);
+    expect(snap(old, 'Ana').marchito).toBeNull();
+    expect(old.invasion).toBe('none');
+  });
+
+  it('arrives after the delay from the Raíz-madre side, and shows himself', () => {
+    const { sim, h } = beaten();
+    msgs(sim);
+    for (let i = 0; i < MARCHITO.delay * 10 - 5; i++) sim.step(0.1);
+    expect(priv(sim).marchito).toBeNull();
+    arrive(sim);
+    const m = priv(sim).marchito!;
+    expect(m).not.toBeNull();
+    expect(visions(msgs(sim))[0]!.lines).toEqual(VISION.arrive);
+    const e = sim.entrance;
+    const toRoot = Math.atan2(e.x - h.x, e.z - h.z);
+    const toHim = Math.atan2(m.x - h.x, m.z - h.z);
+    expect(Math.abs(Math.atan2(Math.sin(toRoot - toHim), Math.cos(toRoot - toHim)))).toBeLessThan(0.3);
+    expect(snap(sim, 'Ana').marchito).toEqual({ will: ENEMY.marchito.hp, max: ENEMY.marchito.hp, laughing: false });
+    put(sim, 'Ana', m.x + 5, m.z);
+    expect(snap(sim, 'Ana').wolves.find((w) => w.kind === 'marchito')).toMatchObject({ id: MARCHITO.id });
+  });
+
+  it('smashes the nearer half of the defenses, never the Heart, laughs and leaves for good', () => {
+    const { sim, h } = beaten(4);
+    arrive(sim);
+    msgs(sim);
+    const out: ServerMsg[] = [];
+    for (let i = 0; i < 1500 && priv(sim).marchito; i++) {
+      sim.step(0.1);
+      out.push(...msgs(sim));
+    }
+    expect(priv(sim).marchito).toBeNull();
+    const wrecked = out.filter((m) => m.t === 'wrecked').map((m) => (m as { id: number }).id);
+    expect(wrecked.sort()).toEqual([700, 701]);
+    expect(sim.save().structures.map((s) => s.id)).toEqual(expect.arrayContaining([h.id, 702, 703]));
+    expect(sim.heart()!.hp).toBe(STRUCTURE_HP.heart);
+    expect(visions(out).map((v) => v.lines)).toContainEqual(VISION.laugh);
+    expect(sim.invasion).toBe('done');
+    expect(sim.save().invasion).toBe('done');
+    for (let i = 0; i < 400; i++) sim.step(0.1);
+    expect(priv(sim).marchito).toBeNull();
+  });
+
+  it('blows wear his voluntad; at 0 he is driven off. He mocks each player once', () => {
+    const { sim } = beaten();
+    arrive(sim);
+    msgs(sim);
+    const m = priv(sim).marchito!;
+    put(sim, 'Ana', m.x + 1, m.z);
+    sim.getPlayer('Ana')!.vitals.health = 100;
+    sim.handle('Ana', { t: 'attack', id: MARCHITO.id });
+    expect(m.hp).toBe(ENEMY.marchito.hp - PUNCH.damage);
+    sim.step(PUNCH.cooldown);
+    sim.handle('Ana', { t: 'attack', id: MARCHITO.id });
+    const taunts = msgs(sim).filter((x) => x.t === 'toast' && x.text === VISION.taunt('Ana'));
+    expect(taunts).toHaveLength(1);
+    m.hp = 1;
+    sim.step(PUNCH.cooldown);
+    put(sim, 'Ana', m.x + 1, m.z);
+    sim.handle('Ana', { t: 'attack', id: MARCHITO.id });
+    expect(priv(sim).marchito).toBeNull();
+    expect(visions(msgs(sim))[0]!.lines.join(' ')).toContain('Ana');
+    expect(sim.invasion).toBe('done');
+    expect(sim.save().structures.filter((s) => s.kind === 'wall').length).toBeGreaterThan(0);
+  });
+
+  it('swats a player standing next to him', () => {
+    const { sim } = beaten();
+    arrive(sim);
+    const m = priv(sim).marchito!;
+    put(sim, 'Leo', m.x + 1, m.z);
+    sim.step(0.1);
+    expect(sim.getPlayer('Leo')!.vitals.health).toBe(100 - ENEMY.marchito.damage);
+  });
+
+  it('freezes while nobody is active, and a mid-invasion save owes it again', () => {
+    const { sim } = beaten();
+    arrive(sim);
+    const m = priv(sim).marchito!;
+    const at = { x: m.x, z: m.z };
+    sim.markAway('Ana');
+    sim.markAway('Leo');
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect({ x: m.x, z: m.z }).toEqual(at);
+    expect(sim.save().invasion).toBe('pending');
+  });
+
+  it('waits while everyone is inside the Raíz-madre', () => {
+    const { sim } = beaten();
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.entryZ + 2);
+    put(sim, 'Leo', DUNGEON.x, DUNGEON.entryZ + 3);
+    for (let i = 0; i < MARCHITO.delay * 10 + 20; i++) sim.step(0.1);
+    expect(priv(sim).marchito).toBeNull();
+    put(sim, 'Ana', 0, 0);
+    sim.step(0.1);
+    expect(priv(sim).marchito).not.toBeNull();
+  });
+});
