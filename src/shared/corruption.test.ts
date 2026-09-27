@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { coastFeatures, createTerrain, HALF, WATER_LEVEL } from './terrain';
-import { allZones, coastRaidBrutes, CORRUPTION, generateCoastZones, generateZones, isCoastZone, nearestZone, raidDirFrom, taintAt, zoneAt } from './corruption';
+import { allZones, coastRaidBrutes, CORRUPTION, generateCoastZones, generateSwampZones, generateZones, isCoastZone, isSwampZone, nearestZone, raidDirFrom, SWAMP_ZONES, taintAt, zoneAt, type Zone } from './corruption';
+import { inBog } from './swamp';
+import { generateSwampShrines } from './swamp-shrines';
+import { inSwamp, LAGUNA, swampFeatures } from './terrain';
 
 describe('corruption zones', () => {
   for (const seed of [1, 42, 777, 2026]) {
@@ -50,7 +53,7 @@ describe('coast corruption zones (S2-D)', () => {
       const all = allZones(t, seed, e);
       expect(all.slice(0, forest.length)).toEqual(forest);
       const coast = generateCoastZones(t, seed);
-      expect(all.slice(forest.length)).toEqual(coast);
+      expect(all.slice(forest.length, forest.length + 4)).toEqual(coast); // Rule change (S3-D): swamp zones follow.
       expect(coast.map((z) => z.id)).toEqual([6, 7, 8, 9]);
       const { island, islets } = coastFeatures(seed);
       expect(coast[0]!.x).toBeCloseTo(island.x);
@@ -76,5 +79,37 @@ describe('coast corruption zones (S2-D)', () => {
     expect(coastRaidBrutes([6])).toBe(0);
     expect(coastRaidBrutes([7, 8, 9])).toBe(0);
     expect(coastRaidBrutes([0, 1])).toBe(0);
+  });
+});
+
+describe('swamp corruption zones (S3-D)', () => {
+  for (const seed of [1, 42, 777, 2026]) {
+    it(`seed ${seed}: ids 10–13, root in the Laguna, mound, bog, Nenúfares shore; no overlap`, () => {
+      const t = createTerrain(seed);
+      const all = allZones(t, seed, { x: 100, z: -60 });
+      const sw = all.filter((z) => isSwampZone(z.id));
+      expect(sw.map((z) => z.id)).toEqual([10, 11, 12, 13]);
+      expect(all.slice(-4)).toEqual(sw);
+      expect(generateSwampZones(t, seed)).toEqual(sw);
+      const [z10, z11, z12, z13] = sw as [Zone, Zone, Zone, Zone];
+      expect(Math.hypot(z10.x - LAGUNA.x, z10.z - LAGUNA.z)).toBeLessThan(1);
+      expect(z10.r).toBe(SWAMP_ZONES.rootR);
+      const { mounds } = swampFeatures(seed);
+      expect(mounds.some((m) => Math.hypot(m.x - z11.x, m.z - z11.z) < m.r)).toBe(true);
+      expect(t.heightAt(z11.x, z11.z)).toBeGreaterThan(WATER_LEVEL);
+      expect(inBog(t, z12.x, z12.z)).toBe(true);
+      const shore = generateSwampShrines(t, seed)[1]!.parts[0]!;
+      expect(Math.hypot(z13.x - shore.x, z13.z - shore.z)).toBeLessThan(4);
+      for (const z of sw) expect(inSwamp(z.x, z.z)).toBe(true);
+      for (const a of sw) for (const b of sw) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(a.r + b.r);
+    });
+  }
+
+  it('swamp ids are not coast ids; swamp zones add no coast brutes', () => {
+    expect(isCoastZone(10)).toBe(false);
+    expect(isCoastZone(9)).toBe(true);
+    expect(isSwampZone(10)).toBe(true);
+    expect(isSwampZone(9)).toBe(false);
+    expect(coastRaidBrutes([6, 7, 10, 11])).toBe(1);
   });
 });

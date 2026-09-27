@@ -1,5 +1,7 @@
 import { createRng } from './rng';
-import { coastFeatures, HALF, inForest, WATER_LEVEL, type Terrain } from './terrain';
+import { inBog } from './swamp';
+import { generateSwampShrines } from './swamp-shrines';
+import { coastFeatures, HALF, inForest, inSwamp, LAGUNA, SWAMP, swampFeatures, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * Corruption by zones (spec §3): purple patches of the forest, seeded like everything else.
@@ -53,7 +55,44 @@ export function generateZones(terrain: Terrain, seed: number, entrance: { x: num
 export const COAST_ZONES = { firstId: 6, root: 6, r: 16, rootR: 18 } as const;
 
 export function isCoastZone(id: number): boolean {
-  return id >= COAST_ZONES.firstId;
+  return id >= COAST_ZONES.firstId && id < SWAMP_ZONES.firstId;
+}
+
+/**
+ * Swamp zones (Slice 3 §7): fixed ids 10–13. Zone 10 is the Raíz-madre del Pantano in the Laguna Negra;
+ * 11 on a montículo, 12 in open bog, 13 on the Nenúfares shore.
+ */
+export const SWAMP_ZONES = { firstId: 10, root: 10, r: 16, rootR: 18 } as const;
+
+export function isSwampZone(id: number): boolean {
+  return id >= SWAMP_ZONES.firstId;
+}
+
+export function generateSwampZones(terrain: Terrain, seed: number): Zone[] {
+  const { r, rootR } = SWAMP_ZONES;
+  const root: Zone = { id: 10, x: LAGUNA.x, z: LAGUNA.z, r: rootR };
+  const shore = generateSwampShrines(terrain, seed)[1]!.parts[0]!;
+  const z13: Zone = { id: 13, x: shore.x, z: shore.z, r };
+  const clear = (x: number, z: number, others: Zone[]) => others.every((o) => Math.hypot(o.x - x, o.z - z) >= o.r + r);
+  // 11: the dry montículo farthest from the Laguna that keeps clear of the others.
+  let z11: Zone = { id: 11, x: SWAMP.x0 + 60, z: SWAMP.z0 + 40, r };
+  let far = -1;
+  for (const m of swampFeatures(seed).mounds) {
+    const d = Math.hypot(m.x - LAGUNA.x, m.z - LAGUNA.z);
+    if (d > far && terrain.heightAt(m.x, m.z) > WATER_LEVEL && clear(m.x, m.z, [root, z13])) [far, z11] = [d, { id: 11, x: m.x, z: m.z, r }];
+  }
+  // 12: a seeded point of open bog.
+  const rng = createRng(seed ^ 0x5a2e0);
+  let z12: Zone = { id: 12, x: (SWAMP.x0 + SWAMP.x1) / 2, z: (SWAMP.z0 + LAGUNA.z) / 2, r };
+  for (let tries = 0; tries < 800; tries++) {
+    const x = SWAMP.x0 + 25 + rng() * 110;
+    const z = SWAMP.z0 + 25 + rng() * (SWAMP.z1 - SWAMP.z0 - 50);
+    if (inSwamp(x, z) && inBog(terrain, x, z) && clear(x, z, [root, z11, z13])) {
+      z12 = { id: 12, x, z, r };
+      break;
+    }
+  }
+  return [root, z11, z12, z13];
 }
 
 export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
@@ -77,9 +116,9 @@ export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
   ];
 }
 
-/** Forest zones then coast zones: the one list client and server share. */
+/** Forest, coast and swamp zones: the one list client and server share. */
 export function allZones(terrain: Terrain, seed: number, entrance: { x: number; z: number }): Zone[] {
-  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed)];
+  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed), ...generateSwampZones(terrain, seed)];
 }
 
 /** Extra raid brutes: +1 per 2 corrupt coast zones while the coast Raíz-madre (zone 6) is corrupt. */

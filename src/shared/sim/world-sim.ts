@@ -7,7 +7,7 @@ import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, WA
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
-import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
+import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isSwampZone, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
 import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
@@ -906,18 +906,18 @@ export class WorldSim {
     if (s.kind === 'peat') return this.tell(p.name, 'Raíces de turba. Esto solo arde. Vuelve luego');
     if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
     p.shrines = [...cleared, id];
-    if (s.id >= SWAMP_SHRINE.firstId) {
-      p.inv = addItem(p.inv, 'amber', AMBER.orb);
-      // S3-D: a swamp orb cleanses the nearest swamp zone (10–13) once they exist.
-      return this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${AMBER.orb} de ${NAMES.amber}`);
-    }
-    this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
-    // The shrine's light cleanses the corrupt zone nearest it (never the Raíz-madre's: that takes the Tragón).
-    // Coast orbs cleanse coast zones only (never the coast Raíz-madre's: that takes its boss, S2-G); forest orbs forest ones.
-    const coast = s.id >= COAST_SHRINE.firstId && s.id < SWAMP_SHRINE.firstId;
-    const ids = this.corrupt().filter((i) => i !== 0 && i !== COAST_ZONES.root && isCoastZone(i) === coast);
+    // The shrine's light cleanses the corrupt zone of its own biome nearest it, never a Raíz-madre's
+    // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo).
+    const biome = (i: number) => (isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
+    const mine = s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
+    const ids = this.corrupt().filter((i) => i !== 0 && i !== COAST_ZONES.root && i !== SWAMP_ZONES.root && biome(i) === mine);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
-    if (zn) this.cleanse(zn.id, coast ? 'La luz del santuario limpia un trozo de costa' : 'La luz del santuario limpia un trozo de bosque');
+    if (mine === 'swamp') {
+      p.inv = addItem(p.inv, 'amber', AMBER.orb);
+      this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${AMBER.orb} de ${NAMES.amber}`);
+    } else this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
+    const where = { forest: 'bosque', coast: 'costa', swamp: 'pantano' }[mine];
+    if (zn) this.cleanse(zn.id, `La luz del santuario limpia un trozo de ${where}`);
   }
 
   /** Levers, wheels and Marea's pumice block. */
@@ -986,8 +986,10 @@ export class WorldSim {
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
     // Coast roots wither to Viento, not Enredadera (see onGust).
-    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
+    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
+    // S3-E: a Llamarada within CORRUPTION.cleanseReach of a swamp root (11–13) cleanses it: "El fuego seca la raíz marchita. El pantano respira".
+    // S3-F: beating El Zancudo cleanses zone 10 (SWAMP_ZONES.root).
     const knot = inside(DUNGEON.knot);
     if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
       this.dungeonLive.knot = true;

@@ -3747,14 +3747,65 @@ describe('swamp shrines (S3-C)', () => {
     expect(view(sim, 'Ana', s.id).open).toBe(false);
   });
 
-  it('a swamp orb cleanses no zone', () => {
+  it('a swamp orb cleanses the nearest corrupt swamp zone (11–13), never 10 (rule change S3-D)', () => {
     const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'lilies');
+    standOn(sim, 'Leo', s.parts[s.parts.length - 1]!);
+    sim.step(0.1);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
+    expect(sim.corrupt()).not.toContain(13); // zone 13 sits on the Nenúfares shore
+    expect(sim.corrupt()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].filter((i) => sim.zones.some((z) => z.id === i)));
+  });
+
+  it('swamp orbs never cleanse the swamp root; with 11–13 clean they cleanse nothing', () => {
+    const w = newWorld(42, 'salt');
+    w.cleansed = [11, 12, 13];
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.createPlayer('Leo', 'h');
+    sim.connect('Ana');
+    sim.connect('Leo');
     const s = kind(sim, 'lilies');
     const before = sim.corrupt();
     standOn(sim, 'Leo', s.parts[s.parts.length - 1]!);
     sim.step(0.1);
     expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
     expect(sim.corrupt()).toEqual(before);
+    expect(before).toContain(10);
+  });
+
+  it('Enredadera at a swamp root cleanses nothing (Fuego will, S3-E)', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const z = sim.zones.find((x) => x.id === 11)!;
+    put(sim, 'Ana', z.x - 3, z.z);
+    sim.handle('Ana', { t: 'power', x: z.x, z: z.z });
+    expect(sim.corrupt()).toContain(11);
+  });
+
+  it('new worlds have swamp zones 10–13 corrupt; old saves load with them corrupt', () => {
+    const sim = setup('Ana');
+    expect(sim.corrupt().slice(-4)).toEqual([10, 11, 12, 13]);
+    const w = newWorld(42, 'salt');
+    w.cleansed = [0, 6];
+    const old = new WorldSim(w);
+    expect(old.corrupt()).toEqual(expect.arrayContaining([10, 11, 12, 13]));
+    expect(old.corrupt()).not.toContain(6);
+  });
+
+  it('a night in a corrupt swamp zone brings extra beasts', () => {
+    const count = (clean: boolean) => {
+      const w = newWorld(42, 'salt');
+      if (clean) w.cleansed = [11];
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      const z = sim.zones.find((x) => x.id === 11)!;
+      put(sim, 'Ana', z.x, z.z);
+      stepTo(sim, 0.81);
+      return sim.wolfList.filter((x) => !x.raid).length;
+    };
+    expect(count(false)).toBeGreaterThan(count(true));
   });
 
   it('the frog hops over deep water onto the pads, and swims back only toward the shore', () => {
