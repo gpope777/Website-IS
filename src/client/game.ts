@@ -86,6 +86,9 @@ const MARCHITO_IMG = '/enemies/enemy12.png';
 /** La Gata Araña, the swamp's lieutenant (enemy2.png has real transparency). */
 const GATA_IMG = '/enemies/enemy2.png';
 const GATA_ASPECT = 408 / 512;
+/** El Triángulo, the mountains' lieutenant (enemy7.png has real transparency). */
+const TRIANGULO_IMG = '/enemies/enemy7.png';
+const TRIANGULO_ASPECT = 455 / 469;
 /** El Zancudo (enemy9.png has real transparency); thin lines, so drawn 6 m wide (spec S3 §14.4). */
 const ZANCUDO_IMG = '/enemies/enemy9.png';
 const ZANCUDO_ASPECT = 358 / 291;
@@ -549,10 +552,10 @@ export class Game {
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
-      else if (w.kind === 'lieut1' && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
+      else if ((w.kind === 'lieut1' || w.kind === 'lieut2') && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
       else if (w.kind === 'boss3' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.swamp.boss?.grounded ? 0xffe9a0 : 0xffffff);
       else if (w.kind === 'boss2' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.coast.boss?.exposed ? 0xffe9a0 : 0xffffff);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
