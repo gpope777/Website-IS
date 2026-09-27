@@ -426,3 +426,22 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: con Invasión 1 hecha y el Tragón purificado, domar el pez y esperar al atardecer junto al Corazón: ¿se ve venir del sur? ¿Se lee la barra de "envuelve"? Probar echarlo (con 2 jugadores, voluntad 504) y no echarlo (¿qué muros rompe?). Pasar una noche sin Tragón. Buscar las cadenas moradas desde la playa, ir a cada islote en pez, pelear los 2 lobos, romper el ancla a golpes y con 🌬️. Ver bajar la jaula. Bucear hasta ella y A. De noche, el Tragón con rabia. Constantes: `RESCUE` en `src/shared/rescue.ts`, `MARCHITO.grabFor` y `thiefWill` en `src/shared/sim/marchito.ts`, `ALLY.rage`.
+
+---
+
+# Fase 3 — Resto del roadmap (autónomo, desde 2026-09-27)
+
+Gabriel: "haz el resto de los subproyectos en orden con el menor input mío; guíate por mis respuestas pasadas; añade buenas ideas". Tutorial/onboarding: **al final**, dentro de #7 Pulido.
+
+Rama: `aventura/resto` (desde main tras el merge del PR #2). PR draft; **merge solo con OK de Gabriel**.
+
+Orden (roadmap "content first", #3+#5 = Aventura por biomas, #4 plegado en cada slice):
+1. Slice 3 — Pantano
+2. Slice 4 — Montañas
+3. Slice 5 — Tierras Corruptas (torre, Invasión 3, asalto final, dragón)
+4. #4 Progresión (lo que no se plegó: niveles/habilidades/tiers/apariencia)
+5. #6 Tiendas y economía
+6. #2 Mundo y visuales
+7. #7 Pulido (incluye tutorial)
+
+Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción más simple que respete el spec; co-op que no bloquee al que juega solo salvo cuando es el gancho (ballena); no tocar balance del Corazón; nombres provisionales en `src/shared/names.ts`; dibujos de los sobrinos como papel espíritu; rejilla táctil ≤10; decisiones anotadas como "Decidido por Claude — revisar".
