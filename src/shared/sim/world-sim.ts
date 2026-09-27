@@ -24,7 +24,7 @@ import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
 import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, TOWER as VILLAIN_TOWER, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
-import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
+import { AIR, clawReach, DRAGON, dragonOut, guardTarget, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
@@ -415,6 +415,8 @@ export class WorldSim {
   towerOpen: boolean;
   /** Invasion 3 is under way tonight (from its dusk to dawn); `dark` once night fell. Live-only. */
   private inv3: { dark: boolean } | null = null;
+  /** When each owner's parked dragon may bite a rayo again (S5 §8.3). Live-only. */
+  private skyBiteAt = new Map<string, number>();
   /** The cage's anchors broken so far (saved while taken). */
   private anchors: boolean[];
   /** Live anchor records (kind 'anchor') for the ones still standing; their PV is live-only. */
@@ -788,6 +790,7 @@ export class WorldSim {
     this.stepInvasion(dt);
     this.stepInvasion2(dt);
     this.stepInvasion3(dt);
+    this.stepSkyGuard(night);
     this.stepGuards();
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
@@ -1115,6 +1118,14 @@ export class WorldSim {
   private onAttack(p: SavedPlayer, l: Live, id: number): void {
     const w = this.enemy(id);
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < l.punchReadyAt) return;
+    if (l.dragon) {
+      // S5 §8.3: from the dragon, only a claw at a rayo in reach (3D).
+      if (w.kind !== 'rayo') return this.hint(p.name, l, 'Desde el aire solo alcanzas a los rayos');
+      if (!clawReach(p, w)) return;
+      l.punchReadyAt = this.time + AIR.cooldown;
+      l.anim = 'attack';
+      return this.strike(p.name, w, AIR.claw);
+    }
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     if (w.kind === 'rayo' && !rayoLow(w, this.terrain.heightAt(w.x, w.z))) return this.hint(p.name, l, 'Vuela alto. Flechas, o viento');
     if (w === this.lakeAnchor && !this.diving(p, w)) return this.hint(p.name, l, 'Está en el fondo. Bucea con el pez');
@@ -3868,6 +3879,21 @@ export class WorldSim {
       }
       this.vision(VISION.drained3(joinNames(this.activeNames())));
     } else this.marchito = null;
+  }
+
+  /** Tamed dragons parked near the Heart at night bite the nearest rayo (S5 §8.3). Never ground beasts nor El Marchito. */
+  private stepSkyGuard(night: boolean): void {
+    const h = this.heart();
+    if (!night || !h || h.hp <= 0) return;
+    for (const p of this.players.values()) {
+      const d = p.dragon;
+      if (!d || this.live.get(p.name)?.dragon || Math.hypot(d.x - h.x, d.z - h.z) > AIR.guardR) continue;
+      if (this.time + EPS < (this.skyBiteAt.get(p.name) ?? 0)) continue;
+      const foe = guardTarget(d, this.wolves);
+      if (!foe) continue;
+      this.skyBiteAt.set(p.name, this.time + AIR.every);
+      hitWolf(foe, AIR.claw);
+    }
   }
 
   private startInvasion3(h: Structure): void {

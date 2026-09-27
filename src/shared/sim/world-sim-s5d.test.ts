@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { STRUCTURE_HP } from '../items';
 import { decodeClient, PROTOCOL_VERSION, type ServerMsg } from '../protocol';
 import { heartWill, MARCHITO, VISION } from './marchito';
-import { RAID, type Wolf } from './wolves';
+import { createWolf, RAID, type Wolf } from './wolves';
+import { AIR } from '../dragon';
 import { DAY_LENGTH, INVASION3, newWorld, WorldSim, type SavedWorld } from './world-sim';
 
 type Struct = { id: number; kind: string; x: number; y: number; z: number; rot: number; owner: string; hp: number };
@@ -200,5 +201,79 @@ describe('Invasión 3 at the Heart (S5 §8.2)', () => {
     expect(priv(sim).marchito).not.toBeNull();
     expect(sim.save().invasion3).toBe('pending');
     expect(sim.save().towerOpen).toBeUndefined();
+  });
+});
+
+describe('air defense (S5 §8.3)', () => {
+  const live = (sim: WorldSim, n = 'Ana') => (sim as unknown as { live: Map<string, { dragon: boolean; punchReadyAt: number; hintAt: number }> }).live.get(n)!;
+  function foe(sim: WorldSim, kind: 'rayo' | 'wolf', x: number, z: number, up: number) {
+    const w = createWolf(99_000 + priv(sim).wolves.length, x, z, sim.terrain, () => 0.5, kind);
+    w.y = sim.terrain.heightAt(x, z) + up;
+    priv(sim).wolves.push(w);
+    return w;
+  }
+  function flying(sim: WorldSim, x: number, z: number, up: number) {
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x, z, y: sim.terrain.heightAt(x, z) + up, dragon: { x, z } });
+    live(sim).dragon = true;
+  }
+
+  it('riding, the claw hits a rayo within 5 m in 3D for 40, once a second', () => {
+    const sim = world();
+    flying(sim, 100, 100, 10);
+    const r = foe(sim, 'rayo', 103, 100, 12);
+    sim.handle('Ana', { t: 'attack', id: r.id });
+    expect(r.hp).toBe(60 - AIR.claw);
+    sim.handle('Ana', { t: 'attack', id: r.id });
+    expect(r.hp).toBe(60 - AIR.claw);
+    live(sim).punchReadyAt = 0;
+    sim.handle('Ana', { t: 'attack', id: r.id });
+    expect(r.hp).toBe(0);
+  });
+
+  it('riding: a rayo far below is out of reach; a wolf cannot be hit from the air', () => {
+    const sim = world();
+    flying(sim, 100, 100, 10);
+    const low = foe(sim, 'rayo', 103, 100, 4);
+    sim.handle('Ana', { t: 'attack', id: low.id });
+    expect(low.hp).toBe(60);
+    const w = foe(sim, 'wolf', 101, 100, 0);
+    const hp = w.hp;
+    msgs(sim);
+    sim.handle('Ana', { t: 'attack', id: w.id });
+    expect(w.hp).toBe(hp);
+    expect(texts(msgs(sim))).toContain('Desde el aire solo alcanzas a los rayos');
+  });
+
+  it('on foot a high rayo is still out of reach of the sword', () => {
+    const sim = world();
+    put(sim, 'Ana', 100, 100);
+    const r = foe(sim, 'rayo', 101, 100, 6);
+    sim.handle('Ana', { t: 'attack', id: r.id });
+    expect(r.hp).toBe(60);
+  });
+
+  it('a dragon parked by the Heart bites rayos at night, not wolves; not far away, not by day, not while ridden', () => {
+    const night = (parkAt: number, ridden = false, dark = true) => {
+      const sim = world();
+      stepTo(sim, dark ? 0.85 : 0.5);
+      priv(sim).wolves = [];
+      heart(sim).hp = STRUCTURE_HP.heart; // the plain raid may have withered it
+      const a = sim.getPlayer('Ana')!;
+      a.dragon = { x: HX + parkAt, z: HZ };
+      if (ridden) live(sim).dragon = true;
+      const r = foe(sim, 'rayo', HX + parkAt + 8, HZ, 6);
+      const w = foe(sim, 'wolf', HX + parkAt + 2, HZ, 0);
+      const whp = w.hp;
+      w.stun = 99;
+      for (let i = 0; i < 31; i++) sim.step(0.1);
+      return { rayo: r.hp, wolfHurt: w.hp < whp };
+    };
+    const near = night(10);
+    expect(near.rayo).toBeLessThanOrEqual(60 - AIR.claw);
+    expect(near.wolfHurt).toBe(false);
+    expect(night(40).rayo).toBe(60);
+    expect(night(10, true).rayo).toBe(60);
+    expect(night(10, false, false).rayo).toBe(60);
   });
 });

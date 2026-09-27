@@ -4,7 +4,7 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 49;
+export const PROTOCOL_VERSION = 50;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
