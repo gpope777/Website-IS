@@ -43,7 +43,7 @@ import { createAtalaya, createCucurucho, CUCURUCHO, hatFront, stepAtalaya, stepC
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
-import { creditLines, ENDING, endingCards, lateCards } from '../ending';
+import { creditLines, ENDING, endingCards, endingWave, lateCards } from '../ending';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
@@ -717,7 +717,7 @@ export class WorldSim {
       case 'pillar':
         return this.onPillar(p, l, msg.id);
       case 'raids':
-        return; // S5-G Task 3
+        return this.onRaids(p, msg.on);
       case 'hello':
         return; // the room handles hello
     }
@@ -3905,6 +3905,16 @@ export class WorldSim {
   }
 
   /** A on a core: start the 3 s pull (spec S5 §5). */
+  /** S5-G: at the Heart after the ending, the post-ending raids go off or on (world setting, for everyone). */
+  private onRaids(p: SavedPlayer, on: boolean): void {
+    if (!this.ending || p.dead) return;
+    const h = this.heart();
+    if (!h || h.hp <= 0 || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return this.tell(p.name, 'Eso se decide junto al Corazón');
+    if (this.raidsOff === !on) return;
+    this.raidsOff = !on;
+    this.say(`${NAMES.raidNights}: ${on ? 'encendidas' : 'apagadas'}`);
+  }
+
   private onPillar(p: SavedPlayer, l: Live, id: number): void {
     const c = this.pillarSpots.cores[id];
     if (!c || p.dead || l.pull || this.pillarsBroken[id] || inAnyDungeon(p.x, p.z)) return;
@@ -4015,22 +4025,25 @@ export class WorldSim {
       this.corruptSeen = true;
       this.vision(VISION.corrupt(walker));
     }
-    if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
+    if (!this.raid && !(this.ending && this.raidsOff) && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
       const corrupt = this.corrupt();
       const src = nearestZone(this.zones, heart.x, heart.z, corrupt);
       this.raid = { phase: 'warn', dir: raidDirFrom(heart, this.zones, corrupt, this.rootDir(heart)) + (this.rng() - 0.5) * RAID.jitter };
       const where = !src || src.id === 0 ? `la ${NAMES.forestRoot}` : 'una zona marchita';
       this.raidN++;
-      this.raid.gata = gataLeads(this.raidN, this.swampSeen, corrupt);
-      this.raid.tri = triLeads(this.raidN, this.mountainsSeen, corrupt);
-      this.raid.flecha = flechaLeads(this.raidN, this.corruptSeen, corrupt);
+      // S5-G: after the ending no lieutenant leads (their roots are clean).
+      this.raid.gata = !this.ending && gataLeads(this.raidN, this.swampSeen, corrupt);
+      this.raid.tri = !this.ending && triLeads(this.raidN, this.mountainsSeen, corrupt);
+      this.raid.flecha = !this.ending && flechaLeads(this.raidN, this.corruptSeen, corrupt);
       const lead = this.raid.gata ? NAMES.lieutenant1 : this.raid.tri ? NAMES.lieutenant2 : this.raid.flecha ? NAMES.lieutenant3 : '';
       const coast = (coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '') + (lead ? `. ${lead} guía el asedio esta noche` : '');
       this.say(
-        this.purified
-          ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón${coast}`
-          : `El cielo se tiñe de morado hacia ${where}. ${NAMES.villain} envía a sus bestias: vuelvan al Corazón${coast}`,
+        this.ending
+          ? 'Quedan bestias sueltas por el norte. Vuelvan al Corazón'
+          : this.purified
+            ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón${coast}`
+            : `El cielo se tiñe de morado hacia ${where}. ${NAMES.villain} envía a sus bestias: vuelvan al Corazón${coast}`,
       );
     }
     if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {
@@ -4054,7 +4067,7 @@ export class WorldSim {
     const extra = Math.max(0, this.activeCount() - 1);
     const full = Math.min(RAID.maxWave, RAID.base + RAID.perLevel * this.raidLevel + RAID.perPlayer * extra);
     const n0 = this.purified ? Math.max(1, Math.ceil(full * RAID.cleansed)) : full;
-    const n = this.raid?.big ? Math.ceil(n0 * INVASION3.raidMult) : n0;
+    const n = this.raid?.big ? Math.ceil(n0 * INVASION3.raidMult) : this.ending ? endingWave(n0) : n0;
     // Coast pressure (Slice 2 §6.4): extra brutes on top, until the coast Raíz-madre is purified (S2-G).
     const extraBrutes = coastRaidBrutes(this.corrupt());
     for (let i = 0; i < n + extraBrutes; i++) {

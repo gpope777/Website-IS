@@ -5,6 +5,7 @@ import { RIM_LINE } from '../corrupt-lands';
 import { STEEP_TEXT } from '../mountains';
 import { TOWER_DUNGEON as T } from '../tower-dungeon';
 import { FINAL } from './marchito-final';
+import { endingWave } from '../ending';
 import { DAY_LENGTH, newWorld, WorldSim, type SavedWorld } from './world-sim';
 
 type Priv = { structures: { id: number; kind: string; x: number; z: number }[]; winFinal(): void; invasion2: string; marchito: unknown; wolves: { kind: string; raid?: boolean }[] };
@@ -127,5 +128,75 @@ describe('the ending (S5-G)', () => {
   it('decodeClient takes the raids toggle (boolean only)', () => {
     expect(decodeClient(JSON.stringify({ t: 'raids', on: true }))).toEqual({ t: 'raids', on: true });
     expect(decodeClient(JSON.stringify({ t: 'raids', on: 'x' }))).toBeNull();
+  });
+});
+
+describe('raids after the ending (S5-G, override: on and softer, a toggle at the Heart)', () => {
+  const toasts = (sim: WorldSim) => msgs(sim).flatMap((o) => (o.msg.t === 'toast' ? [o.msg.text] : []));
+  const raiders = (sim: WorldSim) => priv(sim).wolves.filter((w) => w.raid);
+  /** Dusk then night: returns the warning toasts and the raiders that came. */
+  function night(sim: WorldSim) {
+    msgs(sim);
+    sim.time = Math.floor(sim.time / DAY_LENGTH) * DAY_LENGTH + DAY_LENGTH * 0.75;
+    sim.step(0.1);
+    const t = toasts(sim);
+    sim.time = Math.floor(sim.time / DAY_LENGTH) * DAY_LENGTH + DAY_LENGTH * 0.81;
+    sim.step(0.1);
+    return { t, raiders: raiders(sim) };
+  }
+  const atHeart = (sim: WorldSim) => put(sim, 'Ana', HEART.x + 2, HEART.z);
+
+  it('still come, at 60 % and with no lieutenant, from the north', () => {
+    const base = setup(undefined, 'Ana', 'Leo', 'Bea');
+    Object.assign(base as unknown as { purified: boolean }, { purified: true });
+    for (const z of (base as unknown as { zones: { id: number }[] }).zones) (base as unknown as { cleansed: Set<number> }).cleansed.add(z.id);
+    const normal = night(base).raiders.length;
+    const sim = win();
+    Object.assign(sim as unknown as { purified: boolean }, { purified: true });
+    const r = night(sim);
+    expect(r.t.some((x) => x.startsWith('Quedan bestias sueltas por el norte'))).toBe(true);
+    expect(r.raiders.length).toBe(endingWave(normal));
+    expect(r.raiders.some((w) => w.kind.startsWith('lieut'))).toBe(false);
+  });
+
+  it('the Menú at the Heart turns them off (saved) and back on', () => {
+    const sim = win();
+    atHeart(sim);
+    msgs(sim);
+    sim.handle('Ana', { t: 'raids', on: false });
+    expect(sim.raidsOff).toBe(true);
+    expect(toasts(sim)).toContain('Noches de asedio: apagadas');
+    expect(sim.save().raidsOff).toBe(true);
+    const r = night(sim);
+    expect(r.raiders).toHaveLength(0);
+    expect(r.t.some((x) => x.startsWith('Quedan bestias'))).toBe(false);
+    expect(new WorldSim(sim.save()).raidsOff).toBe(true);
+    atHeart(sim);
+    sim.handle('Ana', { t: 'raids', on: true });
+    expect(sim.raidsOff).toBe(false);
+    expect(toasts(sim)).toContain('Noches de asedio: encendidas');
+  });
+
+  it('refused before the ending, away from the Heart or dead', () => {
+    const before = setup(undefined, 'Ana');
+    atHeart(before);
+    before.handle('Ana', { t: 'raids', on: false });
+    expect(before.raidsOff).toBe(false);
+    const sim = win();
+    put(sim, 'Ana', HEART.x + 40, HEART.z);
+    msgs(sim);
+    sim.handle('Ana', { t: 'raids', on: false });
+    expect(sim.raidsOff).toBe(false);
+    expect(toasts(sim).some((x) => x.includes('Corazón'))).toBe(true);
+    atHeart(sim);
+    sim.getPlayer('Ana')!.dead = true;
+    sim.handle('Ana', { t: 'raids', on: false });
+    expect(sim.raidsOff).toBe(false);
+  });
+
+  it('old saves: raids on', () => {
+    const w = newWorld(42, 'salt');
+    delete (w as { raidsOff?: boolean }).raidsOff;
+    expect(new WorldSim(w).raidsOff).toBe(false);
   });
 });
