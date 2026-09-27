@@ -134,6 +134,7 @@ export class Hud {
       `<h2>Menú</h2>
        <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
        <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
+       <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 Enredadera (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>

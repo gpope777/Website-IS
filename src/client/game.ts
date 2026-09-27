@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
 import { createTerrain, type Terrain } from '../shared/terrain';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
-import { PROTOCOL_VERSION, r2, type Anim, type HeartView, type RaidView, type ServerMsg, type Structure } from '../shared/protocol';
+import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
+import { PROTOCOL_VERSION, r2, type Anim, type HeartView, type RaidView, type ServerMsg, type ShrineView, type Structure } from '../shared/protocol';
 import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
@@ -16,13 +17,14 @@ import { raidText } from './raid-ui';
 import { clearHold, Keyboard, readMove, type Action, type InputState, KEY_ACTIONS } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
-import { animFor, createBody, rollInput, STAMINA, stepBody, type Body } from './movement';
+import { animFor, createBody, rollInput, staminaFor, stepBody, type Body } from './movement';
 import { Connection, wsUrl, type NetStatus } from './net';
 import { loadTier, saveTier, TIERS, type Tier } from './quality';
 import { DayLight } from './scene/sky';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
-import { buildCrags } from './scene/crags';
+import { buildCrags, buildVine } from './scene/crags';
+import { ShrineMeshes } from './scene/shrines';
 import { buildTerrainMesh, buildWater } from './scene/terrain-mesh';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
@@ -73,6 +75,16 @@ export class Game {
   private terrain: Terrain | null = null;
   private spawns: ResourceSpawn[] = [];
   private crags: Crag[] = [];
+  private shrines: Shrine[] = [];
+  private shrineMeshes: ShrineMeshes | null = null;
+  private shrineViews: ShrineView[] = [];
+  /** Shrines this player cleared (from the server). */
+  private cleared: number[] = [];
+  private vines: Crag[] = [];
+  private vineKey = '';
+  private readonly vineGroup = new THREE.Group();
+  /** Crags + shrine rocks (bare unless wrapped) + vines: what stepBody climbs and stands on. */
+  private climbList: Crag[] = [];
   /** Resource spawns inside a crag: hidden and uncollided on the client. */
   private readonly buried = new Set<number>();
   private resMeshes: ResourceMeshes | null = null;
@@ -108,7 +120,7 @@ export class Game {
     root.appendChild(this.renderer.domElement);
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
-    this.scene.add(this.structures.group, this.graves.group);
+    this.scene.add(this.structures.group, this.graves.group, this.vineGroup);
     this.marker.rotation.x = Math.PI; // point down at the target
     this.marker.visible = false;
     this.scene.add(this.marker);
@@ -212,9 +224,13 @@ export class Game {
     this.spawns = generateResources(this.terrain, seed);
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
-    this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows));
+    this.shrines = generateShrines(this.terrain, seed, this.crags);
+    this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
+    this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
+    this.rebuildClimbables();
+    const solid = this.climbList;
     for (const s of this.spawns) {
-      if (cragsNear(this.crags, s.x, s.z, 0.3).length) {
+      if (cragsNear(solid, s.x, s.z, 0.3).length) {
         this.buried.add(s.id);
         this.resMeshes.setGone(s.id, true);
       } else if (s.kind !== 'bush') this.colliders.add(`r${s.id}`, { x: s.x, z: s.z, r: s.radius });
@@ -245,6 +261,9 @@ export class Game {
     this.hud.setHeart(m.heart);
     if (m.heart) this.structures.setHp(m.heart.id, m.heart.hp);
     this.graves.sync(m.graves, this.myName);
+    this.syncVines(m.vines);
+    this.shrineViews = m.shrines;
+    this.shrineMeshes?.sync(m.shrines, this.cleared);
     if (!this.kits) return;
     for (const p of m.players) {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
@@ -268,6 +287,29 @@ export class Game {
     }
   }
 
+  private rebuildClimbables(): void {
+    const wrapped = new Set(this.vines.map((v) => v.id));
+    const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
+    this.climbList = [...this.crags, ...bare, ...this.vines];
+  }
+
+  private syncVines(vines: Crag[]): void {
+    const key = JSON.stringify(vines);
+    if (key === this.vineKey) return;
+    this.vineKey = key;
+    this.vines = vines;
+    this.vineGroup.clear();
+    const pillars = new Set(this.shrines.map((s) => s.pillar?.id));
+    for (const v of vines) this.vineGroup.add(buildVine(v, pillars.has(v.id)));
+    this.rebuildClimbables();
+    // Our vine withered (or a wrapped rock went bare) while we hung on it: let go.
+    const b = this.body;
+    if (b?.climb && !this.climbList.some((c) => c.id === b.climb!.id && !c.bare)) {
+      b.climb = null;
+      b.onGround = false;
+    }
+  }
+
   private remote<K>(map: Map<K, Remote>, key: K, make: () => Actor): Remote {
     let r = map.get(key);
     if (!r) {
@@ -281,6 +323,8 @@ export class Game {
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
     this.hud.setVitals(self.vitals);
     this.hud.setInventory(self.inv);
+    this.cleared = self.shrines;
+    if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
     if (self.fix && this.body) {
       Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, gliding: false });
     }
@@ -333,6 +377,7 @@ export class Game {
     if (a === 'roll') return this.roll();
     if (a === 'lock') return this.toggleLock();
     if (a === 'bow') return this.shoot();
+    if (a === 'power') return this.power();
     this.act();
   }
 
@@ -445,6 +490,8 @@ export class Game {
     const b = this.body!;
     const fallen = this.fallenMate();
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
+    const sp = this.shrinePart();
+    if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
     if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
@@ -475,6 +522,36 @@ export class Game {
       if (d <= REVIVE.reach && (!best || d < best.d)) best = { name, d };
     }
     return best?.name ?? null;
+  }
+
+  /** Lever within reach (part 1/2), or an orb you have not taken yet (part 0). The server re-checks. */
+  private shrinePart(): { id: number; part: number; open: boolean } | null {
+    const b = this.body!;
+    for (const s of this.shrines) {
+      const open = this.shrineViews.find((v) => v.id === s.id)?.open ?? false;
+      if (s.kind === 'levers') {
+        const i = s.parts.findIndex((p) => Math.hypot(p.x - b.x, p.z - b.z) <= SHRINE.partReach);
+        if (i >= 0) return { id: s.id, part: i + 1, open };
+      }
+      if (this.cleared.includes(s.id)) continue;
+      const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
+      if (Math.hypot(s.orb.x - b.x, s.orb.z - b.z) <= reach && b.y >= s.orb.y - 2.5) return { id: s.id, part: 0, open };
+    }
+    return null;
+  }
+
+  /** A bare shrine rock beside us, if any (Enredadera wraps it instead of growing a new vine). */
+  private bareRockNear(): Crag | undefined {
+    const b = this.body!;
+    return this.climbList.find((c) => c.bare && Math.hypot(c.x - b.x, c.z - b.z) < c.r + 3);
+  }
+
+  private power(): void {
+    const b = this.body!;
+    const rock = this.bareRockNear();
+    const x = rock ? rock.x : b.x + Math.sin(b.facing) * 2.5;
+    const z = rock ? rock.z : b.z + Math.cos(b.facing) * 2.5;
+    this.conn.send({ t: 'power', x: r2(x), z: r2(z) });
   }
 
   private canTend(): boolean {
@@ -524,8 +601,8 @@ export class Game {
     let mv = this.dead || this.hud.menuOpen ? IDLE_INPUT : readMove(this.input);
     if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
-    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.crags);
-    this.hud.setStamina(b.stamina / STAMINA.max, b.tired);
+    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList);
+    this.hud.setStamina(b.stamina / b.staminaMax, b.tired);
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';
     if (now < this.attackUntil) anim = 'attack';
@@ -568,6 +645,7 @@ export class Game {
     this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
     this.hud.setRaid(raidText(this.raid, this.rig.yaw));
     this.structures.animate(performance.now() / 1000);
+    this.shrineMeshes?.animate(performance.now() / 1000);
     this.rig.apply(this.camera, b, terrain);
     this.updatePrompt();
     this.renderer.render(this.scene, this.camera);
@@ -586,12 +664,15 @@ export class Game {
     if (fallen) return this.hud.setPrompt(`E · Levantar a ${fallen}`);
     if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
+    const sp = this.body && this.shrinePart();
+    if (sp) return this.hud.setPrompt(sp.part > 0 ? 'E · Tirar de la palanca' : sp.open ? 'E · Tomar el orbe' : 'La verja está cerrada');
     const b = this.body;
     if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
     if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
     const res = this.nearestResource();
     if (res) return this.hud.setPrompt(`E · ${HARVEST[res.kind].label}`);
-    const wall = b && b.onGround ? cragsNear(this.crags, b.x, b.z, 1).find((c) => b.y < c.top - 0.6) : undefined;
+    const wall = b && b.onGround ? cragsNear(this.climbList, b.x, b.z, 1).find((c) => b.y < c.top - 0.6) : undefined;
+    if (wall?.bare) return this.hud.setPrompt(this.cleared.length ? 'H · Enredadera: cubrir la roca' : 'Roca lisa: no hay agarre');
     this.hud.setPrompt(wall ? (b!.tired ? 'Sin aliento' : 'Empuja contra la roca para trepar') : null);
   }
 
