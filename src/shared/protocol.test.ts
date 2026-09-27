@@ -43,8 +43,8 @@ describe('decodeClient', () => {
 });
 
 describe('aventura protocol', () => {
-  it('is version 2', () => {
-    expect(PROTOCOL_VERSION).toBe(4);
+  it("is the current version", () => {
+    expect(PROTOCOL_VERSION).toBe(5);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -77,5 +77,13 @@ describe('revive protocol', () => {
     expect(decodeClient('{"t":"revive","name":"Ana"}')).toEqual({ t: 'revive', name: 'Ana' });
     expect(decodeClient('{"t":"revive","name":""}')).toBeNull();
     expect(decodeClient('{"t":"revive","name":5}')).toBeNull();
+  });
+});
+
+describe('traversal protocol', () => {
+  it('accepts climb and glide anims', () => {
+    for (const anim of ['climb', 'glide']) {
+      expect(decodeClient(JSON.stringify({ t: 'move', x: 0, y: 0, z: 0, yaw: 0, anim }))).not.toBeNull();
+    }
   });
 });
