@@ -15,6 +15,7 @@ import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
 import { NAMES } from '../names';
+import { WHALE } from '../whale';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -2502,5 +2503,104 @@ describe('coast corruption (S2-D)', () => {
       return sim.wolfList.filter((x) => !x.raid).length;
     };
     expect(count(false)).toBeGreaterThan(count(true));
+  });
+});
+
+describe('taming the whale (two or more)', () => {
+  const atWhale = (sim: WorldSim, name: string, dx = 2) => {
+    put(sim, name, sim.whaleHome.x + dx, sim.whaleHome.z);
+    sim.getPlayer(name)!.y = WATER_LEVEL - 0.9;
+  };
+  /** A tap that lands: at the zone centre's time for the current round. */
+  const goodTap = (sim: WorldSim, name: string) => {
+    const t = snap(sim, name).self.tame!;
+    const at = t.start + t.zone / t.speed;
+    while (sim.time < at) sim.step(0.05);
+    sim.handle(name, { t: 'mount', act: 1, at });
+  };
+
+  it('never alone', () => {
+    const sim = setup('Ana');
+    atWhale(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(msgs(sim).some((m) => m.t === 'toast' && m.text.includes('Hacen falta dos'))).toBe(true);
+  });
+
+  it('two in range: both see the ring, wider for the second player', () => {
+    const sim = setup('Ana', 'Leo');
+    atWhale(sim, 'Ana');
+    atWhale(sim, 'Leo', -2);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    const a = snap(sim, 'Ana').self.tame!;
+    const l = snap(sim, 'Leo').self.tame!;
+    expect(a.beast).toBe('whale');
+    expect(a.rounds).toBe(WHALE.rounds.length);
+    expect(l.start).toBe(a.start);
+    expect(a.width).toBeCloseTo(WHALE.rounds[0].width * 1.4, 1);
+  });
+
+  it('four good taps from either player tame it for the whole world', () => {
+    const sim = setup('Ana', 'Leo');
+    atWhale(sim, 'Ana');
+    atWhale(sim, 'Leo', -2);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    for (let i = 0; i < WHALE.rounds.length; i++) goodTap(sim, i % 2 ? 'Leo' : 'Ana');
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(snap(sim, 'Leo').whale.tamed).toBe(true);
+    expect(sim.save().whale).toBeDefined();
+    const loaded = new WorldSim(sim.save());
+    loaded.createPlayer('Eva', 'h');
+    loaded.connect('Eva');
+    expect(snap(loaded, 'Eva').whale.tamed).toBe(true);
+  });
+
+  it('a friend tapping the round already won does not spoil it', () => {
+    const sim = setup('Ana', 'Leo');
+    atWhale(sim, 'Ana');
+    atWhale(sim, 'Leo', -2);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    const t = snap(sim, 'Ana').self.tame!;
+    goodTap(sim, 'Ana');
+    sim.handle('Leo', { t: 'mount', act: 1, at: t.start + t.zone / t.speed });
+    expect(snap(sim, 'Leo').self.tame?.round).toBe(1);
+  });
+
+  it('a bad tap sends it under for 10 s', () => {
+    const sim = setup('Ana', 'Leo');
+    atWhale(sim, 'Ana');
+    atWhale(sim, 'Leo', -2);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    const t = snap(sim, 'Ana').self.tame!;
+    sim.handle('Leo', { t: 'mount', act: 1, at: t.start + (t.zone + Math.PI) / t.speed });
+    const w = snap(sim, 'Ana');
+    expect(w.self.tame).toBeNull();
+    expect(w.whale.diving).toBe(true);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    for (let i = 0; i < 210; i++) sim.step(0.05);
+    expect(snap(sim, 'Ana').whale.diving).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    expect(snap(sim, 'Ana').self.tame?.beast).toBe('whale');
+  });
+
+  it('dropping to one player in range ends it', () => {
+    const sim = setup('Ana', 'Leo');
+    atWhale(sim, 'Ana');
+    atWhale(sim, 'Leo', -2);
+    sim.handle('Ana', { t: 'mount', act: 9 });
+    put(sim, 'Leo', sim.whaleHome.x + 40, sim.whaleHome.z);
+    sim.step(0.05);
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(snap(sim, 'Ana').whale.diving).toBe(true);
+  });
+
+  it('old saves load with a wild whale', () => {
+    const w = newWorld(42, 'salt');
+    expect(w.whale).toBeUndefined();
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    expect(snap(sim, 'Ana').whale.tamed).toBe(false);
   });
 });

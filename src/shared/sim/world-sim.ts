@@ -10,11 +10,12 @@ import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoo
 import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
+import { canTame, WHALE, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, weaponMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WolfView } from '../protocol';
+import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
@@ -95,6 +96,8 @@ export interface SavedWorld {
   invasion?: 'pending' | 'done';
   /** Corruption zones cleansed so far (ids from generateZones). Optional: older saves have none. */
   cleansed?: number[];
+  /** La Ballena, once tamed (it belongs to the world): where it floats. Optional: older saves have a wild one. */
+  whale?: { x: number; z: number; yaw: number };
 }
 
 export interface Grave extends GraveView {
@@ -172,6 +175,18 @@ export class WorldSim {
   /** Where the wild giant fish waits, and its race rings (seeded). */
   readonly fishHome: { x: number; z: number };
   readonly fishRings: readonly { x: number; z: number }[];
+  /** Where the wild whale spouts, and where the tamed one swims back to (seeded). */
+  readonly whaleHome: { x: number; z: number };
+  private readonly whale: { x: number; z: number; yaw: number };
+  private whaleTamed: boolean;
+  /** The co-op taming round in progress (world state: everyone in range sees it). */
+  private whaleTame: { round: number; start: number; zone: number } | null = null;
+  /** Sim time it surfaces again after a failed taming. */
+  private whaleReadyAt = -Infinity;
+  /** Who sits where (0 = pilot). Live-only. */
+  private readonly whaleSeats: (string | null)[] = Array.from({ length: WHALE.seats }, () => null);
+  /** Online seconds with nobody aboard (it swims home at WHALE.idle). */
+  private whaleIdle = 0;
   /** The dungeon island (its aguas bravas are whale-only). */
   readonly island: Islet;
   /** Corruption zones (spec §3), seeded; zone 0 is on the Raíz-madre. */
@@ -247,6 +262,9 @@ export class WorldSim {
     this.island = coastFeatures(saved.seed).island;
     this.fishHome = wildFish(this.terrain, saved.seed);
     this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
+    this.whaleHome = wildWhale(this.terrain, saved.seed);
+    this.whaleTamed = !!saved.whale;
+    this.whale = saved.whale ? { ...saved.whale } : { ...this.whaleHome, yaw: 0 };
     this.zones = allZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
     this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null }));
@@ -425,6 +443,7 @@ export class WorldSim {
     this.stepAlly(dt);
     this.stepRace();
     this.stepTaming();
+    this.stepWhaleTame();
     this.stepSeats();
     this.stepInvasion(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
@@ -456,7 +475,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), marchito, corrupt: this.corrupt() };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt() };
   }
 
   drain(): Outgoing[] {
@@ -480,6 +499,7 @@ export class WorldSim {
       purified: this.purified,
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
+      ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
     };
   }
 
@@ -919,6 +939,8 @@ export class WorldSim {
     if (p.dead) return;
     if (act === 5) return this.dismount(p, l);
     if (l.seat) return; // sitting behind someone: only getting off
+    if (act === 1 && !l.tame && this.whaleTame) return this.whaleTap(p, at);
+    if (act >= 9) return this.onWhaleAct(p, l, act);
     if (act >= 6) return this.onFishAct(p, l, act);
     if (l.fish || l.race) return; // on (or chasing) the fish: no deer
     if (act === 4) return this.board(p, l);
@@ -1104,6 +1126,78 @@ export class WorldSim {
     return out;
   }
 
+  // ---------------------------------------------------------------- whale
+
+  /** Alive, connected players within taming range of the whale. */
+  private nearWhale(): SavedPlayer[] {
+    const out: SavedPlayer[] = [];
+    for (const [n, ol] of this.live) {
+      const o = this.players.get(n)!;
+      if (!o.dead && ol.awayFor === null && Math.hypot(o.x - this.whale.x, o.z - this.whale.z) <= WHALE.tameReach) out.push(o);
+    }
+    return out;
+  }
+
+  private seatOf(name: string): number | null {
+    const i = this.whaleSeats.indexOf(name);
+    return i < 0 ? null : i;
+  }
+
+  /** The whale's acts: 9 start taming (two or more in range), 10 board, 11 leave. */
+  private onWhaleAct(p: SavedPlayer, l: Live, act: number): void {
+    if (act !== 9) return;
+    if (this.whaleTamed || this.whaleTame || l.tame || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.tameReach) return;
+    if (this.time + EPS < this.whaleReadyAt) return this.tell(p.name, 'La ballena está abajo. Espera');
+    const crew = this.nearWhale();
+    if (!canTame(crew.length)) return this.tell(p.name, 'Con uno solo no se deja. Hacen falta dos');
+    this.whaleTame = { round: 0, start: r2(this.time), zone: r2(this.rng() * Math.PI * 2) };
+    for (const o of crew) this.tell(o.name, 'La ballena se revuelve. Pulsad cuando la aguja pase por la zona');
+  }
+
+  /** One tap on the shared ring: the first good tap of the round counts; a bad one sends it under. */
+  private whaleTap(p: SavedPlayer, at: number | undefined): void {
+    const t = this.whaleTame;
+    if (!t || at === undefined) return;
+    const crew = this.nearWhale();
+    if (!crew.includes(p)) return;
+    if (at < t.start - EPS) return; // a second tap for a round a friend already won: ignored, not a fail
+    const round = WHALE.rounds[t.round]!;
+    const timely = at >= this.time - MOUNT.early && at <= this.time + MOUNT.late;
+    if (!timely || !inZone(ringAngle(round.speed, at - t.start), t.zone, whaleWidth(round.width, crew.length))) return this.whaleDive();
+    if (t.round + 1 < WHALE.rounds.length) {
+      this.whaleTame = { round: t.round + 1, start: r2(this.time), zone: r2(this.rng() * Math.PI * 2) };
+      for (const o of crew) this.tell(o.name, 'Aguantad');
+      return;
+    }
+    this.whaleTame = null;
+    this.whaleTamed = true;
+    this.whaleIdle = 0;
+    this.say('La ballena es del mundo. A junto a ella para subir');
+  }
+
+  private whaleDive(): void {
+    this.whaleTame = null;
+    this.whaleReadyAt = this.time + WHALE.dive;
+    for (const o of this.nearWhale()) this.tell(o.name, 'La ballena se sumerge. Otra vez en 10 s');
+  }
+
+  /** Fewer than two in range, or nobody tapping: it dives. */
+  private stepWhaleTame(): void {
+    const t = this.whaleTame;
+    if (t && (!canTame(this.nearWhale().length) || this.time - t.start > MOUNT.roundTimeout)) this.whaleDive();
+  }
+
+  private whaleTameView(p: SavedPlayer): SelfState['tame'] {
+    const t = this.whaleTame;
+    if (!t || Math.hypot(p.x - this.whale.x, p.z - this.whale.z) > WHALE.tameReach || p.dead) return null;
+    const round = WHALE.rounds[t.round]!;
+    return { round: t.round, rounds: WHALE.rounds.length, start: t.start, speed: round.speed, zone: t.zone, width: r2(whaleWidth(round.width, this.nearWhale().length)), beast: 'whale' };
+  }
+
+  private whaleView(): WhaleView {
+    return { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw), tamed: this.whaleTamed, diving: this.time + EPS < this.whaleReadyAt, seats: [...this.whaleSeats] };
+  }
+
   /** The wild deer plus every parked (not ridden) tamed one in view. */
   private steedViews(near: (x: number, z: number) => boolean): SteedView[] {
     const out: SteedView[] = [];
@@ -1118,7 +1212,7 @@ export class WorldSim {
 
   private tameView(p: SavedPlayer, l: Live): SelfState['tame'] {
     const t = l.tame;
-    if (!t) return null;
+    if (!t) return this.whaleTameView(p);
     const rounds = roundsOf(t.beast);
     return { round: t.round, rounds: rounds.length, start: t.start, speed: rounds[t.round]!.speed, zone: t.zone, width: r2(this.tameWidth(p, t)), beast: t.beast };
   }
@@ -1316,6 +1410,7 @@ export class WorldSim {
       race: l.race ? { i: l.race.i, deadline: r2(l.race.deadline) } : null,
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
+      whaleSeat: this.seatOf(p.name),
     };
   }
 
