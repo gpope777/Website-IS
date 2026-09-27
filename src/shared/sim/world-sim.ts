@@ -17,7 +17,7 @@ import { pillarZone, allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoast
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { clampTowerDungeon, columnCrags, inArena, inCopa, inTowerDungeon, insideTower, towerEntrance, towerFloor, towerShelfCrag, TOWER_DUNGEON, TOWER_ROCKFALL } from '../tower-dungeon';
-import { burnRoots, createFinal, FINAL, finalMult, hitFinal, staggerFinal, stepFinal, type FinalBoss } from './marchito-final';
+import { broteOpen, burnRoots, castOnBrote, createFinal, FINAL, finalMult, hitCore, hitFinal, plateSpot, staggerFinal, startPull, stepFinal, type BroteKind, type FinalBoss } from './marchito-final';
 import { createTowerAlly, stepTowerAlly, TOWER_ALLY_KINDS, type TowerAlly } from './tower-allies';
 import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
@@ -437,6 +437,8 @@ export class WorldSim {
   private towerFlecha: Wolf | null = null;
   /** S5-F: El Marchito's final fight in the Copa (live-only; a restart or an empty Copa resets it). */
   private towerFinal: FinalBoss | null = null;
+  /** The puller's health when a pull started (a hurt cancels it), and when the next Copa rayo may come. */
+  private readonly finalLive = { pullHp: 0, rayoAt: 0 };
   /** The white Cucurucho's atalaya by the Heart; live-only, rebuilt from `purified4`. */
   private ally4: Atalaya | null = null;
   /** La Escalera del Umbral raised (saved); the Umbral's cracks so far are live-only. */
@@ -759,7 +761,7 @@ export class WorldSim {
         w.flee = undefined; // nowhere to run up here
         const [px, pz] = [w.x, w.z];
         inTower ??= targets.filter((t) => inTowerDungeon(t.x, t.z)).map((t) => ({ ...t, fires: false }));
-        const bit = towerFrame(w, inTower, (ts) => stepWolf(w, ts, TOWER_FLAT, dt, this.rng));
+        const bit = towerFrame(w, inTower, (ts) => (w.kind === 'rayo' ? stepRayo(w, ts, TOWER_FLAT, dt, this.rng) : stepWolf(w, ts, TOWER_FLAT, dt, this.rng)));
         if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
         const c = clampTowerDungeon(px, pz, w.x, w.z, this.towerGates());
         [w.x, w.z] = [c.x, c.z];
@@ -1533,6 +1535,7 @@ export class WorldSim {
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     // Swamp roots (11–13) burn to Fuego (see flameThings); zone 10 is cleansed by beating El Zancudo (stepZancudoFight).
     if (inTowerDungeon(p.x, p.z)) this.growTowerBridge(plan);
+    this.castFinal(p.name, 'vine', (x, z) => Math.hypot(x - plan.x, z - plan.z) <= FINAL.castReach + plan.r);
     const knot = inside(DUNGEON.knot);
     if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
       this.dungeonLive.knot = true;
@@ -1563,6 +1566,7 @@ export class WorldSim {
     this.gustEnemies(p, dir, hits);
     this.gustThings(p, dir, hits);
     this.gustTowerVents(p, hits);
+    this.castFinal(p.name, 'wind', (x, z) => hits(x, z));
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
@@ -1926,6 +1930,9 @@ export class WorldSim {
     if (this.towerFlecha && this.towerFlecha.id === id) return this.towerFlecha;
     const fb = this.towerFinal;
     if (fb && fb.id === id) return fb;
+    if (fb?.core && fb.core.id === id) return fb.core;
+    const br = fb?.brotes.find((x) => x.id === id && !x.broken);
+    if (br) return br;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
@@ -1933,6 +1940,8 @@ export class WorldSim {
   private strike(name: string, w: Wolf, dmg: number, ranged = false): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w === this.towerFinal) return this.strikeFinal(name, dmg);
+    if (w.kind === 'brote') return this.tell(name, 'Un brote no se pega: se arranca (A)');
+    if (w.kind === 'core') return this.strikeCore(name, dmg, ranged);
     if (w.kind === 'anchor') {
       if (hitWolf(w, dmg)) {
         if (w === this.lakeAnchor) this.breakLakeAnchor();
@@ -2192,6 +2201,7 @@ export class WorldSim {
 
   /** La Torre: 26 enter by the door (only once it is open), 27 leave. Every floor is solved with a power. */
   private onTowerDungeon(p: SavedPlayer, l: Live, act: number, near: (x: number, z: number, r: number) => boolean): void {
+    if (act === 28) return this.pullBrote(p, near);
     const T = TOWER_DUNGEON;
     const d = this.towerDoor;
     if (act === 26) {
@@ -2381,11 +2391,105 @@ export class WorldSim {
     const pillars = this.structures.filter((s) => s.kind === 'pillar' && inCopa(s.x, s.z)).map((s) => ({ id: s.id, x: s.x, z: s.z }));
     const { hits, events } = stepFinal(b, fighters, pillars, dt, this.rng);
     for (const e of events) {
-      if (e === 'bare') this.sayTower('Las raíces arden y se caen. Ahora sí');
+      if (e === 'pulled') this.sayTower(`Sale un brote. ${NAMES.villain} se retuerce bajo la Copa (quedan ${b.brotes.filter((x) => !x.broken).length})`);
+      else if (e === 'phase3') {
+        this.clearCopaRayos();
+        this.sayTower(`Sale el último brote. ${NAMES.villain} se queda tieso y ${NAMES.blackHeart} se le cae del pecho y corre. Un pilar en su camino lo para`);
+      } else if (e === 'stunned') this.sayTower(`${upFirst(NAMES.blackHeart)} se da contra el pilar. ¡Ahora!`);
+      else if (e === 'healing') this.sayTower(`${upFirst(NAMES.blackHeart)} vuelve a él y se cura. Dale`);
+      else if (e === 'bare') this.sayTower('Las raíces arden y se caen. Ahora sí');
       else if (e === 'regrow') this.sayTower('Le vuelven a salir raíces. Verdes: tardarán en prender');
       else if (e === 'green') this.sayTower('Las raíces nuevas ya están secas');
     }
     for (const h of hits) this.finalHit(h.name, h.dmg, h.kind, b);
+    if (b.pull) {
+      const q = this.players.get(b.pull.name);
+      if (q) this.finalLive.pullHp = Math.max(this.finalLive.pullHp, q.vitals.health);
+      if (!q || q.dead || q.vitals.health < this.finalLive.pullHp - 1) {
+        b.pull = null;
+        if (q) this.tell(q.name, 'Se te escapa el brote');
+      }
+    }
+    if (b.phase === 2) this.stepCopaRayos(fighters.length);
+  }
+
+  /** Phase 2's rayos: 1 alone, 2 with friends; one comes back 10 s after it falls. They live in the tower's wolves. */
+  private stepCopaRayos(fighters: number): void {
+    const want = FINAL.rayos[fighters >= 2 ? 1 : 0]!;
+    const alive = this.wolves.filter((w) => w.kind === 'rayo' && w.hp > 0 && inCopa(w.x, w.z)).length;
+    if (alive >= want) {
+      this.finalLive.rayoAt = this.time + FINAL.rayoRespawn;
+      return;
+    }
+    if (this.time + EPS < this.finalLive.rayoAt) return;
+    this.finalLive.rayoAt = this.time + FINAL.rayoRespawn;
+    const a = this.rng() * Math.PI * 2;
+    const w = createWolf(this.nextWolfId++, FINAL.x + Math.sin(a) * 12, FINAL.z + Math.cos(a) * 12, TOWER_FLAT, this.rng, 'rayo');
+    w.y += RAYO.fly;
+    this.wolves.push(w);
+    this.sayTower(`Baja un ${NAMES.flier}`);
+  }
+
+  private clearCopaRayos(): void {
+    this.wolves = this.wolves.filter((w) => !(w.kind === 'rayo' && inCopa(w.x, w.z)));
+    this.finalLive.rayoAt = 0;
+  }
+
+  /** A cast of `power` that reaches a brote (per `reaches`) counts toward opening it. */
+  private castFinal(name: string, power: BroteKind, reaches: (x: number, z: number) => boolean): void {
+    const b = this.towerFinal;
+    if (!b || b.phase !== 2) return;
+    for (const br of b.brotes) {
+      if (br.power !== power || br.broken || !reaches(br.x, br.z)) continue;
+      const n = castOnBrote(br, power);
+      if (n === null) continue;
+      const need = FINAL.need[power];
+      this.sayTower(n >= need ? 'El brote queda al aire. Arráncalo (A)' : `El brote cede (${n}/${need})`);
+    }
+  }
+
+  private plateWeighed(): boolean {
+    const at = plateSpot();
+    return this.pillarOn(at.x, at.z, FINAL.plateR);
+  }
+
+  /** Dungeon act 28: A within 3 m of an open brote starts a 1.5 s pull. */
+  private pullBrote(p: SavedPlayer, near: (x: number, z: number, r: number) => boolean): void {
+    const b = this.towerFinal;
+    if (p.dead || !b || b.phase !== 2 || !inCopa(p.x, p.z)) return;
+    const i = b.brotes.findIndex((br) => !br.broken && near(br.x, br.z, FINAL.pullReach));
+    if (i < 0) return;
+    const br = b.brotes[i]!;
+    if (b.pull) return this.tell(p.name, b.pull.name === p.name ? 'Ya estás tirando' : `${b.pull.name} ya está tirando de uno`);
+    if (!broteOpen(br, this.plateWeighed())) {
+      const what = { vine: `Un anillo de espinas lo rodea. ${NAMES.powerVine} (${br.steps}/${FINAL.need.vine})`, wind: `Lo tapa un miasma. ${NAMES.powerWind} (${br.steps}/${FINAL.need.wind})`, fire: `Está en un capullo. ${NAMES.powerFire} (${br.steps}/${FINAL.need.fire})`, stone: `Su losa está suelta. Un pilar de ${NAMES.powerStone} encima` }[br.power];
+      return this.tell(p.name, what);
+    }
+    startPull(b, i, p.name);
+    this.finalLive.pullHp = p.vitals.health;
+    this.tell(p.name, 'Tiras del brote…');
+  }
+
+  /** A blow on el Corazón Negro; at 0 El Marchito falls for good. */
+  private strikeCore(name: string, dmg: number, ranged: boolean): void {
+    const b = this.towerFinal;
+    if (!b?.core) return;
+    const stopped = b.core.stun > 0;
+    const won = hitCore(b, dmg, ranged);
+    const l = this.live.get(name);
+    if (!stopped && !won && l) this.hint(name, l, 'Las patas lo apartan. Páralo con un pilar en su camino');
+    if (won) this.winFinal();
+  }
+
+  /** El Marchito falls: the ending (S5-G). */
+  private winFinal(): void {
+    if (this.ending) return;
+    this.ending = true;
+    this.clearCopaRayos();
+    const names = this.targets().filter((t) => !t.dead && inCopa(t.x, t.z)).map((t) => t.name);
+    this.say(`${upFirst(NAMES.blackHeart)} se parte. ${NAMES.villain} se encoge hasta ser una ramita`);
+    this.vision(VISION.final(joinNames(names.length ? names : this.activeNames())));
+    // S5-G: the long vision, the credits, the white tower, every zone clean, el Guardián, raids off.
   }
 
   /** A swipe (rolled or parried like a bite), a root line (rolled; a parry only blocks) or the trail (always). */
@@ -2408,6 +2512,7 @@ export class WorldSim {
   /** The Copa empties: the fight starts over next time. */
   private resetFinal(): void {
     this.towerFinal = null;
+    this.clearCopaRayos();
   }
 
   /** A blow on his body: through the roots (×0.1) unless they burnt; sunk or frozen, nothing. */
@@ -2423,6 +2528,7 @@ export class WorldSim {
   /** A Llamarada near him sets the roots alight (and scratches him). */
   private flameFinal(p: SavedPlayer, hits: (x: number, z: number, range?: number) => boolean): void {
     const b = this.towerFinal;
+    this.castFinal(p.name, 'fire', (x, z) => hits(x, z));
     if (!b || b.hp <= 0 || b.phase !== 1 || !hits(b.x, b.z, FUEGO.range + FINAL.body)) return;
     const r = burnRoots(b, p.x, p.z);
     if (r === 'catch') this.sayTower('Las raíces prenden…');
@@ -2438,9 +2544,9 @@ export class WorldSim {
     return {
       phase: b.phase, hp: Math.ceil(c ? c.hp : b.hp), max: c ? c.max : b.max, catching: b.catching > 0, bare: b.bare > 0, green: b.green > 0, stagger: b.stagger > 0, swipe: b.swipeTell > 0,
       lines: b.lines.map((l) => ({ x0: r2(l.x0), z0: r2(l.z0), x1: r2(l.x1), z1: r2(l.z1) })),
-      brotes: [],
-      pull: null,
-      core: null,
+      brotes: b.brotes.map((br) => ({ power: br.power, x: r2(br.x), z: r2(br.z), open: broteOpen(br, this.plateWeighed()), broken: br.broken, steps: br.steps, need: FINAL.need[br.power] })),
+      pull: b.pull ? r2(1 - b.pull.left / FINAL.pullFor) : null,
+      core: c ? { hp: Math.ceil(c.hp), max: c.max, stopped: c.stun > 0, healing: c.mode === 'heal' } : null,
       trail: b.trail.map((t) => ({ x: r2(t.x), z: r2(t.z) })),
     };
   }

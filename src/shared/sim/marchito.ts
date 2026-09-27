@@ -220,6 +220,8 @@ export const VISION = {
   purified: (names: string) => ['Una voz como hojas secas:', `«Así que muerden, las ramitas. ${names}.»`, '«Iré a ver ese Corazón yo mismo.»'],
   purified2: (names: string) => ['La voz, más cerca, con sal:', `«Primero el papel, ahora la cáscara. ${names}.»`, `«La costa era mía. El ${NAMES.heart} también lo será.»`],
   purified3: (names: string) => ['La voz, entre la niebla:', `«Mi zancudo. Mi niebla. Mi gata sin casa. ${names}.»`, '«Quemad lo que queráis. Detrás del pantano hay piedra.»'],
+  /** S5-F: El Marchito falls in the Copa (the long ending is S5-G). */
+  final: (names: string) => ['La voz, sin eco ya:', `«Yo también era un bosque… ${names}.»`, '«Qué cansancio, ser tan grande.»'],
   purified4: (names: string) => ['La voz, con eco de piedra:', `«Mi gorro… ${names}. Mi montaña, mi triángulo.»`, '«Subid, subid. Arriba solo queda el cielo. Y es mío.»'],
   mountains: (name: string) => ['El viento baja de las cumbres. La voz, arriba:', `«Qué alto, ${name}. Qué frío.»`, '«Aquí arriba no hay niebla. Hay piedra. Y hay caída.»'],
   escalera: (names: string) => ['La roca se asienta en escalones. La voz, con eco:', `«Una escalera. Para todos. Qué detalle, ${names}.»`, '«Así me subís la montaña más rápido. Ya bajaréis.»'],
