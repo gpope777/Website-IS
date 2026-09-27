@@ -10,6 +10,8 @@ export interface PerfStop {
   pitch: number;
   /** Day fraction, 0 = midnight, 0.5 = noon. */
   frac: number;
+  /** V2-C: show las Tierras purified (the end-state look). */
+  purified?: boolean;
 }
 
 export interface PerfTarget {
@@ -18,6 +20,8 @@ export interface PerfTarget {
   ready(): boolean;
   tier(): string;
   stop(p: PerfStop | null): void;
+  /** Connected and welcomed (after the harness re-imports a safe world the page reconnects by itself). */
+  online(): boolean;
 }
 
 /** Installs the hook; returns its remover. */
@@ -28,6 +32,7 @@ export function installPerfHook(t: PerfTarget): () => void {
     tier: () => t.tier(),
     stop: (p: PerfStop) => t.stop(p),
     release: () => t.stop(null),
+    online: () => t.online(),
     info: () => {
       const i = t.renderer.info;
       return { calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 };

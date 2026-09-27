@@ -26,6 +26,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const TOKEN = 'perf-local';
 const SEED = 42;
 const FRAMES = 30;
+const DAY = 360; // DAY_LENGTH (s)
+/** Re-import a safe world when this many seconds passed since the last one (a day is 6 min; night from 0.8). */
+const SAFE_EVERY = 100;
 
 const args = process.argv.slice(2);
 const UPDATE = args.includes('--update');
@@ -82,6 +85,29 @@ async function waitHttp(url, secs) {
   throw new Error(`nada en ${url} tras ${secs} s`);
 }
 
+const auth = { Authorization: `Bearer ${TOKEN}` };
+let safeAt = 0;
+/**
+ * The client holds the test player at the stops but the server keeps it where it logged in, and the
+ * 6-min day turns to night mid-run: wolves could kill it (graves, drawings → other texture counts).
+ * Export the world, set it to morning with everyone alive and fed, import it back. Admin-only; the
+ * page reconnects by itself.
+ */
+async function safeWorld(page) {
+  const r = await fetch(`${BASE}/admin/perf/export`, { headers: auth });
+  if (!r.ok) throw new Error(`exportar mundo: ${r.status}`);
+  const w = await r.json();
+  w.time = Math.floor(w.time / DAY) * DAY + 0.3 * DAY;
+  for (const p of w.players) Object.assign(p, { dead: false, vitals: { health: 100, hunger: 100, warmth: 100 } });
+  const i = await fetch(`${BASE}/admin/perf/import`, { method: 'POST', headers: auth, body: JSON.stringify(w) });
+  if (!i.ok) throw new Error(`importar mundo: ${i.status}`);
+  safeAt = Date.now();
+  if (page) {
+    await page.waitForFunction(() => !window.__perf?.online(), null, { timeout: 10_000, polling: 100 }).catch(() => {});
+    await page.waitForFunction(() => window.__perf?.online(), null, { timeout: 60_000, polling: 250 });
+  }
+}
+
 async function main() {
   const found = findChromium();
   let chromium;
@@ -110,7 +136,7 @@ async function main() {
     console.error(wlog.slice(-2000));
     throw e;
   }
-  const made = await fetch(`${BASE}/admin/perf/create`, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ seed: SEED }) });
+  const made = await fetch(`${BASE}/admin/perf/create`, { method: 'POST', headers: auth, body: JSON.stringify({ seed: SEED }) });
   if (!made.ok) throw new Error(`crear mundo: ${made.status}`);
 
   let browser;
@@ -131,6 +157,7 @@ async function main() {
       },
       [tier],
     );
+    await safeWorld(null);
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
@@ -143,7 +170,8 @@ async function main() {
     for (const s of STOPS.filter((q) => !onlyStop || onlyStop.split(',').includes(q.name)))
       for (const h of HOURS) {
         const key = `${tier}/${s.name}/${h.name}`;
-        await page.evaluate((p) => window.__perf.stop(p), { x: s.x, z: s.z, y: s.y, yaw: s.yaw, pitch: s.pitch, frac: h.frac });
+        if (Date.now() - safeAt > SAFE_EVERY * 1000) await safeWorld(page);
+        await page.evaluate((p) => window.__perf.stop(p), { x: s.x, z: s.z, y: s.y, yaw: s.yaw, pitch: s.pitch, frac: h.frac, purified: s.purified });
         await page.evaluate(
           (n) =>
             new Promise((done) => {

@@ -215,6 +215,9 @@ export class Game {
   private readonly perfMode = PERF_BUILD && new URLSearchParams(location.search).has('perf');
   private perfStop: PerfStop | null = null;
   private perfOff: (() => void) | null = null;
+  /** Connection is up and the server welcomed us on it (perf harness waits on this after a re-import). */
+  private netOnline = false;
+  private welcomed = false;
   private readonly timer = new THREE.Timer();
   private readonly colliders = new ColliderGrid();
   private readonly structures = new StructureMeshes();
@@ -498,6 +501,7 @@ export class Game {
           ready: () => !!this.body && !!this.terrain && !!this.kits,
           tier: () => this.tier,
           stop: (p) => (this.perfStop = p),
+          online: () => this.netOnline && this.welcomed,
         });
       });
     } else this.guard = new FpsGuard(this.tier, this.renderer.getPixelRatio());
@@ -573,6 +577,8 @@ export class Game {
   // ---------------------------------------------------------------- network
 
   private onStatus(s: NetStatus): void {
+    this.netOnline = s.kind === 'online';
+    this.welcomed = false;
     if (s.kind === 'fatal') this.releaseInputs();
     this.hud.setStatus(s, () => this.onLeave());
   }
@@ -622,6 +628,7 @@ export class Game {
 
   private onWelcome(m: Extract<ServerMsg, { t: 'welcome' }>): void {
     this.myName = m.you;
+    this.welcomed = true;
     if (this.seed !== m.seed) this.buildWorld(m.seed);
     const gone = new Set(m.gone);
     for (const s of this.spawns) this.setGone(s.id, gone.has(s.id));
