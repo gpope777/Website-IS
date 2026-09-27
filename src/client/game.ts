@@ -36,6 +36,7 @@ import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
+import type { Vitrina } from './vitrina';
 import { PaperActor, type Puppet } from './actors/paper';
 import { guardianAction, guardianLine, raidsMenu } from './ending-ui';
 import { ENDING, guardianSpot, withLookout } from '../shared/ending';
@@ -216,6 +217,11 @@ export class Game {
   private fpsMeter: FpsMeter | null = null;
   private readonly perfMode = PERF_BUILD && new URLSearchParams(location.search).has('perf');
   private perfStop: PerfStop | null = null;
+  /** V2-E: the harness showcase (only built by `?perf=1`). */
+  private vitrina: Vitrina | null = null;
+  private vitrinaHooks(): Partial<import('./vitrina').VitrinaEnv> {
+    return {};
+  }
   private perfOff: (() => void) | null = null;
   /** Connection is up and the server welcomed us on it (perf harness waits on this after a re-import). */
   private netOnline = false;
@@ -522,6 +528,16 @@ export class Game {
           cleanse: (id) => {
             this.lastCorrupt = this.lastCorrupt.filter((c) => c !== id);
             this.heal.sync(this.lastCorrupt, this.ending, performance.now() / 1000);
+          },
+          showcase: (what) => {
+            if (!this.kits || !this.terrain || !this.perfStop) return;
+            const terrain = this.terrain;
+            const kits = this.kits;
+            const stop = this.perfStop;
+            void import('./vitrina').then((v) => {
+              this.vitrina ??= new v.Vitrina({ scene: this.scene, camera: this.camera, kits, heightAt: (x, z) => terrain.heightAt(x, z), ...this.vitrinaHooks() });
+              this.vitrina.show(what, stop.x, stop.z);
+            });
           },
         });
       });
@@ -1928,6 +1944,7 @@ export class Game {
     this.syncFrogs();
     this.syncDragons(dt);
     this.syncWhale(dt);
+    this.vitrina?.update(dt);
 
     for (const m of this.mountainMeshes) {
       const near = chunkDetailed(m.chunk, b.x, b.z);

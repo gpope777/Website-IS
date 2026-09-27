@@ -354,3 +354,119 @@ export function patchTree(root: THREE.Object3D, opts: { heightFog: boolean; glow
     for (const mat of Array.isArray(m) ? m : [m]) if ((mat as THREE.MeshLambertMaterial).isMeshLambertMaterial && !mat.userData.noWorld) patchWorld(mat, opts);
   });
 }
+
+// ------------------------------------------------------------------ V2-E: fake bones, moonlit rim, lit paper
+
+/** Per-material uniforms of a rigged creature (see creature-rig.ts): 8 pivots, 8 Euler rotations, the S-wave. */
+export interface RigUniforms {
+  rigPivot: { value: THREE.Vector3[] };
+  rigRot: { value: THREE.Vector3[] };
+  rigWave: { value: THREE.Vector3 };
+  rigWaveZ: { value: THREE.Vector2 };
+  rigLift: { value: number };
+}
+
+export function rigUniforms(): RigUniforms {
+  return {
+    rigPivot: { value: Array.from({ length: 8 }, () => new THREE.Vector3()) },
+    rigRot: { value: Array.from({ length: 8 }, () => new THREE.Vector3()) },
+    rigWave: { value: new THREE.Vector3() },
+    rigWaveZ: { value: new THREE.Vector2(0, 1) },
+    rigLift: { value: 0 },
+  };
+}
+
+const RIG_HEAD = /* glsl */ `
+attribute float part;
+uniform vec3 rigPivot[8];
+uniform vec3 rigRot[8];
+uniform vec3 rigWave;
+uniform vec2 rigWaveZ;
+uniform float rigLift;
+vec3 rigTurn(vec3 p, vec3 r, vec3 piv) {
+  p -= piv;
+  float c = cos(r.z), s = sin(r.z);
+  p.xy = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+  c = cos(r.y); s = sin(r.y);
+  p.xz = vec2(p.x * c + p.z * s, -p.x * s + p.z * c);
+  c = cos(r.x); s = sin(r.x);
+  p.yz = vec2(p.y * c - p.z * s, p.y * s + p.z * c);
+  return p + piv;
+}`;
+
+/** Fake bones in the vertex shader (spec §6.1): the part turns about its pivot, the S-wave, then the whole body. Needs flat shading (normals from derivatives). */
+export function patchRig(mat: THREE.Material, u: RigUniforms): void {
+  if (mat.userData.rig) return;
+  mat.userData.rig = true;
+  addPatch(mat, 'rig', (shader) => {
+    Object.assign(shader.uniforms, u);
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>${RIG_HEAD}`).replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+{
+  int pi = int(part + 0.5);
+  for (int i = 1; i < 8; i++) if (i == pi) transformed = rigTurn(transformed, rigRot[i], rigPivot[i]);
+  float ww = clamp((rigWaveZ.x - transformed.z) / rigWaveZ.y, 0.0, 1.0);
+  transformed.x += rigWave.x * ww * ww * sin(transformed.z * rigWave.y - rigWave.z);
+  transformed = rigTurn(transformed, rigRot[0], rigPivot[0]);
+  transformed.y += rigLift;
+}`,
+    );
+  });
+}
+
+/** Actors' moonlit rim (spec §4 "noche de verdad"): set once per frame; `rimK` 0 by day. */
+export const RIM_UNIFORMS = {
+  rimK: { value: 0 },
+  rimCol: { value: new THREE.Color(0.6, 0.7, 1) },
+};
+
+/** A thin moonlit outline on actors at night so they read against the dark (the robot on the coast was a silhouette). */
+export function patchRim(mat: THREE.Material): void {
+  if (mat.userData.rim) return;
+  mat.userData.rim = true;
+  addPatch(mat, 'rim', (shader) => {
+    Object.assign(shader.uniforms, RIM_UNIFORMS);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float rimK;\nuniform vec3 rimCol;').replace(
+      '#include <opaque_fragment>',
+      `{
+  float rim = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
+  outgoingLight += rimCol * rim * rimK;
+}
+#include <opaque_fragment>`,
+    );
+  });
+}
+
+/** The drawings' light (spec §6.3): the look's sun/sky colour, floored so paper never goes black. Set per frame. */
+export const PAPER_UNIFORMS = {
+  paperLight: { value: new THREE.Color(1, 1, 1) },
+};
+
+/** Lit paper; with `border`, transparent texels next to the drawing become a white paper edge (8 taps, medium/high). */
+export function patchPaper(mat: THREE.MeshBasicMaterial, o: { border: boolean }): void {
+  if (mat.userData.paper) return;
+  mat.userData.paper = true;
+  addPatch(mat, `paper:${o.border ? 1 : 0}`, (shader) => {
+    Object.assign(shader.uniforms, PAPER_UNIFORMS);
+    const border = o.border
+      ? `{
+  vec2 px = 2.0 / vec2(textureSize(map, 0));
+  float around = 0.0;
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) * 0.785398;
+    around = max(around, texture2D(map, vMapUv + vec2(cos(a), sin(a)) * px).a);
+  }
+  float edge = step(0.5, around) * (1.0 - step(0.5, sampledDiffuseColor.a));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.95, 0.9) * paperLight, edge);
+  diffuseColor.a = max(diffuseColor.a, edge);
+}`
+      : '';
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 paperLight;').replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+diffuseColor.rgb *= paperLight;
+${border}`,
+    );
+  });
+}

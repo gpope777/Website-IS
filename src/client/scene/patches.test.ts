@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { LIFE_UNIFORMS, patchCaustics, patchGrass, patchGround, patchSway, patchTree, patchWorld, pickGlows, setGlows, WORLD_UNIFORMS, type ShaderLike } from './patches';
+import { LIFE_UNIFORMS, PAPER_UNIFORMS, patchCaustics, patchGrass, patchGround, patchPaper, patchRig, patchRim, patchSway, patchTree, patchWorld, pickGlows, RIM_UNIFORMS, rigUniforms, setGlows, WORLD_UNIFORMS, type ShaderLike } from './patches';
 
 const fake = (): ShaderLike => ({
   vertexShader: '#include <common>\nvoid main(){\n#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <project_vertex>\n}',
@@ -132,5 +132,60 @@ describe('wind and corruption patches (V2-C)', () => {
     expect(s.fragmentShader.match(/float caus/g)).toHaveLength(1);
     expect(s.uniforms.lifeDay).toBe(LIFE_UNIFORMS.lifeDay);
     expect(m.customProgramCacheKey()).toBe('ground|caustics');
+  });
+});
+
+describe('actor patches (V2-E)', () => {
+  const fakeFull = (): ShaderLike => ({
+    vertexShader: '#include <common>\nvoid main(){\n#include <begin_vertex>\n#include <project_vertex>\n}',
+    fragmentShader: '#include <common>\nvoid main(){\n#include <map_fragment>\n#include <opaque_fragment>\n}',
+    uniforms: {},
+  });
+
+  it('fake bones: the part attribute, 8 pivots/rotations of its own and the S-wave', () => {
+    const u = rigUniforms();
+    const m = new THREE.MeshLambertMaterial({ flatShading: true });
+    patchRig(m, u);
+    const s = fakeFull();
+    m.onBeforeCompile(s as never, null as never);
+    expect(s.vertexShader).toContain('attribute float part;');
+    expect(s.vertexShader).toContain('rigRot[8]');
+    expect(s.vertexShader).toContain('rigWave.x');
+    expect(s.uniforms.rigRot).toBe(u.rigRot);
+    expect(m.customProgramCacheKey()).toBe('rig');
+    // Two creatures: same program key, own uniforms.
+    const n = new THREE.MeshLambertMaterial({ flatShading: true });
+    const v = rigUniforms();
+    patchRig(n, v);
+    const t = fakeFull();
+    n.onBeforeCompile(t as never, null as never);
+    expect(n.customProgramCacheKey()).toBe(m.customProgramCacheKey());
+    expect(t.uniforms.rigRot).not.toBe(s.uniforms.rigRot);
+  });
+
+  it('rim adds the shared moonlight before the output, once', () => {
+    const m = new THREE.MeshStandardMaterial();
+    patchRim(m);
+    patchRim(m);
+    const s = fakeFull();
+    m.onBeforeCompile(s as never, null as never);
+    expect(s.fragmentShader.match(/rimCol \* rim/g)).toHaveLength(1);
+    expect(s.uniforms.rimK).toBe(RIM_UNIFORMS.rimK);
+  });
+
+  it('paper is lit by the look, with the border only when asked', () => {
+    const a = new THREE.MeshBasicMaterial();
+    patchPaper(a, { border: true });
+    const s = fakeFull();
+    a.onBeforeCompile(s as never, null as never);
+    expect(s.fragmentShader).toContain('*= paperLight');
+    expect(s.fragmentShader).toContain('around');
+    expect(s.uniforms.paperLight).toBe(PAPER_UNIFORMS.paperLight);
+    const b = new THREE.MeshBasicMaterial();
+    patchPaper(b, { border: false });
+    const t = fakeFull();
+    b.onBeforeCompile(t as never, null as never);
+    expect(t.fragmentShader).not.toContain('around');
+    expect(b.customProgramCacheKey()).not.toBe(a.customProgramCacheKey());
   });
 });

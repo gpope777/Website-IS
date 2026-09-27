@@ -7,6 +7,7 @@
 //   npm run perf -- --stop bosque  one stop only (comma list allowed)
 //   npm run perf -- --top        also print the biggest meshes (triangle hogs) per reading
 //   npm run perf -- --shots      also save a PNG per reading in scratch/perf/shots/
+//   npm run perf -- --vitrina [list]  V2-E: shoot the client-only showcase (mounts, enemies, paper, pose:<anim>) day and night
 //   npm run perf -- --ola        also shoot a forest zone healing (client-only cleanse) at 0/5/10/20 s
 //
 // Builds the client with `--mode perf` (it has the `?perf=1` hook) into scratch/perf/dist, starts
@@ -37,6 +38,7 @@ const SHOTS = args.includes('--shots');
 const onlyStop = args.includes('--stop') ? args[args.indexOf('--stop') + 1] : null;
 const TOP = args.includes('--top');
 const OLA = args.includes('--ola');
+const VITRINA = args.includes('--vitrina') ? (args[args.indexOf('--vitrina') + 1] ?? '').startsWith('--') || !args[args.indexOf('--vitrina') + 1] ? 'mounts,enemies,paper,pose:roll,pose:block,pose:bow,pose:climb,pose:glide,pose:slide' : args[args.indexOf('--vitrina') + 1] : null;
 const onlyTier = args.includes('--tier') ? args[args.indexOf('--tier') + 1] : null;
 
 /** Spec §3 budgets (worst biome, by day). */
@@ -205,6 +207,21 @@ async function main() {
           await page.screenshot({ path: join(OUT, 'shots', `${tier}_ola_${s}s.png`) });
         }
       }
+    }
+    if (VITRINA) {
+      mkdirSync(join(OUT, 'shots'), { recursive: true });
+      for (const h of HOURS) {
+        await page.evaluate((p) => window.__perf.stop(p), { x: 0, z: 60, yaw: 0, pitch: -0.2, frac: h.frac });
+        for (const what of VITRINA.split(',')) {
+          await page.evaluate((w) => window.__perf.showcase(w), what);
+          await page.waitForTimeout(what === 'pose:roll' ? 150 : 2500);
+          await page.screenshot({ path: join(OUT, 'shots', `${tier}_vitrina_${what.replace(':', '-')}_${h.name}.png`) });
+        }
+        await page.evaluate(() => window.__perf.showcase(null));
+      }
+      await page.evaluate((p) => window.__perf.stop(p), { x: 0, z: 275, yaw: Math.PI, pitch: -0.15, frac: 0 });
+      await page.waitForTimeout(2500);
+      await page.screenshot({ path: join(OUT, 'shots', `${tier}_vitrina_costa_noche.png`) });
     }
     if (errors.length) console.log(`  errores de página (${tier}): ${errors.slice(0, 3).join(' | ')}`);
     await ctx.close();

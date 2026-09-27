@@ -25,6 +25,8 @@ export interface PerfTarget {
   /** V2-C: the corrupt zones, and a client-only cleanse to watch the healing wave (`--ola`). */
   zones(): { id: number; x: number; z: number; r: number }[];
   cleanse(id: number): void;
+  /** V2-E: a client-only showcase ahead of the stop ('mounts', 'enemies', 'paper', 'pose:<anim>'; null clears). */
+  showcase(what: string | null): void;
 }
 
 /** Installs the hook; returns its remover. */
@@ -38,6 +40,7 @@ export function installPerfHook(t: PerfTarget): () => void {
     online: () => t.online(),
     zones: () => t.zones(),
     cleanse: (id: number) => t.cleanse(id),
+    showcase: (what: string | null) => t.showcase(what),
     info: () => {
       const i = t.renderer.info;
       return { calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 };

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
+import { creatureMesh, setRig } from './creature-mesh';
+import { fishPose } from './creature-rig';
+import type { RigUniforms } from './patches';
 import { WATER_LEVEL } from '../../shared/terrain';
 
-const SCALES = new THREE.MeshLambertMaterial({ color: 0x3f7fa6, flatShading: true });
-const BELLY = new THREE.MeshLambertMaterial({ color: 0xcfe3e8, flatShading: true });
-const FIN = new THREE.MeshLambertMaterial({ color: 0xe0a24a, flatShading: true });
 const HALO = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.3, depthWrite: false });
 const RING_NEXT = new THREE.MeshBasicMaterial({ color: 0xffe07a });
 const RING_LATER = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 });
@@ -23,12 +23,11 @@ export interface FishPose {
 
 interface Fish {
   root: THREE.Group;
-  body: THREE.Group;
-  tail: THREE.Object3D;
+  rig: RigUniforms;
   phase: number;
 }
 
-/** El Pez Grande: a boxy fish (a drawing can replace it later). One per pose key. */
+/** El Pez Grande: a low-poly fish, one mesh, an S-wave down the body in the vertex shader (V2-E). One per pose key. */
 export class FishMeshes {
   readonly group = new THREE.Group();
   private readonly byKey = new Map<string, Fish>();
@@ -48,8 +47,7 @@ export class FishMeshes {
       f.root.position.set(p.x, p.y, p.z);
       f.root.rotation.y = p.yaw;
       f.phase += dt * (2 + Math.min(p.speed, 14) * 0.8);
-      f.tail.rotation.y = Math.sin(f.phase) * 0.5;
-      f.body.rotation.z = p.bucking ? Math.sin(now * 10) * 0.5 : 0;
+      setRig(f.rig, fishPose(f.phase, p.speed, p.bucking, now));
     }
     for (const [k, f] of this.byKey) {
       if (seen.has(k)) continue;
@@ -60,30 +58,14 @@ export class FishMeshes {
 
   private make(wild: boolean): Fish {
     const root = new THREE.Group();
-    const body = new THREE.Group();
-    root.add(body);
-    const box = (w: number, h: number, l: number, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = body) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), mat);
-      m.position.set(x, y, z);
-      m.castShadow = this.shadows;
-      parent.add(m);
-      return m;
-    };
-    box(1.1, 0.9, 2.6, SCALES, 0, 0.1, 0);
-    box(0.9, 0.3, 2.2, BELLY, 0, -0.35, 0);
-    box(0.9, 0.7, 0.7, SCALES, 0, 0.1, 1.5); // head
-    box(0.08, 0.6, 0.9, FIN, 0, 0.8, -0.2); // back fin
-    for (const s of [-1, 1]) box(0.5, 0.06, 0.4, FIN, s * 0.75, -0.1, 0.6);
-    const tail = new THREE.Group();
-    tail.position.set(0, 0.1, -1.3);
-    body.add(tail);
-    box(0.08, 1.0, 0.8, FIN, 0, 0, -0.4, tail);
+    const c = creatureMesh('fish', this.shadows);
+    root.add(c.mesh);
     if (wild) {
       const halo = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.05, 24), HALO);
       halo.position.y = 0.45;
       root.add(halo);
     }
-    return { root, body, tail, phase: Math.random() * 6 };
+    return { root, rig: c.rig, phase: Math.random() * 6 };
   }
 }
 

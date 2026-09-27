@@ -1,9 +1,9 @@
 import * as THREE from 'three';
+import { creatureMesh, setRig } from './creature-mesh';
+import { frogPose } from './creature-rig';
+import type { RigUniforms } from './patches';
 import { WATER_LEVEL } from '../../shared/terrain';
 
-const SKIN = new THREE.MeshLambertMaterial({ color: 0x5f8f3a, flatShading: true });
-const DARK = new THREE.MeshLambertMaterial({ color: 0x2f4a22, flatShading: true });
-const EYE = new THREE.MeshLambertMaterial({ color: 0xf2e6a0, flatShading: true });
 // Lights ignore the swamp fog: the throat and the halo are the frog's lure (spec S3 §3.3).
 const THROAT = new THREE.MeshBasicMaterial({ color: 0xf5c46a, fog: false });
 const HALO = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.3, depthWrite: false, fog: false });
@@ -24,11 +24,13 @@ export interface FrogPose {
 
 interface Frog {
   root: THREE.Group;
-  body: THREE.Group;
+  rig: RigUniforms;
   throat: THREE.Object3D;
+  last: { x: number; z: number };
+  moving: number;
 }
 
-/** La Rana: a boxy frog (a drawing can replace it later). One per pose key. */
+/** La Rana: a low-poly frog, one mesh (+ its glowing throat), legs kicked in the vertex shader (V2-E). One per pose key. */
 export class FrogMeshes {
   readonly group = new THREE.Group();
   private readonly byKey = new Map<string, Frog>();
@@ -44,11 +46,17 @@ export class FrogMeshes {
         f = this.make(p.wild);
         this.group.add(f.root);
         this.byKey.set(p.key, f);
+        f.last = { x: p.x, z: p.z };
       }
+      // No speed in the pose: it hops while its position changes (held 0.3 s so network steps don't flicker).
+      if (Math.hypot(p.x - f.last.x, p.z - f.last.z) > 0.02) f.moving = now;
+      f.last = { x: p.x, z: p.z };
       f.root.position.set(p.x, p.y, p.z);
       f.root.rotation.y = p.yaw;
-      f.body.rotation.z = p.bucking ? Math.sin(now * 11) * 0.45 : 0;
-      f.throat.scale.setScalar(p.wild ? 1 + Math.max(0, Math.sin(now * 3)) * 0.6 : 1);
+      const pose = frogPose(now - f.moving < 0.3, p.wild, p.bucking, now);
+      setRig(f.rig, pose);
+      f.throat.scale.setScalar(pose.throat);
+      f.throat.position.y = 0.3 + pose.lift;
     }
     for (const [k, f] of this.byKey) {
       if (seen.has(k)) continue;
@@ -59,29 +67,18 @@ export class FrogMeshes {
 
   private make(wild: boolean): Frog {
     const root = new THREE.Group();
-    const body = new THREE.Group();
-    root.add(body);
-    const box = (w: number, h: number, l: number, mat: THREE.Material, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), mat);
-      m.position.set(x, y, z);
-      m.castShadow = this.shadows;
-      body.add(m);
-      return m;
-    };
-    box(1.6, 0.7, 1.8, SKIN, 0, 0.45, 0);
-    box(1.3, 0.5, 0.8, SKIN, 0, 0.65, 1.0); // head
-    for (const s of [-1, 1]) {
-      box(0.3, 0.3, 0.3, EYE, s * 0.45, 1.0, 1.1);
-      box(0.4, 0.5, 1.2, DARK, s * 0.95, 0.3, -0.5); // back legs
-      box(0.25, 0.4, 0.3, DARK, s * 0.6, 0.2, 0.8); // front legs
-    }
-    const throat = box(0.8, 0.3, 0.4, THROAT, 0, 0.3, 1.25);
+    const c = creatureMesh('frog', this.shadows);
+    root.add(c.mesh);
+    // The throat stays its own unlit mesh: the frog's lure glows through the swamp fog.
+    const throat = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 5).scale(0.38, 0.16, 0.24), THROAT);
+    throat.position.set(0, 0.3, 1.15);
+    root.add(throat);
     if (wild) {
       const halo = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.05, 24), HALO);
       halo.position.y = 0.05;
       root.add(halo);
     }
-    return { root, body, throat };
+    return { root, rig: c.rig, throat, last: { x: 0, z: 0 }, moving: -1 };
   }
 }
 
