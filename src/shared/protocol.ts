@@ -2,7 +2,7 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 30;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -36,7 +36,7 @@ export interface DungeonView {
   swamp: SwampDungeonView;
 }
 /** The swamp interior: gates (levers, thorns, gas lamps, bruto de turba), levers pulled, Llamaradas the thorns took (0–3), lamps lit, boardwalk planks still up, and the bruto de turba's bar. */
-export interface SwampDungeonView { gates: boolean[]; levers: boolean[]; thorn: number; lamps: boolean[]; planks: boolean[]; elite: { hp: number; max: number; charging: boolean; burning: boolean } | null }
+export interface SwampDungeonView { gates: boolean[]; levers: boolean[]; thorn: number; lamps: boolean[]; planks: boolean[]; elite: { hp: number; max: number; charging: boolean; burning: boolean } | null; /** El Zancudo while it fights: on the floor, winding a dive (its shadow), who it clings to. */ boss: { hp: number; max: number; grounded: boolean; diving: boolean; shadow: { x: number; z: number } | null; latch: string | null } | null; /** Gas vents flaring right now. */ vents: boolean[] }
 /** The coast interior: gates (levers, fan, plate, bruto escudado), levers pulled, the pumice block, the plate, and the bruto escudado's bar. */
 export interface CoastDungeonView { gates: boolean[]; levers: boolean[]; block: { x: number; z: number }; plate: boolean; elite: { hp: number; max: number; exposed: boolean; charging: boolean } | null; /** El Antenón while it fights; `tell` = the attack it is winding up. */ boss: { hp: number; max: number; exposed: boolean; tell: 'sweep' | 'charge' | null } | null }
 /** The purified boss guarding the Heart. */
@@ -95,7 +95,7 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }

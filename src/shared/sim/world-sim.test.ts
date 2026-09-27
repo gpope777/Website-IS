@@ -25,6 +25,7 @@ import { VIENTO } from '../viento';
 import { insideSwamp, SWAMP_DUNGEON } from '../swamp-dungeon';
 import { FUEGO, HOGUERA } from '../fuego';
 import { ANTENON, ANTENON_ALLY } from './antenon';
+import { ZANCUDO, type Zancudo } from './zancudo';
 import { RESCUE } from '../rescue';
 import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
@@ -4292,7 +4293,7 @@ describe('bruto de turba and hoguera (S3-E)', () => {
     expect(e.hp).toBeLessThan(before);
   });
 
-  it('down, gate 3 opens; the boss room is quiet (S3-F)', () => {
+  it('down, gate 3 opens; El Zancudo wakes in the boss room (S3-F)', () => {
     const sim = room();
     peat(sim)!.hp = 0;
     sim.step(0.1);
@@ -4301,7 +4302,7 @@ describe('bruto de turba and hoguera (S3-E)', () => {
     Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.bossRoomZ + 5 });
     sim.step(0.1);
     sim.step(0.1);
-    expect(msgs(sim).filter((m) => m.t === 'toast' && m.text === 'Algo zumba en la oscuridad. Aún duerme')).toHaveLength(1);
+    expect(msgs(sim).filter((m) => m.t === 'toast' && m.text.startsWith(`${NAMES.bossSwamp} despierta`))).toHaveLength(1);
   });
 
   it('a hoguera needs Fuego; it burns the first beast, scares wolves near it, rearms and wears', () => {
@@ -4334,5 +4335,128 @@ describe('bruto de turba and hoguera (S3-E)', () => {
     Object.assign(c!, { x: fire.x, z: fire.z, burn: 0, flee: 0 });
     sim.step(0.1);
     expect(c!.burn).toBeGreaterThan(0);
+  });
+});
+
+describe('El Zancudo (S3-F)', () => {
+  const S = SWAMP_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  function room(...names: string[]) {
+    const sim = setup(...(names.length ? names : ['Ana']));
+    for (const n of names.length ? names : ['Ana']) Object.assign(sim.getPlayer(n)!, { x: S.x, z: S.bossRoomZ + 3, y: S.floor });
+    sim.step(0.1);
+    const priv = sim as unknown as { boss3: Zancudo | null; cleansed: Set<number>; purified3: boolean };
+    const b = () => priv.boss3!;
+    b().diveReady = 99;
+    return { sim, b, priv };
+  }
+  const near = (sim: WorldSim, b: Zancudo, dz = -1.5) => Object.assign(sim.getPlayer('Ana')!, { x: b.x, z: b.z + dz, y: S.floor });
+
+  it('wakes when someone enters its room and resets when it empties', () => {
+    const { sim, b } = room();
+    expect(b().kind).toBe('boss3');
+    expect(snap(sim, 'Ana').dungeon.swamp.boss).toMatchObject({ hp: ENEMY.boss3.hp, max: 380, grounded: false });
+    expect(snap(sim, 'Ana').wolves.some((w) => w.kind === 'boss3')).toBe(true);
+    b().hp = 50;
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.altarZ });
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss).toBeNull();
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.bossRoomZ + 3 });
+    sim.step(0.1);
+    expect(b().hp).toBe(ENEMY.boss3.hp);
+  });
+
+  it('flying, punches miss and arrows do half', () => {
+    const { sim, b } = room();
+    near(sim, b());
+    sim.step(1);
+    msgs(sim);
+    sim.handle('Ana', { t: 'attack', id: b().id });
+    expect(b().hp).toBe(ENEMY.boss3.hp);
+    expect(texts(sim).some((t) => t.startsWith('Vuela alto'))).toBe(true);
+    const p = sim.getPlayer('Ana')!;
+    p.yaw = Math.atan2(b().x - p.x, b().z - p.z);
+    sim.handle('Ana', { t: 'shoot', id: b().id });
+    expect(b().hp).toBeCloseTo(ENEMY.boss3.hp - BOW.damage * ZANCUDO.airMult);
+  });
+
+  it('a Llamarada on the vent under it drops it 5 s; a punch then lands in full', () => {
+    const { sim, b } = room();
+    const v = insideSwamp(S.vents[b().vent]!);
+    Object.assign(b(), { x: v.x, z: v.z, drift: 99 });
+    sim.getPlayer('Ana')!.fuego = true;
+    Object.assign(sim.getPlayer('Ana')!, { x: v.x, z: v.z - 3 });
+    msgs(sim);
+    sim.handle('Ana', { t: 'power', x: v.x, z: v.z, kind: 'fuego' });
+    expect(b().grounded).toBeCloseTo(ZANCUDO.ventFall);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss?.grounded).toBe(true);
+    expect(snap(sim, 'Ana').dungeon.swamp.vents[b().vent]).toBe(true);
+    const hp = b().hp;
+    near(sim, b());
+    sim.step(1);
+    sim.handle('Ana', { t: 'attack', id: b().id });
+    expect(hp - b().hp).toBeCloseTo(PUNCH.damage);
+  });
+
+  it('a vent it is not over only flares', () => {
+    const { sim, b } = room();
+    const i = (b().vent + 2) % 4;
+    const v = insideSwamp(S.vents[i]!);
+    Object.assign(b(), { drift: 99 });
+    sim.getPlayer('Ana')!.fuego = true;
+    Object.assign(sim.getPlayer('Ana')!, { x: v.x, z: v.z - 3 });
+    sim.handle('Ana', { t: 'power', x: v.x, z: v.z, kind: 'fuego' });
+    expect(b().grounded).toBe(0);
+    expect(snap(sim, 'Ana').dungeon.swamp.vents[i]).toBe(true);
+  });
+
+  it('a landed dive latches on and drains; a roll shakes it off', () => {
+    const { sim, b } = room();
+    const p = sim.getPlayer('Ana')!;
+    b().diveReady = 0;
+    sim.step(0.05);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss?.diving).toBe(true);
+    const hp0 = p.vitals.health;
+    for (let i = 0; i < 22; i++) sim.step(0.05);
+    expect(b().latch).toBe('Ana');
+    expect(p.vitals.health).toBeLessThan(hp0 - ZANCUDO.diveDamage + 1);
+    const hp1 = p.vitals.health;
+    sim.step(1);
+    expect(p.vitals.health).toBeLessThan(hp1 - 3);
+    sim.handle('Ana', { t: 'roll' });
+    expect(b().latch).toBeNull();
+  });
+
+  it('parrying its dive grounds it 3 s', () => {
+    const { sim, b } = room();
+    b().diveReady = 0;
+    sim.step(0.05);
+    sim.step(ZANCUDO.diveWindup - 0.15);
+    sim.handle('Ana', { t: 'block', on: true });
+    sim.step(0.2);
+    expect(b().grounded).toBeGreaterThan(2);
+    expect(b().latch).toBeNull();
+  });
+
+  it('beaten: purified for good, zone 10 clean (no more Gata), a vision with names', () => {
+    const { sim, b, priv } = room();
+    expect(snap(sim, 'Ana').corrupt).toContain(10);
+    b().hp = 0;
+    msgs(sim);
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(priv.purified3).toBe(true);
+    expect(snap(sim, 'Ana').corrupt).not.toContain(10);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Ana')))).toBe(true);
+    expect(sim.save().purified3).toBe(true);
+    sim.step(ZANCUDO.corpseTime + 1);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss).toBeNull();
+    expect(new WorldSim(sim.save()).purified3).toBe(true);
+  });
+
+  it('old saves load without purified3', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(sim.purified3).toBe(false);
+    expect('purified3' in sim.save()).toBe(false);
   });
 });

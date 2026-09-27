@@ -26,6 +26,7 @@ import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, ty
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
+import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
@@ -115,6 +116,8 @@ export interface SavedWorld {
   purified?: boolean;
   /** El Antenón was beaten and now guards the Heart too. Optional: older saves have none. */
   purified2?: boolean;
+  /** El Zancudo was beaten and its white copy hangs a farol by the Heart. Optional: older saves have none. */
+  purified3?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): owed since someone tamed a fish, the Tragón taken, or rescued. Optional: older saves have none. */
@@ -288,7 +291,6 @@ export class WorldSim {
     lamps: false,
     planks: Array.from({ length: SWAMP_DUNGEON.planks }, () => ({ at: null as number | null, downUntil: 0 })),
     eliteDown: false,
-    bossSaid: false,
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[]; /** Turba: Llamaradas the peat wall took. */ burns: number }[];
@@ -309,6 +311,13 @@ export class WorldSim {
   private boss2: Antenon | null = null;
   /** The purified Antenón by the Heart; live-only, rebuilt from `purified2`. */
   private ally2: GustAlly | null = null;
+  /** El Zancudo (saved once beaten) and, live while someone is in its room, the fight. */
+  purified3: boolean;
+  private boss3: Zancudo | null = null;
+  /** The white Zancudo's farol by the Heart; live-only, rebuilt from `purified3`. */
+  private ally3: Farol | null = null;
+  /** When each of El Zancudo's gas vents last flared (for the client's flash). */
+  private readonly ventAt: number[] = [-99, -99, -99, -99];
   /** The purified Tragón by the Heart; live-only, rebuilt from `purified`. */
   private ally: Ally | null = null;
   /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
@@ -382,6 +391,7 @@ export class WorldSim {
     this.swampSeen = saved.swampSeen ?? false;
     this.purified = saved.purified ?? false;
     this.purified2 = saved.purified2 ?? false;
+    this.purified3 = saved.purified3 ?? false;
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
     this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
@@ -584,8 +594,10 @@ export class WorldSim {
     this.stepPeatFight(dt);
     this.stepBossFight(dt);
     this.stepAntenonFight(dt);
+    this.stepZancudoFight(dt);
     this.stepAlly(dt);
     this.stepAlly2(dt);
+    this.stepAlly3(dt);
     this.stepRace();
     this.stepTaming();
     this.stepWhaleTame();
@@ -617,6 +629,8 @@ export class WorldSim {
     const sh = this.shield;
     const b2 = this.boss2;
     if (b2 && near(b2.x, b2.z)) wolves.push({ id: b2.id, kind: b2.kind, x: r2(b2.x), y: r2(b2.y), z: r2(b2.z), yaw: r2(b2.yaw), anim: b2.anim, raid: false });
+    const b3 = this.boss3;
+    if (b3 && near(b3.x, b3.z)) wolves.push({ id: b3.id, kind: b3.kind, x: r2(b3.x), y: r2(b3.y), z: r2(b3.z), yaw: r2(b3.yaw), anim: b3.anim, raid: false });
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const pe = this.peat;
     if (pe && near(pe.x, pe.z)) wolves.push({ id: pe.id, kind: pe.kind, x: r2(pe.x), y: r2(pe.y), z: r2(pe.z), yaw: r2(pe.yaw), anim: pe.anim, raid: false, ...(pe.burn && pe.hp > 0 ? { burning: true as const } : {}) });
@@ -630,7 +644,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, zarzalBurnt: false, steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -655,6 +669,7 @@ export class WorldSim {
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
       ...(this.purified2 ? { purified2: true } : {}),
+      ...(this.purified3 ? { purified3: true } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
       ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
@@ -913,6 +928,12 @@ export class WorldSim {
     g.rollReadyAt = this.time + ROLL.cooldown;
     g.blockSince = null;
     l.anim = 'roll';
+    const b = this.boss3;
+    if (b && b.latch === p.name) {
+      b.latch = null;
+      b.latchLeft = 0;
+      this.tell(p.name, 'Ruedas y te lo quitas de encima');
+    }
   }
 
   private onBlock(p: SavedPlayer, l: Live, on: boolean): void {
@@ -934,7 +955,7 @@ export class WorldSim {
     if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
     g.bowReadyAt = this.time + BOW.cooldown;
     l.anim = 'bow';
-    this.strike(p.name, w, BOW.damage * weaponMult(p.weaponLvl ?? 0));
+    this.strike(p.name, w, BOW.damage * weaponMult(p.weaponLvl ?? 0), true);
   }
 
   private onRevive(p: SavedPlayer, name: string): void {
@@ -1047,7 +1068,7 @@ export class WorldSim {
     // Coast roots wither to Viento, not Enredadera (see onGust).
     const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
-    // Swamp roots (11–13) burn to Fuego (see flameThings). S3-F: beating El Zancudo cleanses zone 10 (SWAMP_ZONES.root).
+    // Swamp roots (11–13) burn to Fuego (see flameThings); zone 10 is cleansed by beating El Zancudo (stepZancudoFight).
     const knot = inside(DUNGEON.knot);
     if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
       this.dungeonLive.knot = true;
@@ -1080,7 +1101,7 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
@@ -1090,6 +1111,10 @@ export class WorldSim {
       }
       if (w === this.boss2) {
         this.gustAntenon(p.name, this.boss2, dir);
+        continue;
+      }
+      if (w === this.boss3) {
+        this.strike(p.name, w, VIENTO.damage, true); // in the air: the gust only scratches it
         continue;
       }
       const heavy = w.kind !== 'wolf' && w.kind !== 'brute';
@@ -1131,12 +1156,12 @@ export class WorldSim {
   }
 
   private flameEnemies(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
-      this.strike(p.name, w, FUEGO.damage);
+      this.strike(p.name, w, FUEGO.damage, w === this.boss3);
       // Bosses, El Marchito and the cage's anchors take the scorch but do not catch fire.
-      if (w === this.boss || w === this.boss2 || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
+      if (w === this.boss || w === this.boss2 || w === this.boss3 || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
       w.burn = FUEGO.burnFor;
       if (w.kind === 'wolf') this.scare(w, p.x, p.z);
     }
@@ -1175,10 +1200,20 @@ export class WorldSim {
       if (!isSwampZone(zn.id) || zn.id === SWAMP_ZONES.root || this.cleansed.has(zn.id)) continue;
       if (hits(zn.x, zn.z, FUEGO.rootReach)) this.cleanse(zn.id, 'El fuego seca la raíz marchita. El pantano respira');
     }
-    // S3-F: the Zarzal knot and El Zancudo's gas vents. S3-G: the fogatas.
+    // S3-F: the Zarzal knot. S3-G: the fogatas.
     if (!inSwampDungeon(p.x, p.z)) return;
     const S = SWAMP_DUNGEON;
     const g = this.swampLive;
+    S.vents.forEach((v, i) => {
+      const at = insideSwamp(v);
+      if (!hits(at.x, at.z)) return;
+      this.ventAt[i] = this.time;
+      const b = this.boss3;
+      if (b && b.hp > 0 && b.grounded <= 0 && overVent(b, i)) {
+        groundZancudo(b, ZANCUDO.ventFall);
+        this.say(`El gas prende bajo ${NAMES.bossSwamp}. ¡Cae! Ahora sí`);
+      } else this.tell(p.name, 'El gas prende y se apaga');
+    });
     const thorn = insideSwamp(S.thorn);
     if (g.thorn < FUEGO.burns && hits(thorn.x, thorn.z)) {
       g.thorn++;
@@ -1292,6 +1327,17 @@ export class WorldSim {
     if (stepGustAlly(this.ally2, h, this.wolves, at, dt)) this.say(`${NAMES.bossCoast} sopla. Los asaltantes vuelan lejos del ${NAMES.heart}`);
   }
 
+  /** The white Zancudo lives by a living Heart; at night its farol sends wolves near the Heart running. */
+  private stepAlly3(dt: number): void {
+    const h = this.heart();
+    if (!this.purified3 || !h || h.hp <= 0) {
+      this.ally3 = null;
+      return;
+    }
+    this.ally3 ??= createFarol(h, (x, z) => this.terrain.heightAt(x, z));
+    if (stepFarol(this.ally3, h, this.wolves, isNight(dayFraction(this.time)), dt)) this.say(`El farol de ${NAMES.bossSwamp} brilla. Los lobos huyen del ${NAMES.heart}`);
+  }
+
   /** Wolves, raiders or the boss. */
   private enemy(id: number): Wolf | undefined {
     if (this.marchito && this.marchito.id === id) return this.marchito;
@@ -1301,11 +1347,12 @@ export class WorldSim {
     if (this.shield && this.shield.id === id) return this.shield;
     if (this.peat && this.peat.id === id) return this.peat;
     if (this.boss2 && this.boss2.id === id) return this.boss2;
+    if (this.boss3 && this.boss3.id === id) return this.boss3;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
-  /** Hurt an enemy for a player; the folded boss shrugs it off. */
-  private strike(name: string, w: Wolf, dmg: number): void {
+  /** Hurt an enemy for a player; the folded boss shrugs it off. `ranged`: an arrow, a gust or a flame (they reach El Zancudo in the air, at half). */
+  private strike(name: string, w: Wolf, dmg: number, ranged = false): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w.kind === 'anchor') {
       if (hitWolf(w, dmg)) this.breakAnchor(w);
@@ -1313,6 +1360,10 @@ export class WorldSim {
     }
     if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
     if (w === this.boss2 && this.boss2.exposed <= 0) return this.tell(name, 'La cáscara de marea aguanta. Empújalo contra el coral, o párale');
+    if (w === this.boss3 && this.boss3.grounded <= 0) {
+      if (!ranged) return this.tell(name, 'Vuela alto. Flechas, o fuego al gas bajo él');
+      dmg *= ZANCUDO.airMult;
+    }
     const by = this.players.get(name);
     if (w === this.shield && by && shieldBlocks(w as Elite, by.x, by.z)) return this.tell(name, 'El escudo para el golpe. Dale la vuelta con viento, o párale');
     if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
@@ -2003,6 +2054,8 @@ export class WorldSim {
       lamps: w.lampAt.map((t) => t != null && (w.lamps || this.time - t <= S.lampWindow + EPS)),
       planks: w.planks.map((pl) => this.time >= pl.downUntil),
       elite: this.peat && this.peat.hp > 0 ? { hp: Math.round(this.peat.hp), max: ENEMY.elite3.hp, charging: this.peat.windup > 0 || this.peat.charge > 0, burning: (this.peat.burn ?? 0) > 0 } : null,
+      boss: this.boss3 && this.boss3.hp > 0 ? { hp: Math.round(this.boss3.hp), max: ENEMY.boss3.hp, grounded: this.boss3.grounded > 0, diving: this.boss3.windup > 0, shadow: this.boss3.shadow ? { x: r2(this.boss3.shadow.x), z: r2(this.boss3.shadow.z) } : null, latch: this.boss3.latch } : null,
+      vents: this.ventAt.map((t) => this.time - t < 1),
     };
     return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp };
   }
@@ -2095,6 +2148,45 @@ export class WorldSim {
     for (const hit of stepAntenon(b, fighters, dt)) this.bite(hit.name, hit.dmg, b);
   }
 
+  /** El Zancudo lives while someone alive is in its room; an empty room resets it. Beaten once: purified, zone 10 clean, a vision. */
+  private stepZancudoFight(dt: number): void {
+    const z = this.boss3;
+    if (z && z.hp <= 0 && !this.purified3) {
+      this.purified3 = true;
+      this.say(`${NAMES.bossSwamp} cae y se queda blanco como el papel. Ahora alumbra el ${NAMES.heart}`);
+      this.cleanse(SWAMP_ZONES.root, `La ${NAMES.swampRoot} deja de supurar morado. ${NAMES.lieutenant1} se queda sin pantano`);
+      this.vision(VISION.purified3(joinNames(this.activeNames())));
+    }
+    if (this.purified3) {
+      if (z && z.hp <= 0) {
+        stepZancudo(z, [], dt);
+        if (z.deadFor >= ZANCUDO.corpseTime) this.boss3 = null;
+      } else this.boss3 = null;
+      return;
+    }
+    const fighters = this.targets().filter((t) => !t.dead && inSwampBossRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.boss3 = null;
+      return;
+    }
+    if (!this.boss3) {
+      this.boss3 = createZancudo();
+      this.say(`${NAMES.bossSwamp} despierta. Vuela alto: flechas, o fuego al gas que tenga debajo`);
+    }
+    const b = this.boss3;
+    const { hits, drain } = stepZancudo(b, fighters, dt);
+    for (const hit of hits) {
+      const landed = this.bite(hit.name, hit.dmg, b);
+      if (landed && !b.latch && b.grounded <= 0 && b.hp > 0) {
+        b.latch = hit.name;
+        b.latchLeft = ZANCUDO.latchMax;
+        this.tell(hit.name, 'Se te engancha y chupa. ¡Rueda!');
+      }
+    }
+    const p = drain && this.players.get(drain.name);
+    if (p && drain && !p.dead) this.hurt(p, drain.dmg);
+  }
+
   /** The bruto escudado, like the forest elite: lives while someone is in its room; once down, gate 3 opens. */
   private stepShieldFight(dt: number): void {
     const g = this.coastLive;
@@ -2122,13 +2214,9 @@ export class WorldSim {
     if (hit) this.bite(hit.name, hit.dmg, this.shield);
   }
 
-  /** The bruto de turba, like the other elites; in a mud pool it regrows unless burning. Once down, gate 3 opens. The boss room waits for S3-F. */
+  /** The bruto de turba, like the other elites; in a mud pool it regrows unless burning. Once down, gate 3 opens (El Zancudo's room). */
   private stepPeatFight(dt: number): void {
     const g = this.swampLive;
-    if (!g.bossSaid && this.targets().some((t) => !t.dead && inSwampBossRoom(t.x, t.z))) {
-      g.bossSaid = true;
-      this.say('Algo zumba en la oscuridad. Aún duerme');
-    }
     const e = this.peat;
     if (e && e.hp <= 0) {
       if (!g.eliteDown) {
@@ -2541,21 +2629,30 @@ export class WorldSim {
     for (const id of this.fireReady.keys()) if (!this.structures.some((s) => s.id === id)) this.fireReady.delete(id);
   }
 
-  private bite(name: string, dmg: number, w: Wolf): void {
+  /** A beast's blow on a player (roll dodges, a timely guard parries). True when it landed. */
+  private bite(name: string, dmg: number, w: Wolf): boolean {
     const p = this.players.get(name);
-    if (!p) return;
+    if (!p) return false;
     const l = this.live.get(name);
     const out = l ? resolveHit(l.guard, this.time, dmg) : { kind: 'hit' as const, dmg };
-    if (out.kind === 'dodged') return;
+    if (out.kind === 'dodged') return false;
     if (out.kind === 'parried') {
       w.stun = BLOCK.parryStun;
       if (w === this.boss) this.boss.weak = BOSS.weakFor;
       if (w === this.shield) this.shield.exposed = ELITE.exposedFor;
       if (w === this.boss2) this.boss2.exposed = Math.max(this.boss2.exposed, ANTENON.parryFor);
+      if (w === this.boss3) groundZancudo(this.boss3, ZANCUDO.parryFall);
       this.strike(name, w, BLOCK.parryDamage);
-      return this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : 'Parada');
+      this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : w === this.boss3 ? 'Parada: cae al suelo' : 'Parada');
+      return false;
     }
-    p.vitals = damage(p.vitals, out.dmg * capaMult(p.capaLvl ?? 0));
+    this.hurt(p, out.dmg);
+    return true;
+  }
+
+  /** Damage a player can't dodge any more (Capa still counts). */
+  private hurt(p: SavedPlayer, dmg: number): void {
+    p.vitals = damage(p.vitals, dmg * capaMult(p.capaLvl ?? 0));
     if (p.vitals.health <= 0) this.kill(p);
   }
 

@@ -158,6 +158,7 @@ export const VISION = {
   gata: (names: string) => ['Un bufido lejos, entre la niebla:', `«Mi gata… ${names}, esto no queda así.»`],
   purified: (names: string) => ['Una voz como hojas secas:', `«Así que muerden, las ramitas. ${names}.»`, '«Iré a ver ese Corazón yo mismo.»'],
   purified2: (names: string) => ['La voz, más cerca, con sal:', `«Primero el papel, ahora la cáscara. ${names}.»`, `«La costa era mía. El ${NAMES.heart} también lo será.»`],
+  purified3: (names: string) => ['La voz, entre la niebla:', `«Mi zancudo. Mi niebla. Mi gata sin casa. ${names}.»`, '«Quemad lo que queráis. Detrás del pantano hay piedra.»'],
   arrive: [`${NAMES.villain} entra en el claro. No se le puede matar.`, '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],
   laugh: [`${NAMES.villain} se ríe como una rama al partirse.`, '«Solo vine a mirar. La próxima vez me quedo.»'],
   driven: (names: string) => [`${NAMES.villain} retrocede entre la niebla.`, `«${names}. Me acordaré de sus nombres.»`],
