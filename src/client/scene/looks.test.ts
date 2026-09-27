@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { BIOMES, biomeOf, biomeWeights, easeLook, hourMix, HOURS, lookAt, LOOKS, newLook } from './looks';
+import { BIOMES, biomeOf, biomeWeights, easeLook, hourMix, HOURS, lookAt, LOOKS, newLook, PURIFIED } from './looks';
 
 const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 const only = (b: (typeof BIOMES)[number]) => ({ [b]: 1 });
@@ -69,5 +69,21 @@ describe('BiomeLook (V2-B, spec §4)', () => {
     for (let i = 0; i < 200; i++) easeLook(cur, target, 0.1);
     expect(cur.sunI).toBeCloseTo(target.sunI, 3);
     expect(newLook().sunI).toBe(0);
+  });
+});
+
+describe('purified look (V2-C)', () => {
+  it('purify 0 = las Tierras, 1 = the Purified keys, between = between', () => {
+    const w = { tierras: 1 };
+    const t0 = lookAt(w, 0.5);
+    expect(lookAt(w, 0.5, undefined, 0).zenith.getHex()).toBe(t0.zenith.getHex());
+    const p1 = lookAt(w, 0.5, undefined, 1);
+    expect(p1.zenith.getHex()).toBe(new THREE.Color(PURIFIED.dia.zenith).getHex());
+    const half = lookAt(w, 0.5, undefined, 0.5);
+    expect(half.sunI).toBeCloseTo((LOOKS.tierras.dia.sunI + PURIFIED.dia.sunI) / 2, 5);
+  });
+
+  it('does not touch other biomes', () => {
+    expect(lookAt({ bosque: 1 }, 0.3, undefined, 1).horizon.getHex()).toBe(lookAt({ bosque: 1 }, 0.3).horizon.getHex());
   });
 });

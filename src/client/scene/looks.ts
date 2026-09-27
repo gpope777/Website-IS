@@ -56,6 +56,14 @@ export const LOOKS: Record<Biome, Record<Hour, LookKey>> = {
   },
 };
 
+/** V2-C (spec §4): las Tierras after El Marchito falls — like the forest, more golden, clean fog. */
+export const PURIFIED: Record<Hour, LookKey> = {
+  noche: night(0x0e1624, 0x10180e),
+  alba: { zenith: 0x6a88b8, horizon: 0xf8c890, fog: 0xd8c8a0, sun: 0xffd090, sunI: 1.5, hemiSky: 0xc8d8ff, hemiGround: 0x5a6a3a, hemiI: 0.5, moonI: 0.05 },
+  dia: { zenith: 0x5a98d8, horizon: 0xd8e4d0, fog: 0xc8d8c8, sun: 0xfff0c8, sunI: 2.4, hemiSky: 0xd0e0ff, hemiGround: 0x6a7a3a, hemiI: 0.8, moonI: 0 },
+  ocaso: { zenith: 0x5a5a98, horizon: 0xffb070, fog: 0xe0b080, sun: 0xffb060, sunI: 1.4, hemiSky: 0xffd0b0, hemiGround: 0x5a5a2a, hemiI: 0.5, moonI: 0.05 },
+};
+
 /** The biome at a point (same regions as the shop's biomeItem; the coast is south of the forest's rim). */
 export function biomeOf(x: number, z: number): Biome {
   if (inCorrupt(x, z)) return 'tierras';
@@ -108,16 +116,18 @@ export function hourMix(frac: number): { a: Hour; b: Hour; t: number } {
   return { a: ORDER[i]!, b: ORDER[(i + 1) % 4]!, t: t * t * (3 - 2 * t) };
 }
 
-/** The look for biome weights at day fraction `frac`, into `out`. */
-export function lookAt(w: Partial<Record<Biome, number>>, frac: number, out: Look = newLook()): Look {
+/** The look for biome weights at day fraction `frac`, into `out`. `purify` (0..1, V2-C) turns las Tierras into the Purified look. */
+export function lookAt(w: Partial<Record<Biome, number>>, frac: number, out: Look = newLook(), purify = 0): Look {
   const { a, b, t } = hourMix(frac);
   for (const k of COLORS) out[k].setRGB(0, 0, 0);
   for (const k of NUMS) out[k] = 0;
-  for (const biome of BIOMES) {
-    const wt = w[biome] ?? 0;
+  const p = Math.min(1, Math.max(0, purify));
+  for (const biome of [...BIOMES, 'purificado' as const]) {
+    const wt = biome === 'purificado' ? (w.tierras ?? 0) * p : biome === 'tierras' ? (w.tierras ?? 0) * (1 - p) : (w[biome] ?? 0);
     if (wt <= 0) continue;
-    const ka = LOOKS[biome][a];
-    const kb = LOOKS[biome][b];
+    const keys = biome === 'purificado' ? PURIFIED : LOOKS[biome];
+    const ka = keys[a];
+    const kb = keys[b];
     for (const k of COLORS) {
       tmp.setHex(ka[k]).lerp(tmpB.setHex(kb[k]), t).multiplyScalar(wt);
       out[k].add(tmp);

@@ -51,6 +51,7 @@ const STOPS = [
   { name: 'pantano', x: -340, z: 160, yaw: 0, pitch: -0.15 },
   { name: 'montanas', x: 20, z: -300, yaw: 0, pitch: -0.05 },
   { name: 'tierras', x: 0, z: -560, yaw: 0, pitch: -0.1 },
+  { name: 'purificado', x: 0, z: -560, yaw: 0, pitch: -0.1, purified: true },
   { name: 'mazmorra', x: 390, z: 85, yaw: 0, pitch: -0.15 },
 ];
 const HOURS = [

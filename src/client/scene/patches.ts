@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CORRUPT_LANDS, HALF } from '../../shared/terrain';
 
 /**
  * V2-B: the only place with `onBeforeCompile` shader chunks (spec §13: one module to fix if three.js moves).
@@ -290,18 +291,29 @@ export function patchGround(mat: THREE.Material): void {
   mat.userData.ground = true;
   addPatch(mat, 'ground', (shader) => {
     Object.assign(shader.uniforms, LIFE_UNIFORMS);
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>${LIFE_HEAD}\nvarying float vTaint;\nvarying float vBand;`).replace(
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>${LIFE_HEAD}\nvarying float vTaint;\nvarying float vBand;\nvarying float vPure;\nvarying float vVein;`).replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
 {
   vec2 gp = (modelMatrix * vec4(position, 1.0)).xz;
   vTaint = bzTaint(gp);
   vBand = bzBand(gp);
+  // V2-C: las Tierras turn to meadow from la Torre outward as purify grows.
+  float inT = step(gp.y, ${CORRUPT_LANDS.z1.toFixed(1)}) * step(abs(gp.x), ${HALF.toFixed(1)});
+  vPure = inT * clamp((purify * 320.0 - distance(gp, purifyFrom)) / 24.0, 0.0, 1.0);
+  vVein = step(0.35, fract(sin(dot(floor(gp * 0.5), vec2(12.9898, 78.233))) * 43758.5453));
 }`,
     );
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTaint;\nvarying float vBand;').replace(
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTaint;\nvarying float vBand;\nvarying float vPure;\nvarying float vVein;').replace(
       '#include <color_fragment>',
       `#include <color_fragment>
+{
+  // purified Tierras: dark slate and cracks become golden veins, the ash a pale meadow
+  float lumT = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+  vec3 meadow = vec3(0.2, 0.34, 0.1) * (0.8 + lumT);
+  vec3 pureCol = lumT < 0.05 && vVein > 0.5 ? vec3(0.75, 0.55, 0.12) : meadow;
+  diffuseColor.rgb = mix(diffuseColor.rgb, pureCol, vPure * 0.9);
+}
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1, 0.042, 0.157), vTaint * 0.75);
 diffuseColor.rgb += vec3(0.25, 0.22, 0.1) * vBand;`,
     );

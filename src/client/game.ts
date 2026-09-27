@@ -39,7 +39,7 @@ import { PaperActor, type Puppet } from './actors/paper';
 import { guardianAction, guardianLine, raidsMenu } from './ending-ui';
 import { ENDING, guardianSpot, withLookout } from '../shared/ending';
 import { ESTRELLA } from '../shared/estrella';
-import { withGrieta } from '../shared/corrupt-lands';
+import { TOWER, withGrieta } from '../shared/corrupt-lands';
 import { DungeonMeshes } from './scene/dungeon';
 import { CoastDungeonMeshes, GustFx } from './scene/coast-dungeon';
 import { FlameFx, SwampDungeonMeshes, ZarzalKnot } from './scene/swamp-dungeon';
@@ -407,6 +407,8 @@ export class Game {
   private heal = new HealWaves();
   private healEnding = false;
   private lastCorrupt: readonly number[] = [];
+  /** V2-C: 0..1, las Tierras purified (El Marchito fell). */
+  private purify = 0;
   /** V2-C: 0 calm, 0.5 rain, 1 storm (stronger wind). */
   private windStorm = 0;
   private readonly tmpFwd = new THREE.Vector3();
@@ -1938,7 +1940,7 @@ export class Game {
     this.lastFrac = frac;
     const here = today && inMountains(b.x, b.z) ? today : null; // weather only in las Montañas
     this.weatherFx.update(here, b.x, terrain.heightAt(b.x, b.z), b.z, dt);
-    lookAt(biomeWeights(b.x, b.z), frac, this.lookTarget);
+    lookAt(biomeWeights(b.x, b.z), frac, this.lookTarget, this.purify);
     if (this.lookFresh) easeLook(this.skyLook, this.lookTarget, dt);
     else copyLook(this.skyLook, this.lookTarget);
     this.lookFresh = true;
@@ -1998,6 +2000,10 @@ export class Game {
     // V2-C: wind for grass, crowns, pines and awnings; on high the grass bends away from nearby players.
     const now = performance.now() / 1000;
     LIFE_UNIFORMS.windT.value = now;
+    this.purify = this.perfStop?.purified ? 1 : this.heal.purify(now);
+    LIFE_UNIFORMS.purify.value = this.purify;
+    LIFE_UNIFORMS.purifyFrom.value.set(TOWER.x, TOWER.z);
+    this.grass?.setPurified(this.purify > 0);
     LIFE_UNIFORMS.zones.value.forEach((v, i) => {
       const zn = this.zones[i];
       if (zn) v.set(zn.x, zn.z, zn.r, this.heal.front(zn, now));
