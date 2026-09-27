@@ -303,3 +303,11 @@ canvas { display: block; }
 @keyframes credits-roll { from { transform: translateY(180px); } to { transform: translateY(-100%); } }
 .touch .vision { top: 64px; }
 .touch .vision p { font-size: 13px; }
+/* P4-B: the Oficios panel, 3 columns × 4 (fits 360 px). */
+.panel .skills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+.panel .skill-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.panel .skill-col h3 { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+.panel .skills button.skill { margin: 0; min-height: 48px; padding: 4px; font-size: 12px; line-height: 1.2; white-space: normal; }
+.panel .skills button.skill.owned { background: #4a8a3c; color: #fff; }
+.panel .skills button.skill.open { background: transparent; color: var(--fg); border: 2px solid var(--accent); }
+.panel .skills button.skill.locked { background: rgba(255,255,255,0.08); color: var(--muted); }

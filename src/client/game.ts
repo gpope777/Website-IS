@@ -76,7 +76,8 @@ import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
-import { hasSkill, SKILL_FX, type SkillId } from '../shared/progression';
+import { hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '../shared/progression';
+import { skillsHtml } from './skills-ui';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -1038,6 +1039,8 @@ export class Game {
           if (beast === 'deer' || beast === 'frog' || beast === 'fish') this.conn.send({ t: 'call', beast });
         },
         raids: raidsMenu(this.ending, this.atHeart(), this.raidsOff),
+        onSkills: () => this.showSkills(null),
+        tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,
         onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
           this.trap = nextTrap(this.trap, this.hasFire, this.hasStone);
@@ -1330,6 +1333,20 @@ export class Game {
     const b = this.body;
     if (!b || this.dead) return null;
     return fogataAction(b, this.fogataSpots, this.fogatasLit, this.torch);
+  }
+
+  /** P4-B: the Oficios panel; tapping a oficio re-draws it with its line. The server re-checks everything. */
+  private showSkills(chosen: SkillId | null): void {
+    const actions: Record<string, () => void> = {
+      back: () => this.hud.hideOverlay(),
+      forget: () => {
+        this.conn.send({ t: 'forget' });
+        this.hud.hideOverlay();
+      },
+      ...(chosen ? { learn: () => { this.conn.send({ t: 'learn', id: chosen }); this.hud.hideOverlay(); } } : {}),
+    };
+    for (const id of SKILL_IDS) actions[`skill-${id}`] = () => this.showSkills(id);
+    this.hud.showSkills(skillsHtml(this.rank, this.skills, this.atHeart(), chosen), actions);
   }
 
   /** Standing at the Heart (for the Menú's fogata list). */
