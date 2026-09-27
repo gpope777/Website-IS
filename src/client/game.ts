@@ -42,7 +42,7 @@ import { coastAction, shrinePartAt } from './coast-ui';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
 import { buildTerrainMesh, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
 import { CorruptionMeshes } from './scene/corruption';
-import { generateZones, type Zone } from '../shared/corruption';
+import { allZones, type Zone } from '../shared/corruption';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
@@ -142,6 +142,7 @@ export class Game {
   private entrance = { x: 0, y: 0, z: 0 };
   private zones: Zone[] = [];
   private ground: THREE.Mesh | null = null;
+  private farGround: THREE.Mesh | null = null;
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Last corrupt-ids key applied to the ground tint. */
   private corruptKey = '';
@@ -310,10 +311,11 @@ export class Game {
     this.scene.add(this.fishMeshes.group, this.raceRings.group);
     this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
-    this.zones = generateZones(this.terrain, seed, this.entrance);
+    this.zones = allZones(this.terrain, seed, this.entrance);
     const [nearPatch, farPatch] = terrainPatches(t.terrainSegments);
     this.ground = buildTerrainMesh(this.terrain, nearPatch!);
-    this.scene.add(buildTerrainMesh(this.terrain, farPatch!)); // far sea: coarse, never tinted
+    this.farGround = buildTerrainMesh(this.terrain, farPatch!); // far sea: coarse; tinted for the island/islet zones
+    this.scene.add(this.farGround);
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
     this.corruptKey = '';
     this.scene.add(this.corruptionMeshes.group);
@@ -364,6 +366,7 @@ export class Game {
     if (key !== this.corruptKey && this.ground) {
       this.corruptKey = key;
       tintTerrain(this.ground, this.zones, m.corrupt);
+      if (this.farGround) tintTerrain(this.farGround, this.zones, m.corrupt);
       this.corruptionMeshes?.sync(m.corrupt);
     }
     if (!this.kits) return;
