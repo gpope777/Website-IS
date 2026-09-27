@@ -1080,3 +1080,25 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: cargar una partida avanzada y mirar el Rango en la mochila; matar lobos hasta el tope; romper un pilar con un amigo al lado; ver la tarjeta y el destello (también desde el otro jugador). Constantes: `PROGRESS` en `src/shared/progression.ts`.
+
+## Progresión · P4-B — Oficios — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-progresion-P4-B-oficios.md` (4667365).
+- Commits: bde6a53 (T1 reglas puras: `SKILLS`/`BRANCHES`, `canLearn`, `hasSkill`, `SKILL_FX` en `src/shared/progression.ts`; nombres en `names.ts`), 2f131e2 (T2 servidor, protocolo v56), 60fe281 (T3 cliente: movimiento), a18d779 (T4 pantalla Oficios).
+- Tests: npm test 1017 (antes 991), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 56**. Campo guardado nuevo, opcional: `SavedPlayer.skills`. Las partidas viejas cargan sin oficios y con todos sus puntos libres.
+- Cómo funciona:
+  - Cada Rango 2–8 da 1 punto → 7 puntos para 12 oficios en 3 ramas de 4 (**Andar**, **Oficio**, **Compañía**), en orden dentro de la rama. Mensajes `{ t: 'learn', id }` y `{ t: 'forget' }`; el servidor comprueba puntos, orden, Corazón y bayas.
+  - **Menú → Oficios:** 3 columnas × 4 botones de 48 px (verde = aprendido, borde = se puede, gris = aún no). Tocar uno enseña su frase y "Aprender (1 punto)". Arriba "Puntos: N". Junto al Corazón sale **"Olvidar oficios · 5 bayas"** (devuelve todos los puntos, sin límite).
+  - Efectos: **Pies ligeros** aliento vuelve ×1,25 · **Planeo largo** se hunde ×0,8 · **Pulmón** nadar rápido gasta la mitad · **Trepador** trepar gasta −25 % y con lluvia se trepa a media velocidad · **Mano buena** +1 madera/piedra/bayas · **Fogatero** viaje de fogata 2 s · **Trampero** estacas y red +30 % de vida · **Buen ojo** ámbar y cuarzo vuelven en 1 día · **Mano amiga** levantar desde el doble de lejos · **Silbido** llamar monturas desde cualquier fogata encendida · **Mochila honda** la tumba vuelve a ti desde 10 m · **Pastor** ciervo/Estrella/rana +10 %.
+  - Validación del servidor: el tope de velocidad de montura sube con Pastor; la roca mojada se deja pisar a quien tiene Trepador; el planeo lento pasa (el servidor nunca comprobó la caída). Tests de que esos movimientos no se rechazan (y sí sin el oficio).
+- Decidido por Claude — revisar:
+  - Andar a pie no gasta aliento en este juego → **Pies ligeros** = el aliento vuelve más rápido.
+  - No hay buceo a pie → **Pulmón** = nadar rápido gasta la mitad.
+  - Levantar a un amigo es instantáneo → **Mano amiga** = desde el doble de lejos (5 m).
+  - La tumba ya guarda toda la mochila → **Mochila honda** = solo el radio (10 m).
+  - **Trampero** = +30 % de vida de la trampa (dura más porque el desgaste va por toque).
+  - **Pastor** cuenta el ciervo, la Estrella y la rana.
+  - Cambio de regla con tests adaptados (ninguno borrado): versión 55 → 56 en `protocol.test.ts`, `world-sim.test.ts`, `world-sim-s5h.test.ts` y `world-sim-p4a.test.ts`.
+- Rendimiento móvil: nada nuevo en escena; el panel es HTML del Menú. Cero pastillas nuevas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: subir a Rango 3, aprender Pies ligeros y Planeo largo, planear; trepar con lluvia con Trepador; olvidar en el Corazón con 5 bayas; montar con Pastor y galopar (que no te devuelva el servidor). Constantes: `SKILL_FX` en `src/shared/progression.ts`.

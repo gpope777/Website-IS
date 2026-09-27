@@ -1,6 +1,6 @@
 # Progresión · P4-B: Oficios — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** the second plan of subproject #4 (spec §4, row P4-B of §11). Each Rango 2–8 gives **1 punto de Oficio** (7 in all) to spend on **12 passive oficios** in 3 branches of 4 (Andar, Oficio, Compañía), bought **in order** within a branch. **Olvidar oficios** at the Heart costs 5 bayas and gives every point back. Each effect lives in its existing site; the movement ones are applied on the client **and** in the server's move validation so legit moves are never rejected. A new **Oficios** screen in the Menú (3 columns × 4 buttons). Nothing touches damage, health, defence, walking speed, i-frames, powers or the Heart.
 
@@ -51,28 +51,28 @@ export function skillPoints(rank: number, skills: readonly string[] = []): numbe
 export function canLearn(skills: readonly string[], id: SkillId, rank: number): 'ok' | 'owned' | 'order' | 'points';
 ```
 
-- [ ] **Step 1: failing tests.** 12 unique ids, 3 branches of 4; `canLearn([], 'planeo', 8)` → `'order'`; `canLearn([], 'pies', 1)` → `'points'`; `canLearn(['pies'], 'planeo', 3)` → `'ok'`; owned → `'owned'`; `skillPoints(8, 7 skills)` = 0; `hasSkill(undefined, 'pies')` false; `NAMES.skills` and a name for every oficio.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): reglas puras de los Oficios`.
+- [x] **Step 1: failing tests.** 12 unique ids, 3 branches of 4; `canLearn([], 'planeo', 8)` → `'order'`; `canLearn([], 'pies', 1)` → `'points'`; `canLearn(['pies'], 'planeo', 3)` → `'ok'`; owned → `'owned'`; `skillPoints(8, 7 skills)` = 0; `hasSkill(undefined, 'pies')` false; `NAMES.skills` and a name for every oficio.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(progresion): reglas puras de los Oficios`.
 
 ### Task 2: server — learn, forget and the server-side effects (protocolo v56)
 
-- [ ] **Step 1: failing tests** (`world-sim-p4b.test.ts`). Protocol 56; `decodeClient` accepts `learn` with a known id, rejects an unknown one, accepts `forget`. A Rango 3 player learns `pies` then `planeo` (saved, in `self.skills`); a third is refused ("Sin puntos"); `trepador` before `pulmon` is refused. `forget` away from the Heart does nothing; at the Heart with 4 bayas refuses; with 5 clears the skills and spends 5. Effects: *Mano buena* harvest +1; *Fogatero* channel lands in 2 s; *Buen ojo* amber again after 1 day; *Mano amiga* revives from 4 m; *Silbido* calls from a lit fogata that is not la Ceniza; *Mochila honda* picks up the grave at 8 m; *Trampero* spikes hp ×1,3; *Pastor* a rider's move at `MOUNT.maxSpeed × 1,08` passes; *Trepador* a move up wet climbable rock passes (and fails without it); *Planeo largo* a slow glide down passes.
-- [ ] **Step 2: implement** (`onLearn`, `onForget`; `hasSkill` at each site; `SelfState.skills`).
-- [ ] **Step 3:** green (adapt 55 → 56 in version tests, noted), self-review, commit `feat(progresion): Oficios en el servidor (protocolo v56)`.
+- [x] **Step 1: failing tests** (`world-sim-p4b.test.ts`). Protocol 56; `decodeClient` accepts `learn` with a known id, rejects an unknown one, accepts `forget`. A Rango 3 player learns `pies` then `planeo` (saved, in `self.skills`); a third is refused ("Sin puntos"); `trepador` before `pulmon` is refused. `forget` away from the Heart does nothing; at the Heart with 4 bayas refuses; with 5 clears the skills and spends 5. Effects: *Mano buena* harvest +1; *Fogatero* channel lands in 2 s; *Buen ojo* amber again after 1 day; *Mano amiga* revives from 4 m; *Silbido* calls from a lit fogata that is not la Ceniza; *Mochila honda* picks up the grave at 8 m; *Trampero* spikes hp ×1,3; *Pastor* a rider's move at `MOUNT.maxSpeed × 1,08` passes; *Trepador* a move up wet climbable rock passes (and fails without it); *Planeo largo* a slow glide down passes.
+- [x] **Step 2: implement** (`onLearn`, `onForget`; `hasSkill` at each site; `SelfState.skills`).
+- [x] **Step 3:** green (adapt 55 → 56 in version tests, noted), self-review, commit `feat(progresion): Oficios en el servidor (protocolo v56)`.
 
 ### Task 3: client movement — the Andar oficios and Pastor on the body
 
-- [ ] **Step 1: failing tests** (`movement.test.ts`): with `Body.skills = ['pies','planeo']` a glide sinks at 1,28; regen is ×1,25; with `pulmon` fast swimming spends half; with `trepador` climbing spends −25 % and a wet wall can be grabbed; with `pastor` riding runs `MOUNT.run × 1,1`. `fogataCalls` with Silbido offers calls at any lit fogata.
-- [ ] **Step 2: implement** (`Body.skills?`; `game.ts` copies `self.skills`; `fogataCalls(…, silbido)`).
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): los Oficios de Andar en el cliente`.
+- [x] **Step 1: failing tests** (`movement.test.ts`): with `Body.skills = ['pies','planeo']` a glide sinks at 1,28; regen is ×1,25; with `pulmon` fast swimming spends half; with `trepador` climbing spends −25 % and a wet wall can be grabbed; with `pastor` riding runs `MOUNT.run × 1,1`. `fogataCalls` with Silbido offers calls at any lit fogata.
+- [x] **Step 2: implement** (`Body.skills?`; `game.ts` copies `self.skills`; `fogataCalls(…, silbido)`).
+- [x] **Step 3:** green, self-review, commit `feat(progresion): los Oficios de Andar en el cliente`.
 
 ### Task 4: the Oficios screen in the Menú
 
-- [ ] **Step 1: failing tests** (`skills-ui.ts`): `skillsHtml(rank, skills, atHeart, berries)` has "Puntos: N", 3 columns × 4 buttons, owned ones marked `owned`, the next learnable `open`, the rest `locked`; "Olvidar oficios · 5 bayas" only at the Heart; `skillLine(id)` gives the phrase.
-- [ ] **Step 2: implement** (Menú button "Oficios" → panel; tap a oficio → its phrase + "Aprender (1 punto)" → `{ t: 'learn', id }`; forget → `{ t: 'forget' }`; "Volver").
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): pantalla de Oficios en el Menú`.
+- [x] **Step 1: failing tests** (`skills-ui.ts`): `skillsHtml(rank, skills, atHeart, berries)` has "Puntos: N", 3 columns × 4 buttons, owned ones marked `owned`, the next learnable `open`, the rest `locked`; "Olvidar oficios · 5 bayas" only at the Heart; `skillLine(id)` gives the phrase.
+- [x] **Step 2: implement** (Menú button "Oficios" → panel; tap a oficio → its phrase + "Aprender (1 punto)" → `{ t: 'learn', id }`; forget → `{ t: 'forget' }`; "Volver").
+- [x] **Step 3:** green, self-review, commit `feat(progresion): pantalla de Oficios en el Menú`.
 
 ### Task 5: Ship
 
-- [ ] Full suite green; push; HANDOFF "## Progresión · P4-B — …"; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF "## Progresión · P4-B — …"; one short comment on PR #3.
