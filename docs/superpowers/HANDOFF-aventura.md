@@ -492,3 +492,28 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: entrar al Pantano en pez, bajar en un montículo y buscar el brillo de la garganta en la niebla. Perseguir los nenúfares a pie en la ciénaga (60 %): ¿6 s es justo? Las 3 rondas del anillo. Montada: ¿8/11 m/s se sienten bien? Saltar a un montículo alto y encima de un peñasco. Meterse en el Zarzal en rana (debe morder). Bajar y volver a subir. Constantes: `FROG` en `src/shared/frog.ts`.
+
+## Slice 3 · S3-C — santuarios del Pantano, ámbar y Capa de corteza — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-C-santuarios-ambar-capa.md` (f705d67).
+- Commits: 907bc43 (T1 reglas: `src/shared/swamp-shrines.ts`, ámbar, `CAPA`), 6123848 (T2 santuarios en el servidor y la rana sobre los nenúfares, protocolo v25), 632c4ce (T3 árboles de ámbar y Capa, v26), f50e7e3 (T4 cliente).
+- Tests: npm test 528 (antes 499), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 26**. Campos guardados nuevos opcionales `SavedPlayer.amber` (árbol → momento de la cosecha) y `SavedPlayer.capaLvl`: las partidas viejas cargan.
+- Cómo funciona:
+  - **Tres santuarios más** (ids 6–8, en la misma lista: orbe de +20 de aliento, uno por jugador). Los orbes del Pantano dan además **1 ámbar**.
+    - **Candiles** (el montículo más ancho libre): 3 braseros a ~12 m entre sí y un **poste de antorchas** junto al orbe. A en el poste → antorcha (se ve en la mano). A en un brasero con antorcha → arde **12 s** y la antorcha se gasta. Los tres a la vez abren la verja. Sin antorcha: "Hace falta fuego". Si mueres, la antorcha se pierde.
+    - **Nenúfares** (mitad oeste de la Laguna Negra): el orbe está en una losa de piedra baja a ~30 m de la orilla, sobre agua de más de 4,5 m (nadando no se llega). **7 nenúfares** van de la orilla a la losa (~4,6 m entre centros). Se hunden **1,5 s** después de que alguien los pisa y vuelven **4 s** después. Pisar el último abre la verja 30 s. Si caes, nadas de vuelta hacia la orilla.
+    - **Turba** (el montículo más cerca de la Laguna): pared de raíz de turba en lugar de verja de luz. "Raíces de turba. Esto solo arde. Vuelve luego".
+  - **Ámbar:** 6 árboles hundidos en montículos libres, con brillo naranja que la niebla no tapa. A → **2 ámbar**; vuelve a brotar para ti a los **2 días** de juego ("Aún no ha vuelto a brotar"). Cada jugador tiene los suyos. **2 están encima de un tocón liso de 6 m**: solo se sube con el salto de la rana.
+  - **Capa de corteza:** A junto al Corazón con 3 ámbar + 10 madera + 5 bayas → nivel 1–3, **−10 % de daño por nivel** en mordiscos, golpes y la caída de la sima. Las espinas del Zarzal y el barro de la Ciénaga muerden igual. Se ve como una capa de corteza a la espalda (más larga con cada nivel) y "Capa N" en la mochila.
+  - **La rana sobre el agua honda:** en el aire, sobre un nenúfar o sobre la losa puede estar encima de agua de cualquier fondo. Si cae en agua honda solo puede ir hacia menos fondo. Así cruza los Nenúfares en unos 3 saltos.
+- Decidido por Claude — revisar:
+  - **La antorcha no frena** (igual que la pómez; frenar exige predicción en el cliente). A cambio **se gasta en cada brasero**: solo hay que ir tres veces al poste en 12 s. Un corredor rápido puede hacerlo solo; con dos es fácil.
+  - Nenúfares: la verja se abre al pisar el último nenúfar (como una losa), sin contar si empezaste en la orilla. Nadando no se llega (agua de más de 4 m).
+  - La Capa no tiñe el torso: los materiales del robot se comparten entre copias, así que es una tabla de corteza a la espalda (una caja). La antorcha de los demás no se ve (solo la tuya).
+  - En el Corazón, A hace esto en orden: cuidar (si está dañado), mejorar el arma (si hay perlas) y después la Capa.
+  - Mensajes nuevos `{ t: 'amber', id }` y `{ t: 'capa' }`; el poste es la parte 4 del mensaje `shrine`.
+  - Cambios de regla con tests adaptados (ninguno borrado): "old saves load" espera ahora 9 santuarios (antes 6); versión de protocolo en los tests → 26.
+- **Marcas pendientes:** `// S3-E` (una Llamarada enciende un brasero sin antorcha; tres queman la pared de turba), `// S3-D` (el orbe del Pantano limpiará la zona más cercana 10–13). Ahora un orbe del Pantano no limpia nada, tampoco zonas de la Costa.
+- Rendimiento móvil: 3 braseros, 7 discos, 6 árboles (2 cajas cada uno) y 2 tocones. Llamas y ámbar con material básico sin niebla y **sin luces reales**. Unos 30 draw calls nuevos, todos pequeños (se pueden instanciar si hace falta).
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: Candiles solo (¿se puede con 12 s?) y con dos. Nenúfares a pie saltando (¿1,5 s es justo? ¿el hueco de ~2,4 m entre discos se salta?) y en rana. Buscar el ámbar en la niebla, subir a un tocón en rana, comprar la Capa y notar menos daño de noche. Constantes: `SWAMP_SHRINE`, `AMBER` en `src/shared/swamp-shrines.ts`, `CAPA` en `src/shared/items.ts`.
