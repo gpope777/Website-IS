@@ -37,6 +37,8 @@ import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
 import type { Vitrina } from './vitrina';
+import { chargingKinds, enemyLook } from './actors/enemy-look';
+import { ChargeMarks, chargeMark } from './scene/charge-marks';
 import { PaperActor, type Puppet } from './actors/paper';
 import { guardianAction, guardianLine, raidsMenu } from './ending-ui';
 import { ENDING, guardianSpot, withLookout } from '../shared/ending';
@@ -219,8 +221,25 @@ export class Game {
   private perfStop: PerfStop | null = null;
   /** V2-E: the harness showcase (only built by `?perf=1`). */
   private vitrina: Vitrina | null = null;
+  /** V2-E: the dungeon brutes winding a charge (red ring + arrow under them). */
+  private chargeIds: number[] = [];
+  private readonly chargeMarks = new ChargeMarks();
   private vitrinaHooks(): Partial<import('./vitrina').VitrinaEnv> {
-    return {};
+    return {
+      dressEnemy: (a, kind, x, z) => {
+        const look = kind === 'ash' ? enemyLook('wolf', 'tierras', false) : enemyLook(kind as import('../shared/protocol').EnemyKind, biomeOf(x, z), false);
+        if (!look) return;
+        a.setSkin(look);
+        a.root.scale.setScalar(look.scale);
+      },
+      chargeMark: (x, y, z, yaw) => {
+        const m = chargeMark();
+        m.position.set(x, y + 0.08, z);
+        m.rotation.y = yaw;
+        m.scale.setScalar(1.44);
+        return m;
+      },
+    };
   }
   private perfOff: (() => void) | null = null;
   /** Connection is up and the server welcomed us on it (perf harness waits on this after a re-import). */
@@ -533,10 +552,9 @@ export class Game {
             if (!this.kits || !this.terrain || !this.perfStop) return;
             const terrain = this.terrain;
             const kits = this.kits;
-            const stop = this.perfStop;
             void import('./vitrina').then((v) => {
               this.vitrina ??= new v.Vitrina({ scene: this.scene, camera: this.camera, kits, heightAt: (x, z) => terrain.heightAt(x, z), ...this.vitrinaHooks() });
-              this.vitrina.show(what, stop.x, stop.z);
+              this.vitrina.show(what);
             });
           },
         });
@@ -717,7 +735,7 @@ export class Game {
     this.dragonMeshes = new DragonMeshes(this.camera, this.pico);
     this.scene.add(this.dragonMeshes.group);
     this.whaleMesh = new WhaleMesh(t.shadows);
-    this.scene.add(this.whaleMesh.group);
+    this.scene.add(this.whaleMesh.group, this.chargeMarks.group);
     this.scene.add(this.dungeonMeshes.group);
     this.coastDoor = coastEntrance(seed);
     this.coastMeshes = new CoastDungeonMeshes({ ...this.coastDoor, y: this.terrain.heightAt(this.coastDoor.x, this.coastDoor.z) }, t.shadows);
@@ -978,6 +996,8 @@ export class Game {
     this.anchorTargets = m.wolves.filter((w) => w.kind === 'anchor').map((w) => ({ id: w.id, x: w.x, z: w.z }));
     this.syncFlechaLine(m.wolves.find((w) => w.kind === 'lieut3' && w.aim));
     this.syncFinal(m.dungeon.tower.final);
+    const charging = chargingKinds(m.dungeon);
+    this.chargeIds = charging.length ? m.wolves.filter((w) => charging.includes(w.kind)).map((w) => w.id) : [];
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
@@ -1021,7 +1041,15 @@ export class Game {
         slab.name = 'slab';
         slab.position.set(0, 0.45, 0.5);
         r.actor.root.add(slab);
-      } else if (w.kind !== 'elite2' && w.kind !== 'elite3' && w.kind !== 'elite4') r.actor.root.scale.setScalar(w.kind === 'elite' ? 2.4 : w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
+      }
+      if (r.actor instanceof Actor) {
+        // V2-E: a colour per type (one material per look); scales as before.
+        const look = enemyLook(w.kind, biomeOf(w.x, w.z), w.raid);
+        if (look) {
+          r.actor.setSkin(look);
+          r.actor.root.scale.setScalar(look.scale);
+        }
+      }
       this.burnMark(r.actor.root, !!w.burning);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
@@ -1929,7 +1957,7 @@ export class Game {
       this.me.setLook(this.look.color, this.look.hat);
       this.me.setTorch(this.torch);
       this.me.update(dt);
-      this.me.root.visible = this.rig.mode === 'third';
+      this.me.root.visible = this.rig.mode === 'third' && !this.perfStop?.hideMe;
     }
 
     const rt = this.serverTime - INTERP_DELAY;
@@ -1945,6 +1973,7 @@ export class Game {
     this.syncDragons(dt);
     this.syncWhale(dt);
     this.vitrina?.update(dt);
+    this.chargeMarks.sync(this.chargeIds.flatMap((id) => this.wolves.get(id)?.actor.root ?? []), now / 1000);
 
     for (const m of this.mountainMeshes) {
       const near = chunkDetailed(m.chunk, b.x, b.z);
@@ -1998,6 +2027,15 @@ export class Game {
     this.gustFx.update(dt);
     this.rig.far = this.onDragon || this.tame?.beast === 'dragon'; // flying: pull the camera back (no extra draw distance)
     this.rig.apply(this.camera, b, terrain);
+    if (stop?.cam) {
+      // V2-E harness close-up: the camera `cam.back` m behind the stop at `cam.up` m, looking `cam.ahead` m past it.
+      const c = stop.cam;
+      const fx = -Math.sin(stop.yaw);
+      const fz = -Math.cos(stop.yaw);
+      const gy = terrain.heightAt(stop.x, stop.z);
+      this.camera.position.set(stop.x - fx * c.back, gy + c.up, stop.z - fz * c.back);
+      this.camera.lookAt(stop.x + fx * c.ahead, terrain.heightAt(stop.x + fx * c.ahead, stop.z + fz * c.ahead) + c.lookY, stop.z + fz * c.ahead);
+    }
     if (this.tame) {
       // The deer bucks: shake the camera a little.
       const k = 0.06 + this.tame.round * 0.03;

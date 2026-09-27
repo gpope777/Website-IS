@@ -11,13 +11,13 @@ export interface EnemyLook {
 }
 
 const LOOKS: Record<string, Omit<EnemyLook, 'scale'>> = {
-  wolf: { key: 'wolf', color: 0xb8c4d0, emissive: 0x000000 },
-  ash: { key: 'ash', color: 0x8a8480, emissive: 0x3a1206 },
-  brute: { key: 'brute', color: 0x9a6a8a, emissive: 0x000000 },
-  elite: { key: 'elite', color: 0x3a3040, emissive: 0x2a0a3a },
-  elite2: { key: 'elite2', color: 0x7a98b8, emissive: 0x000000 },
-  elite3: { key: 'elite3', color: 0x8a8a4a, emissive: 0x000000 },
-  elite4: { key: 'elite4', color: 0xa8a8a0, emissive: 0x000000 },
+  wolf: { key: 'wolf', color: 0x8a96a8, emissive: 0x000000 },
+  ash: { key: 'ash', color: 0x6a6664, emissive: 0x240a04 },
+  brute: { key: 'brute', color: 0x8a4a78, emissive: 0x000000 },
+  elite: { key: 'elite', color: 0x2a2232, emissive: 0x30104a },
+  elite2: { key: 'elite2', color: 0x4a7aa8, emissive: 0x000000 },
+  elite3: { key: 'elite3', color: 0x6a6a2a, emissive: 0x000000 },
+  elite4: { key: 'elite4', color: 0x9a9a92, emissive: 0x000000 },
 };
 
 /** The look of a fox-drawn enemy, or null for the ones drawn on paper (and the anchor). Scales are today's. */

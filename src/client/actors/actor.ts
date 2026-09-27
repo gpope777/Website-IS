@@ -3,11 +3,16 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import type { ModelKit } from './models';
 import { makeHat } from './hats';
 import { COLORS } from '../../shared/progression';
+import { poseFor } from './poses';
+import type { EnemyLook } from './enemy-look';
+import { patchRecolor, patchRim, patchSway } from '../scene/patches';
 
 export interface ClipDef {
   clip: string;
   speed?: number;
   once?: boolean;
+  /** V2-E: hold the clip still at this time (s) — the base under a procedural pose. */
+  at?: number;
 }
 
 export const PLAYER_CLIPS: Record<string, ClipDef> = {
@@ -17,14 +22,13 @@ export const PLAYER_CLIPS: Record<string, ClipDef> = {
   jump: { clip: 'Jump', once: true },
   swim: { clip: 'Walking', speed: 0.5 },
   attack: { clip: 'Punch', once: true },
-  // The robot kit has no roll/guard/bow clips: placeholders until real animations exist.
-  roll: { clip: 'WalkJump', speed: 1.6, once: true },
-  block: { clip: 'Idle', speed: 0.3 },
-  bow: { clip: 'Punch', speed: 0.7, once: true },
-  climb: { clip: 'Punch', speed: 0.6 },
-  glide: { clip: 'Jump', speed: 0.4, once: true },
-  // ponytail: no belly-slide clip in the robot kit; a held jump pose until real animations exist.
-  slide: { clip: 'Jump', speed: 0.6, once: true },
+  // V2-E: the robot kit has no roll/guard/bow/climb/glide/slide clips: the closest clip + bone poses (poses.ts).
+  roll: { clip: 'Jump', at: 0.35 },
+  block: { clip: 'Idle' },
+  bow: { clip: 'Idle' },
+  climb: { clip: 'Walking', speed: 0.5 },
+  glide: { clip: 'Jump', at: 0.35 },
+  slide: { clip: 'Jump', at: 0.35 },
   dead: { clip: 'Death', once: true },
 };
 
@@ -55,7 +59,10 @@ export class Actor {
     model.scale.setScalar(kit.scale);
     model.rotation.y = kit.yawOffset;
     model.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+      if (!(o as THREE.Mesh).isMesh) return;
+      o.castShadow = true;
+      const mat = (o as THREE.Mesh).material;
+      if (!Array.isArray(mat)) patchRim(mat); // V2-E: shared by every clone, patched once
     });
     this.root.add(model);
     this.model = model;
@@ -87,7 +94,11 @@ export class Actor {
         m.material = original;
         return;
       }
-      if (!this.tint) this.tint = original.clone();
+      if (!this.tint) {
+        this.tint = original.clone();
+        this.tint.userData = {};
+        patchRim(this.tint);
+      }
       this.tint.color.setHex(COLORS[color] ?? COLORS[0]!);
       m.material = this.tint;
     });
@@ -162,12 +173,79 @@ export class Actor {
     if (!next) return;
     this.currentName = anim;
     next.reset();
-    next.setEffectiveTimeScale(def.speed ?? 1);
+    next.setEffectiveTimeScale(def.at !== undefined ? 0 : (def.speed ?? 1));
+    if (def.at !== undefined) next.time = def.at;
+    this.animT = 0;
     next.setLoop(def.once ? THREE.LoopOnce : THREE.LoopRepeat, def.once ? 1 : Infinity);
     next.clampWhenFinished = !!def.once;
     next.play();
     if (this.current && this.current !== next) next.crossFadeFrom(this.current, 0.2, false);
     this.current = next;
+  }
+
+  private animT = 0;
+  /** Harness only: freeze the procedural pose at this time (s). */
+  holdPoseAt: number | null = null;
+  private bones: Map<string, THREE.Object3D> | null = null;
+  /** Bones offset last frame → their quaternion before the offset. */
+  private readonly posed = new Map<THREE.Object3D, THREE.Quaternion>();
+  private readonly q = new THREE.Quaternion();
+  private readonly e = new THREE.Euler();
+
+  /** V2-E: bone offsets on top of the clip (spec §6.4); the whole model tilts about its middle. */
+  private applyPose(t: number): void {
+    const p = poseFor(this.currentName, t);
+    const m = this.model;
+    if (!p) {
+      if (m.rotation.x !== 0 || m.position.y !== 0 || m.position.z !== 0) {
+        m.rotation.x = 0;
+        m.position.set(0, 0, 0);
+      }
+      return;
+    }
+    if (!this.bones) {
+      this.bones = new Map();
+      m.traverse((o) => {
+        if (!(o as THREE.Bone).isBone) return;
+        // GLTFLoader renames clashing nodes (the robot's `Torso` bone is `Torso_1`): keep both spellings.
+        for (const n of [o.name, o.name.replace(/_\d+$/, '')]) if (!this.bones!.has(n)) this.bones!.set(n, o);
+      });
+    }
+    for (const [name, r] of Object.entries(p.bones)) {
+      const b = this.bones.get(name);
+      if (!b) continue;
+      this.posed.set(b, b.quaternion.clone());
+      b.quaternion.multiply(this.q.setFromEuler(this.e.set(r[0], r[1], r[2])));
+    }
+    const h = 0.9; // turn about the middle of a 1.8 m robot
+    m.rotation.x = p.rootX;
+    m.position.set(0, h - h * Math.cos(p.rootX) + p.rootY, -h * Math.sin(p.rootX));
+  }
+
+  private skinKey = '';
+  private static readonly skins = new Map<string, THREE.Material>();
+  /** V2-E: a colour per enemy type — one shared material per look (spec §6.2), made from the model's own. */
+  setSkin(look: EnemyLook): void {
+    if (look.key === this.skinKey) return;
+    this.skinKey = look.key;
+    this.model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || Array.isArray(m.material)) return;
+      const base = (m.userData.skinBase as THREE.MeshStandardMaterial | undefined) ?? (m.material as THREE.MeshStandardMaterial);
+      m.userData.skinBase = base;
+      const k = `${base.uuid}:${look.key}`;
+      let mat = Actor.skins.get(k) as THREE.MeshStandardMaterial | undefined;
+      if (!mat) {
+        mat = base.clone();
+        mat.userData = {};
+        mat.color.setHex(look.color);
+        if (mat.emissive) mat.emissive.setHex(look.emissive);
+        patchRecolor(mat);
+        patchRim(mat);
+        Actor.skins.set(k, mat);
+      }
+      m.material = mat;
+    });
   }
 
   setPose(x: number, y: number, z: number, yaw: number): void {
@@ -176,7 +254,12 @@ export class Actor {
   }
 
   update(dt: number): void {
+    // Bones a clip does not animate (the robot's Torso; the arms in Idle) keep whatever we set: restore them first.
+    for (const [b, q] of this.posed) b.quaternion.copy(q);
+    this.posed.clear();
     this.mixer.update(dt);
+    this.animT += dt;
+    this.applyPose(this.holdPoseAt ?? this.animT);
     if (this.glow && this.glowLeft > 0) {
       this.glowLeft -= dt;
       if (this.glowLeft <= 0) this.glow.visible = false;
@@ -191,15 +274,20 @@ export class Actor {
   }
 }
 
-/** A leaf-cloth canopy over the head, shown while the anim is 'glide' (so teammates see it too). */
+let gliderMat: THREE.MeshLambertMaterial | null = null;
+/** A leaf-cloth canopy over the head, shown while the anim is 'glide' (so teammates see it too). V2-E: a 4×2 cloth that flutters in the wind. */
 function makeGlider(): THREE.Object3D {
-  const cloth = new THREE.Mesh(
-    new THREE.ConeGeometry(1.3, 0.45, 4, 1, true),
-    new THREE.MeshLambertMaterial({ color: 0x6fae4a, side: THREE.DoubleSide }),
-  );
-  cloth.scale.set(1.4, 1, 0.8);
-  cloth.rotation.y = Math.PI / 4;
-  cloth.position.y = 2.5;
+  const geo = new THREE.PlaneGeometry(2.8, 1.3, 4, 2);
+  geo.rotateX(-Math.PI / 2);
+  const p = geo.attributes.position!;
+  for (let i = 0; i < p.count; i++) p.setY(i, -0.12 * (p.getX(i) / 1.4) ** 2 + 0.08 * Math.cos((p.getZ(i) / 0.65) * 1.2)); // arched
+  geo.computeVertexNormals();
+  if (!gliderMat) {
+    gliderMat = new THREE.MeshLambertMaterial({ color: 0x6fae4a, side: THREE.DoubleSide });
+    patchSway(gliderMat, { base: -1, span: 1, amp: 0.18, flap: true, waves: 1 });
+  }
+  const cloth = new THREE.Mesh(geo, gliderMat);
+  cloth.position.y = 2.45;
   return cloth;
 }
 

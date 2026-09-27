@@ -12,6 +12,10 @@ export interface PerfStop {
   frac: number;
   /** V2-C: show las Tierras purified (the end-state look). */
   purified?: boolean;
+  /** V2-E: hide the local robot (showcase shots). */
+  hideMe?: boolean;
+  /** V2-E: a fixed close-up camera instead of the rig. */
+  cam?: { back: number; up: number; ahead: number; lookY: number };
 }
 
 export interface PerfTarget {

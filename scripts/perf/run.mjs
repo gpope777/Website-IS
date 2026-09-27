@@ -211,8 +211,11 @@ async function main() {
     if (VITRINA) {
       mkdirSync(join(OUT, 'shots'), { recursive: true });
       for (const h of HOURS) {
-        await page.evaluate((p) => window.__perf.stop(p), { x: 0, z: 60, yaw: 0, pitch: -0.2, frac: h.frac });
+        await page.evaluate((p) => window.__perf.stop(p), { x: 0, z: 60, yaw: 0, pitch: -0.12, frac: h.frac, hideMe: true });
         for (const what of VITRINA.split(',')) {
+          const near = what.startsWith('pose:');
+          await page.evaluate((p) => window.__perf.stop(p), { x: 0, z: 60, yaw: 0, pitch: -0.12, frac: h.frac, hideMe: true, cam: near ? { back: 0.8, up: 1.4, ahead: 3.2, lookY: 1.0 } : { back: 4, up: 2.4, ahead: 8, lookY: 0.8 } });
+          await page.waitForTimeout(1200);
           await page.evaluate((w) => window.__perf.showcase(w), what);
           await page.waitForTimeout(what === 'pose:roll' ? 150 : 2500);
           await page.screenshot({ path: join(OUT, 'shots', `${tier}_vitrina_${what.replace(':', '-')}_${h.name}.png`) });

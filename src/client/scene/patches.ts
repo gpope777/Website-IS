@@ -470,3 +470,18 @@ ${border}`,
     );
   });
 }
+
+/** Enemy looks (V2-E): the model's texture goes grey (its shading kept) and takes the material colour, so each type reads as its own colour. */
+export function patchRecolor(mat: THREE.Material): void {
+  if (mat.userData.recolor) return;
+  mat.userData.recolor = true;
+  addPatch(mat, 'recolor', (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+#ifdef USE_MAP
+diffuseColor.rgb = diffuse * min(dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114)) * 2.2, 1.4);
+#endif`,
+    );
+  });
+}

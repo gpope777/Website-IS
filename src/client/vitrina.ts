@@ -27,56 +27,76 @@ export class Vitrina {
     env.scene.add(this.group);
   }
 
-  show(what: string | null, x: number, z: number): void {
+  /** Content is laid out in camera space: local −Z = away from the camera, +X = screen right; placed in world coordinates. */
+  show(what: string | null): void {
     this.clear();
     if (!what) return;
-    const g = (dx: number, dz: number) => this.env.heightAt(x + dx, z + dz);
+    const cam = this.env.camera;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion).setY(0).normalize();
+    const th = Math.atan2(fwd.x, fwd.z) + Math.PI;
+    const c = Math.cos(th);
+    const sn = Math.sin(th);
+    const cx = cam.position.x;
+    const cz = cam.position.z;
+    /** World x/z of a camera-space offset. */
+    const W = (dx: number, dz: number) => ({ x: cx + dx * c + dz * sn, z: cz - dx * sn + dz * c });
+    const Y = (localYaw: number) => localYaw + th;
+    const g = (dx: number, dz: number) => {
+      const w = W(dx, dz);
+      return this.env.heightAt(w.x, w.z);
+    };
+    const P = (dx: number, dz: number) => ({ ...W(dx, dz), y: g(dx, dz) });
     if (what === 'mounts') {
       const steeds = new SteedMeshes(false);
       const fish = new FishMeshes(false);
       const frogs = new FrogMeshes(false);
       const whale = new WhaleMesh(false);
       this.group.add(steeds.group, fish.group, frogs.group, whale.group);
+      const d1 = P(-3.2, -9);
+      const d2 = P(3.4, -10);
+      const f = P(-2.6, -5.5);
+      const r = P(2.6, -5.5);
+      const w = P(0, -22);
       this.tick = (dt, now) => {
         steeds.sync(
           [
-            { key: 'a', x: x - 4, y: g(-4, -9), z: z - 9, yaw: Math.PI / 2, speed: 8, wild: false, bucking: false },
-            { key: 'b', x: x + 3.5, y: g(3.5, -10), z: z - 10, yaw: -Math.PI / 2.5, speed: 0, wild: true, bucking: false },
+            { key: 'a', ...d1, yaw: Y(Math.PI / 2), speed: 8, wild: false, bucking: false },
+            { key: 'b', ...d2, yaw: Y(-Math.PI / 2.5), speed: 0, wild: true, bucking: false },
           ],
           dt,
           now,
         );
-        fish.sync([{ key: 'f', x: x - 3, y: g(-3, -4) + 0.7, z: z - 4, yaw: Math.PI / 2, speed: 4, wild: false, bucking: false }], dt, now);
-        frogs.sync([{ key: 'r', x: x + 3, y: g(3, -4), z: z - 4, yaw: -Math.PI / 3, wild: true, bucking: false }], now);
-        whale.sync({ x: x, z: z - 22, yaw: Math.PI / 2 }, false, false, now);
-        whale.group.position.y = g(0, -22) + 0.8;
+        fish.sync([{ key: 'f', ...f, y: f.y + 0.7, yaw: Y(Math.PI / 2), speed: 4, wild: false, bucking: false }], dt, now);
+        frogs.sync([{ key: 'r', ...r, yaw: Y(-Math.PI / 3), wild: true, bucking: false }], now);
+        whale.sync({ x: w.x, z: w.z, yaw: Y(Math.PI / 2) }, false, false, now);
+        whale.group.position.y = w.y + 0.8;
       };
     } else if (what === 'enemies') {
       const kinds = ['wolf', 'ash', 'brute', 'elite', 'elite2', 'elite3', 'elite4'];
       kinds.forEach((k, i) => {
         const a = new Actor(this.env.kits.fox, WOLF_CLIPS);
-        const ax = x - 9 + i * 3;
-        const az = z - 10 - (i % 2) * 2;
-        a.setPose(ax, g(ax - x, az - z), az, Math.PI / 2 + 0.4);
-        this.env.dressEnemy?.(a, k, ax, az);
+        const at = P(-7.5 + i * 2.5, -9 - (i % 2) * 2.5);
+        a.setPose(at.x, at.y, at.z, Y(Math.PI / 2 + 0.5));
+        this.env.dressEnemy?.(a, k, at.x, at.z);
         this.group.add(a.root);
-        if (k === 'elite' && this.env.chargeMark) this.group.add(this.env.chargeMark(ax, g(ax - x, az - z), az, Math.PI / 2 + 0.4));
+        if (k === 'elite' && this.env.chargeMark) this.group.add(this.env.chargeMark(at.x, at.y, at.z, Y(Math.PI / 2 + 0.5)));
         this.tickAlso((dt) => a.update(dt));
       });
     } else if (what === 'paper') {
-      const imgs = ['/enemies/enemy1.png', '/enemies/enemy2.png', '/enemies/enemy3.png'];
-      imgs.forEach((url, i) => {
+      ['/enemies/enemy1.png', '/enemies/enemy2.png', '/enemies/enemy3.png'].forEach((url, i) => {
         const p = new PaperActor(url, 3, this.env.camera);
-        const px = x - 4 + i * 4;
-        p.setPose(px, g(px - x, -8), z - 8, 0);
+        const at = P(-4 + i * 4, -8);
+        p.setPose(at.x, at.y, at.z, 0);
         this.group.add(p.root);
         this.tickAlso((dt) => p.update(dt));
       });
     } else if (what.startsWith('pose:')) {
       const anim = what.slice(5);
       const a = new Actor(this.env.kits.robot, PLAYER_CLIPS);
-      a.setPose(x, g(0, -3) + (anim === 'glide' ? 1.5 : 0), z - 3, Math.PI / 2);
+      const at = P(0, -3.2);
+      a.setPose(at.x, at.y + (anim === 'glide' ? 0.5 : 0), at.z, Y(Math.PI / 2));
       a.play(anim);
+      if (anim === 'roll') a.holdPoseAt = 0.16; // mid-turn: SwiftShader draws ~2 fps
       this.group.add(a.root);
       this.tickAlso((dt) => a.update(dt));
     }
