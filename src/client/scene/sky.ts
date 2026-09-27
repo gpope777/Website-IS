@@ -5,6 +5,7 @@ const DAY = new THREE.Color(0xa8c8d8);
 const NIGHT = new THREE.Color(0x0b1220);
 const DUSK = new THREE.Color(0xd9865a);
 const RAID_SKY = new THREE.Color(0x4a1f5c);
+const STORM_SKY = new THREE.Color(0x5a6068);
 
 /** Sun, moon, hemisphere light and fog driven by the shared day clock (0 = midnight). */
 export class DayLight {
@@ -32,7 +33,7 @@ export class DayLight {
   }
 
   /** `swamp` 0..1 closes the fog to the Pantano's (near 35, far 70). */
-  update(f: number, focus: THREE.Vector3, raid = 0, swamp = 0): void {
+  update(f: number, focus: THREE.Vector3, raid = 0, swamp = 0, storm = 0): void {
     const angle = (f - 0.25) * Math.PI * 2; // sunrise at 0.25
     const sunY = Math.sin(angle);
     const sunX = Math.cos(angle);
@@ -49,9 +50,15 @@ export class DayLight {
     const dusk = 1 - Math.abs(sunY) > 0.85 && sunY > -0.2 ? 1 - Math.abs(sunY) - 0.85 : 0;
     this.bg.copy(NIGHT).lerp(DAY, daylight).lerp(DUSK, Math.min(1, dusk * 4) * 0.6);
     if (raid > 0) this.bg.lerp(RAID_SKY, raid);
+    if (storm > 0) {
+      // Mountain rain/storm (S4-B): a greyer, dimmer sky and closer fog.
+      this.bg.lerp(STORM_SKY, 0.5 * storm);
+      this.sun.intensity *= 1 - 0.5 * storm;
+    }
     this.fog.color.copy(this.bg);
     this.fog.near = 20 + 20 * daylight;
     this.fog.far = Math.min(this.tier.drawDistance * 0.8, 60 + 100 * daylight);
+    if (storm > 0) this.fog.far = Math.max(40, this.fog.far * (1 - 0.35 * storm));
     if (swamp > 0) {
       this.fog.near += (Math.min(this.fog.near, 35) - this.fog.near) * swamp;
       this.fog.far += (Math.min(this.fog.far, 70) - this.fog.far) * swamp;

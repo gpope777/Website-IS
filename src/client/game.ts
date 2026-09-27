@@ -1,8 +1,9 @@
-import { weatherAt, wetAt } from '../shared/weather';
+import { weatherAt, weatherLine, wetAt, type Weather } from '../shared/weather';
+import { dawnCrossed, stormDim, WeatherFx } from './scene/weather';
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
-import { coastFeatures, createTerrain, type Islet, type Terrain, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, createTerrain, inMountains, type Islet, type Terrain, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishRings, wildFish } from '../shared/fish';
 import { depthAt } from '../shared/coast';
 import { FishMeshes, RaceRings, type FishPose } from './scene/fish';
@@ -216,6 +217,9 @@ export class Game {
   private travelLeft: number | null = null;
   /** Las Montañas: when the next "too steep" toast may show (ms). */
   private steepToastAt = 0;
+  /** Mountain weather (S4-B): rain/snow cloud and the last day fraction (for the dawn line). */
+  private weatherFx!: WeatherFx;
+  private lastFrac: number | null = null;
   private padKey = '';
   private shrineViews: ShrineView[] = [];
   /** Shrines this player cleared (from the server). */
@@ -281,6 +285,7 @@ export class Game {
     root.appendChild(this.renderer.domElement);
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
+    this.weatherFx = new WeatherFx(this.scene);
     this.scene.add(this.structures.group, this.graves.group, this.vineGroup);
     this.marker.rotation.x = Math.PI; // point down at the target
     this.marker.visible = false;
@@ -1161,7 +1166,13 @@ export class Game {
     }
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     const fog = swampFog(b.x, b.z);
-    this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog);
+    const frac = dayFraction(this.serverTime);
+    const today: Weather | null = this.seed === null ? null : weatherAt(this.seed, Math.floor(this.serverTime / DAY_LENGTH));
+    if (today && this.lastFrac !== null && dawnCrossed(this.lastFrac, frac)) this.hud.toast(weatherLine(today));
+    this.lastFrac = frac;
+    const here = today && inMountains(b.x, b.z) ? today : null; // weather only in las Montañas
+    this.weatherFx.update(here, b.x, terrain.heightAt(b.x, b.z), b.z, dt);
+    this.light.update(frac, focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, stormDim(here));
     // Deep in the swamp the fog hides everything past 70 m: a shorter far plane saves phones some work.
     const far = fog >= 1 ? Math.min(SWAMP_FAR, TIERS[this.tier].drawDistance) : TIERS[this.tier].drawDistance;
     if (this.camera.far !== far) {
