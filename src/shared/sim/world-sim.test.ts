@@ -313,3 +313,115 @@ describe('Corazón del Bosque', () => {
     expect(sim.raidLevel).toBe(0);
   });
 });
+
+import { RAID } from './wolves';
+import { SPIKES } from './world-sim';
+
+/** Step the clock until dayFraction reaches f (wrapping through midnight if needed). */
+function stepTo(sim: WorldSim, f: number) {
+  const target = f * DAY_LENGTH;
+  let guard = 0;
+  while (Math.abs((sim.time % DAY_LENGTH) - target) > 0.06 && guard++ < DAY_LENGTH * 10 + 10) sim.step(0.1);
+}
+
+describe('asedios', () => {
+  it('no raid without a heart', () => {
+    const sim = setup('Ana');
+    stepTo(sim, 0.85);
+    expect(sim.raidState()).toBeNull();
+    expect(sim.wolfList.some((w) => w.raid)).toBe(false);
+  });
+
+  it('warns at dusk, attacks at night, levels up at dawn', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    expect(sim.raidState()?.phase).toBe('warn');
+    expect(snap(sim, 'Ana').raid).toMatchObject({ phase: 'warn', level: 0 });
+    stepTo(sim, 0.81);
+    expect(sim.raidState()?.phase).toBe('active');
+    expect(sim.wolfList.filter((w) => w.raid).length).toBe(RAID.base);
+    put(sim, 'Ana', 150, 150); // out of the way so raiders ignore Ana
+    sim.heart()!.hp = 100_000; // survives any chewing
+    stepTo(sim, 0.3);
+    expect(sim.raidState()).toBeNull();
+    expect(sim.raidLevel).toBe(1);
+    expect(sim.wolfList.some((w) => w.raid)).toBe(false);
+  });
+
+  it('bigger waves with level and players', () => {
+    const sim = setup('Ana', 'Leo');
+    plantHeart(sim);
+    sim.raidLevel = 2;
+    stepTo(sim, 0.81);
+    expect(sim.wolfList.filter((w) => w.raid).length).toBe(RAID.base + RAID.perLevel * 2 + RAID.perPlayer);
+  });
+
+  it('raiders chew walls until they are wrecked', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    stepTo(sim, 0.81);
+    const w = sim.wolfList.find((x) => x.raid)!;
+    const wall = { id: 500, kind: 'wall' as const, x: w.x, y: 0, z: w.z, rot: 0, owner: 'Ana', hp: RAID.damage };
+    (sim as unknown as { structures: unknown[] }).structures.push(wall);
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    for (let i = 0; i < 30; i++) sim.step(0.1);
+    expect(msgs(sim)).toContainEqual({ t: 'wrecked', id: 500 });
+    expect(sim.save().structures.some((s) => s.id === 500)).toBe(false);
+  });
+
+  it('a heart at 0 withers: raid ends, raiders leave, no level up, heart stays', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    stepTo(sim, 0.81);
+    for (const w of sim.wolfList) if (w.raid) Object.assign(w, { x: h.x + 1, z: h.z });
+    h.hp = 1;
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    for (let i = 0; i < 5; i++) sim.step(0.1);
+    expect(h.hp).toBe(0);
+    expect(sim.raidState()).toBeNull();
+    expect(sim.wolfList.some((w) => w.raid)).toBe(false);
+    expect(sim.heart()).toBeDefined();
+    stepTo(sim, 0.3);
+    expect(sim.raidLevel).toBe(0);
+  });
+
+  it('a withered heart never warns', () => {
+    const sim = setup('Ana');
+    plantHeart(sim).hp = 0;
+    stepTo(sim, 0.78);
+    expect(sim.raidState()).toBeNull();
+  });
+
+  it('spikes hurt wolves standing on them and wear out', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    stepTo(sim, 0.81);
+    const w = sim.wolfList.find((x) => x.raid)!;
+    const sp = { id: 600, kind: 'spikes' as const, x: w.x, y: 0, z: w.z, rot: 0, owner: 'Ana', hp: 1 };
+    (sim as unknown as { structures: unknown[] }).structures.push(sp);
+    const hp0 = w.hp;
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    sim.step(0.1);
+    expect(w.hp).toBeLessThan(hp0);
+    for (let i = 0; i < 5; i++) {
+      Object.assign(w, { x: sp.x, z: sp.z }); // raiders run faster than the spikes' radius; hold it there
+      sim.step(0.1);
+    }
+    expect(sim.save().structures.some((s) => s.id === 600)).toBe(false);
+    expect(SPIKES.dps).toBeGreaterThan(0);
+  });
+
+  it('snap carries the heart for everyone, even far away', () => {
+    const sim = setup('Ana', 'Leo');
+    const h = plantHeart(sim);
+    put(sim, 'Leo', h.x + 180, h.z);
+    expect(snap(sim, 'Leo').heart).toEqual({ id: h.id, hp: h.hp, max: 500 });
+  });
+
+  it('raid level survives save/load', () => {
+    const sim = setup('Ana');
+    sim.raidLevel = 3;
+    expect(new WorldSim(sim.save()).raidLevel).toBe(3);
+  });
+});

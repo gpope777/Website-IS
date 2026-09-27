@@ -4,7 +4,7 @@ import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { addItem, BUILD_COST, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
-import { createWolf, hitWolf, stepWolf, WOLF, type Wolf, type WolfTarget } from './wolves';
+import { createWolf, hitWolf, RAID, stepRaider, stepWolf, WOLF, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
 export const TICK_DT = 0.1;
@@ -21,6 +21,7 @@ export const MAX_ONLINE = 8;
 export const PUNCH = { damage: 20, cooldown: 0.6, reach: 3 } as const;
 export const HARVEST_COOLDOWN = 0.4;
 export const HEART = { warmRadius: 8, tendReach: 4 } as const;
+export const SPIKES = { radius: 1.3, dps: 25, wear: 4 } as const;
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
@@ -92,6 +93,7 @@ export class WorldSim {
   raidLevel: number;
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
+  private raid: { phase: 'warn' | 'active'; dir: number } | null = null;
   private wasNight = false; // false on load so a night-time load still spawns wolves
   private outbox: Outgoing[] = [];
   private readonly rng: () => number;
@@ -108,6 +110,10 @@ export class WorldSim {
     this.raidLevel = saved.raidLevel ?? 0;
     this.nextStructureId = saved.nextStructureId;
     this.rng = createRng(saved.seed ^ 0x51f15e);
+  }
+
+  raidState(): { phase: 'warn' | 'active'; dir: number } | null {
+    return this.raid;
   }
 
   get wolfList(): readonly Wolf[] {
@@ -212,18 +218,25 @@ export class WorldSim {
       }
     }
 
+    this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
     if (!night && this.wasNight) this.wolves = [];
     this.wasNight = night;
 
     const targets = this.targets();
+    const goal = this.raidGoal();
     for (const w of this.wolves) {
+      if (w.raid) {
+        if (!goal) continue;
+        const hit = stepRaider(w, targets, goal, this.terrain, dt, this.rng);
+        if (hit && 'player' in hit) this.bite(hit.player, RAID.damage);
+        else if (hit) this.damageStructure(hit.structure, RAID.damage);
+        continue;
+      }
       const bit = stepWolf(w, targets, this.terrain, dt, this.rng);
-      if (!bit) continue;
-      const p = this.players.get(bit)!;
-      p.vitals = damage(p.vitals, WOLF.damage);
-      if (p.vitals.health <= 0) this.kill(p);
+      if (bit) this.bite(bit, WOLF.damage);
     }
+    this.stepSpikes(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
 
@@ -242,7 +255,10 @@ export class WorldSim {
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
       .map((w) => ({ id: w.id, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid: null, heart: null };
+    const h = this.heart();
+    const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
+    const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart };
   }
 
   drain(): Outgoing[] {
@@ -437,6 +453,90 @@ export class WorldSim {
         }
       }
     }
+  }
+
+  private stepRaid(night: boolean): void {
+    const heart = this.heart();
+    const f = dayFraction(this.time);
+    if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
+      this.raid = { phase: 'warn', dir: this.rng() * Math.PI * 2 };
+      this.say('El cielo se tiñe de morado. El Marchito envía a sus bestias: vuelvan al Corazón');
+    }
+    if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {
+      this.raid.phase = 'active';
+      this.spawnRaiders(heart, this.raid.dir);
+    }
+    if (!night && this.wasNight && this.raid) {
+      this.raid = null;
+      if (heart && heart.hp > 0) {
+        this.raidLevel++;
+        this.say(`Sobrevivieron la noche. Nivel de asedio ${this.raidLevel}`);
+      }
+    }
+  }
+
+  private spawnRaiders(heart: Structure, dir: number): void {
+    const extra = Math.max(0, this.activeCount() - 1);
+    const n = Math.min(RAID.maxWave, RAID.base + RAID.perLevel * this.raidLevel + RAID.perPlayer * extra);
+    for (let i = 0; i < n; i++) {
+      for (let tries = 0; tries < 10; tries++) {
+        const ang = dir + (this.rng() - 0.5) * 0.8;
+        const d = RAID.spawnMin + this.rng() * (RAID.spawnMax - RAID.spawnMin);
+        const x = heart.x + Math.sin(ang) * d;
+        const z = heart.z + Math.cos(ang) * d;
+        if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
+          const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng);
+          w.raid = true;
+          this.wolves.push(w);
+          break;
+        }
+      }
+    }
+  }
+
+  private raidGoal(): RaidGoal | null {
+    const h = this.heart();
+    if (!h || this.raid?.phase !== 'active') return null;
+    const blockers = this.structures
+      .filter((s) => s.kind === 'wall')
+      .flatMap((s) => [-1, 0, 1].map((o) => ({ id: s.id, x: s.x + Math.cos(s.rot) * o, z: s.z - Math.sin(s.rot) * o })));
+    return { heartId: h.id, x: h.x, z: h.z, blockers };
+  }
+
+  private damageStructure(id: number, dmg: number): void {
+    const s = this.structures.find((x) => x.id === id);
+    if (!s) return;
+    s.hp = Math.max(0, s.hp - dmg);
+    if (s.kind !== 'heart' && s.hp === 0) return this.wreck(s);
+    this.outbox.push({ to: null, msg: { t: 'hit', id, hp: Math.round(s.hp) } });
+    if (s.kind === 'heart' && s.hp === 0) {
+      this.say('El Corazón del Bosque se marchitó. Cuídenlo con bayas');
+      this.raid = null;
+      this.wolves = this.wolves.filter((w) => !w.raid);
+    }
+  }
+
+  private wreck(s: Structure): void {
+    this.structures.splice(this.structures.indexOf(s), 1);
+    this.outbox.push({ to: null, msg: { t: 'wrecked', id: s.id } });
+  }
+
+  private stepSpikes(dt: number): void {
+    for (const s of this.structures.filter((x) => x.kind === 'spikes')) {
+      for (const w of this.wolves) {
+        if (w.hp <= 0 || Math.hypot(w.x - s.x, w.z - s.z) > SPIKES.radius) continue;
+        hitWolf(w, SPIKES.dps * dt);
+        s.hp -= SPIKES.wear * dt;
+      }
+      if (s.hp <= 0) this.wreck(s);
+    }
+  }
+
+  private bite(name: string, dmg: number): void {
+    const p = this.players.get(name);
+    if (!p) return;
+    p.vitals = damage(p.vitals, dmg);
+    if (p.vitals.health <= 0) this.kill(p);
   }
 
   private say(text: string): void {
