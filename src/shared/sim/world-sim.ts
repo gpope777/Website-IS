@@ -1,7 +1,7 @@
 import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
-import { addItem, BUILD_COST, count, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { addItem, BUILD_COST, count, STRUCTURE_HP, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
 import { createWolf, hitWolf, stepWolf, WOLF, type Wolf, type WolfTarget } from './wolves';
@@ -23,7 +23,7 @@ export const HARVEST_COOLDOWN = 0.4;
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
-const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado' };
+const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: 'El Corazón del Bosque echó raíces', spikes: 'Estacas clavadas' };
 
 export interface SavedPlayer {
   name: string;
@@ -175,6 +175,8 @@ export class WorldSim {
         return this.onEat(p);
       case 'respawn':
         return this.onRespawn(p, l);
+      case 'tend':
+        return;
       case 'hello':
         return; // the room handles hello
     }
@@ -235,8 +237,8 @@ export class WorldSim {
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
-      .map((w) => ({ id: w.id, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l) };
+      .map((w) => ({ id: w.id, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid: null, heart: null };
   }
 
   drain(): Outgoing[] {
@@ -325,7 +327,7 @@ export class WorldSim {
     if (this.structures.some((s) => Math.hypot(s.x - x, s.z - z) < 1.5)) return toast('Hay algo en el camino');
     if (this.structures.length >= MAX_STRUCTURES) return toast('El mundo ya tiene demasiadas construcciones');
     p.inv = removeAll(p.inv, BUILD_COST[kind]);
-    const s: Structure = { id: this.nextStructureId++, kind, x: r2(x), y: r2(y), z: r2(z), rot: r2(rot), owner: p.name };
+    const s: Structure = { id: this.nextStructureId++, kind, x: r2(x), y: r2(y), z: r2(z), rot: r2(rot), owner: p.name, hp: STRUCTURE_HP[kind] };
     this.structures.push(s);
     this.outbox.push({ to: null, msg: { t: 'built', s } });
     toast(BUILT_TEXT[kind]);

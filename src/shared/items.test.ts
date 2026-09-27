@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addItem, BUILD_COST, count, hasAll, removeAll } from './items';
+import { addItem, BUILD_COST, count, hasAll, removeAll, STRUCTURE_HP, STRUCTURE_KINDS, TEND_COST } from './items';
 
 describe('inventory', () => {
   it('adds without mutating', () => {
@@ -18,5 +18,17 @@ describe('inventory', () => {
 
   it('refuses to go negative', () => {
     expect(() => removeAll({ wood: 1 }, { wood: 2 })).toThrow();
+  });
+});
+
+describe('aventura structures', () => {
+  it('every kind has a cost and HP', () => {
+    for (const k of STRUCTURE_KINDS) {
+      expect(BUILD_COST[k]).toBeDefined();
+      expect(STRUCTURE_HP[k]).toBeGreaterThan(0);
+    }
+    expect(STRUCTURE_KINDS).toContain('heart');
+    expect(STRUCTURE_KINDS).toContain('spikes');
+    expect(TEND_COST).toEqual({ berries: 5 });
   });
 });

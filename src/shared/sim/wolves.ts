@@ -29,6 +29,7 @@ export interface Wolf {
   deadFor: number;
   wander: number;
   anim: WolfAnim;
+  raid: boolean;
 }
 
 export interface WolfTarget {
@@ -41,7 +42,7 @@ export interface WolfTarget {
 }
 
 export function createWolf(id: number, x: number, z: number, terrain: Terrain, rng: () => number): Wolf {
-  return { id, x, y: terrain.heightAt(x, z), z, yaw: 0, hp: WOLF.hp, target: null, cooldown: 0, deadFor: 0, wander: rng() * Math.PI * 2, anim: 'idle' };
+  return { id, x, y: terrain.heightAt(x, z), z, yaw: 0, hp: WOLF.hp, target: null, cooldown: 0, deadFor: 0, wander: rng() * Math.PI * 2, anim: 'idle', raid: false };
 }
 
 const dist = (w: Wolf, t: WolfTarget) => Math.hypot(t.x - w.x, t.z - w.z);

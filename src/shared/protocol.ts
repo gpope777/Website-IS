@@ -1,15 +1,17 @@
 import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean }
-export interface WolfView { id: number; x: number; y: number; z: number; yaw: number; anim: WolfAnim }
-export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string }
+export interface WolfView { id: number; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
+export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
+export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
+export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. */
 export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean }
 
@@ -22,12 +24,15 @@ export type ClientMsg =
   | { t: 'place'; kind: StructureKind; x: number; z: number; rot: number }
   | { t: 'attack'; id: number }
   | { t: 'eat' }
-  | { t: 'respawn' };
+  | { t: 'respawn' }
+  | { t: 'tend'; id: number };
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null }
+  | { t: 'hit'; id: number; hp: number }
+  | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
   | { t: 'built'; s: Structure }
   | { t: 'toast'; text: string };
@@ -69,6 +74,8 @@ export function decodeClient(raw: string): ClientMsg | null {
       return id(m.id) ? { t: 'harvest', id: m.id } : null;
     case 'attack':
       return id(m.id) ? { t: 'attack', id: m.id } : null;
+    case 'tend':
+      return id(m.id) ? { t: 'tend', id: m.id } : null;
     case 'place': {
       const { kind, x, z, rot } = m;
       return (STRUCTURE_KINDS as readonly unknown[]).includes(kind) && num(x) && num(z) && num(rot)

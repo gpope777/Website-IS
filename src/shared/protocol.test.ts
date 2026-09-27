@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeClient } from './protocol';
+import { decodeClient, PROTOCOL_VERSION } from './protocol';
 
 const ok = (m: unknown) => expect(decodeClient(JSON.stringify(m))).toEqual(m);
 const bad = (raw: string) => expect(decodeClient(raw)).toBeNull();
@@ -39,5 +39,20 @@ describe('decodeClient', () => {
     bad(JSON.stringify({ t: 'harvest', id: -1 }));
     bad(JSON.stringify({ t: 'harvest', id: 1.5 }));
     bad(JSON.stringify({ t: 'place', kind: 'castle', x: 1, z: 2, rot: 0 }));
+  });
+});
+
+describe('aventura protocol', () => {
+  it('is version 2', () => {
+    expect(PROTOCOL_VERSION).toBe(2);
+  });
+  it('decodes tend and rejects a bad id', () => {
+    expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
+    expect(decodeClient('{"t":"tend","id":-1}')).toBeNull();
+    expect(decodeClient('{"t":"tend"}')).toBeNull();
+  });
+  it('accepts placing the new kinds', () => {
+    expect(decodeClient('{"t":"place","kind":"heart","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'heart' });
+    expect(decodeClient('{"t":"place","kind":"spikes","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'spikes' });
   });
 });
