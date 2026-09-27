@@ -759,3 +759,31 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: subir a la raíz morada grande (x −70) y entrar por la boca. Palancas, altar (J hasta 🪨). Alzar un pilar junto a la repisa y cruzar la verja; o trepar la repisa con un amigo. Bloques (¿se entiende hacia dónde empuja?). Corredor: pasar sin pilares (¿2 s es justo?) y con pilares. Bruto de roca: pegarle de frente (casi nada), poner un pilar entre los dos y esperar la carga. Fuera: Bloques del santuario con Empujar, un pilar en una losa de Losas gemelas, un pilar en una raíz 15–17, una torre junto al Corazón de noche. Constantes: `PIEDRA`/`TOWER` en `src/shared/piedra.ts`, `MOUNTAIN_DUNGEON` en `src/shared/mountain-dungeon.ts`, `ENEMY.elite4`, `ELITE.frontMult/wallStun`.
+
+## Slice 4 · S4-F — El Cucurucho, la atalaya y la Escalera del Umbral — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-F-cucurucho.md` (1a9007a).
+- Commits: ea50bef (T1 reglas: `src/shared/sim/cucurucho.ts`, `UMBRAL`/`ESCALERA`/`withEscalera` en `mountains.ts`), ccbc1a5 (T2 el combate en el servidor, protocolo v40), e0596a7 (T3 la atalaya y la Escalera), b9689a2 (T4 cliente).
+- Tests: npm test 756 (antes 731), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 40**. Campos guardados nuevos opcionales `SavedWorld.purified4` y `SavedWorld.escalera`: las partidas viejas cargan (jefe sin vencer, sin rampa).
+- Dibujo: `public/enemies/enemy13.png` (556 × 601, alfa real según el spec). Va por `PaperActor`, **5 m de alto**.
+- Cómo funciona:
+  - **Sala del jefe** de la cueva (z 160–190, tras la verja 3). Ya no dice "La sala está en calma": al entrar, **El Cucurucho despierta** (espera en z 182).
+  - **420 PV**. **El gorro es armadura:** desde su mitad delantera los golpes (también flechas) hacen el **25 %** ("El gorro para casi todo…").
+  - **Embestida:** de 5 a 18 m, cada 4 s. Baja el gorro 1,0 s (se tiñe rojo) y carga en línea a 14 m/s (hasta 1,3 s): 25 al primero que toca (rodar esquiva). Si pasa a ≤3 m de un **pilar de Piedra**: **gorro clavado 5 s** (dorado, daño entero por todos lados, no ataca). La pared solo lo para. Una **parada** también le levanta el gorro 3 s.
+  - **De cerca** pincha con el gorro: 8 cada 4 s.
+  - **Alud:** a los 8 s y luego cada 15 s pisa fuerte: 4 círculos oscuros (uno sobre cada luchador, el resto en sitios fijos); 1,0 s después caen rocas: 15 a quien siga dentro (rodar esquiva). Un pilar a ≤2,5 m de un círculo para esa roca.
+  - Balance: quieto a su lado, ~33 s de 100 PV (objetivo 30–45 s).
+  - Sala vacía → se reinicia. **Al caer:** `purified4`, **zona 14 limpia** (así **El Triángulo deja de venir**: `triLeads` ya miraba la 14) y visión con los nombres: «Mi gorro… <nombres>. Mi montaña, mi triángulo.»
+  - **La atalaya:** el Cucurucho blanco (papel pálido, 1,6 m) de pie sobre una torre de piedra de 5 m, **6 m al oeste del Corazón**. **De noche, cada 6 s**, tira una piedra al **asaltante más cercano a ≤20 m** de la torre: **8 de daño** (sin proyectil dibujado: el papel se ilumina). Sin PV, no muere; no toca PV del Corazón ni tamaño de asedio.
+  - **Escalera del Umbral:** un bloque tallado de 2 m con una raya pálida en `(0, −HALF + 3)`, al pie de los Peldaños del lado del bosque. **Alzar (Piedra) a ≤5 m** de él no saca pilar: "La roca cruje (1/3)". A la tercera → `escalera`: en `|x| < 2` los Peldaños son una **rampa de ~31°** (borde del bosque + 24 m en 40 m) **para todos**, para siempre. Cliente: el bloque desaparece, 40 escalones de piedra cubren la franja y las mallas de las Montañas se rehacen una vez.
+- Decidido por Claude — revisar:
+  - Arena = la sala que ya había (24 × 30 m, la del spec).
+  - "Frente" = el semiplano delante de su mirada, como la losa del bruto de roca; vale para flechas también. La carga no le hace daño al pilar.
+  - La visión de la Escalera queda para S4-H (spec §16); aquí una línea para todos y la marca `// S4-H` en `crackUmbral`. El contador de grietas es vivo (un reinicio lo pone a 0), como el nudo del Zarzal.
+  - **La rampa cambia la altura del terreno** con un envoltorio (`withEscalera(base, () => escalera)`) en servidor y cliente: la regla de la pendiente la acepta sola (31° < 45°). Por la sonda de 0,5 m la franja andable real es `|x| < 1,5`. Desde la rampa no se sube a las terrazas de al lado (lisas, >45°).
+  - La atalaya apunta a cualquier asaltante (`raid`), también a El Triángulo; "de noche" = `isNight`.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 40; el test de S4-E que esperaba "La sala está en calma…" ahora espera "El Cucurucho despierta".
+- **Marcas `// S4-F`:** resueltas todas. Queda `// S4-H` (visiones de entrada y de la Escalera).
+- Rendimiento móvil: 4 discos de sombra en la sala; fuera, 1 bloque + 1 malla instanciada de 40 escalones, 1 torre y 1 papel. Rehacer las 4 mallas de las Montañas pasa una sola vez por mundo. Sin luces nuevas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: pasar el bruto de roca y entrar a la sala; pegarle de frente (casi nada) y por detrás; alzar un pilar entre los dos y esperar la embestida (¿se lee el gorro rojo?, ¿1 s da tiempo?); salir de los círculos del alud. Vencerlo y ver la atalaya de noche. Con Piedra, 3 veces junto al bloque del Umbral (x = 0, borde norte del bosque) y subir a pie; mirar si los escalones tapan bien la grieta del terreno. Constantes: `CUCURUCHO`/`ATALAYA` en `src/shared/sim/cucurucho.ts`, `UMBRAL`/`ESCALERA` en `src/shared/mountains.ts`, `ENEMY.boss4`.
