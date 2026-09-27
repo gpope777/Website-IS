@@ -234,3 +234,26 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador local (Chromium headless, 1000×600, mundo nuevo): entra sin errores de consola; Y sin materiales → "Faltan materiales"; el Menú muestra "Trampa: estacas"; el snap trae `corrupt [0..5]` y las 5 verjas cerradas. NO verificado en navegador: el tinte morado (las zonas están a ≥60 m del spawn), la mazmorra nueva por dentro, el bruto cargando, la red atrapando (todo tiene tests de servidor), ni móvil.
 - Bloqueos: ninguno.
 - Qué probar: de noche, estacas en el camino del asedio (¿se nota el frenazo?); una red delante de un muro; quedarse quieto junto al Tragón (~37 s); echar al Marchito solo (300) y con 3–4. Buscar una mancha morada, pasar la noche dentro (más bestias), lanzar la Enredadera junto a la raíz violeta. En la mazmorra: el nudo con 🌿, la losa con un compañero y luego sola con el bloque, la linterna en la sala oscura, rodar la carga del bruto. Constantes: `SPIKES`/`NET` en `world-sim.ts`, `SLOWED` y `ENEMY` en `wolves.ts`, `BOSS`, `marchitoWill`, `CORRUPTION` en `corruption.ts`, `DUNGEON` en `dungeon.ts`, `ELITE` en `elite.ts`.
+
+## Slice 2 · S2-A — Costa, Ciénaga, nombres y ciervo para dos — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-A-costa-cienaga.md` (03211ba).
+- Commits: 09c9dac (T1 `names.ts`), bcc0844 (T2 terreno de la Costa), 01db40d (T3 Ciénaga + mar hondo), c5812f5 (T4 el ciervo lleva a dos, protocolo v13), e86b0a7 (T5 cliente de la Costa).
+- Tests: npm test 305 (antes 285), test:workers 12, check + build verdes. PROTOCOL_VERSION = 13; no hay campos guardados nuevos: las partidas viejas cargan.
+- Cómo funciona:
+  - **Mapa:** crece al sur hasta `SOUTH = HALF + 220` (z = 460). El bosque (z < 200) es idéntico al de antes (hay un test que compara con la función vieja). De norte a sur: 20 m de mezcla, **Ciénaga** (barro plano morado-pardo hasta HALF+20), **playa** de arena, **bajíos** (≤4 m), **mar hondo** (~15 m, fondo con ruido), 3 **islotes** sembrados y la **isla de la mazmorra** (HALF+170, aún sin nada), y un borde de colinas.
+  - **Ciénaga:** a pie vas a 3 m/s y el barro quita 8 PV/s ("El barro marchito muerde. A lomos del ciervo no"). A caballo, nada. El servidor lo valida (tope de velocidad y daño en `step`).
+  - **Mar hondo:** a pie, pasados 4 m de profundidad solo aceptas movimientos que te lleven a menos fondo ("La corriente te devuelve"). Planeando por encima no cuenta.
+  - **Ciervo para dos:** A (E/M) junto a alguien a caballo → "Subir detrás de X". El servidor coloca al pasajero 0,6 m detrás del jinete cada tick e ignora sus `move`. A → "Bajar". Si el jinete baja, cae, se desconecta o entra en la mazmorra, el pasajero baja también. El pasajero no sufre el barro. Uno por ciervo.
+  - **Nombres:** `src/shared/names.ts`. Un test falla si un texto de juego escribe a mano El Marchito, Tragón, Raíz-madre, Corazón del Bosque, Enredadera, bruto reforzado o Ciénaga.
+- Decisiones/desvíos:
+  - El pasajero va en S2-A: es lo que deja entrar a la Costa a quien no tiene ciervo.
+  - Las reglas del mar solo se aplican al sur de `COAST_Z0`. Los lagos del bosque siguen como antes, aunque alguno tiene más de 4 m.
+  - Solo se construye en el bosque ("No se puede construir aquí" en la Costa). La base se queda en casa.
+  - No hay recursos en la Costa todavía (tampoco en los islotes). **Mundos viejos:** los ids de recursos se desplazan porque desaparece la franja del antiguo borde sur. Una tala a medias guardada puede caer en otro árbol, y vuelve a crecer en minutos.
+  - Sin peñascos a menos de 60 m de la Ciénaga (z > 140), para que el planeador no la salte. En mundos viejos desaparecen los peñascos de esa franja, y algún santuario, zona o entrada podría moverse un poco si dependía de ellos.
+  - El terreno de la Costa vive en `terrain.ts` (`coastFeatures`, bandas en `COAST`) para evitar una importación circular. Las reglas están en `src/shared/coast.ts`.
+  - No hay aviso propio del cliente en el borde de la Ciénaga: el primer paso en el barro ya muestra el aviso del servidor (se repite cada 4 s).
+- Rendimiento móvil: la malla fina llega hasta HALF+90 y el mar lejano usa celdas ×2. En gama baja (160 segmentos) el terreno pasa de 25.921 a ~32.600 vértices (+26 %, no +46 %). En alta (240) pasa de 58.081 a ~73.300. Suma **+1 draw call** (malla lejana). El agua sigue siendo un solo quad (más grande). La hierba solo va en el bosque. La niebla existente tapa casi todo el mar lejano.
+- Verificado en navegador local (Chromium headless 1000×600): mundo nuevo sin errores de consola. Con la partida importada en la playa (z = 268) se ven la arena, la franja de barro morado-pardo y, detrás, el agua y el bosque. NO verificado: cruzar a caballo, el pasajero con dos clientes, el mar hondo en vivo, ni en móvil.
+- Bloqueos: ninguno.
+- Qué probar: ir al sur a pie hasta el barro (aviso y vida bajando, lento), volver y cruzar a caballo (~5 s). Con dos jugadores: uno a caballo y el otro pulsa A a su lado ("Subir detrás"), cruzan juntos la Ciénaga, y A para bajar. En la playa, nadar mar adentro hasta que "La corriente te devuelve". Constantes: `CIENAGA`/`SWIM_MAX_DEPTH` en `coast.ts`, `COAST`/`COAST_Z0`/`SOUTH` en `terrain.ts`, `MOUNT.seatBack`.
