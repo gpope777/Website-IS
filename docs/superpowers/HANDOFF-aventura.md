@@ -942,3 +942,35 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: romper los 4 pilares (o cargar con `pillars: [0,1,2,3]`), esperar al atardecer junto al Corazón: ¿se ve venir del norte? ¿La barra asusta lo justo? Echarlo con 1 y 2 jugadores (390 / 546). No echarlo: ¿se entiende que el Corazón queda a 1 PV y hay que curarlo? Volar con el dragón entre los 6 rayos: ¿5 m es fácil de acertar? Aparcar el dragón junto al Corazón antes del atardecer y mirar si muerde. Al amanecer, ir a ver la puerta. Constantes: `MARCHITO.channelFor`, `heartWill` en `src/shared/sim/marchito.ts`, `AIR` en `src/shared/dragon.ts`, `INVASION3` en `src/shared/sim/world-sim.ts`.
+
+## Slice 5 · S5-E — la Torre: cuatro pisos, aliados blancos, La Flecha y la escalera — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S5-E-torre-mazmorra.md` (9e107ad).
+- Commits: d9a1539 (T1 reglas: `src/shared/tower-dungeon.ts`, `src/shared/sim/tower-allies.ts`, `boulders`/`rockfallLane` con pasillo opcional), b0c70ca (T2 puerta y cuatro pisos, protocolo v51), 6cfbacf (T3 bestias y aliados blancos), da9b265 (T4 La Flecha, la escalera y la Copa vacía), 403eab6 (T5 cliente), 1dbe626 (a la Torre se entra a pie).
+- Tests: npm test 909 (antes 883), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 51**. Sin campos guardados nuevos: todo el estado de la Torre es en vivo (como las demás mazmorras). Las partidas viejas cargan.
+- Cómo funciona:
+  - **Puerta:** en la cara sur de la torre (`towerEntrance()`). A / E a ≤ 5 m: antes de `towerOpen` dice "Una raíz cierra la puerta. Rompan los Pilares" (o "…Él vendrá antes" con los 4 pilares rotos). Abierta, dentro (a pie: montado dice "Bájate antes de entrar"). Salir: A en la entrada → 4 m al sur de la puerta.
+  - **Interior** en `x = HALF + 750`, pasillo de 24 m de ancho hasta z 204 + **la Copa** redonda (r 22, centro z 222). Luz violeta; el piso 3 sin lámpara.
+    1. **Piso 1 — Enredadera + Tragón:** foso de espinas (verja 0 en z 18). Dos raíces desnudas en el borde (x ±6, z 15): una Enredadera junto a cada una → "Una raíz cruza el foso (n/2)". Con las dos se cruza para siempre.
+    2. **Piso 2 — Viento + Antenón:** 3 bocas de miasma. Una ráfaga despeja una 15 s; las tres a la vez → verja 1 para siempre (el Viento recarga en 6 s: solo se hace).
+    3. **Piso 3 — Fuego + Zancudo:** 4 braseros; cada Llamarada enciende uno para siempre; los 4 → verja 2.
+    4. **Piso 4 — Piedra + Cucurucho:** corredor de rocas (3 carriles, z 128–148, las reglas del S4-E) y losa sobre repisa de 3 m (x 8, z 156): pesa (pilar o alguien arriba) → verja 3; en cuanto alguien pasa, **se atasca abierta**.
+    5. **La Flecha** (id 900_008, 470 PV) en la arena (z 169–193) con 4 columnas: despierta con alguien vivo dentro, se reinicia si la arena se vacía, su clavada se **clava en las columnas**, nunca sale de la arena. Barra "La Flecha 300/470 · ¡raya! / ¡clavada!". Cae → verja 4, **+2 espinas negras** a cada uno en la arena, no vuelve.
+    6. **La escalera (z ≥ 198):** morir en la escalera o en la Copa te hace reaparecer en la escalera. Único punto de guardado del juego.
+    7. **La Copa:** vacía, "La Copa está vacía. Arriba solo hay cielo" (marca `// S5-F`).
+  - **Bestias:** la primera vez que alguien vivo pisa los pisos 1, 2 y 4 salen 2 lobos / 2 lobos / lobo + bruto al fondo del piso (una vez por vida del servidor). Cazan dentro (el interior es "cálido", así que usan objetivos sin fuego), no salen de las paredes ni cruzan verjas, y el amanecer no las borra.
+  - **Aliados blancos** (solo si su jefe fue purificado): aparecen en su piso y siguen al jugador más cercano de ese piso a 2,5 m. Tragón: muerde (25) a una bestia a ≤ 4 m de ti cada 1,2 s. Antenón: cada 5 s tira por la cornisa a una bestia a ≤ 6 m de ti ("El Antenón blanco sopla…"). Zancudo: solo lleva el farol (luz). Cucurucho: piedra de 30 a una bestia a ≤ 15 m cada 6 s. No se les puede herir.
+- Decidido por Claude — revisar:
+  - **Suelos planos:** el "subir" se dibuja (escalones entre pisos), no se anda; todo a y 30 como las otras mazmorras.
+  - **La Copa es un disco r 22** después del pasillo (el spec decía 24 × 230 m, pero r 22 no cabe en 24 m).
+  - El foso pide **los dos** puentes y luego se cruza por cualquier parte (sin colisión por puente).
+  - **Braseros solo con Llamarada** (la antorcha de los Candiles no entra; todo el que llega tiene Fuego).
+  - La losa del piso 4 se atasca abierta al pasar alguien (como la del bosque): así un pilar que caduca no encierra a nadie.
+  - **Punto de guardado posicional:** sin bandera; mira dónde quedó el cuerpo. Tras reiniciar el servidor se reaparece en el Corazón.
+  - Las bestias de la Torre viven en `wolves` pero se mueven en un marco desplazado (`towerFrame`: `stepWolf`/`stepFlecha` recortan al mapa y la Torre está fuera); en la Torre **no huyen del fuego** (no hay adónde).
+  - La Flecha de la Torre no arde (como los jefes); usa el id 900_008 del spec (el test de ids lo incluye).
+  - Las verjas son un muro de raíz de una sola malla (móvil); 3 luces puntuales siempre en escena, como las otras mazmorras.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 51 en `protocol.test.ts` y `world-sim.test.ts`; los tests que rechazaban el acto 26 ahora rechazan el 28.
+- Rendimiento móvil: interior de ~45 mallas pequeñas + 3 luces fijas; 9 rocas movidas por fotograma; aliados = 1 PaperActor cada uno (máx. 4) + 1 esfera de farol. La Flecha: 1 PaperActor + su raya.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: con `towerOpen: true` y las 4 purificaciones, entrar por la puerta. ¿Se entiende que las raíces del foso piden Enredadera? ¿15 s dan para las 3 bocas solo? ¿El piso 3 se ve demasiado oscuro? Pasar las rocas y dejar un pilar en la losa. La Flecha: ¿se clava en las columnas a menudo? ¿470 PV es largo? Morir en la Copa y ver que vuelves a la escalera. Constantes: `TOWER_DUNGEON`, `TOWER_ROCKFALL` en `src/shared/tower-dungeon.ts`, `TOWER_ALLY` en `src/shared/sim/tower-allies.ts`.
