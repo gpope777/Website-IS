@@ -1179,3 +1179,25 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar: poner el Puesto con 8 madera y 4 piedra; A → subir precios, reponer, quitar; recoger y ver que todo vuelve; intentar un segundo Puesto; que un asedio lo ignore. Constantes: `STALL` en `src/shared/shop.ts`; malla en `src/client/scene/stalls.ts`.
 - Lo siguiente: T6-B (comprar, Caja, registro, mapa, ritmo; v60).
+
+## Tiendas · T6-B — Comprar, Caja y registro — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-tiendas-T6-B-comprar-caja.md` (77baddc).
+- Commits: 1406ea5 (T1 reglas puras: `buy`, `canBuy`, `collectTill`, `tillTotal`, `LOG_MAX` en `src/shared/shop.ts`), a0fed22 (T2 servidor, protocolo v60), 912e100 (T3 cliente: panel de compra, Caja y registro en el panel del dueño, lista "Puestos" en el Menú).
+- Tests: npm test 1077 (antes 1062), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 60**. Campo guardado nuevo, opcional: `SavedPlayer.soldSince`. Mensajes nuevos: `buy {stall, shelf}`, `stallTill`. Las partidas viejas cargan igual.
+- Cómo funciona:
+  - **A junto al Puesto de otro** (≤4 m) abre "Puesto de Ana": los estantes con género, "1 perlas por 6 bayas · quedan 3" y **Comprar** (una tanda). Gris con el motivo: "No te llega: bayas.", "No queda.", "Caja llena.".
+  - La paga cae en la **Caja** (tope 200: una venta que la pasaría se rechaza entera). El dueño ve "Caja: 12 bayas", **Vaciar caja** y las **10 últimas ventas** ("Bea · 1 perlas · 6 bayas · día 14").
+  - Dueño conectado: "Bea compró 1 perlas en tu puesto." Dueño fuera: se cuenta y al conectar le sale "Tu puesto vendió N veces desde que te fuiste.".
+  - **Menú → Puestos** (si hay alguno): "Puesto de Ana · vende perlas, madera · 40 m al norte".
+  - Ritmo: 1 compra cada 0,5 s por jugador (el resto se ignora).
+- **Conservación:** test puro de 300 × 60 operaciones con el dueño y dos compradores, y 30 × 80 mensajes por `handle()` con Ana, Bea y Cai (comprar, vaciar, reponer, cambiar precio, quitar; ids malos incluidos): mochilas + tumbas + Puestos no cambian, la Caja nunca pasa de 200, ninguna mochila baja de 0.
+- Decidido por Claude — revisar:
+  - El dueño no puede comprar en su propio Puesto ("Es tu puesto.").
+  - El aviso al conectar es un toast, no una entrada del Libro (el registro completo está en el panel).
+  - No hay mapa en el Menú: "puntos en el mapa" es una lista con dueño, lo que vende, distancia y rumbo (−z = norte).
+  - El límite de ritmo usa el tiempo de la simulación y no se guarda.
+  - Cambio de regla con tests adaptados (ninguno borrado): versión 59 → 60 en los tests de versión.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: con dos jugadores, Ana pone perlas a la venta; Bea compra hasta vaciar el estante; Ana vacía la Caja; Ana sale, Bea compra, Ana entra y ve el aviso; Menú → Puestos.
+- Lo siguiente: T6-C (trueque directo; v61).
