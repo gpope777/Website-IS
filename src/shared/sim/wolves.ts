@@ -44,8 +44,10 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
   /** An anchor of Invasion 2's root cage (see rescue.ts): a withered root that never moves or bites. */
   anchor: { hp: 150, run: 0, damage: 0, reach: 0, biteCooldown: 99 },
+  /** La Gata Araña, the swamp's lieutenant (see sim/lieutenant.ts): wolf speed, bites 12 every 2 s. */
+  lieut1: { hp: 300, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz' };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la ') };
 
 export interface Wolf {
   id: number;
@@ -65,6 +67,8 @@ export interface Wolf {
   stun: number;
   /** Seconds left slowed (standing on spikes): runs at SLOWED × speed. */
   slow?: number;
+  /** Speed factor from La Gata Araña's aura (1 or absent: none). */
+  haste?: number;
 }
 
 /** Speed factor while slowed by spikes. */
@@ -105,7 +109,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     return null;
   }
   const def = ENEMY[w.kind];
-  const k = slowFactor(w, dt);
+  const k = slowFactor(w, dt) * (w.haste ?? 1);
   w.cooldown = Math.max(0, w.cooldown - dt);
 
   const huntable = (t: WolfTarget) => !t.dead && !t.fires;
@@ -219,7 +223,7 @@ export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terra
     w.anim = 'idle';
     return null;
   }
-  const run = ENEMY[w.kind].run * ((w.slow ?? 0) > 0 ? SLOWED : 1);
+  const run = ENEMY[w.kind].run * ((w.slow ?? 0) > 0 ? SLOWED : 1) * (w.haste ?? 1);
   const near = targets
     .filter((t) => !t.dead && Math.hypot(t.x - w.x, t.z - w.z) < RAID.aggro)
     .map((t) => ({ ...t, fires: false }));

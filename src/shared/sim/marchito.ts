@@ -155,6 +155,7 @@ export function joinNames(names: readonly string[]): string {
 
 /** What he says. Dry, short, a little theatrical. */
 export const VISION = {
+  gata: (names: string) => ['Un bufido lejos, entre la niebla:', `«Mi gata… ${names}, esto no queda así.»`],
   purified: (names: string) => ['Una voz como hojas secas:', `«Así que muerden, las ramitas. ${names}.»`, '«Iré a ver ese Corazón yo mismo.»'],
   purified2: (names: string) => ['La voz, más cerca, con sal:', `«Primero el papel, ahora la cáscara. ${names}.»`, `«La costa era mía. El ${NAMES.heart} también lo será.»`],
   arrive: [`${NAMES.villain} entra en el claro. No se le puede matar.`, '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],

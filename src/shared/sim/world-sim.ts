@@ -3,7 +3,8 @@ import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coas
 import { BOG, inBog, ZARZAL, zarzalAt } from '../swamp';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { createRng } from '../rng';
-import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
+import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
@@ -120,6 +121,10 @@ export interface SavedWorld {
   cleansed?: number[];
   /** La Ballena, once tamed (it belongs to the world): where it floats. Optional: older saves have a wild one. */
   whale?: { x: number; z: number; yaw: number };
+  /** Raids warned so far (1-based count; every 3rd may bring La Gata Araña). Optional: older saves start at 0. */
+  raidN?: number;
+  /** Someone has entered the swamp in this world. Optional. */
+  swampSeen?: boolean;
 }
 
 export interface Grave extends GraveView {
@@ -308,7 +313,13 @@ export class WorldSim {
   private readonly netReady = new Map<number, number>();
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
-  private raid: { phase: 'warn' | 'active'; dir: number } | null = null;
+  private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean } | null = null;
+  private raidN: number;
+  private swampSeen: boolean;
+  /** La Gata Araña's wolf id while she leads a raid. */
+  private gataId: number | null = null;
+  /** Seconds left of a raid fleeing after she fell. */
+  private raidFlee = 0;
   private wasNight = false; // false on load so a night-time load still spawns wolves
   private outbox: Outgoing[] = [];
   private readonly rng: () => number;
@@ -344,6 +355,8 @@ export class WorldSim {
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.raidLevel = saved.raidLevel ?? 0;
+    this.raidN = saved.raidN ?? 0;
+    this.swampSeen = saved.swampSeen ?? false;
     this.purified = saved.purified ?? false;
     this.purified2 = saved.purified2 ?? false;
     this.invasion = saved.invasion ?? 'none';
@@ -509,9 +522,20 @@ export class WorldSim {
 
     const targets = this.targets();
     const goal = this.raidGoal();
+    const gata = this.wolves.find((w) => w.id === this.gataId && w.hp > 0) ?? null;
     for (const w of this.wolves) {
       if (w.raid) {
         if (!goal) continue;
+        if (this.raidFlee > 0) {
+          this.flee(w, goal, dt);
+          continue;
+        }
+        if (w.kind === 'lieut1') {
+          const bit = stepGata(w, targets, goal, this.terrain, dt, this.rng);
+          if (bit) this.bite(bit, ENEMY.lieut1.damage, w);
+          continue;
+        }
+        w.haste = hasteNear(gata, w.x, w.z);
         const hit = stepRaider(w, targets, goal, this.terrain, dt, this.rng);
         if (hit && 'player' in hit) this.bite(hit.player, raiderDamage(w), w);
         else if (hit) this.damageStructure(hit.structure, raiderDamage(w));
@@ -520,6 +544,7 @@ export class WorldSim {
       const bit = stepWolf(w, targets, this.terrain, dt, this.rng);
       if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
+    this.stepGataFall(dt);
     this.stepSpikes(dt);
     this.stepNets();
     this.stepDungeon();
@@ -592,6 +617,8 @@ export class WorldSim {
       resources: Object.fromEntries([...this.resState].map(([id, s]) => [String(id), { ...s }])),
       players: [...this.players.values()].map((p) => structuredClone(p)),
       raidLevel: this.raidLevel,
+      ...(this.raidN ? { raidN: this.raidN } : {}),
+      ...(this.swampSeen ? { swampSeen: true } : {}),
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
       ...(this.purified2 ? { purified2: true } : {}),
@@ -2089,13 +2116,19 @@ export class WorldSim {
   private stepRaid(night: boolean): void {
     const heart = this.heart();
     const f = dayFraction(this.time);
+    if (!this.swampSeen && this.activeNames().some((n) => {
+      const p = this.players.get(n);
+      return !!p && !p.dead && inSwamp(p.x, p.z);
+    })) this.swampSeen = true;
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
       const corrupt = this.corrupt();
       const src = nearestZone(this.zones, heart.x, heart.z, corrupt);
       this.raid = { phase: 'warn', dir: raidDirFrom(heart, this.zones, corrupt, this.rootDir(heart)) + (this.rng() - 0.5) * RAID.jitter };
       const where = !src || src.id === 0 ? `la ${NAMES.forestRoot}` : 'una zona marchita';
-      const coast = coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '';
+      this.raidN++;
+      this.raid.gata = gataLeads(this.raidN, this.swampSeen, corrupt);
+      const coast = (coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '') + (this.raid.gata ? `. ${NAMES.lieutenant1} guía el asedio esta noche` : '');
       this.say(
         this.purified
           ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón${coast}`
@@ -2108,6 +2141,8 @@ export class WorldSim {
     }
     if (!night && this.wasNight && this.raid) {
       this.raid = null;
+      this.gataId = null;
+      this.raidFlee = 0;
       if (heart && heart.hp > 0) {
         this.raidLevel++;
         this.say(`Sobrevivieron la noche. Nivel de asedio ${this.raidLevel}`);
@@ -2136,6 +2171,58 @@ export class WorldSim {
         }
       }
     }
+    // La Gata Araña walks in behind her pack.
+    if (this.raid?.gata) {
+      for (let tries = 0; tries < 20; tries++) {
+        const ang = dir + (this.rng() - 0.5) * 0.8;
+        const d = RAID.spawnMax + GATA.behind;
+        const x = heart.x + Math.sin(ang) * d;
+        const z = heart.z + Math.cos(ang) * d;
+        if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
+          const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, 'lieut1');
+          w.raid = true;
+          this.wolves.push(w);
+          this.gataId = w.id;
+          break;
+        }
+      }
+    }
+  }
+
+  /** When La Gata Araña falls: amber to everyone near, a vision, and the rest of her raid flees and is gone in 3 s. */
+  private stepGataFall(dt: number): void {
+    if (this.raidFlee > 0) {
+      this.raidFlee = Math.max(0, this.raidFlee - dt);
+      if (this.raidFlee === 0) this.wolves = this.wolves.filter((w) => !w.raid || w.kind === 'lieut1');
+      return;
+    }
+    const g = this.gataId === null ? undefined : this.wolves.find((w) => w.id === this.gataId);
+    if (this.gataId === null || (g && g.hp > 0)) return;
+    this.gataId = null;
+    if (!g) return;
+    this.raidFlee = GATA.fleeFor;
+    const present = this.activeNames().filter((n) => {
+      const p = this.players.get(n);
+      return !!p && !p.dead && Math.hypot(p.x - g.x, p.z - g.z) <= GATA.present;
+    });
+    for (const n of present) {
+      const p = this.players.get(n)!;
+      p.inv = addItem(p.inv, 'amber', GATA.amber);
+      this.tell(n, `${NAMES.lieutenant1} deja ${GATA.amber} de ${NAMES.amber}`);
+    }
+    this.say(`${NAMES.lieutenant1} cae. Su manada huye`);
+    this.vision(VISION.gata(joinNames(present.length ? present : this.activeNames())));
+  }
+
+  /** A raider running away from the Heart. */
+  private flee(w: Wolf, goal: RaidGoal, dt: number): void {
+    if (w.hp <= 0) return;
+    const d = Math.max(Math.hypot(w.x - goal.x, w.z - goal.z), 1e-4);
+    const { x, z } = clampMap(w.x + ((w.x - goal.x) / d) * ENEMY[w.kind].run * dt, w.z + ((w.z - goal.z) / d) * ENEMY[w.kind].run * dt, 4);
+    [w.x, w.z] = [x, z];
+    w.y = this.terrain.heightAt(x, z);
+    w.yaw = Math.atan2(w.x - goal.x, w.z - goal.z);
+    w.anim = 'run';
   }
 
   /** The corruption's source: the angle from the Heart to the Raíz-madre (x = sin, z = cos). */

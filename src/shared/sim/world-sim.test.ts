@@ -3931,3 +3931,76 @@ describe('amber trees and the Capa de corteza (S3-C)', () => {
     expect(snap(again, 'Ana').self.capa).toBe(0);
   });
 });
+
+describe('La Gata Araña (S3-D)', () => {
+  const night = (opts: { raidN?: number; swampSeen?: boolean; cleansed?: number[] }) => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, opts);
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    const heart = plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('La Gata Araña guía el asedio esta noche'));
+    stepTo(sim, 0.81);
+    return { sim, heart, warn, gata: sim.wolfList.find((x) => x.kind === 'lieut1') };
+  };
+
+  it('entering the swamp is remembered; the raid counter is saved', () => {
+    const sim = setup('Ana');
+    expect(sim.save().swampSeen).toBeUndefined();
+    put(sim, 'Ana', LAGUNA.x + LAGUNA.rx + 10, LAGUNA.z - LAGUNA.rz - 10);
+    sim.step(0.1);
+    expect(sim.save().swampSeen).toBe(true);
+    const { sim: s2 } = night({ raidN: 4 });
+    expect(s2.save().raidN).toBe(5);
+    expect(new WorldSim(newWorld(1, 's')).save().raidN).toBeUndefined(); // old saves: 0
+  });
+
+  it('leads the 3rd raid once the swamp is seen and zone 10 is corrupt', () => {
+    const a = night({ raidN: 2, swampSeen: true });
+    expect(a.warn).toBe(true);
+    expect(a.gata?.hp).toBe(300);
+    expect(a.gata?.raid).toBe(true);
+    for (const o of [{ raidN: 2 }, { raidN: 1, swampSeen: true }, { raidN: 2, swampSeen: true, cleansed: [10] }]) {
+      const b = night(o);
+      expect(b.warn).toBe(false);
+      expect(b.gata).toBeUndefined();
+    }
+  });
+
+  it('her aura hastens raiders within 8 m', () => {
+    const { sim, gata } = night({ raidN: 2, swampSeen: true });
+    const other = sim.wolfList.find((x) => x.raid && x.kind !== 'lieut1')!;
+    Object.assign(other, { x: gata!.x + 3, z: gata!.z });
+    sim.step(0.1);
+    expect(other.haste).toBe(1.2);
+    Object.assign(other, { x: gata!.x + 30, z: gata!.z });
+    sim.step(0.1);
+    expect(other.haste).toBe(1);
+  });
+
+  it('when she falls her pack flees, the near player gets 2 ámbar, the far one none, and a vision', () => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, { raidN: 2, swampSeen: true });
+    const sim = new WorldSim(w);
+    for (const n of ['Ana', 'Leo']) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    plantHeart(sim);
+    stepTo(sim, 0.81);
+    const gata = sim.wolfList.find((x) => x.kind === 'lieut1')!;
+    put(sim, 'Ana', gata.x + 5, gata.z);
+    put(sim, 'Leo', gata.x + 100, gata.z);
+    msgs(sim);
+    (gata as Wolf).hp = 0;
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Mi gata')))).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(2);
+    expect(sim.getPlayer('Leo')!.inv.amber ?? 0).toBe(0);
+    for (let i = 0; i < 32; i++) sim.step(0.1);
+    expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut1')).toEqual([]);
+  });
+});
