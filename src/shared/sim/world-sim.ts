@@ -10,7 +10,7 @@ import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoo
 import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
-import { canTame, WHALE, whaleWidth, wildWhale } from '../whale';
+import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, weaponMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
@@ -444,6 +444,7 @@ export class WorldSim {
     this.stepRace();
     this.stepTaming();
     this.stepWhaleTame();
+    this.stepWhale(dt);
     this.stepSeats();
     this.stepInvasion(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
@@ -459,7 +460,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : null, seat: ol.seat });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -547,6 +548,27 @@ export class WorldSim {
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
+    const seat = this.seatOf(p.name);
+    if (seat !== null) {
+      // On the whale: only the pilot steers; its body is the whale's plus the pilot seat. Surface only, 3 m of water.
+      if (seat > 0) {
+        p.yaw = m.yaw;
+        return;
+      }
+      const off = seatOffset(0, m.yaw);
+      const wx = m.x - off.x;
+      const wz = m.z - off.z;
+      const deepOk = whaleStepOk(this.terrain, wx, wz);
+      if (!deepOk) this.hint(p.name, l, 'La ballena no cabe');
+      if (!deepOk || Math.abs(m.y - WATER_LEVEL) > 1.5 || moved > WHALE.maxSpeed * elapsed + 1) {
+        l.fix = true;
+        return;
+      }
+      this.accept(p, l, m);
+      p.y = WATER_LEVEL;
+      Object.assign(this.whale, { x: wx, z: wz, yaw: m.yaw });
+      return;
+    }
     if (l.fish) {
       // The fish: water only (no Ciénaga, no aguas bravas), from the seabed + 0.5 up to the surface, cap 15.
       const wet = fishStepOk(this.terrain, this.island, m.x, m.z);
@@ -939,6 +961,7 @@ export class WorldSim {
     if (p.dead) return;
     if (act === 5) return this.dismount(p, l);
     if (l.seat) return; // sitting behind someone: only getting off
+    if (this.seatOf(p.name) !== null) return act === 11 ? this.leaveWhale(p, l) : undefined; // aboard: only getting off
     if (act === 1 && !l.tame && this.whaleTame) return this.whaleTap(p, at);
     if (act >= 9) return this.onWhaleAct(p, l, act);
     if (act >= 6) return this.onFishAct(p, l, act);
@@ -1021,6 +1044,7 @@ export class WorldSim {
 
   /** Get off (or fall off): the deer stays where you stood. Passengers just step down. */
   private dismount(p: SavedPlayer, l: Live): void {
+    if (this.seatOf(p.name) !== null) return this.leaveWhale(p, l);
     if (l.seat) {
       l.seat = null;
       l.rodeUntil = this.time + MOUNT.grace;
@@ -1145,6 +1169,7 @@ export class WorldSim {
 
   /** The whale's acts: 9 start taming (two or more in range), 10 board, 11 leave. */
   private onWhaleAct(p: SavedPlayer, l: Live, act: number): void {
+    if (act === 10) return this.boardWhale(p, l);
     if (act !== 9) return;
     if (this.whaleTamed || this.whaleTame || l.tame || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.tameReach) return;
     if (this.time + EPS < this.whaleReadyAt) return this.tell(p.name, 'La ballena está abajo. Espera');
@@ -1173,6 +1198,88 @@ export class WorldSim {
     this.whaleTamed = true;
     this.whaleIdle = 0;
     this.say('La ballena es del mundo. A junto a ella para subir');
+  }
+
+  /** First free seat (the first aboard pilots). From the fish: it waits where you were. */
+  private boardWhale(p: SavedPlayer, l: Live): void {
+    if (!this.whaleTamed || l.riding || l.tame || l.race || inDungeon(p.x, p.z) || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.reach) return;
+    const free = this.whaleSeats.indexOf(null);
+    if (free < 0) return this.tell(p.name, 'No queda sitio');
+    if (l.fish) {
+      l.fish = false;
+      p.fish = { x: r2(p.x), z: r2(p.z) };
+    }
+    this.whaleSeats[free] = p.name;
+    this.whaleIdle = 0;
+    this.placeOnWhale(p, l, free, true);
+    l.fix = true;
+    this.tell(p.name, free === 0 ? 'Llevas la ballena. A para bajar' : 'Subes a la ballena. A para bajar');
+  }
+
+  private placeOnWhale(p: SavedPlayer, l: Live, seat: number, fresh = false): void {
+    const off = seatOffset(seat, this.whale.yaw);
+    p.x = r2(this.whale.x + off.x);
+    p.z = r2(this.whale.z + off.z);
+    p.y = WATER_LEVEL;
+    if (seat === 0 && !fresh) return; // the pilot's own validated moves keep their speed window
+    l.anchorX = p.x;
+    l.anchorZ = p.z;
+    l.anchorAt = this.time;
+    l.lastAcceptedAt = this.time;
+  }
+
+  /** Off the whale, into the water beside it (or onto your fish if it waits close). The next seat moves up. */
+  private leaveWhale(p: SavedPlayer, l: Live): void {
+    const i = this.whaleSeats.indexOf(p.name);
+    if (i < 0) return;
+    const rest = this.whaleSeats.filter((n, j) => n !== null && j !== i);
+    for (let j = 0; j < WHALE.seats; j++) this.whaleSeats[j] = rest[j] ?? null;
+    const c = Math.cos(this.whale.yaw);
+    const n = Math.sin(this.whale.yaw);
+    p.x = r2(this.whale.x + c * 3);
+    p.z = r2(this.whale.z - n * 3);
+    p.y = WATER_LEVEL - 0.9;
+    const f = p.fish;
+    if (f && !p.dead && Math.hypot(f.x - p.x, f.z - p.z) <= WHALE.fishBack) {
+      p.x = f.x;
+      p.z = f.z;
+      l.fish = true;
+    }
+    l.rodeUntil = this.time + MOUNT.grace;
+    l.graceCap = Math.max(WHALE.maxSpeed, FISH.maxSpeed);
+    l.fix = true;
+    l.anchorX = p.x;
+    l.anchorZ = p.z;
+    l.anchorAt = this.time;
+    l.lastAcceptedAt = this.time;
+  }
+
+  /** Riders gone, dead or asleep get off; everyone aboard is placed on their seat; alone 10 min, it swims home. */
+  private stepWhale(dt: number): void {
+    for (const n of [...this.whaleSeats]) {
+      if (n === null) continue;
+      const p = this.players.get(n);
+      const l = this.live.get(n);
+      if (!l) {
+        this.whaleSeats[this.whaleSeats.indexOf(n)] = null;
+        continue;
+      }
+      if (p!.dead || l.awayFor !== null) this.leaveWhale(p!, l);
+    }
+    const rest = this.whaleSeats.filter((n) => n !== null);
+    for (let j = 0; j < WHALE.seats; j++) this.whaleSeats[j] = rest[j] ?? null;
+    this.whaleSeats.forEach((n, i) => {
+      if (n !== null) this.placeOnWhale(this.players.get(n)!, this.live.get(n)!, i);
+    });
+    if (!this.whaleTamed || rest.length > 0 || this.activeCount() === 0) {
+      this.whaleIdle = 0;
+      return;
+    }
+    this.whaleIdle += dt;
+    if (this.whaleIdle >= WHALE.idle) {
+      Object.assign(this.whale, { ...this.whaleHome, yaw: 0 });
+      this.whaleIdle = 0;
+    }
   }
 
   private whaleDive(): void {

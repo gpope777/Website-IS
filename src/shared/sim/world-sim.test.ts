@@ -15,7 +15,7 @@ import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
 import { NAMES } from '../names';
-import { WHALE } from '../whale';
+import { seatOffset, WHALE } from '../whale';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -2602,5 +2602,131 @@ describe('taming the whale (two or more)', () => {
     sim.createPlayer('Ana', 'h');
     sim.connect('Ana');
     expect(snap(sim, 'Ana').whale.tamed).toBe(false);
+  });
+});
+
+describe('riding the whale', () => {
+  const SEA = WATER_LEVEL;
+  /** A world with a tamed whale at (x, z) and these players beside it. */
+  const crew = (names: string[], at?: { x: number; z: number }) => {
+    const sim = setup(...names);
+    const w = (sim as unknown as { whale: { x: number; z: number; yaw: number } }).whale;
+    (sim as unknown as { whaleTamed: boolean }).whaleTamed = true;
+    if (at) Object.assign(w, at);
+    for (const n of names) {
+      put(sim, n, w.x + 2, w.z);
+      sim.getPlayer(n)!.y = SEA - 0.9;
+    }
+    return { sim, w };
+  };
+  const board = (sim: WorldSim, n: string) => sim.handle(n, { t: 'mount', act: 10 });
+  const go = (sim: WorldSim, n: string, x: number, z: number) => {
+    const p = sim.getPlayer(n)!;
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    const before = { x: p.x, z: p.z };
+    sim.handle(n, { t: 'move', x, y: SEA, z, yaw: 0, anim: 'idle' });
+    return p.x !== before.x || p.z !== before.z;
+  };
+
+  it('first aboard pilots; four seats, the fifth waits', () => {
+    const { sim } = crew(['Ana', 'Leo', 'Eva', 'Tom', 'Bea']);
+    for (const n of ['Ana', 'Leo', 'Eva', 'Tom', 'Bea']) board(sim, n);
+    expect(snap(sim, 'Ana').self.whaleSeat).toBe(0);
+    expect(snap(sim, 'Tom').self.whaleSeat).toBe(3);
+    expect(snap(sim, 'Bea').self.whaleSeat).toBeNull();
+    expect(msgs(sim).some((m) => m.t === 'toast' && m.text === 'No queda sitio')).toBe(true);
+    expect(snap(sim, 'Bea').whale.seats).toEqual(['Ana', 'Leo', 'Eva', 'Tom']);
+    expect(snap(sim, 'Bea').players.find((p) => p.name === 'Leo')!.ride).toBe('whale');
+  });
+
+  it('not from afar, and not a wild whale', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', sim.whaleHome.x + 2, sim.whaleHome.z);
+    board(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.whaleSeat).toBeNull();
+    const c = crew(['Leo']);
+    put(c.sim, 'Leo', c.w.x + WHALE.reach + 2, c.w.z);
+    board(c.sim, 'Leo');
+    expect(snap(c.sim, 'Leo').self.whaleSeat).toBeNull();
+  });
+
+  it('only the pilot moves it: 7 m/s yes, 12 no; passengers ride along', () => {
+    const { sim, w } = crew(['Ana', 'Leo']);
+    board(sim, 'Ana');
+    board(sim, 'Leo');
+    const x0 = w.x;
+    expect(go(sim, 'Ana', x0 + 7, w.z)).toBe(true);
+    expect(w.x).toBeCloseTo(x0 + 7);
+    sim.step(0.05);
+    const leo = sim.getPlayer('Leo')!;
+    const off = seatOffset(1, sim.getPlayer('Ana')!.yaw);
+    expect(leo.x).toBeCloseTo(w.x + off.x, 1);
+    expect(leo.z).toBeCloseTo(w.z + off.z, 1);
+    expect(go(sim, 'Leo', leo.x + 3, leo.z)).toBe(false);
+    const c = crew(['Ana']);
+    board(c.sim, 'Ana');
+    snap(c.sim, 'Ana');
+    expect(go(c.sim, 'Ana', c.w.x + 12, c.w.z)).toBe(false);
+    expect(snap(c.sim, 'Ana').self.fix).toBe(true);
+  });
+
+  it('crosses the aguas bravas but not water under 3 m', () => {
+    const probe = setup('X');
+    const isl = probe.island;
+    const from = { x: isl.x, z: isl.z - (isl.r + FISH.bravas + 3) };
+    let c = crew(['Ana'], from);
+    board(c.sim, 'Ana');
+    expect(go(c.sim, 'Ana', from.x, from.z + 6)).toBe(true);
+    const h = probe.whaleHome;
+    let z = h.z;
+    while (depthAt(probe.terrain, h.x, z) >= WHALE.minDepth) z -= 0.5;
+    c = crew(['Ana'], { x: h.x, z: z + 1 });
+    board(c.sim, 'Ana');
+    expect(go(c.sim, 'Ana', h.x, z - 2)).toBe(false);
+  });
+
+  it('pilot leaves: the next seat drives; you land in the water beside it', () => {
+    const { sim, w } = crew(['Ana', 'Leo']);
+    board(sim, 'Ana');
+    board(sim, 'Leo');
+    sim.handle('Ana', { t: 'mount', act: 11 });
+    sim.step(0.05);
+    expect(snap(sim, 'Leo').self.whaleSeat).toBe(0);
+    expect(snap(sim, 'Ana').self.whaleSeat).toBeNull();
+    const a = sim.getPlayer('Ana')!;
+    expect(Math.hypot(a.x - w.x, a.z - w.z)).toBeLessThan(4);
+  });
+
+  it('back on your fish if it waits close by', () => {
+    const { sim, w } = crew(['Ana']);
+    sim.getPlayer('Ana')!.fish = { x: w.x + 2, z: w.z };
+    sim.handle('Ana', { t: 'mount', act: 7 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(true);
+    board(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    expect(snap(sim, 'Ana').self.whaleSeat).toBe(0);
+    sim.handle('Ana', { t: 'mount', act: 7 }); // no fish while on the whale
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 11 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(true);
+  });
+
+  it('dying drops you off', () => {
+    const { sim } = crew(['Ana']);
+    board(sim, 'Ana');
+    down(sim, 'Ana');
+    expect(snap(sim, 'Ana').whale.seats).toEqual([null, null, null, null]);
+  });
+
+  it('left alone for 10 min it swims home; a save keeps its spot', () => {
+    const { sim, w } = crew(['Ana']);
+    board(sim, 'Ana');
+    expect(go(sim, 'Ana', w.x + 7, w.z)).toBe(true);
+    sim.handle('Ana', { t: 'mount', act: 11 });
+    expect(sim.save().whale!.x).toBeCloseTo(w.x, 1);
+    for (let i = 0; i < 590; i++) sim.step(1);
+    expect(snap(sim, 'Ana').whale.x).not.toBeCloseTo(sim.whaleHome.x, 0);
+    for (let i = 0; i < 15; i++) sim.step(1);
+    expect(snap(sim, 'Ana').whale.x).toBeCloseTo(sim.whaleHome.x, 1);
   });
 });
