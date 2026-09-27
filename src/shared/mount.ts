@@ -15,6 +15,8 @@ export const MOUNT = {
   grace: 2,
   /** Rider seat height above the deer's feet. */
   height: 1.1,
+  /** A passenger sits this far behind the rider. */
+  seatBack: 0.6,
   /** Each round: needle speed (rad/s) and zone width (rad). */
   rounds: [
     { speed: 2.4, width: 1.3 },

@@ -126,6 +126,8 @@ interface Live {
   rodeUntil: number;
   /** Next time a repeated rule toast may show. */
   hintAt: number;
+  /** Sitting behind this rider (live only: the deer carries two). */
+  seat: string | null;
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
@@ -275,7 +277,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, hintAt: 0 };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, hintAt: 0, seat: null };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -344,7 +346,7 @@ export class WorldSim {
       const p = this.players.get(name)!;
       if (p.dead || l.awayFor !== null) continue; // away players are frozen: the world sleeps for them
       p.vitals = tickVitals(p.vitals, { night, nearFire: this.nearFire(p.x, p.z) }, dt);
-      if (!l.riding && inCienaga(p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
+      if (!l.riding && !l.seat && inCienaga(p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
         p.vitals = damage(p.vitals, CIENAGA.dps * dt);
         this.hint(p.name, l, 'El barro marchito muerde. A lomos del ciervo no');
       }
@@ -388,6 +390,7 @@ export class WorldSim {
     this.stepBossFight(dt);
     this.stepAlly(dt);
     this.stepTaming();
+    this.stepSeats();
     this.stepInvasion(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
@@ -402,7 +405,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding, seat: ol.seat });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -473,6 +476,10 @@ export class WorldSim {
 
   private onMove(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
     if (p.dead) return;
+    if (l.seat) {
+      p.yaw = m.yaw; // a passenger only looks around: the rider drives (stepSeats)
+      return;
+    }
     // Re-anchor at most once per second to the last accepted position, so flooding many moves
     // within one tick can't inflate the allowed travel distance. The anchor time goes back to
     // the last ACCEPTED move (not "now"), so the allowance covers the elapsed stall — capped at
@@ -813,6 +820,9 @@ export class WorldSim {
 
   private onMount(p: SavedPlayer, l: Live, act: number, at: number | undefined): void {
     if (p.dead) return;
+    if (act === 5) return this.dismount(p, l);
+    if (l.seat) return; // sitting behind someone: only getting off
+    if (act === 4) return this.board(p, l);
     if (act === 0) {
       if (l.tame || Math.hypot(this.wild.x - p.x, this.wild.z - p.z) > MOUNT.reach) return;
       if (p.steed) return this.tell(p.name, 'Ya tienes montura');
@@ -844,9 +854,53 @@ export class WorldSim {
     if (act === 3) this.dismount(p, l);
   }
 
-  /** Get off (or fall off): the deer stays where you stood. */
+  /** Sit behind the nearest rider in reach whose seat is free. */
+  private board(p: SavedPlayer, l: Live): void {
+    if (l.riding || l.tame || inDungeon(p.x, p.z)) return;
+    const taken = new Set([...this.live.values()].flatMap((o) => (o.seat ? [o.seat] : [])));
+    let best: SavedPlayer | null = null;
+    for (const [n, ol] of this.live) {
+      const o = this.players.get(n)!;
+      if (n === p.name || !ol.riding || o.dead || ol.awayFor !== null || taken.has(n)) continue;
+      const d = Math.hypot(o.x - p.x, o.z - p.z);
+      if (d <= MOUNT.reach && (!best || d < Math.hypot(best.x - p.x, best.z - p.z))) best = o;
+    }
+    if (!best) return;
+    l.seat = best.name;
+    this.tell(p.name, `Subes detrás de ${best.name}. A para bajar`);
+    this.tell(best.name, `${p.name} sube detrás`);
+  }
+
+  /** Passengers ride along: placed behind their rider every tick. A rider gone, off or asleep drops them. */
+  private stepSeats(): void {
+    for (const [name, l] of this.live) {
+      if (!l.seat) continue;
+      const p = this.players.get(name)!;
+      const rl = this.live.get(l.seat);
+      const r = this.players.get(l.seat);
+      if (!r || !rl || !rl.riding || r.dead || rl.awayFor !== null || l.awayFor !== null || p.dead) {
+        this.dismount(p, l);
+        continue;
+      }
+      p.x = r2(r.x - Math.sin(r.yaw) * MOUNT.seatBack);
+      p.z = r2(r.z - Math.cos(r.yaw) * MOUNT.seatBack);
+      p.y = r.y;
+      l.anchorX = p.x;
+      l.anchorZ = p.z;
+      l.anchorAt = this.time;
+      l.lastAcceptedAt = this.time;
+    }
+  }
+
+  /** Get off (or fall off): the deer stays where you stood. Passengers just step down. */
   private dismount(p: SavedPlayer, l: Live): void {
+    if (l.seat) {
+      l.seat = null;
+      l.rodeUntil = this.time + MOUNT.grace;
+      return;
+    }
     if (!l.riding) return;
+    for (const [n, ol] of this.live) if (ol.seat === p.name) this.dismount(this.players.get(n)!, ol);
     l.riding = false;
     l.rodeUntil = this.time + MOUNT.grace;
     p.steed = { x: r2(p.x), z: r2(p.z) };
@@ -1066,6 +1120,7 @@ export class WorldSim {
       tame: this.tameView(p, l),
       riding: l.riding,
       steed: !!p.steed,
+      seat: l.seat,
     };
   }
 

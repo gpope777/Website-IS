@@ -1905,3 +1905,78 @@ describe('la Ciénaga and the deep sea', () => {
     expect(p.z).toBe(z);
   });
 });
+
+describe('the deer carries two', () => {
+  /** Leo rides his deer at (x, z); Ana (and Eva) stand beside him. */
+  const pair = (x = 5, z = 5) => {
+    const sim = setup('Leo', 'Ana', 'Eva');
+    put(sim, 'Leo', x, z);
+    sim.getPlayer('Leo')!.steed = { x, z };
+    sim.handle('Leo', { t: 'mount', act: 2 });
+    put(sim, 'Ana', x + 1.5, z);
+    put(sim, 'Eva', x - 1.5, z);
+    return sim;
+  };
+  const self = (sim: WorldSim, n: string) => snap(sim, n).self;
+
+  it('a walker sits behind a nearby rider; one passenger per deer', () => {
+    const sim = pair();
+    sim.handle('Ana', { t: 'mount', act: 4 });
+    expect(self(sim, 'Ana').seat).toBe('Leo');
+    sim.handle('Eva', { t: 'mount', act: 4 });
+    expect(self(sim, 'Eva').seat).toBeNull();
+    expect(snap(sim, 'Eva').players.find((p) => p.name === 'Ana')!.seat).toBe('Leo');
+    const far = pair();
+    put(far, 'Ana', 5 + MOUNT.reach + 2, 5);
+    far.handle('Ana', { t: 'mount', act: 4 });
+    expect(self(far, 'Ana').seat).toBeNull();
+  });
+
+  it('the passenger goes where the rider goes, ignoring its own moves, and takes no mud', () => {
+    const z = HALF + 5;
+    const sim = pair(0, z);
+    sim.handle('Ana', { t: 'mount', act: 4 });
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    const leo = sim.getPlayer('Leo')!;
+    sim.handle('Leo', { t: 'move', x: 10, y: sim.terrain.heightAt(10, z), z, yaw: Math.PI / 2, anim: 'run' });
+    expect(leo.x).toBe(10);
+    sim.handle('Ana', { t: 'move', x: -3, y: 0, z, yaw: 1, anim: 'walk' });
+    sim.step(0.1);
+    const ana = sim.getPlayer('Ana')!;
+    expect(ana.x).toBeCloseTo(10 - MOUNT.seatBack, 5);
+    expect(ana.z).toBeCloseTo(z, 5);
+    expect(self(sim, 'Ana').fix).toBe(false);
+    for (let i = 0; i < 30; i++) sim.step(0.1);
+    expect(ana.vitals.health).toBe(leo.vitals.health);
+  });
+
+  it('getting off, the rider dismounting or dying drops the passenger', () => {
+    const a = pair();
+    a.handle('Ana', { t: 'mount', act: 4 });
+    a.handle('Ana', { t: 'mount', act: 5 });
+    expect(self(a, 'Ana').seat).toBeNull();
+    expect(self(a, 'Leo').riding).toBe(true);
+    const b = pair();
+    b.handle('Ana', { t: 'mount', act: 4 });
+    b.handle('Leo', { t: 'mount', act: 3 });
+    expect(self(b, 'Ana').seat).toBeNull();
+    const c = pair();
+    c.handle('Ana', { t: 'mount', act: 4 });
+    down(c, 'Leo');
+    c.step(0.1);
+    expect(self(c, 'Ana').seat).toBeNull();
+  });
+
+  it('riders cannot board, and a seated passenger cannot mount or tame', () => {
+    const sim = pair();
+    sim.getPlayer('Ana')!.steed = { x: 6.5, z: 5 };
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    sim.handle('Ana', { t: 'mount', act: 4 });
+    expect(self(sim, 'Ana').seat).toBeNull();
+    sim.handle('Ana', { t: 'mount', act: 3 });
+    sim.handle('Ana', { t: 'mount', act: 4 });
+    expect(self(sim, 'Ana').seat).toBe('Leo');
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    expect(self(sim, 'Ana').riding).toBe(false);
+  });
+});

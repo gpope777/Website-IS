@@ -53,6 +53,8 @@ interface Remote {
   seen: number;
   /** A player riding a deer. */
   ride: boolean;
+  /** Sitting behind this rider. */
+  seat: string | null;
   /** Metres per second last frame (the deer's legs). */
   speed: number;
 }
@@ -97,6 +99,8 @@ export class Game {
   private steeds: SteedView[] = [];
   private tame: TameView | null = null;
   private riding = false;
+  /** The rider we sit behind (the server moves us with them). */
+  private seat: string | null = null;
   private hasSteed = false;
   private jumpWasHeld = false;
   private light: DayLight;
@@ -332,8 +336,9 @@ export class Game {
     for (const p of m.players) {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
-      r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride ? 'idle' : p.anim;
+      r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
       r.ride = p.ride && !p.dead;
+      r.seat = p.dead ? null : p.seat;
       r.seen = m.time;
     }
     for (const w of m.wolves) {
@@ -393,7 +398,7 @@ export class Game {
   private remote<K>(map: Map<K, Remote>, key: K, make: () => Puppet): Remote {
     let r = map.get(key);
     if (!r) {
-      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, speed: 0 };
+      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, seat: null, speed: 0 };
       this.scene.add(r.actor.root);
       map.set(key, r);
     }
@@ -407,6 +412,7 @@ export class Game {
     this.hasPower = self.power;
     this.tame = self.tame;
     this.riding = self.riding;
+    this.seat = self.seat;
     this.hasSteed = self.steed;
     if (this.body) this.body.riding = self.riding;
     if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
@@ -619,7 +625,9 @@ export class Game {
   private mountAct(): { act: number; label: string } | null {
     const b = this.body;
     if (!b || this.dead) return null;
-    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName });
+    const seated = new Set([...this.others.values()].flatMap((r) => (r.seat ? [r.seat] : [])));
+    const riders = [...this.others].flatMap(([name, r]) => (r.ride ? [{ name, x: r.actor.root.position.x, z: r.actor.root.position.z, full: seated.has(name) }] : []));
+    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders });
   }
 
   /** One tap on the taming ring: the server judges the needle at our estimate of its clock. */
@@ -722,14 +730,22 @@ export class Game {
     let mv = this.dead || this.hud.menuOpen || this.tame ? IDLE_INPUT : readMove(this.input);
     if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
-    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates));
+    const driver = this.seat ? this.others.get(this.seat) : undefined;
+    let res: ReturnType<typeof stepBody>;
+    if (driver) {
+      // Sitting behind a rider: follow their deer (the server does the same), no walking of our own.
+      const d = driver.actor.root;
+      const yaw = d.rotation.y;
+      Object.assign(b, { x: d.position.x - Math.sin(yaw) * MOUNT.seatBack, y: d.position.y - MOUNT.height, z: d.position.z - Math.cos(yaw) * MOUNT.seatBack, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, gliding: false, facing: yaw });
+      res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
+    } else res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates));
     this.hud.setStamina(b.stamina / b.staminaMax, b.tired);
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';
     if (now < this.attackUntil) anim = 'attack';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
-    if (this.riding || this.tame) anim = 'idle';
+    if (this.riding || this.seat || this.tame) anim = 'idle';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
 
@@ -752,7 +768,7 @@ export class Game {
     const wild = this.steeds.find((s) => s.owner === null);
     if (this.me) {
       if (this.tame && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
-      else this.me.setPose(b.x, b.y + (this.riding ? MOUNT.height : 0), b.z, b.facing);
+      else this.me.setPose(b.x, b.y + (this.riding || this.seat ? MOUNT.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third';
@@ -803,7 +819,7 @@ export class Game {
     const s = r.buf.at(rt);
     if (s) {
       const before = r.actor.root.position.clone();
-      r.actor.setPose(s.x, s.y + (r.ride ? MOUNT.height : 0), s.z, s.yaw);
+      r.actor.setPose(s.x, s.y + (r.ride || r.seat ? MOUNT.height : 0), s.z, s.yaw);
       r.speed = dt > 0 ? Math.hypot(r.actor.root.position.x - before.x, r.actor.root.position.z - before.z) / dt : 0;
     }
     r.actor.play(r.anim);
@@ -822,7 +838,7 @@ export class Game {
     if (sp) return this.hud.setPrompt(sp.part > 0 ? 'E · Tirar de la palanca' : sp.open ? 'E · Tomar el orbe' : 'La verja está cerrada');
     const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
-    if (ma) return this.hud.setPrompt(ma.act === 3 ? 'E / M · Bajar del ciervo' : `E · ${ma.label}`);
+    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
     const b = this.body;
     if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
     if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
