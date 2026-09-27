@@ -20,7 +20,7 @@ describe('decodeClient', () => {
   });
 
   it('rejects bad dungeon acts', () => {
-    bad(JSON.stringify({ t: 'dungeon', act: 26 })); // S4-E: acts 18–25 are the mountain cave's // 8–12 the coast Raíz-madre (S2-F), 13–17 the swamp's (S3-E)
+    bad(JSON.stringify({ t: 'dungeon', act: 26 })); // 8–12 the coast Raíz-madre (S2-F), 13–17 the swamp's (S3-E), 18–25 the mountain cave's (S4-E)
     bad(JSON.stringify({ t: 'dungeon', act: -1 }));
     bad(JSON.stringify({ t: 'dungeon', act: 1.5 }));
     bad(JSON.stringify({ t: 'dungeon' }));

@@ -5,7 +5,7 @@ import { weatherAt, wetAt } from '../weather';
 import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
-import { PIEDRA, pillarSpot, pushDir, structureCrags } from '../piedra';
+import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
@@ -15,9 +15,9 @@ import { ENREDADERA, planVine } from '../enredadera';
 import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
-import { boulders, dungeonBlockCell, inMountainDungeon, inRockfall, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
+import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
-import { createElite, createPeat, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
+import { crash, createElite, createPeat, createRockBrute, createShielded, ELITE, rockFront, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
@@ -299,6 +299,8 @@ export class WorldSim {
   private shield: Elite | null = null;
   /** The bruto de turba in the swamp interior. */
   private peat: Elite | null = null;
+  /** The bruto de roca in the mountain interior. */
+  private rock: Elite | null = null;
   /** The coast interior (live-only, like the forest one): levers, gates, the pumice block, the bruto escudado. */
   private readonly coastLive = {
     pulled: [null, null] as (number | null)[],
@@ -384,6 +386,8 @@ export class WorldSim {
   private regenClock = 0;
   /** Live-only: when each Piedra pillar (a structure id) crumbles. */
   private readonly pillarUntil = new Map<number, number>();
+  /** Live-only: sim time each torre can shove again. */
+  private readonly towerReady = new Map<number, number>();
   /** Live-only: sim time each hoguera can catch again. */
   private readonly fireReady = new Map<number, number>();
   /** Live-only: sim time each net can catch again. */
@@ -669,6 +673,9 @@ export class WorldSim {
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepPeatFight(dt);
+    this.stepRockFight(dt);
+    for (const e of [this.elite, this.shield, this.peat, this.rock]) if (e) this.pillarStun(e);
+    this.stepTowers();
     this.stepBossFight(dt);
     this.stepAntenonFight(dt);
     this.stepZancudoFight(dt);
@@ -711,6 +718,8 @@ export class WorldSim {
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const pe = this.peat;
     if (pe && near(pe.x, pe.z)) wolves.push({ id: pe.id, kind: pe.kind, x: r2(pe.x), y: r2(pe.y), z: r2(pe.z), yaw: r2(pe.yaw), anim: pe.anim, raid: false, ...(pe.burn && pe.hp > 0 ? { burning: true as const } : {}) });
+    const rk = this.rock;
+    if (rk && near(rk.x, rk.z)) wolves.push({ id: rk.id, kind: rk.kind, x: r2(rk.x), y: r2(rk.y), z: r2(rk.z), yaw: r2(rk.yaw), anim: rk.anim, raid: false, ...(rk.burn && rk.hp > 0 ? { burning: true as const } : {}) });
     const el = this.elite;
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
     for (const a of this.anchorFoes) if (a.hp > 0 && near(a.x, a.z)) wolves.push({ id: a.id, kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: 0, anim: 'idle', raid: false });
@@ -1118,7 +1127,7 @@ export class WorldSim {
     const w = this.enemy(id);
     const g = l.guard;
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < g.bowReadyAt) return;
-    if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
+    if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range * (this.onTower(p) ? TOWER.rangeMult : 1) || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
     g.bowReadyAt = this.time + BOW.cooldown;
     l.anim = 'bow';
     this.strike(p.name, w, BOW.damage * weaponMult(p.weaponLvl ?? 0), true);
@@ -1157,7 +1166,7 @@ export class WorldSim {
     // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo, mountain 14 El Cucurucho).
     const biome = (i: number) => (isMountainZone(i) ? 'mountain' : isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
     const mine = s.id >= MOUNTAIN_SHRINE.firstId ? 'mountain' : s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
-    // S4-E: a Piedra pillar raised ≤2 m from a 15–17 root crushes it (cleanses). S4-F: El Cucurucho cleanses 14.
+    // A Piedra pillar raised ≤2 m from a 15–17 root crushes it (onStone). S4-F: El Cucurucho cleanses 14.
     const roots: number[] = [0, COAST_ZONES.root, SWAMP_ZONES.root, MOUNTAIN_ZONES.root];
     const ids = this.corrupt().filter((i) => !roots.includes(i) && biome(i) === mine);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
@@ -1202,7 +1211,7 @@ export class WorldSim {
     return this.tell(p.name, s.kind === 'sunken' ? 'La palanca cede. Falta la otra, y hay prisa' : 'La palanca cede. Falta la otra');
   }
 
-  /** Bloques: parts 1–3 = push that block (needs Piedra, S4-E), part 7 = the reset lever. */
+  /** Bloques: parts 1–3 = push that block one cell away from you (Empujar, needs Piedra), part 7 = the reset lever. */
   private onBlocks(p: SavedPlayer, s: Shrine, st: (typeof this.shrineLive)[number], part: number): void {
     if (part === MOUNTAIN_SHRINE.lever) {
       const lever = s.parts[MOUNTAIN_SHRINE.lever - 1]!;
@@ -1215,8 +1224,12 @@ export class WorldSim {
     if (!cell) return;
     const at = blockCell(blocksCentre(s), cell);
     if (Math.hypot(at.x - p.x, at.z - p.z) > SHRINE.partReach) return;
-    // S4-E: with Piedra, Empujar moves it one cell away from you (pushBlock) and a solved grid opens the gate.
-    this.tell(p.name, 'No se mueve');
+    if (!p.piedra) return this.tell(p.name, 'No se mueve');
+    if (blocksSolved(st.cells)) return;
+    const next = pushBlock(st.cells, part - 1, pushDir(p.x, p.z, at.x, at.z));
+    if (!next) return this.tell(p.name, 'Algo lo frena');
+    st.cells = next;
+    this.tell(p.name, blocksSolved(next) ? 'Los bloques encajan. Algo se abre en el santuario' : 'La roca se arrastra');
   }
 
   /** Candiles: part 4 = take a torch at the post; 1–3 = light that brazier with it (the torch is spent). */
@@ -1290,7 +1303,7 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
@@ -1346,7 +1359,7 @@ export class WorldSim {
   }
 
   private flameEnemies(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
       this.strike(p.name, w, FUEGO.damage, w === this.boss3);
@@ -1438,7 +1451,7 @@ export class WorldSim {
 
   /** Every enemy that can be hit (beasts, elites, bosses, El Marchito, the cage's anchors). */
   private allFoes(): Wolf[] {
-    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
   }
 
   /** Piedra: Alzar a stone pillar 4 m toward the aim (2 m grid). Max 3 per player (the oldest crumbles), 120 s each. */
@@ -1488,7 +1501,7 @@ export class WorldSim {
 
   /** Burning beasts lose 3 PV/s; fleeing timers run down. */
   private stepBurning(dt: number): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : [])];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : [])];
     for (const w of foes) {
       if (w.flee) w.flee = Math.max(0, w.flee - dt);
       if (!w.burn) continue;
@@ -1603,6 +1616,7 @@ export class WorldSim {
     if (this.elite && this.elite.id === id) return this.elite;
     if (this.shield && this.shield.id === id) return this.shield;
     if (this.peat && this.peat.id === id) return this.peat;
+    if (this.rock && this.rock.id === id) return this.rock;
     if (this.boss2 && this.boss2.id === id) return this.boss2;
     if (this.boss3 && this.boss3.id === id) return this.boss3;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
@@ -1623,6 +1637,11 @@ export class WorldSim {
     }
     const by = this.players.get(name);
     if (w === this.shield && by && shieldBlocks(w as Elite, by.x, by.z)) return this.tell(name, 'El escudo para el golpe. Dale la vuelta con viento, o párale');
+    if (w === this.rock && by && rockFront(this.rock, by.x, by.z)) {
+      dmg *= ELITE.frontMult;
+      const bl = this.live.get(name);
+      if (bl) this.hint(name, bl, 'La losa para casi todo. Que se estrelle contra un pilar, o párale');
+    }
     if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
   }
 
@@ -2419,7 +2438,7 @@ export class WorldSim {
       levers: m.pulled.map((t) => t != null && (m.gate || this.time - t <= MOUNTAIN_DUNGEON.leverWindow + EPS)),
       plate: m.plate,
       blocks: m.cells.map((c) => dungeonBlockCell(c)),
-      elite: null,
+      elite: this.rock && this.rock.hp > 0 ? { hp: Math.round(this.rock.hp), max: ENEMY.elite4.hp, charging: this.rock.windup > 0 || this.rock.charge > 0, exposed: this.rock.exposed > 0 } : null,
     };
     return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp, mountain };
   }
@@ -2447,7 +2466,7 @@ export class WorldSim {
     }
     const plate = inside(DUNGEON.plate);
     const on = (x: number, z: number) => Math.hypot(x - plate.x, z - plate.z) <= DUNGEON.plateRadius;
-    g.pressed = (!g.block.held && on(g.block.x, g.block.z)) || this.targets().some((t) => !t.dead && on(t.x, t.z));
+    g.pressed = (!g.block.held && on(g.block.x, g.block.z)) || this.targets().some((t) => !t.dead && on(t.x, t.z)) || this.pillarOn(plate.x, plate.z);
     if (g.pressed) g.plateUntil = this.time + DUNGEON.plateHold;
     const gz = DUNGEON.gatesZ[2];
     if (!g.jammed && this.time < g.plateUntil && this.targets().some((t) => !t.dead && inDungeon(t.x, t.z) && t.z > gz)) {
@@ -2607,6 +2626,64 @@ export class WorldSim {
     if (pe.hp > 0 && !pe.burn && inMudPool(pe.x, pe.z)) pe.hp = Math.min(ENEMY.elite3.hp, pe.hp + SWAMP_DUNGEON.regen * dt);
   }
 
+  /** The bruto de roca, like the other elites (its slab and wall crash live in elite.ts). Once down, gate 3 opens; the next room waits for S4-F. */
+  private stepRockFight(dt: number): void {
+    const g = this.mountainLive;
+    if (!g.bossSaid && this.targets().some((t) => !t.dead && inMountainBossRoom(t.x, t.z))) {
+      g.bossSaid = true;
+      this.say('La sala está en calma. Algo con gorro duerme bajo el hielo');
+    }
+    const e = this.rock;
+    if (e && e.hp <= 0) {
+      if (!g.eliteDown) {
+        g.eliteDown = true;
+        this.say(`El ${NAMES.eliteMountain} se parte en grava. La última verja se abre`);
+      }
+      e.deadFor += dt;
+      if (e.deadFor >= ELITE.corpseTime) this.rock = null;
+      return;
+    }
+    if (g.eliteDown) return;
+    const fighters = this.targets().filter((t) => !t.dead && inRockRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.rock = null;
+      return;
+    }
+    if (!this.rock) {
+      this.rock = createRockBrute();
+      this.say(`Un ${NAMES.eliteMountain} se despega de la pared. De frente es una losa; que se estrelle`);
+    }
+    const hit = stepElite(this.rock, fighters, dt);
+    if (hit) this.bite(hit.name, hit.dmg, this.rock);
+  }
+
+  /** A charging elite that meets a Piedra pillar crashes: stunned and exposed 5 s. */
+  private pillarStun(e: Elite): void {
+    if (e.hp <= 0 || e.charge <= 0 || !this.pillarOn(e.x, e.z, PIEDRA.chargeR + PIEDRA.half)) return;
+    crash(e, PIEDRA.chargeStun);
+    this.say(`${upFirst(ENEMY_LABELS[e.kind])} se estrella contra el pilar`);
+  }
+
+  /** A torre shoves raiders at its foot back 3 m, every 4 s. */
+  private stepTowers(): void {
+    for (const s of this.structures) {
+      if (s.kind !== 'tower' || this.time < (this.towerReady.get(s.id) ?? -Infinity)) continue;
+      const near = this.wolves.filter((w) => w.raid && w.hp > 0 && Math.hypot(w.x - s.x, w.z - s.z) <= TOWER.knockR);
+      if (!near.length) continue;
+      this.towerReady.set(s.id, this.time + TOWER.every);
+      for (const w of near) {
+        const d = Math.max(Math.hypot(w.x - s.x, w.z - s.z), 0.1);
+        const to = clampMap(w.x + ((w.x - s.x) / d) * TOWER.knock, w.z + ((w.z - s.z) / d) * TOWER.knock, 3);
+        Object.assign(w, to, { y: this.terrain.heightAt(to.x, to.z) });
+      }
+    }
+  }
+
+  /** Standing on a torre's top. */
+  private onTower(p: SavedPlayer): boolean {
+    return this.structures.some((s) => s.kind === 'tower' && Math.hypot(s.x - p.x, s.z - p.z) <= TOWER.r + 0.2 && p.y >= s.y + TOWER.height - 0.6);
+  }
+
   /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */
   private stepVines(dt: number): void {
     this.vines = this.vines.filter((v) => v.until > this.time);
@@ -2670,6 +2747,7 @@ export class WorldSim {
         else b.held = null; // dropped where its holder fell (or left)
       }
       if (b && !b.held && Math.hypot(plate.x - b.x, plate.z - b.z) <= SHRINE.plateRadius) st.pressed = true;
+      if (this.pillarOn(plate.x, plate.z)) st.pressed = true; // a Piedra pillar weighs it
       for (const [name, l] of this.live) {
         const p = this.players.get(name)!;
         if (p.dead || l.awayFor !== null || Math.hypot(plate.x - p.x, plate.z - p.z) > SHRINE.plateRadius) continue;
@@ -2700,9 +2778,9 @@ export class WorldSim {
       Object.assign(b, { x: home.x, z: home.z });
       st.boulderAt = null;
     }
-    // S4-E: a Piedra pillar on a plate holds it too.
-    const a = this.onPlate(p1);
-    const c = this.onPlate(p2) || Math.hypot(b.x - p2.x, b.z - p2.z) <= SHRINE.plateRadius;
+    // A Piedra pillar on a plate holds it too.
+    const a = this.onPlate(p1) || this.pillarOn(p1.x, p1.z);
+    const c = this.onPlate(p2) || this.pillarOn(p2.x, p2.z) || Math.hypot(b.x - p2.x, b.z - p2.z) <= SHRINE.plateRadius;
     st.pulled = [a ? this.time : null, c ? this.time : null, null];
     if (a && c) {
       if (!this.shrineOpen(id)) for (const n of this.live.keys()) if (Math.hypot(this.players.get(n)!.x - s.x, this.players.get(n)!.z - s.z) < 30) this.tell(n, 'Las dos losas ceden a la vez. Algo se abre en el santuario');
@@ -3071,6 +3149,7 @@ export class WorldSim {
       w.stun = BLOCK.parryStun;
       if (w === this.boss) this.boss.weak = BOSS.weakFor;
       if (w === this.shield) this.shield.exposed = ELITE.exposedFor;
+      if (w === this.rock) this.rock.exposed = ELITE.exposedFor;
       if (w === this.boss2) this.boss2.exposed = Math.max(this.boss2.exposed, ANTENON.parryFor);
       if (w === this.boss3) groundZancudo(this.boss3, ZANCUDO.parryFall);
       this.strike(name, w, BLOCK.parryDamage);

@@ -1,6 +1,7 @@
 import { DUNGEON } from '../dungeon';
 import { COAST_DUNGEON } from '../coast-dungeon';
 import { SWAMP_DUNGEON } from '../swamp-dungeon';
+import { MOUNTAIN_DUNGEON } from '../mountain-dungeon';
 import { ENEMY, type Wolf, type WolfTarget } from './wolves';
 
 /**
@@ -8,7 +9,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * brute, and from mid range it crouches (a long, readable wind-up) and charges in a straight line.
  * Roll through the charge, or step aside.
  */
-export const ELITE = { id: 900_001, shieldId: 900_002, peatId: 900_004, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
+export const ELITE = { id: 900_001, shieldId: 900_002, peatId: 900_004, rockId: 900_006, /** The bruto de roca: front hits do this share; a charge into its room's wall stuns and exposes it this long. */ frontMult: 0.1, wallStun: 5, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
 
 export interface Elite extends Wolf {
   /** Seconds left crouching before the charge (the telegraph). */
@@ -50,6 +51,26 @@ export function createPeat(): Elite {
   return { ...createElite(), id: ELITE.peatId, kind: 'elite3', hp: ENEMY.elite3.hp, x: S.x, y: S.floor, z: S.eliteZ, box: { x: S.x, halfW: S.halfW, z0: S.eliteRoomZ, z1: S.bossRoomZ } };
 }
 
+/** The mountain dungeon's mini-boss: the same brute behind a stone slab (spec S4 §11.2). Only its back, or a crash, lets damage through. */
+export function createRockBrute(): Elite {
+  const M = MOUNTAIN_DUNGEON;
+  return { ...createElite(), id: ELITE.rockId, kind: 'elite4', hp: ENEMY.elite4.hp, x: M.x, y: M.floor, z: M.eliteZ, box: { x: M.x, halfW: M.halfW, z0: M.eliteRoomZ, z1: M.bossRoomZ } };
+}
+
+/** The bruto de roca's slab takes a hit from (x, z): from its front half, while not exposed. */
+export function rockFront(e: Elite, x: number, z: number): boolean {
+  if (e.kind !== 'elite4' || e.exposed > 0) return false;
+  return (x - e.x) * Math.sin(e.yaw) + (z - e.z) * Math.cos(e.yaw) > 0;
+}
+
+/** Stunned and exposed (a crash into a wall or a pillar). */
+export function crash(e: Elite, secs: number): void {
+  e.stun = Math.max(e.stun, secs);
+  e.exposed = Math.max(e.exposed, secs);
+  e.charge = 0;
+  e.windup = 0;
+}
+
 /** Whether a hit from (x, z) lands on its shield: from its front half, while not exposed. */
 export function shieldBlocks(e: Elite, x: number, z: number): boolean {
   if (e.kind !== 'elite2' || e.exposed > 0) return false;
@@ -85,7 +106,13 @@ export function stepElite(e: Elite, targets: readonly WolfTarget[], dt: number):
     e.charge = Math.max(0, e.charge - dt);
     e.x += e.dirX * ELITE.chargeSpeed * dt;
     e.z += e.dirZ * ELITE.chargeSpeed * dt;
+    const [fx, fz] = [e.x, e.z];
     clampRoom(e);
+    if (e.kind === 'elite4' && (e.x !== fx || e.z !== fz)) {
+      crash(e, ELITE.wallStun); // the bruto de roca rams the wall
+      e.anim = 'idle';
+      return null;
+    }
     e.anim = 'run';
     if (e.charge === 0) e.chargeReady = ELITE.chargeCooldown;
     if (e.landed) return null;

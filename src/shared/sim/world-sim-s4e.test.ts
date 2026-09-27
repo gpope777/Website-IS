@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerMsg, Structure } from '../protocol';
-import { PIEDRA } from '../piedra';
+import { PIEDRA, TOWER } from '../piedra';
+import { ELITE, type Elite } from './elite';
+import { BLOCKS, BLOCKS_SOLUTION, blockCell, blocksCentre } from '../mountain-shrines';
+import { DUNGEON, inside } from '../dungeon';
+import { BOW } from './combat';
 import { DBLOCKS_SOLUTION, dungeonBlockCell, insideMountain, MOUNTAIN_DUNGEON as M } from '../mountain-dungeon';
 import { DAY_LENGTH, newWorld, WorldSim } from './world-sim';
 import type { Wolf } from './wolves';
@@ -204,5 +208,126 @@ describe('mountain dungeon (S4-E)', () => {
     const hp2 = safe.getPlayer('Ana')!.vitals.health;
     run(safe, 6);
     expect(safe.getPlayer('Ana')!.vitals.health).toBeGreaterThanOrEqual(hp2 - 1);
+  });
+});
+
+
+type Priv4 = { rock: Elite | null; elite: Elite | null; live: Map<string, { guard: { blockSince: number | null } }>; bite(n: string, d: number, w: Wolf): boolean };
+const p4 = (sim: WorldSim) => sim as unknown as Priv4;
+function openTo(sim: WorldSim, gates: number) {
+  const g = (sim as unknown as { mountainLive: { gate: boolean; blocksDone: boolean; plate: boolean } }).mountainLive;
+  g.gate = true;
+  if (gates > 2) g.blocksDone = true;
+}
+
+describe('bruto de roca and charges into pillars (S4-E)', () => {
+  it('wakes in its room; the slab takes 90 % of a front hit; a parry exposes it; down opens gate 3', () => {
+    const sim = inCave('Ana');
+    openTo(sim, 3);
+    put(sim, 'Ana', M.x, M.eliteZ - 2);
+    sim.step(0.1);
+    const r = p4(sim).rock!;
+    expect(r).toMatchObject({ kind: 'elite4', hp: 500 });
+    Object.assign(r, { x: M.x, z: M.eliteZ, yaw: Math.PI, stun: 100 });
+    sim.handle('Ana', { t: 'attack', id: ELITE.rockId });
+    expect(r.hp).toBeCloseTo(500 - 20 * ELITE.frontMult);
+    p4(sim).live.get('Ana')!.guard.blockSince = sim.time;
+    p4(sim).bite('Ana', 10, r);
+    expect(r.exposed).toBeGreaterThan(0);
+    run(sim, 0.7);
+    const before = r.hp;
+    sim.handle('Ana', { t: 'attack', id: ELITE.rockId });
+    expect(r.hp).toBeLessThan(before - 10);
+    r.hp = 0;
+    run(sim, 0.2);
+    expect(mview(sim).gates[3]).toBe(true);
+    put(sim, 'Ana', M.x, M.bossRoomZ + 5);
+    sim.step(0.1);
+    expect(toasts(sim)).toContain('La sala está en calma. Algo con gorro duerme bajo el hielo');
+  });
+
+  it('a charging elite that meets a pillar is stunned 5 s', () => {
+    const sim = inCave('Ana');
+    openTo(sim, 3);
+    put(sim, 'Ana', M.x, M.eliteZ - 9);
+    sim.step(0.1);
+    const r = p4(sim).rock!;
+    Object.assign(r, { x: M.x, z: M.eliteZ, charge: 0.9, dirX: 0, dirZ: -1, stun: 0 });
+    pillar(sim, 991, M.x, M.eliteZ - 2);
+    run(sim, 0.3);
+    expect(r.stun).toBeGreaterThan(4);
+    expect(r.exposed).toBeGreaterThan(4);
+    expect(r.charge).toBe(0);
+  });
+});
+
+describe('torre (S4-E)', () => {
+  it('needs Piedra and 6 stone + 2 cuarzo', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, 0);
+    sim.getPlayer('Ana')!.inv = { stone: 6, quartz: 2 };
+    sim.handle('Ana', { t: 'place', kind: 'tower', x: 3, z: 0, rot: 0 });
+    expect(toasts(sim)).toContain('Hace falta la Piedra');
+    sim.getPlayer('Ana')!.piedra = true;
+    sim.handle('Ana', { t: 'place', kind: 'tower', x: 3, z: 0, rot: 0 });
+    expect(priv(sim).structures.some((s) => s.kind === 'tower')).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv).toEqual({});
+  });
+
+  it('shoves a raider at its foot 3 m, every 4 s; from its top arrows reach 36 m', () => {
+    const sim = withPiedra('Ana');
+    const y = sim.terrain.heightAt(10, 10);
+    priv(sim).structures.push({ id: 950, kind: 'tower', x: 10, y, z: 10, rot: 0, owner: 'Ana', hp: 150 });
+    const w = { id: 5556, x: 12, y, z: 10, yaw: 0, hp: 50, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle', raid: true, kind: 'wolf', stun: 100 } as Wolf;
+    priv(sim).wolves.push(w);
+    sim.step(0.1);
+    expect(w.x).toBeCloseTo(15, 0);
+    w.x = 12;
+    sim.step(0.1);
+    expect(w.x).toBe(12);
+    priv(sim).wolves.length = 0;
+    const far = { ...w, id: 5557, x: 10, z: 10 + BOW.range * 1.4, raid: false } as Wolf;
+    priv(sim).wolves.push(far);
+    put(sim, 'Ana', 10, 10);
+    sim.getPlayer('Ana')!.yaw = 0;
+    sim.handle('Ana', { t: 'shoot', id: far.id });
+    expect(far.hp).toBe(50);
+    sim.getPlayer('Ana')!.y = y + TOWER.height;
+    run(sim, 1);
+    sim.handle('Ana', { t: 'shoot', id: far.id });
+    expect(far.hp).toBeLessThan(50);
+  });
+});
+
+describe('S4-E markers: Empujar and pillars on plates', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  it('Bloques: with Piedra the 8-push solution opens it', () => {
+    const sim = withPiedra('Ana');
+    const s = kind(sim, 'blocks');
+    const c = blocksCentre(s);
+    const cells = BLOCKS.starts.map((q) => [q[0], q[1]] as [number, number]);
+    for (const m of BLOCKS_SOLUTION) {
+      const at = blockCell(c, cells[m.i]!);
+      put(sim, 'Ana', at.x - m.dir[0] * 1.5, at.z - m.dir[1] * 1.5);
+      sim.handle('Ana', { t: 'shrine', id: s.id, part: m.i + 1 });
+      cells[m.i] = [cells[m.i]![0] + m.dir[0], cells[m.i]![1] + m.dir[1]];
+    }
+    expect(toasts(sim)).toContain('Los bloques encajan. Algo se abre en el santuario');
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').shrines.find((v) => v.id === s.id)!.open).toBe(true);
+  });
+
+  it('a pillar weighs the forest dungeon plate and Losas gemelas plate 2', () => {
+    const sim = withPiedra('Ana');
+    const plate = inside(DUNGEON.plate);
+    pillar(sim, 992, plate.x, plate.z);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.plate).toBe(true);
+    const s = kind(sim, 'twins');
+    const [p1, p2] = s.parts as { x: number; z: number }[];
+    pillar(sim, 993, p2!.x, p2!.z);
+    put(sim, 'Ana', p1!.x, p1!.z);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').shrines.find((v) => v.id === s.id)!.open).toBe(true);
   });
 });

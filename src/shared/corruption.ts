@@ -71,7 +71,7 @@ export function isSwampZone(id: number): boolean {
 
 /**
  * Mountain zones (Slice 4 §6): fixed ids 14–17. Zone 14 is the Raíz-madre de la Montaña at a fixed
- * point (x −70, 140 m north of the rim) where S4-E opens the cave mouth; 15 on a gentle Faldas
+ * point (x −70, 140 m north of the rim) where the cave mouth opens (S4-E); 15 on a gentle Faldas
  * meadow, 16 at the foot of pared 0 (forest side), 17 on the high snowfield.
  */
 export const MOUNTAIN_ZONES = { firstId: 14, root: 14, r: 16, rootR: 18, rootX: -70, rootD: 140, gentle: 20 } as const;
