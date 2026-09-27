@@ -73,6 +73,7 @@ const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
 const OFFER_KEY = 'bosque.tierOffer';
 
 import { DayLight } from './scene/sky';
+import { biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
 import { buildCrags, buildVine } from './scene/crags';
@@ -400,6 +401,9 @@ export class Game {
   private resMeshes: ResourceMeshes | null = null;
   private grass: NearInstances | null = null;
   private readonly tmpFwd = new THREE.Vector3();
+  private readonly skyLook = newLook();
+  private readonly lookTarget = newLook();
+  private lookFresh = false;
   private body: Body | null = null;
   private me: Actor | null = null;
   private myName = '';
@@ -1913,7 +1917,11 @@ export class Game {
     this.lastFrac = frac;
     const here = today && inMountains(b.x, b.z) ? today : null; // weather only in las Montañas
     this.weatherFx.update(here, b.x, terrain.heightAt(b.x, b.z), b.z, dt);
-    this.light.update(frac, focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, stormDim(here));
+    lookAt(biomeWeights(b.x, b.z), frac, this.lookTarget);
+    if (this.lookFresh) easeLook(this.skyLook, this.lookTarget, dt);
+    else copyLook(this.skyLook, this.lookTarget);
+    this.lookFresh = true;
+    this.light.update(frac, focus, this.skyLook, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, stormDim(here), performance.now() / 1000);
     // Deep in the swamp the fog hides everything past 70 m: a shorter far plane saves phones some work.
     const far = fog >= 1 ? Math.min(SWAMP_FAR, TIERS[this.tier].drawDistance) : TIERS[this.tier].drawDistance;
     if (this.camera.far !== far) {
@@ -1945,6 +1953,7 @@ export class Game {
     this.hud.setRing(this.tame ? { needle: ringNeedle(this.tame, this.serverTime), zone: this.tame.zone, width: this.tame.width, round: this.tame.round, rounds: this.tame.rounds } : null);
     this.updatePrompt();
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
+    this.light.dome.follow(this.camera, this.camera.far);
     this.packNear();
     if (this.guardian?.root.visible) this.guardian.update(dt);
     this.renderer.render(this.scene, this.camera);
