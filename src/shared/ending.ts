@@ -1,5 +1,7 @@
 import { NAMES } from './names';
 import { joinNames } from './sim/marchito';
+import { TOWER } from './corrupt-lands';
+import type { Terrain } from './terrain';
 
 /**
  * The ending (spec S5 §10, S5-G): the long vision, the credits, el Guardián by the Heart and the post-ending raids.
@@ -58,4 +60,29 @@ export function guardianSpot(heart: { x: number; z: number }): { x: number; z: n
 /** A post-ending wave: 60 % of the normal one, at least one beast. */
 export function endingWave(n: number): number {
   return Math.max(1, Math.ceil(n * ENDING.raidMult));
+}
+
+/**
+ * El Árbol-torre (spec S5 §12, S5-H): after the ending the white tower is a lookout. Its top is a `r` m disc
+ * `h` m above the ground at the tower (the tower's full height), where fogata 7 burns.
+ */
+export const LOOKOUT = { r: 7, h: TOWER.max } as const;
+
+/** On the top disc (in plan). */
+export function inLookout(x: number, z: number): boolean {
+  return Math.hypot(x - TOWER.x, z - TOWER.z) <= LOOKOUT.r;
+}
+
+/** The top's centre. */
+export function lookoutTop(t: Terrain): { x: number; y: number; z: number } {
+  return { x: TOWER.x, y: t.heightAt(TOWER.x, TOWER.z) + LOOKOUT.h, z: TOWER.z };
+}
+
+/** The terrain with the top disc raised while `open()`: standing up there is ordinary ground. */
+export function withLookout(base: Terrain, open: () => boolean): Terrain {
+  return {
+    heightAt: (x, z) => base.heightAt(x, z) + (open() && inLookout(x, z) ? LOOKOUT.h : 0),
+    density: (x, z) => base.density(x, z),
+    ...(base.waterAt ? { waterAt: (x: number, z: number) => base.waterAt!(x, z) } : {}),
+  };
 }

@@ -197,11 +197,12 @@ describe('fogatas protocol (S3-G)', () => {
     ok({ t: 'travel', to: 3 });
     ok({ t: 'travel', to: 5 }); // S4-C: the mountain refugios
     ok({ t: 'travel', to: 6 }); // S5-B: la Ceniza
+    ok({ t: 'travel', to: 7 }); // S5-H: the top of el Árbol-torre
     ok({ t: 'fogata', id: 6 });
-    bad(JSON.stringify({ t: 'travel', to: 7 }));
+    bad(JSON.stringify({ t: 'travel', to: 8 }));
     bad(JSON.stringify({ t: 'travel', to: -1 }));
     bad(JSON.stringify({ t: 'travel', to: 'casa' }));
-    bad(JSON.stringify({ t: 'fogata', id: 7 }));
+    bad(JSON.stringify({ t: 'fogata', id: 8 }));
     expect(PROTOCOL_VERSION).toBe(53);
   });
 });

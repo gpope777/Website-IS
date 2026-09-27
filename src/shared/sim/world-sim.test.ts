@@ -4541,9 +4541,9 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
     sim.getPlayer('Ana')!.fuego = true;
     sim.handle('Ana', { t: 'power', x: f.x, z: f.z, kind: 'fuego' });
     expect(texts(sim).some((t) => t.includes('fogata'))).toBe(true);
-    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false, false, false, false]);
-    expect(sim.save().fogatas).toEqual([false, true, false, false, false, false, false]);
-    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false, false, false, false]);
+    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false, false, false, false, false]);
+    expect(sim.save().fogatas).toEqual([false, true, false, false, false, false, false, false]);
+    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false, false, false, false, false]);
   });
 
   it('a torch lights one and is spent; without one, nothing', () => {
@@ -4640,7 +4640,7 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
 
   it('old saves load with every fogata dark and save none', () => {
     const sim = new WorldSim(newWorld(42, 'salt'));
-    expect(lit(sim)).toEqual([false, false, false, false, false, false, false]);
+    expect(lit(sim)).toEqual([false, false, false, false, false, false, false, false]);
     expect('fogatas' in sim.save()).toBe(false);
   });
 

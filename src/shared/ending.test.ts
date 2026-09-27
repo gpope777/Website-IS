@@ -77,3 +77,19 @@ describe('la Grieta (S5-G)', () => {
     expect(rimCrossBlocked(RIM_LINE + 1, RIM_LINE - 1, 10, true)).toBe(true);
   });
 });
+
+describe('el Árbol-torre (S5-H)', () => {
+  const base = createTerrain(42);
+  it('closed: the plain terrain; open: the top disc 140 m up', async () => {
+    const { LOOKOUT, inLookout, lookoutTop, withLookout } = await import('./ending');
+    const { TOWER } = await import('./corrupt-lands');
+    let open = false;
+    const t = withLookout(base, () => open);
+    expect(t.heightAt(TOWER.x + 3, TOWER.z)).toBe(base.heightAt(TOWER.x + 3, TOWER.z));
+    open = true;
+    expect(t.heightAt(TOWER.x + 3, TOWER.z)).toBe(base.heightAt(TOWER.x + 3, TOWER.z) + 140);
+    expect(t.heightAt(TOWER.x + 12, TOWER.z)).toBe(base.heightAt(TOWER.x + 12, TOWER.z));
+    expect(inLookout(TOWER.x, TOWER.z + LOOKOUT.r - 0.1)).toBe(true);
+    expect(lookoutTop(base).y).toBe(base.heightAt(TOWER.x, TOWER.z) + LOOKOUT.h);
+  });
+});

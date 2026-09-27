@@ -1,4 +1,5 @@
 import { cenizaFogata } from './corrupt-lands';
+import { lookoutTop } from './ending';
 import { generateRefugios } from './mountain-shrines';
 import { claimedMounds } from './swamp-shrines';
 import { WATER_LEVEL, type Terrain } from './terrain';
@@ -10,8 +11,9 @@ import { WATER_LEVEL, type Terrain } from './terrain';
  * drifting more than `drift` m, night, death or mounting cancel. You arrive `arrive` m east of the ring.
  * Ids 0–3 are the swamp's; 4–5 are the mountain refugios (spec S4 §9.2): same rules, and they warm.
  * Id 6 is la Ceniza (spec S5 §7.1): same rules, and there the Menú calls your deer, frog or fish.
+ * Id 7 is the top of el Árbol-torre (S5-H): lit by the ending, never by fire.
  */
-export const FOGATA = { count: 7, ceniza: 6, swamp: 4, light: 4, reach: 3, channel: 5, drift: 1.5, arrive: 2 } as const;
+export const FOGATA = { count: 8, ceniza: 6, lookout: 7, swamp: 4, light: 4, reach: 3, channel: 5, drift: 1.5, arrive: 2 } as const;
 
 export interface Fogata {
   id: number;
@@ -22,6 +24,8 @@ export interface Fogata {
   refugio?: boolean;
   /** La Ceniza, in las Tierras Corruptas. */
   ceniza?: boolean;
+  /** The top of el Árbol-torre. */
+  lookout?: boolean;
 }
 
 /** 4 of the montículos no shrine or the frog uses, spread along z; each ring sits 60 % out toward the forest, turning until dry. */
@@ -42,5 +46,5 @@ export function generateFogatas(t: Terrain, seed: number): Fogata[] {
     return { id, x: spot.x, z: spot.z, y: t.heightAt(spot.x, spot.z) };
   });
   const huts = generateRefugios(t, seed).map((q, i) => ({ id: FOGATA.swamp + i, ...q, refugio: true }));
-  return [...swamp, ...huts, { id: FOGATA.ceniza, ...cenizaFogata(t), ceniza: true }];
+  return [...swamp, ...huts, { id: FOGATA.ceniza, ...cenizaFogata(t), ceniza: true }, { id: FOGATA.lookout, ...lookoutTop(t), lookout: true }];
 }
