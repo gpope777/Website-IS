@@ -1,7 +1,7 @@
 import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
-import { addItem, BUILD_COST, count, STRUCTURE_HP, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { addItem, BUILD_COST, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
 import { createWolf, hitWolf, stepWolf, WOLF, type Wolf, type WolfTarget } from './wolves';
@@ -20,6 +20,7 @@ export const MAX_STRUCTURES = 500;
 export const MAX_ONLINE = 8;
 export const PUNCH = { damage: 20, cooldown: 0.6, reach: 3 } as const;
 export const HARVEST_COOLDOWN = 0.4;
+export const HEART = { warmRadius: 8, tendReach: 4 } as const;
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
@@ -47,6 +48,7 @@ export interface SavedWorld {
   /** Only resources that are partly or fully harvested. */
   resources: Record<string, { uses: number; regrow: number }>;
   players: SavedPlayer[];
+  raidLevel?: number;
 }
 
 export interface Outgoing {
@@ -69,7 +71,7 @@ interface Live {
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
-  return { version: 1, seed, salt, time: DAY_LENGTH * 0.33, nextStructureId: 1, structures: [], resources: {}, players: [] };
+  return { version: 1, seed, salt, time: DAY_LENGTH * 0.33, nextStructureId: 1, structures: [], resources: {}, players: [], raidLevel: 0 };
 }
 
 export function dayFraction(time: number): number {
@@ -87,6 +89,7 @@ export class WorldSim {
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
   private readonly structures: Structure[];
   private nextStructureId: number;
+  raidLevel: number;
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
   private wasNight = false; // false on load so a night-time load still spawns wolves
@@ -101,7 +104,8 @@ export class WorldSim {
     this.resources = generateResources(this.terrain, saved.seed);
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
-    this.structures = saved.structures.map((s) => ({ ...s }));
+    this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
+    this.raidLevel = saved.raidLevel ?? 0;
     this.nextStructureId = saved.nextStructureId;
     this.rng = createRng(saved.seed ^ 0x51f15e);
   }
@@ -176,7 +180,7 @@ export class WorldSim {
       case 'respawn':
         return this.onRespawn(p, l);
       case 'tend':
-        return;
+        return this.onTend(p, msg.id);
       case 'hello':
         return; // the room handles hello
     }
@@ -257,13 +261,20 @@ export class WorldSim {
       structures: this.structures.map((s) => ({ ...s })),
       resources: Object.fromEntries([...this.resState].map(([id, s]) => [String(id), { ...s }])),
       players: [...this.players.values()].map((p) => structuredClone(p)),
+      raidLevel: this.raidLevel,
     };
   }
 
-  /** Newest campfire the player built, else the world spawn. */
+  heart(): Structure | undefined {
+    return this.structures.find((s) => s.kind === 'heart');
+  }
+
+  /** Newest campfire the player built, else the Heart, else the world spawn. */
   spawnFor(name: string): { x: number; z: number } {
     const fire = [...this.structures].reverse().find((s) => s.kind === 'campfire' && s.owner === name);
-    return fire ? { x: fire.x + 1.5, z: fire.z } : { x: 0, z: 0 };
+    if (fire) return { x: fire.x + 1.5, z: fire.z };
+    const h = this.heart();
+    return h ? { x: h.x + 2, z: h.z } : { x: 0, z: 0 };
   }
 
   // ---------------------------------------------------------------- actions
@@ -321,6 +332,7 @@ export class WorldSim {
     };
     if (p.dead) return;
     if (!hasAll(p.inv, BUILD_COST[kind])) return toast('Faltan materiales');
+    if (kind === 'heart' && this.heart()) return toast('Ya hay un Corazón en este mundo');
     if (Math.hypot(x - p.x, z - p.z) > BUILD_REACH) return toast('Demasiado lejos');
     const y = this.terrain.heightAt(x, z);
     if (y < WATER_LEVEL || Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4) return toast('No se puede construir aquí');
@@ -346,6 +358,18 @@ export class WorldSim {
     if (p.dead || count(p.inv, 'berries') < 1) return;
     p.inv = removeAll(p.inv, { berries: 1 });
     p.vitals = eatBerry(p.vitals);
+  }
+
+  private onTend(p: SavedPlayer, id: number): void {
+    const h = this.heart();
+    if (!h || h.id !== id || p.dead) return;
+    if (Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
+    if (h.hp >= STRUCTURE_HP.heart) return this.tell(p.name, 'El Corazón está sano');
+    if (!hasAll(p.inv, TEND_COST)) return this.tell(p.name, 'Necesitas 5 bayas');
+    p.inv = removeAll(p.inv, TEND_COST);
+    h.hp = Math.min(STRUCTURE_HP.heart, h.hp + TEND_HEAL);
+    this.outbox.push({ to: null, msg: { t: 'hit', id: h.id, hp: h.hp } });
+    this.tell(p.name, 'El Corazón late con más fuerza');
   }
 
   private onRespawn(p: SavedPlayer, l: Live): void {
@@ -381,7 +405,10 @@ export class WorldSim {
   }
 
   private nearFire(x: number, z: number, r = FIRE_RADIUS): boolean {
-    return this.structures.some((s) => s.kind === 'campfire' && Math.hypot(s.x - x, s.z - z) < r);
+    return this.structures.some((s) => {
+      const d = Math.hypot(s.x - x, s.z - z);
+      return (s.kind === 'campfire' && d < r) || (s.kind === 'heart' && s.hp > 0 && d < HEART.warmRadius);
+    });
   }
 
   private targets(): WolfTarget[] {
@@ -410,6 +437,14 @@ export class WorldSim {
         }
       }
     }
+  }
+
+  private say(text: string): void {
+    this.outbox.push({ to: null, msg: { t: 'toast', text } });
+  }
+
+  private tell(name: string, text: string): void {
+    this.outbox.push({ to: name, msg: { t: 'toast', text } });
   }
 
   private kill(p: SavedPlayer): void {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HARVEST } from '../resources';
+import { STRUCTURE_HP } from '../items';
 import type { ServerMsg } from '../protocol';
 import { AWAY_TIMEOUT, DAY_LENGTH, newWorld, WorldSim } from './world-sim';
 
@@ -237,5 +238,78 @@ describe('WorldSim', () => {
     if (w.t !== 'welcome') throw new Error('expected welcome');
     expect(w.gone).toContain(t.id);
     expect(w.structures).toHaveLength(1);
+  });
+});
+
+function giveHeartMats(sim: WorldSim, name: string) {
+  sim.getPlayer(name)!.inv = { wood: 40, stone: 20, berries: 20 };
+}
+
+function plantHeart(sim: WorldSim, name = 'Ana') {
+  giveHeartMats(sim, name);
+  const p = sim.getPlayer(name)!;
+  sim.handle(name, { t: 'place', kind: 'heart', x: p.x + 2, z: p.z, rot: 0 });
+  return sim.heart()!;
+}
+
+describe('Corazón del Bosque', () => {
+  it('plants one heart per world with full HP', () => {
+    const sim = setup('Ana', 'Leo');
+    const h = plantHeart(sim);
+    expect(h.hp).toBe(STRUCTURE_HP.heart);
+    giveHeartMats(sim, 'Leo');
+    const l = sim.getPlayer('Leo')!;
+    sim.handle('Leo', { t: 'place', kind: 'heart', x: l.x - 3, z: l.z + 3, rot: 0 });
+    expect(sim.save().structures.filter((s) => s.kind === 'heart')).toHaveLength(1);
+  });
+
+  it('warms like a fire while alive', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    put(sim, 'Ana', h.x + 5, h.z);
+    sim.time = DAY_LENGTH * 0.9; // night: without the Heart, warmth would drop
+    sim.getPlayer('Ana')!.vitals.warmth = 10;
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect(sim.getPlayer('Ana')!.vitals.warmth).toBeGreaterThan(10);
+  });
+
+  it('tending costs 5 berries and heals, capped at max', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    h.hp = 50;
+    sim.handle('Ana', { t: 'tend', id: h.id });
+    expect(h.hp).toBe(150);
+    expect(sim.getPlayer('Ana')!.inv.berries).toBe(15);
+    h.hp = STRUCTURE_HP.heart - 10;
+    sim.handle('Ana', { t: 'tend', id: h.id });
+    expect(h.hp).toBe(STRUCTURE_HP.heart);
+    expect(msgs(sim)).toContainEqual({ t: 'hit', id: h.id, hp: STRUCTURE_HP.heart });
+  });
+
+  it('refuses tending from too far or without berries', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    h.hp = 50;
+    put(sim, 'Ana', h.x + 20, h.z);
+    sim.handle('Ana', { t: 'tend', id: h.id });
+    expect(h.hp).toBe(50);
+    put(sim, 'Ana', h.x + 1, h.z);
+    sim.getPlayer('Ana')!.inv = {};
+    sim.handle('Ana', { t: 'tend', id: h.id });
+    expect(h.hp).toBe(50);
+  });
+
+  it('respawns at the heart when there is no own campfire', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    expect(sim.spawnFor('Ana')).toEqual({ x: h.x + 2, z: h.z });
+  });
+
+  it('loads old saves: missing hp and raidLevel get defaults', () => {
+    const saved = newWorld(1, 's');
+    saved.structures.push({ id: 1, kind: 'wall', x: 0, y: 0, z: 0, rot: 0, owner: 'Ana' } as never);
+    const sim = new WorldSim(saved);
+    expect(sim.save().structures[0]!.hp).toBe(STRUCTURE_HP.wall);
+    expect(sim.raidLevel).toBe(0);
   });
 });
