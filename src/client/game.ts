@@ -16,7 +16,7 @@ import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { antenonBarText, bossBarText, cucuruchoBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
+import { antenonBarText, bossBarText, clawPick, cucuruchoBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
 import { MountainDungeonMeshes } from './scene/mountain-dungeon';
 import { mountainEntrance, shelfCrag } from '../shared/mountain-dungeon';
 import { PIEDRA, structureCrags } from '../shared/piedra';
@@ -168,6 +168,8 @@ export class Game {
   private readonly graves = new GraveMeshes();
   private readonly others = new Map<string, Remote>();
   private readonly wolves = new Map<number, Remote>();
+  /** S5-D: ids of the rayos in the last snapshot (the dragon's claw only reaches those). */
+  private rayoIds = new Set<number>();
   /** The purified Tragón by the Heart (at most one, key 0). */
   private readonly allies = new Map<number, Remote>();
   private dungeonMeshes: DungeonMeshes | null = null;
@@ -611,6 +613,8 @@ export class Game {
     this.fogatasLit = m.fogatas;
     this.fog = m.fog;
     this.towerH = m.towerH;
+    this.villainTower?.setOpen(m.towerOpen ?? false);
+    this.rayoIds = new Set(m.wolves.filter((w) => w.kind === 'rayo').map((w) => w.id));
     this.pillarView = m.pillars ?? null;
     if (m.pillars) {
       this.pillarMeshes?.sync(m.pillars);
@@ -1067,6 +1071,17 @@ export class Game {
     const b = this.body!;
     const ma = this.mountAct();
     if (ma?.act === 1) return this.tapRing();
+    if (this.onDragon && !b.onGround) {
+      // S5-D: in the air the attack is a claw at a rayo, and nothing else.
+      const foes = [...this.rayoIds].flatMap((id) => {
+        const p = this.wolves.get(id)?.actor.root.position;
+        return p ? [{ id, kind: 'rayo', x: p.x, y: p.y, z: p.z }] : [];
+      });
+      const id = clawPick({ x: b.x, y: b.y, z: b.z }, foes);
+      this.attackUntil = performance.now() + 450;
+      if (id !== null) return this.conn.send({ t: 'attack', id });
+      return this.hud.toast('Zarpazo al aire. Solo alcanzas a los rayos');
+    }
     const fallen = this.fallenMate();
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     const sp = this.shrinePart();

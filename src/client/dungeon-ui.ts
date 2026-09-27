@@ -3,6 +3,7 @@ import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
 import { COAST_DUNGEON, inCoastDungeon, insideCoast } from '../shared/coast-dungeon';
 import { inSwampDungeon, insideSwamp, SWAMP_DUNGEON } from '../shared/swamp-dungeon';
 import { dungeonBlockCell, inMountainDungeon, insideMountain, MOUNTAIN_DUNGEON } from '../shared/mountain-dungeon';
+import { AIR } from '../shared/dragon';
 import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, MountainDungeonView, SwampDungeonView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
@@ -57,8 +58,24 @@ export function eliteBarText(view: DungeonView): string | null {
 export function marchitoBarText(v: MarchitoView | null): string | null {
   if (!v) return null;
   if (v.laughing) return `${NAMES.villain} se ríe`;
+  if (v.channel !== undefined) return `${NAMES.villain} envuelve el ${NAMES.heart} · ${Math.round(v.channel * 100)} % · voluntad ${v.will}/${v.max}`;
   if (v.grab) return `${NAMES.villain} envuelve al ${NAMES.bossForestShort} · ${Math.round(v.grab * 100)} % · voluntad ${v.will}/${v.max}`;
   return `${NAMES.villain} · voluntad ${v.will}/${v.max}`;
+}
+
+/** S5-D: riding the dragon, the claw's target: the nearest rayo within AIR.reach in 3D, or null. */
+export function clawPick(rider: { x: number; y: number; z: number }, foes: readonly { id: number; kind: string; x: number; y: number; z: number }[]): number | null {
+  let best: number | null = null;
+  let bd: number = AIR.reach;
+  for (const f of foes) {
+    if (f.kind !== 'rayo') continue;
+    const d = Math.hypot(f.x - rider.x, f.y - rider.y, f.z - rider.z);
+    if (d <= bd) {
+      bd = d;
+      best = f.id;
+    }
+  }
+  return best;
 }
 
 export function bossBarText(view: DungeonView): string | null {

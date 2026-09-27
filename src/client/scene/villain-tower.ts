@@ -57,6 +57,9 @@ export class VillainTower {
   /** S5-C: one violet crack per Pilar-raíz, dark once it breaks (one instanced mesh, near only). */
   readonly cracks: THREE.InstancedMesh;
   private crackKey = '';
+  /** S5-D: a violet doorway at the tower's foot once Invasión 3 is over (near only). */
+  readonly door: THREE.Mesh;
+  private open = false;
 
   constructor(terrain: Terrain) {
     const geo = towerGeometry();
@@ -68,7 +71,14 @@ export class VillainTower {
     this.sky.frustumCulled = false;
     this.cracks = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1, 0.5), new THREE.MeshBasicMaterial({ fog: false }), CRACKS);
     for (let i = 0; i < CRACKS; i++) this.cracks.setColorAt(i, CRACK_LIT);
-    this.group.add(this.real, this.sky, this.cracks);
+    this.door = new THREE.Mesh(new THREE.PlaneGeometry(4, 7), new THREE.MeshBasicMaterial({ color: 0xc89aff, side: THREE.DoubleSide }));
+    this.door.position.set(this.base.x, this.base.y + 3.5, this.base.z + TOWER.r - 0.2); // south face, toward the world
+    this.door.visible = false;
+    this.group.add(this.real, this.sky, this.cracks, this.door);
+  }
+
+  setOpen(open: boolean): void {
+    this.open = open;
   }
 
   /** Dark cracks for the broken Pilares-raíz. */
@@ -99,6 +109,7 @@ export class VillainTower {
     const near = Math.hypot(cam.x - this.base.x, cam.z - this.base.z) < Math.min(TOWER_NEAR, far * SKY_AT);
     this.real.visible = near;
     this.cracks.visible = near;
+    this.door.visible = near && this.open;
     this.sky.visible = !near;
     if (this.real.scale.y !== height) this.placeCracks(height);
     this.real.scale.set(1, height, 1);

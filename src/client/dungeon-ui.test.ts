@@ -52,7 +52,7 @@ describe('bossBarText', () => {
   });
 });
 
-import { marchitoBarText } from './dungeon-ui';
+import { clawPick, marchitoBarText } from './dungeon-ui';
 
 describe('marchitoBarText', () => {
   it('shows his voluntad, his laugh, or nothing', () => {
@@ -173,5 +173,17 @@ describe('cucuruchoBarText (S4-F)', () => {
     expect(cucuruchoBarText({ ...mv, boss: { ...boss, charging: true } })).toBe('El Cucurucho 420/420 · ¡embiste!');
     expect(cucuruchoBarText({ ...mv, boss: { ...boss, stuck: true } })).toBe('El Cucurucho 420/420 · ¡gorro clavado!');
     expect(cucuruchoBarText({ ...mv, boss: { ...boss, alud: [{ x: 0, z: 0 }] } })).toBe('El Cucurucho 420/420 · ¡alud!');
+  });
+});
+
+describe('Invasion 3 on the client (S5-D)', () => {
+  it('the bar says he wraps the Heart', () => {
+    expect(marchitoBarText({ will: 390, max: 390, laughing: false, channel: 0.4 })).toBe(`El Marchito envuelve el ${NAMES.heart} · 40 % · voluntad 390/390`);
+  });
+  it('the claw picks the nearest rayo within 5 m in 3D', () => {
+    const r = { x: 0, y: 10, z: 0 };
+    const f = (id: number, kind: string, x: number, y: number) => ({ id, kind, x, y, z: 0 });
+    expect(clawPick(r, [f(1, 'wolf', 1, 10), f(2, 'rayo', 4, 10), f(3, 'rayo', 2, 11)])).toBe(3);
+    expect(clawPick(r, [f(1, 'rayo', 3, 5)])).toBeNull();
   });
 });
