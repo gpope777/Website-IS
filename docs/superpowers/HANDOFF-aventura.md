@@ -787,3 +787,31 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: pasar el bruto de roca y entrar a la sala; pegarle de frente (casi nada) y por detrás; alzar un pilar entre los dos y esperar la embestida (¿se lee el gorro rojo?, ¿1 s da tiempo?); salir de los círculos del alud. Vencerlo y ver la atalaya de noche. Con Piedra, 3 veces junto al bloque del Umbral (x = 0, borde norte del bosque) y subir a pie; mirar si los escalones tapan bien la grieta del terreno. Constantes: `CUCURUCHO`/`ATALAYA` en `src/shared/sim/cucurucho.ts`, `UMBRAL`/`ESCALERA` en `src/shared/mountains.ts`, `ENEMY.boss4`.
+
+## Slice 4 · S4-G — el Dragón — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-G-dragon.md` (7d0261c).
+- Commits: 8d52804 (T1 reglas: `src/shared/dragon.ts`), 3e12b9d (T2 saltar y domar en el servidor, protocolo v41), feeca16 (T3 volar: techo, niebla, pasajero, asedio, v42), df56a7f (T4 cliente).
+- Tests: npm test 774 (antes 760), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 42**. Campo guardado nuevo opcional `SavedPlayer.dragon` (dónde espera): las partidas viejas cargan.
+- Dibujo: `public/enemies/enemy4.png` (459 × 512) por `PaperActor`, **8 m de ancho**; morado mientras es salvaje, sus colores al domarlo.
+- Cómo funciona:
+  - **Cuándo:** solo los días de **tormenta** y solo con `purified4` (El Cucurucho vencido). Da vueltas al Pico: una vuelta cada 10 s, 8 m por debajo de la cima. Es una función pura del tiempo (`dragonPos`): cliente y servidor lo ven igual, sin red.
+  - **El salto:** en la cima del Pico (≤ 9 m del centro), cuando pasa por tu lado (un aro dorado en el borde marca la ventana, ~1,5 s por vuelta) → **A / E** "Saltar al dragón". Fuera de la ventana: "Aún no. Espera a que pase por debajo".
+  - **La doma:** caes en su lomo y te lleva en su vuelta. Anillo de **5 rondas** (3,4 → 5,4 rad/s, zona 0,9 → 0,5); en las rondas 3 y 5 la aguja **gira al revés**. Un amigo a ≤ 6 m calma (×1,5), como siempre. Fallo: "Te tira. ¡Abre el planeador!" y caes desde donde estaba (Espacio / B abre el planeador). Ganas: «Mi dragón… Eso sí que no, <nombre>.»
+  - **Volar:** stick a 15 m/s; **mantener B / Espacio = subir 4 m/s**, soltar = bajar 2 m/s. Sin aliento. Techo: suelo + 35 m (y ≤ 120). Toca suelo o agua y se posa. **A / E / M** baja (solo posado); A junto a él lo vuelves a montar.
+  - **Pasajero:** uno, con el "Subir detrás de …" de siempre (el dragón tiene que estar posado).
+  - **Servidor:** tope 17 m/s (+2 s de gracia al bajar), altura ≤ suelo + 36 y ≤ 121, o cualquier movimiento que solo baje (al salir volando de un acantilado quedas por encima de la franja y vas bajando). Sin reglas de pendiente ni de agua en el aire.
+  - **Muro de niebla:** al norte del borde de las Montañas (z < −HALF − 200) un plano gris; "La niebla te devuelve. Aún no". Lo abre el Slice 5.
+  - **Asedio:** durante un asedio no se aterriza a ≤ 30 m del Corazón (el servidor rechaza bajar de suelo + 5; el cliente se mantiene a 6; A: "Aquí no se aterriza en pleno asedio").
+  - Entrar a una mazmorra, morir o teletransportarte te baja (el dragón espera).
+- Decidido por Claude — revisar:
+  - **Radio de 22 m, no 14:** a 14 m y 8 m bajo la cima el dragón atravesaba la falda del Pico. Vuela a `max(cima − 8, suelo más alto bajo el círculo + 3)`. Por eso la ventana del salto es **por rumbo** (±0,47 rad desde la cima) y no "≤ 4 m en horizontal": saltas ~16 m hacia fuera y abajo.
+  - Un salto fuera de la ventana no te tira del Pico: solo avisa. La caída con planeador pasa si el anillo te tira.
+  - La inversión del anillo es una **velocidad negativa** en `TameView.speed` (sin campo nuevo; `ringAngle` ya envuelve negativos).
+  - El dragón no lleva id de enemigo: va en `snap.dragons` como las ranas (salvaje = owner null).
+  - Personal (como el spec): cada uno doma su copia.
+  - No se hizo "las bestias ignoran a los jinetes a más de 6 m" (spec §riesgos): con la regla de no aterrizar junto al Corazón basta de momento.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 42; `mount` acepta hasta 17 (el test que rechazaba 15 ahora rechaza 18).
+- Rendimiento móvil: 1 carta de papel por dragón a la vista (0–2), 1 aro y 1 plano de niebla. Volando, la cámara se aleja ×2,4 y sube un poco, **sin** más distancia de dibujo ni luces.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: vencer al Cucurucho y esperar una tormenta (≤ 4 días); subir al Pico y ver el dragón morado. ¿Se entiende el aro dorado? ¿1,5 s basta? Las 5 rondas (¿se nota el cambio de sentido?). Fallar a propósito y abrir el planeador. Volar: subir con B, soltar, salir del Pico en picado, ir hasta la niebla. Llevar a un amigo detrás. Constantes: `DRAGON` en `src/shared/dragon.ts`, `FAR_K` en `src/client/camera-rig.ts`.
