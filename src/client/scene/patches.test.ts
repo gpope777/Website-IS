@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { LIFE_UNIFORMS, patchGrass, patchGround, patchSway, patchTree, patchWorld, pickGlows, setGlows, WORLD_UNIFORMS, type ShaderLike } from './patches';
+import { LIFE_UNIFORMS, patchCaustics, patchGrass, patchGround, patchSway, patchTree, patchWorld, pickGlows, setGlows, WORLD_UNIFORMS, type ShaderLike } from './patches';
 
 const fake = (): ShaderLike => ({
   vertexShader: '#include <common>\nvoid main(){\n#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <project_vertex>\n}',
@@ -118,5 +118,19 @@ describe('wind and corruption patches (V2-C)', () => {
     m.onBeforeCompile(s as never, null as never);
     expect(s.vertexShader.match(/uniform vec4 zones/g)).toHaveLength(1);
     expect(s.fragmentShader).toContain('vBand');
+  });
+
+  it('caustics (V2-D, high): a pattern under the water level, its own cache key, once', () => {
+    const m = new THREE.MeshLambertMaterial();
+    patchGround(m);
+    patchCaustics(m);
+    patchCaustics(m);
+    const s = fake();
+    m.onBeforeCompile(s as never, null as never);
+    expect(s.vertexShader).toContain('vCausP =');
+    expect(s.fragmentShader).toContain('vCausP');
+    expect(s.fragmentShader.match(/float caus/g)).toHaveLength(1);
+    expect(s.uniforms.lifeDay).toBe(LIFE_UNIFORMS.lifeDay);
+    expect(m.customProgramCacheKey()).toBe('ground|caustics');
   });
 });

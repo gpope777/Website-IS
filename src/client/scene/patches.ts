@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CORRUPT_LANDS, HALF } from '../../shared/terrain';
+import { CORRUPT_LANDS, HALF, WATER_LEVEL } from '../../shared/terrain';
 
 /**
  * V2-B: the only place with `onBeforeCompile` shader chunks (spec §13: one module to fix if three.js moves).
@@ -146,6 +146,8 @@ export const LIFE_UNIFORMS = {
   purify: { value: 0 },
   purifyFrom: { value: new THREE.Vector2(0, 0) },
   grassFar: { value: 60 },
+  /** V2-D: 0 at night … 1 by day (caustics fade at night). */
+  lifeDay: { value: 1 },
 };
 
 /** Taint at a world point (same falloff as shared `taintAt`) and the heal-front band (flowers). */
@@ -316,6 +318,30 @@ export function patchGround(mat: THREE.Material): void {
 }
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1, 0.042, 0.157), vTaint * 0.75);
 diffuseColor.rgb += vec3(0.25, 0.22, 0.1) * vBand;`,
+    );
+  });
+}
+
+/** V2-D (high only): caustics on the ground under the sea, a net of wavy bright lines (≈ 5 ALU). */
+export function patchCaustics(mat: THREE.Material): void {
+  if (mat.userData.caustics) return;
+  mat.userData.caustics = true;
+  addPatch(mat, 'caustics', (shader) => {
+    Object.assign(shader.uniforms, { windT: LIFE_UNIFORMS.windT, lifeDay: LIFE_UNIFORMS.lifeDay });
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCausP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCausP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCausP;\nuniform float windT;\nuniform float lifeDay;').replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+{
+  float under = ${WATER_LEVEL.toFixed(2)} - vCausP.y;
+  if (under > 0.0) {
+    vec2 cp = vCausP.xz * 0.9;
+    float caus = pow(1.0 - abs(sin(cp.x + sin(cp.y * 0.7 + windT) * 1.3) * sin(cp.y * 1.1 + sin(cp.x * 0.6 - windT * 0.8) * 1.3)), 8.0);
+    diffuseColor.rgb *= 1.0 + caus * 0.7 * lifeDay * clamp(under * 2.0, 0.0, 1.0) * exp(-under / 8.0);
+  }
+}`,
     );
   });
 }

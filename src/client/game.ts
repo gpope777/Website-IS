@@ -4,7 +4,7 @@ import { dawnCrossed, stormDim, WeatherFx } from './scene/weather';
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
-import { coastFeatures, corruptFeatures, createTerrain, inMountains, type Islet, type Terrain, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, corruptFeatures, createTerrain, inMountains, inSwamp, type Islet, type Terrain, WATER_LEVEL, waterLevel } from '../shared/terrain';
 import { FISH, fishRings, wildFish } from '../shared/fish';
 import { depthAt } from '../shared/coast';
 import { FishMeshes, RaceRings, type FishPose } from './scene/fish';
@@ -71,7 +71,7 @@ const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
 const OFFER_KEY = 'bosque.tierOffer';
 
 import { DayLight } from './scene/sky';
-import { LIFE_UNIFORMS, patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
+import { LIFE_UNIFORMS, patchCaustics, patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
 import { biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
@@ -103,6 +103,7 @@ import { corniceLedges, generateMountainShrines, generateQuartzVeins, type Quart
 import { VillainTower } from './scene/villain-tower';
 import { PillarMeshes } from './scene/pillars';
 import { buildSea, setLakePurify, WATER_UNIFORMS } from './scene/water';
+import { underwater, WATER } from './scene/water-data';
 import { pillarAction } from './corrupt-ui';
 import { pillarSites, type PillarSites } from '../shared/pillars';
 import { buildPines, buildTerrainMesh, buildThorns, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, type MountainChunk } from './scene/terrain-mesh';
@@ -417,6 +418,8 @@ export class Game {
   private readonly lookTarget = newLook();
   private lookFresh = false;
   private patchIn = 0;
+  /** V2-D: the underwater tint over the canvas. */
+  private readonly underDiv = document.createElement('div');
   private body: Body | null = null;
   private me: Actor | null = null;
   private myName = '';
@@ -499,6 +502,8 @@ export class Game {
       .then((k) => (this.kits = k))
       .catch(() => this.hud.toast('No se pudieron cargar los personajes'));
     if (new URLSearchParams(location.search).has('fps')) this.fpsMeter = new FpsMeter(root);
+    Object.assign(this.underDiv.style, { position: 'absolute', inset: '0', pointerEvents: 'none', opacity: '0', background: '#0d3f6a', transition: 'opacity 0.2s' });
+    root.appendChild(this.underDiv);
     if (PERF_BUILD && this.perfMode) {
       this.probe = null;
       void import('./perf-hook').then((m) => {
@@ -712,6 +717,7 @@ export class Game {
     this.scene.add(this.farGround);
     this.swampGround = buildTerrainMesh(this.terrain, swampPatch!); // el Pantano: coarse, fogged
     this.scene.add(this.swampGround, buildThorns(this.terrain, seed));
+    if (this.tier === 'high') for (const m of [this.ground, this.farGround, this.swampGround]) patchCaustics(m.material as THREE.Material); // V2-D
     const ground = this.terrain;
     this.mountainMeshes = mountainChunks(t.terrainSegments).map((chunk) => {
       const detail = buildTerrainMesh(ground, chunk.detail);
@@ -2012,6 +2018,17 @@ export class Game {
     WATER_UNIFORMS.uHorizon.value.copy(this.light.horizonColor);
     WATER_UNIFORMS.uDay.value = this.light.daylight;
     if (this.pillarMeshes) setLakePurify(this.pillarMeshes.lake, this.purify);
+    LIFE_UNIFORMS.lifeDay.value = this.light.daylight;
+    // Under the surface: a tint over the screen and a short fog in the water's colour.
+    const cam = this.camera.position;
+    const under = !!this.terrain && underwater(cam.y, waterLevel(this.terrain, cam.x, cam.z)) && this.terrain.heightAt(cam.x, cam.z) < cam.y;
+    this.underDiv.style.opacity = under ? '0.35' : '0';
+    const fog = this.scene.fog as THREE.Fog | null;
+    if (under && fog) {
+      fog.color.setHex(inSwamp(cam.x, cam.z) ? WATER.pantano.deep : WATER.mar.deep).multiplyScalar(0.25 + 0.75 * this.light.daylight);
+      fog.near = 2;
+      fog.far = 28;
+    }
     this.grass?.setPurified(this.purify > 0);
     LIFE_UNIFORMS.zones.value.forEach((v, i) => {
       const zn = this.zones[i];
