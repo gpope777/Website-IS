@@ -1,7 +1,8 @@
 import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
+import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -13,9 +14,11 @@ export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
+/** `parts` follow `Shrine.parts`: lever pulled / plate pressed. */
+export interface ShrineView { id: number; open: boolean; parts: boolean[] }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number }
 
 export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
 
@@ -31,12 +34,15 @@ export type ClientMsg =
   | { t: 'roll' }
   | { t: 'block'; on: boolean }
   | { t: 'shoot'; id: number }
-  | { t: 'revive'; name: string };
+  | { t: 'revive'; name: string }
+  | { t: 'power'; x: number; z: number }
+  /** part 0 = take the orb, 1/2 = pull lever 1/2 */
+  | { t: 'shrine'; id: number; part: number };
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[] }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[] }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
@@ -100,6 +106,10 @@ export function decodeClient(raw: string): ClientMsg | null {
       return id(m.id) ? { t: 'shoot', id: m.id } : null;
     case 'revive':
       return typeof m.name === 'string' && NAME_RE.test(m.name) ? { t: 'revive', name: m.name } : null;
+    case 'power':
+      return num(m.x) && num(m.z) ? { t: 'power', x: m.x, z: m.z } : null;
+    case 'shrine':
+      return id(m.id) && id(m.part) && (m.part as number) <= 2 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     default:
       return null;
   }

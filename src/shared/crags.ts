@@ -15,6 +15,8 @@ export interface Crag {
   base: number;
   /** Flat top you can stand on. */
   top: number;
+  /** Shrine rock: you can stand on it but not grab it until Enredadera wraps it. */
+  bare?: boolean;
 }
 
 export const CRAG = { cell: 60, chance: 0.7, minH: 7, maxH: 14, minR: 2.4, maxR: 3.8, spawnClear: 30, maxDensity: 0.55 } as const;

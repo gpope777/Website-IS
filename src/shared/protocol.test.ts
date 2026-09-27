@@ -44,7 +44,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(5);
+    expect(PROTOCOL_VERSION).toBe(6);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -85,5 +85,18 @@ describe('traversal protocol', () => {
     for (const anim of ['climb', 'glide']) {
       expect(decodeClient(JSON.stringify({ t: 'move', x: 0, y: 0, z: 0, yaw: 0, anim }))).not.toBeNull();
     }
+  });
+});
+
+describe('power and shrine protocol', () => {
+  it('decodes power and shrine messages', () => {
+    ok({ t: 'power', x: 1, z: 2 });
+    ok({ t: 'shrine', id: 0, part: 2 });
+    bad('{"t":"shrine","id":0,"part":3}');
+    bad('{"t":"shrine","id":0,"part":-1}');
+    bad('{"t":"shrine","id":0,"part":1.5}');
+    bad('{"t":"power","x":"1","z":2}');
+    bad('{"t":"power","x":1}');
+    expect(PROTOCOL_VERSION).toBe(6);
   });
 });
