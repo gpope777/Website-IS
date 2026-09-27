@@ -57,10 +57,18 @@ export class DungeonMeshes {
       m.position.set(x, DUNGEON.floor + 4.5, z);
       this.group.add(m);
     };
-    wall(1, len + 2, X - DUNGEON.halfW - 0.5, (DUNGEON.z0 + DUNGEON.z1) / 2);
-    wall(1, len + 2, X + DUNGEON.halfW + 0.5, (DUNGEON.z0 + DUNGEON.z1) / 2);
-    wall(DUNGEON.halfW * 2 + 2, 1, X, DUNGEON.z0 - 0.5);
-    wall(DUNGEON.halfW * 2 + 2, 1, X, DUNGEON.z1 + 0.5);
+    // Outer walls are one-sided planes facing in: when the camera swings behind one, it sees through it.
+    const side = (w: number, x: number, z: number, rotY: number) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 9), WALL);
+      m.position.set(x, DUNGEON.floor + 4.5, z);
+      m.rotation.y = rotY;
+      this.group.add(m);
+    };
+    const midZ = (DUNGEON.z0 + DUNGEON.z1) / 2;
+    side(len, X - DUNGEON.halfW, midZ, Math.PI / 2);
+    side(len, X + DUNGEON.halfW, midZ, -Math.PI / 2);
+    side(DUNGEON.halfW * 2, X, DUNGEON.z0, 0);
+    side(DUNGEON.halfW * 2, X, DUNGEON.z1, Math.PI);
     // Half walls marking the rooms (with a wide doorway).
     for (const z of [DUNGEON.gateZ, DUNGEON.bossRoomZ]) {
       wall(DUNGEON.halfW - 3, 1, X - (DUNGEON.halfW + 3) / 2, z);
