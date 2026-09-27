@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CHUTE, COAST, COAST_Z0, HALF, MOUNTAINS, mountainDepth, mountainFeatures, PELDANOS, SOUTH, SWAMP, WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
+import { CHUTE, COAST, COAST_Z0, CORRUPT_LANDS, corruptDepth, type Steps, TOWER_FOOT, HALF, MOUNTAINS, mountainDepth, mountainFeatures, PELDANOS, SOUTH, SWAMP, WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
 import { slopeAt, STEEP } from '../../shared/mountains';
 import { inCienaga } from '../../shared/coast';
 import { ZARZAL, zarzalAt } from '../../shared/swamp';
@@ -56,6 +56,37 @@ export function mountainChunks(segments: number): MountainChunk[] {
   return out;
 }
 
+/** Las Tierras Corruptas draw only north of this z (or while flying): from the forest they are behind the mountains. */
+export const CORRUPT_SHOW_Z = -HALF - 110;
+
+export function corruptVisible(z: number, flying: boolean): boolean {
+  return flying || z < CORRUPT_SHOW_Z;
+}
+
+/**
+ * 4 chunks of 120 m across las Tierras Corruptas (S5-A). Columns match the mountains' (the rim seam has no cracks);
+ * rows are fine in el Borde and over los Escalones rotos (one on each riser edge), ×2 elsewhere.
+ */
+export function corruptChunks(segments: number, steps: Pick<Steps, 'd0' | 'steps' | 'pitch' | 'run'>): MountainChunk[] {
+  const cell = WORLD_SIZE / segments;
+  const depth = CORRUPT_LANDS.z1 - CORRUPT_LANDS.z0;
+  const fine = (d: number) => d < CORRUPT_LANDS.rim + 4 || (d > steps.d0 - 8 && d < steps.d0 + 44);
+  const ds: number[] = [];
+  for (let d = 0; d < depth; d += fine(d) ? cell : cell * 2) ds.push(d);
+  for (let k = 0; k < steps.steps; k++) ds.push(steps.d0 + steps.pitch * k, steps.d0 + steps.pitch * k + steps.run);
+  ds.push(depth);
+  ds.sort((a, b) => a - b);
+  const rows = ds.filter((d, i) => i === 0 || d - ds[i - 1]! > 0.05).map((d) => CORRUPT_LANDS.z1 - d).reverse();
+  rows[0] = CORRUPT_LANDS.z0;
+  rows[rows.length - 1] = CORRUPT_LANDS.z1;
+  const out: MountainChunk[] = [];
+  for (let x0 = CORRUPT_LANDS.x0; x0 < CORRUPT_LANDS.x1 - 1; x0 += CHUNK) {
+    const box = { x0, x1: x0 + CHUNK, z0: CORRUPT_LANDS.z0, z1: CORRUPT_LANDS.z1 };
+    out.push({ detail: { ...box, segX: Math.round(CHUNK / cell), segZ: rows.length - 1, rows }, silhouette: { ...box, segX: 16, segZ: 16 } });
+  }
+  return out;
+}
+
 /** Should this chunk draw in detail for a player at (x, z)? */
 export function chunkDetailed(c: MountainChunk, x: number, z: number): boolean {
   const { x0, x1, z0, z1 } = c.detail;
@@ -101,6 +132,10 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
   const slab = new THREE.Color(0x9c9c98);
   const snow = new THREE.Color(0xeef2f6);
   const packed = new THREE.Color(0xdde6ea);
+  const ash = new THREE.Color(0x8a8580);
+  const ashDark = new THREE.Color(0x6e6a66);
+  const slate = new THREE.Color(0x4a4650);
+  const plateau = new THREE.Color(0x3a2a44);
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -124,6 +159,13 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
       else if (d > 130) tmp.lerp(snow, Math.min(1, (d - 130) / 20));
       if (d < PELDANOS.first + PELDANOS.pitch * (PELDANOS.steps - 1) + PELDANOS.run + 0.5) tmp.copy(slab); // los Peldaños (smoothAt)
       else if (slopeAt(terrain, x, z) > STEEP.deg) tmp.lerp(cliff, 0.85);
+    }
+    if (z < CORRUPT_LANDS.z1 && Math.abs(x) <= HALF) {
+      // las Tierras Corruptas: grey ash, dark slate on el Borde and steep rock, a violet-black plateau under la Torre.
+      const d = corruptDepth(z);
+      tmp.copy(ash).lerp(ashDark, terrain.density(x, z));
+      if (d < CORRUPT_LANDS.rim + 0.5 || slopeAt(terrain, x, z) > STEEP.deg) tmp.copy(slate);
+      else if (d > TOWER_FOOT.d && Math.abs(x) < TOWER_FOOT.half) tmp.copy(plateau);
     }
     colors.set([tmp.r, tmp.g, tmp.b], i * 3);
   }

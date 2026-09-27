@@ -3,7 +3,7 @@ import { dawnCrossed, stormDim, WeatherFx } from './scene/weather';
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
-import { coastFeatures, createTerrain, inMountains, type Islet, type Terrain, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, corruptFeatures, createTerrain, inMountains, type Islet, type Terrain, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishRings, wildFish } from '../shared/fish';
 import { depthAt } from '../shared/coast';
 import { FishMeshes, RaceRings, type FishPose } from './scene/fish';
@@ -72,7 +72,7 @@ import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
 import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
-import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
+import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
@@ -277,6 +277,9 @@ export class Game {
   private swampGround: THREE.Mesh | null = null;
   /** Las Montañas: per chunk, a detail mesh near the player or its silhouette (only one of them visible). */
   private mountainMeshes: { chunk: MountainChunk; detail: THREE.Mesh; silhouette: THREE.Mesh }[] = [];
+  /** S5-A: las Tierras Corruptas' chunks, in one group shown only north of CORRUPT_SHOW_Z or flying. */
+  private corruptMeshes: { chunk: MountainChunk; detail: THREE.Mesh; silhouette: THREE.Mesh }[] = [];
+  private readonly corruptGroup = new THREE.Group();
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
   private rescueMeshes: RescueMeshes | null = null;
@@ -499,6 +502,16 @@ export class Game {
       return { chunk, detail, silhouette };
     });
     this.scene.add(buildPines(this.terrain, seed));
+    // S5-A: las Tierras Corruptas, 4 chunks like the mountains, all hidden from the south.
+    this.corruptMeshes = corruptChunks(t.terrainSegments, corruptFeatures(seed).steps).map((chunk) => {
+      const detail = buildTerrainMesh(ground, chunk.detail);
+      const silhouette = buildTerrainMesh(ground, chunk.silhouette);
+      detail.visible = false;
+      this.corruptGroup.add(detail, silhouette);
+      return { chunk, detail, silhouette };
+    });
+    this.corruptGroup.visible = false;
+    this.scene.add(this.corruptGroup);
     this.zarzalKnot = new ZarzalKnot(this.terrain);
     this.umbral = new UmbralMeshes(plain);
     this.scene.add(this.umbral.group);
@@ -1320,6 +1333,15 @@ export class Game {
         m.silhouette.visible = !near;
       }
     }
+    this.corruptGroup.visible = corruptVisible(b.z, !!b.dragon);
+    if (this.corruptGroup.visible)
+      for (const m of this.corruptMeshes) {
+        const near = chunkDetailed(m.chunk, b.x, b.z);
+        if (m.detail.visible !== near) {
+          m.detail.visible = near;
+          m.silhouette.visible = !near;
+        }
+      }
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     const fog = swampFog(b.x, b.z);
     const frac = dayFraction(this.serverTime);
@@ -1418,6 +1440,7 @@ export class Game {
     const wild = this.dragonViews.find((d) => d.owner === null);
     const open = wild && !this.hasDragon && !this.tame && leapOk(this.pico, this.serverTime, b) ? wild : null;
     this.dragonMeshes?.sync(poses, dt, open);
+    this.dragonMeshes?.fadeGate(this.fog === 'open', dt);
   }
 
   /** Wild and parked frogs, and one under every frog rider (us included). */
