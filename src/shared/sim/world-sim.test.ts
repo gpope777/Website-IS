@@ -8,6 +8,7 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
+import { weatherAt } from '../weather';
 import { HALF, LAGUNA, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../terrain';
 const LAGUNA_EDGE = { x: LAGUNA.x, z: LAGUNA.z - LAGUNA.rz - 6 };
 import { inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
@@ -4701,6 +4702,22 @@ describe('las Montañas: the steep rule on the server', () => {
     sim.handle('Ana', { t: 'mount', act: 2 });
     expect(moveTo(sim, out - 4, p.z)).toBe(false);
     expect(texts(sim)).toContain('El ciervo no trepa');
+  });
+
+  it('S4-B: walkers climb a dry pared, not a wet one', () => {
+    const day = (w: string) => { let d = 0; while (weatherAt(42, d) !== w) d++; return d; };
+    const p = mountainFeatures(42).paredes[0]!;
+    const out = p.x + p.rt + p.w + 1;
+    const dry = setup('Ana');
+    dry.time = (day('clear') + 0.5) * DAY_LENGTH;
+    put(dry, 'Ana', out, p.z);
+    expect(moveTo(dry, out - 4, p.z)).toBe(true);
+    const wet = setup('Ana');
+    wet.time = (day('rain') + 0.5) * DAY_LENGTH;
+    put(wet, 'Ana', out, p.z);
+    msgs(wet);
+    expect(moveTo(wet, out - 4, p.z)).toBe(false);
+    expect(texts(wet)).toContain('Roca mojada. Resbala');
   });
 
   it('the frog jumps onto the first terrace', () => {

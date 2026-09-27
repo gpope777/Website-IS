@@ -3,7 +3,7 @@ import type { Vitals } from './survival';
 import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 
-export const PROTOCOL_VERSION = 32;
+export const PROTOCOL_VERSION = 33;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];

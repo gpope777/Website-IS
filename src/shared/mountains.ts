@@ -7,7 +7,7 @@ import { inMountains, mountainDepth, PELDANOS, type Terrain } from './terrain';
 export const STEEP = { deg: 45, serverDeg: 50, probe: 1 } as const;
 
 /** What a refused uphill step says (client toast and server hint). */
-export const STEEP_TEXT = { smooth: 'Roca lisa. Sin agarre', deer: 'El ciervo no trepa', steep: 'Demasiado empinado' } as const;
+export const STEEP_TEXT = { smooth: 'Roca lisa. Sin agarre', deer: 'El ciervo no trepa', steep: 'Demasiado empinado', wet: 'Roca mojada. Resbala' } as const;
 
 /** Terrain slope at (x, z) in degrees (central difference over 1 m). */
 export function slopeAt(t: Terrain, x: number, z: number): number {
@@ -42,4 +42,9 @@ export const COLD = { y: 30, warmFlame: 20 } as const;
 
 export function altitudeCold(t: Terrain, x: number, z: number): boolean {
   return inMountains(x, z) && t.heightAt(x, z) > COLD.y;
+}
+
+/** Free climbing (S4-B): steep mountain rock you can grab on foot — not the smooth Peldaños, not wet from rain. */
+export function climbableAt(x: number, z: number, wet: boolean): boolean {
+  return inMountains(x, z) && !smoothAt(x, z) && !wet;
 }

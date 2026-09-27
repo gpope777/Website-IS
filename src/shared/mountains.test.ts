@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, createTerrain, HALF, inMap, inMountains, MOUNTAINS, mountainFeatures, PELDANOS, PICO, SWAMP } from './terrain';
 import { generateCrags } from './crags';
-import { altitudeCold, slopeAt, smoothAt, steepBlocked } from './mountains';
+import { altitudeCold, climbableAt, slopeAt, smoothAt, steepBlocked } from './mountains';
 import snapshot from './terrain-s3.snapshot.json';
 
 const SEEDS = [42, 7, 1234];
@@ -137,5 +137,15 @@ describe('altitude cold', () => {
     expect(altitudeCold(t, pico.x, pico.z)).toBe(true);
     expect(altitudeCold(t, 0, 0)).toBe(false);
     expect(altitudeCold(t, 0, -HALF - 0.5)).toBe(false);
+  });
+});
+
+describe('climbable rock (S4-B)', () => {
+  it('dry non-smooth mountain rock only', () => {
+    const p = mountainFeatures(42).paredes[0]!;
+    expect(climbableAt(p.x + p.rt + 1, p.z, false)).toBe(true);
+    expect(climbableAt(p.x + p.rt + 1, p.z, true)).toBe(false);
+    expect(climbableAt(0, -HALF - PELDANOS.first - 0.5, false)).toBe(false);
+    expect(climbableAt(0, 0, false)).toBe(false);
   });
 });

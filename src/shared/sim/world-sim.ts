@@ -1,7 +1,8 @@
 import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
-import { altitudeCold, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
+import { weatherAt, wetAt } from '../weather';
+import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
@@ -802,8 +803,10 @@ export class WorldSim {
     const seaOk = !swimming || deepStepOk(this.terrain, p.x, p.z, m.x, m.z);
     if (!seaOk) this.hint(p.name, l, 'La corriente te devuelve');
     // Las Montañas: no walking or riding uphill onto a cell over 50° (the client stops at 45°). The frog's high jump is exempt.
-    const steep = !l.frog && m.y < ground + 0.6 && steepBlocked(this.terrain, p.x, p.z, m.x, m.z, STEEP.serverDeg);
-    if (steep) this.hint(p.name, l, STEEP_TEXT[smoothAt(m.x, m.z) ? 'smooth' : l.riding ? 'deer' : 'steep']);
+    // S4-B: walkers may climb steep rock that is neither smooth nor wet (stamina is the client's, as on crags).
+    const wet = this.mountainWet();
+    const steep = !l.frog && m.y < ground + 0.6 && (l.riding || !climbableAt(m.x, m.z, wet)) && steepBlocked(this.terrain, p.x, p.z, m.x, m.z, STEEP.serverDeg);
+    if (steep) this.hint(p.name, l, STEEP_TEXT[smoothAt(m.x, m.z) ? 'smooth' : l.riding ? 'deer' : wet ? 'wet' : 'steep']);
     // The server knows who rides: only riders (and just-dismounted ones, for lag) get the deer's speed.
     const mounted = l.riding || l.frog || this.time < l.rodeUntil;
     // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).
@@ -821,6 +824,11 @@ export class WorldSim {
     if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
     if (l.frog) p.frog = { x: r2(p.x), z: r2(p.z) };
     if (m.y <= ground + 0.5) l.boosted = false; // landed (or swimming): the next flight may lift again
+  }
+
+  /** Today's mountain weather wets the rock (rain or storm). */
+  private mountainWet(): boolean {
+    return wetAt(weatherAt(this.seed, Math.floor(this.time / DAY_LENGTH)));
   }
 
   private accept(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
