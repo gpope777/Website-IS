@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { inForest, WATER_LEVEL, type Terrain } from './terrain';
+import { coastFeatures, HALF, inForest, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * Corruption by zones (spec §3): purple patches of the forest, seeded like everything else.
@@ -44,6 +44,48 @@ export function generateZones(terrain: Terrain, seed: number, entrance: { x: num
     zones.push({ id: zones.length, x, z, r });
   }
   return zones;
+}
+
+/**
+ * Coast zones (Slice 2 §6.4): fixed ids 6–9 so saved `cleansed` ids never shift. Zone 6 is the coast
+ * Raíz-madre on the dungeon island; 7 on the beach, 8 in the shallows, 9 on an islet.
+ */
+export const COAST_ZONES = { firstId: 6, root: 6, r: 16, rootR: 18 } as const;
+
+export function isCoastZone(id: number): boolean {
+  return id >= COAST_ZONES.firstId;
+}
+
+export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
+  const rng = createRng(seed ^ 0xc0a2e);
+  const { island, islets } = coastFeatures(seed);
+  const pick = (z: number, ok: (h: number) => boolean): number => {
+    for (let tries = 0; tries < 60; tries++) {
+      const x = (rng() - 0.5) * (HALF * 1.6);
+      if (ok(terrain.heightAt(x, z))) return x;
+    }
+    return 0;
+  };
+  const bz = HALF + 35;
+  const sz = HALF + 70;
+  const islet = islets[islets.length - 1] ?? island;
+  return [
+    { id: 6, x: island.x, z: island.z, r: COAST_ZONES.rootR },
+    { id: 7, x: pick(bz, (h) => h > WATER_LEVEL + 0.2), z: bz, r: COAST_ZONES.r },
+    { id: 8, x: pick(sz, (h) => WATER_LEVEL - h >= 0.5 && WATER_LEVEL - h <= 4), z: sz, r: COAST_ZONES.r },
+    { id: 9, x: islet.x, z: islet.z, r: COAST_ZONES.r },
+  ];
+}
+
+/** Forest zones then coast zones: the one list client and server share. */
+export function allZones(terrain: Terrain, seed: number, entrance: { x: number; z: number }): Zone[] {
+  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed)];
+}
+
+/** Extra raid brutes: +1 per 2 corrupt coast zones while the coast Raíz-madre (zone 6) is corrupt. */
+export function coastRaidBrutes(corrupt: readonly number[]): number {
+  if (!corrupt.includes(COAST_ZONES.root)) return 0;
+  return Math.floor(corrupt.filter(isCoastZone).length / 2);
 }
 
 /** The zone (corrupt or not) this point is in, if any. */
