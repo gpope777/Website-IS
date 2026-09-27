@@ -7,6 +7,7 @@
 //   npm run perf -- --stop bosque  one stop only (comma list allowed)
 //   npm run perf -- --top        also print the biggest meshes (triangle hogs) per reading
 //   npm run perf -- --shots      also save a PNG per reading in scratch/perf/shots/
+//   npm run perf -- --ola        also shoot a forest zone healing (client-only cleanse) at 0/5/10/20 s
 //
 // Builds the client with `--mode perf` (it has the `?perf=1` hook) into scratch/perf/dist, starts
 // `wrangler dev` on a throw-away state dir, creates world "perf" with seed 42, and walks a fixed
@@ -35,6 +36,7 @@ const UPDATE = args.includes('--update');
 const SHOTS = args.includes('--shots');
 const onlyStop = args.includes('--stop') ? args[args.indexOf('--stop') + 1] : null;
 const TOP = args.includes('--top');
+const OLA = args.includes('--ola');
 const onlyTier = args.includes('--tier') ? args[args.indexOf('--tier') + 1] : null;
 
 /** Spec §3 budgets (worst biome, by day). */
@@ -186,6 +188,20 @@ async function main() {
         if (SHOTS) await page.screenshot({ path: join(OUT, 'shots', `${key.replaceAll('/', '_')}.png`) });
         process.stdout.write(`  ${key.padEnd(26)} ${readings[key].calls} llamadas, ${readings[key].triangles} triángulos\n`);
       }
+    if (OLA) {
+      mkdirSync(join(OUT, 'shots'), { recursive: true });
+      const zn = (await page.evaluate(() => window.__perf.zones())).find((z) => z.id === 1);
+      if (zn) {
+        await page.evaluate((p) => window.__perf.stop(p), { x: zn.x, z: zn.z + 8, yaw: 0, pitch: -0.45, frac: 0.5 });
+        await page.waitForTimeout(3000);
+        await page.evaluate(() => window.__perf.cleanse(1));
+        const t0 = Date.now();
+        for (const s of [0, 5, 10, 20]) {
+          await page.waitForTimeout(Math.max(0, t0 + s * 1000 - Date.now()));
+          await page.screenshot({ path: join(OUT, 'shots', `${tier}_ola_${s}s.png`) });
+        }
+      }
+    }
     if (errors.length) console.log(`  errores de página (${tier}): ${errors.slice(0, 3).join(' | ')}`);
     await ctx.close();
   }

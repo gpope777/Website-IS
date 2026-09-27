@@ -4,10 +4,8 @@ import { slopeAt, STEEP } from '../../shared/mountains';
 import { inCienaga } from '../../shared/coast';
 import { ZARZAL, zarzalAt } from '../../shared/swamp';
 import { createRng } from '../../shared/rng';
-import { taintAt, type Zone } from '../../shared/corruption';
-import { patchSway } from './patches';
-
-const TAINT = new THREE.Color(0x5a3a6e);
+import { patchGround, patchSway } from './patches';
+import { snowAmount, vertexNoise, wetSand } from './ground';
 
 /** The fine grid ends here; the far sea (mostly underwater) uses cells twice as big. */
 export const NEAR_SOUTH = HALF + 90;
@@ -128,6 +126,8 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
   const thorn = new THREE.Color(0x5b4a55);
   const mound = new THREE.Color(0x2f4a28);
   const laguna = new THREE.Color(0x1f2a24);
+  const blackMud = new THREE.Color(0x2a2418);
+  const wet = new THREE.Color(0x9a8a62);
   const alpine = new THREE.Color(0x5d7a45);
   const cliff = new THREE.Color(0x85847c);
   const slab = new THREE.Color(0x9c9c98);
@@ -143,21 +143,32 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
     const z = pos.getZ(i);
     const h = terrain.heightAt(x, z);
     pos.setY(i, h);
-    tmp.copy(grass).lerp(dark, terrain.density(x, z));
+    const dens = terrain.density(x, z);
+    const n = vertexNoise(x, z);
+    tmp.copy(grass).lerp(dark, dens);
+    if (dens > 0.55) tmp.lerp(dirt, Math.min(0.45, (dens - 0.55) * 1.5)); // trodden dirt under the densest canopy (V2-C)
     if (h < -3) tmp.lerp(dirt, Math.min(1, (-3 - h) / 4));
     if (h > 14) tmp.lerp(rock, Math.min(1, (h - 14) / 10));
     if (z > COAST_Z0) {
       const k = Math.min(1, (z - COAST_Z0) / COAST.blend);
       const coast = inCienaga(x, z) ? mud : h > WATER_LEVEL ? sand : seabed;
       tmp.lerp(coast, k);
+      if (coast === sand) tmp.lerp(wet, wetSand(h) * 0.7 * k); // V2-C: darker wet sand at the waterline
     }
-    if (x < -HALF) tmp.copy(h > WATER_LEVEL + 0.5 ? mound : h < WATER_LEVEL - 2 ? laguna : bog);
+    if (x < -HALF) {
+      tmp.copy(h > WATER_LEVEL + 0.5 ? mound : h < WATER_LEVEL - 2 ? laguna : bog);
+      if (h <= WATER_LEVEL + 0.5 && h >= WATER_LEVEL - 2 && n > 0.25) tmp.lerp(blackMud, Math.min(1, (n - 0.25) * 2.5)); // V2-C: mud patches
+    }
     if (x < ZARZAL.x1 && zarzalAt(terrain, x, z)) tmp.lerp(thorn, 0.8);
     if (z < -HALF && Math.abs(x) <= HALF) {
       const d = mountainDepth(z);
       tmp.copy(alpine).lerp(dark, terrain.density(x, z) * 0.5);
       if (d >= MOUNTAINS.faldas && Math.abs(x) < CHUTE.half + 1) tmp.copy(packed);
-      else if (d > 130) tmp.lerp(snow, Math.min(1, (d - 130) / 20));
+      else {
+        const sl = slopeAt(terrain, x, z);
+        const sn = Math.max(d > 130 ? Math.min(1, (d - 130) / 20) : 0, snowAmount(h, sl)); // V2-C: snow by height and slope too
+        if (sn > 0) tmp.lerp(snow, sn);
+      }
       if (d < PELDANOS.first + PELDANOS.pitch * (PELDANOS.steps - 1) + PELDANOS.run + 0.5) tmp.copy(slab); // los Peldaños (smoothAt)
       else if (slopeAt(terrain, x, z) > STEEP.deg) tmp.lerp(cliff, 0.85);
     }
@@ -168,30 +179,16 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
       if (d < CORRUPT_LANDS.rim + 0.5 || slopeAt(terrain, x, z) > STEEP.deg) tmp.copy(slate);
       else if (d > TOWER_FOOT.d && Math.abs(x) < TOWER_FOOT.half) tmp.copy(plateau);
     }
+    tmp.multiplyScalar(1 + n * 0.06); // V2-C: ± 6 % break-up, no texture
     colors.set([tmp.r, tmp.g, tmp.b], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.userData.base = colors.slice();
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  patchGround(mat); // V2-C: corrupt zones, the healing wave and the purified Tierras in the shader
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
-}
-
-/** Recolour the ground toward purple inside corrupt zones (only colours change: cheap). */
-export function tintTerrain(mesh: THREE.Mesh, zones: readonly Zone[], corrupt: readonly number[]): void {
-  const geo = mesh.geometry;
-  const base = geo.userData.base as Float32Array;
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const col = geo.attributes.color as THREE.BufferAttribute;
-  const tmp = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    tmp.setRGB(base[i * 3]!, base[i * 3 + 1]!, base[i * 3 + 2]!);
-    const k = taintAt(zones, corrupt, pos.getX(i), pos.getZ(i));
-    if (k > 0) tmp.lerp(TAINT, k * 0.75);
-    col.setXYZ(i, tmp.r, tmp.g, tmp.b);
-  }
-  col.needsUpdate = true;
 }
 
 /** One quad over the whole map, swamp included (the sea is just terrain below WATER_LEVEL). */

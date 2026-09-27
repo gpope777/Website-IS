@@ -104,12 +104,13 @@ import { VillainTower } from './scene/villain-tower';
 import { PillarMeshes } from './scene/pillars';
 import { pillarAction } from './corrupt-ui';
 import { pillarSites, type PillarSites } from '../shared/pillars';
-import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
+import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
 import { ResourceMeshes } from './scene/vegetation';
 import { GrassField } from './scene/grass';
+import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
@@ -402,6 +403,10 @@ export class Game {
   private readonly buried = new Set<number>();
   private resMeshes: ResourceMeshes | null = null;
   private grass: GrassField | null = null;
+  /** V2-C: corrupt zones and their healing waves (shader uniforms), and the ending flag they last saw. */
+  private heal = new HealWaves();
+  private healEnding = false;
+  private lastCorrupt: readonly number[] = [];
   /** V2-C: 0 calm, 0.5 rain, 1 storm (stronger wind). */
   private windStorm = 0;
   private readonly tmpFwd = new THREE.Vector3();
@@ -502,6 +507,11 @@ export class Game {
           tier: () => this.tier,
           stop: (p) => (this.perfStop = p),
           online: () => this.netOnline && this.welcomed,
+          zones: () => this.zones.map((z) => ({ ...z })),
+          cleanse: (id) => {
+            this.lastCorrupt = this.lastCorrupt.filter((c) => c !== id);
+            this.heal.sync(this.lastCorrupt, this.ending, performance.now() / 1000);
+          },
         });
       });
     } else this.guard = new FpsGuard(this.tier, this.renderer.getPixelRatio());
@@ -738,6 +748,7 @@ export class Game {
     this.rescueMeshes = new RescueMeshes(this.rescueSpot, this.terrain);
     this.scene.add(this.rescueMeshes.group);
     this.corruptKey = '';
+    this.heal = new HealWaves();
     this.scene.add(this.corruptionMeshes.group);
     this.scene.add(this.ground, buildWater(), (this.grass = new GrassField(this.terrain, seed, t, this.tier)).group, this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
@@ -906,11 +917,11 @@ export class Game {
     this.dragonViews = m.dragons ?? [];
     this.whaleView = m.whale;
     const key = m.corrupt.join(',');
-    if (key !== this.corruptKey && this.ground) {
+    if ((key !== this.corruptKey || this.ending !== this.healEnding) && this.ground) {
       this.corruptKey = key;
-      tintTerrain(this.ground, this.zones, m.corrupt);
-      if (this.farGround) tintTerrain(this.farGround, this.zones, m.corrupt);
-      if (this.swampGround) tintTerrain(this.swampGround, this.zones, m.corrupt);
+      this.healEnding = this.ending;
+      this.lastCorrupt = m.corrupt;
+      this.heal.sync(m.corrupt, this.ending, performance.now() / 1000); // V2-C: the shader paints corrupt zones; a cleansed one heals as a wave
       this.corruptionMeshes?.sync(m.corrupt);
     }
     if (!this.kits) return;
@@ -1985,7 +1996,13 @@ export class Game {
     if (fogCol) WORLD_UNIFORMS.fogSunCol.value.copy(fogCol).lerp(this.skyLook.sun, 0.6 * this.light.daylight);
     WORLD_UNIFORMS.fogSunDir.value.copy(this.light.sunDirection);
     // V2-C: wind for grass, crowns, pines and awnings; on high the grass bends away from nearby players.
-    LIFE_UNIFORMS.windT.value = performance.now() / 1000;
+    const now = performance.now() / 1000;
+    LIFE_UNIFORMS.windT.value = now;
+    LIFE_UNIFORMS.zones.value.forEach((v, i) => {
+      const zn = this.zones[i];
+      if (zn) v.set(zn.x, zn.z, zn.r, this.heal.front(zn, now));
+      else v.set(0, 0, 1, FRONT_HEALED);
+    });
     LIFE_UNIFORMS.windAmp.value = 1 + this.windStorm * 1.2;
     if (this.tier === 'high') {
       const press = LIFE_UNIFORMS.pressPos.value;

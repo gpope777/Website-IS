@@ -22,6 +22,9 @@ export interface PerfTarget {
   stop(p: PerfStop | null): void;
   /** Connected and welcomed (after the harness re-imports a safe world the page reconnects by itself). */
   online(): boolean;
+  /** V2-C: the corrupt zones, and a client-only cleanse to watch the healing wave (`--ola`). */
+  zones(): { id: number; x: number; z: number; r: number }[];
+  cleanse(id: number): void;
 }
 
 /** Installs the hook; returns its remover. */
@@ -33,6 +36,8 @@ export function installPerfHook(t: PerfTarget): () => void {
     stop: (p: PerfStop) => t.stop(p),
     release: () => t.stop(null),
     online: () => t.online(),
+    zones: () => t.zones(),
+    cleanse: (id: number) => t.cleanse(id),
     info: () => {
       const i = t.renderer.info;
       return { calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 };
