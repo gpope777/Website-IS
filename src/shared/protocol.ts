@@ -2,14 +2,14 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer. */ ride: boolean }
-export type EnemyKind = 'wolf' | 'brute' | 'boss';
+export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'marchito';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
@@ -24,6 +24,8 @@ export interface AllyView { x: number; y: number; z: number; yaw: number; anim: 
 export interface SteedView { owner: string | null; x: number; y: number; z: number; yaw: number }
 /** A taming round in progress: needle angle = ringAngle(speed, serverTime - start); tap inside `zone` ± width/2. */
 export interface TameView { round: number; rounds: number; start: number; speed: number; zone: number; width: number }
+/** El Marchito in the base: voluntad left (he leaves at 0) and whether he is laughing on his way out. */
+export interface MarchitoView { will: number; max: number; laughing: boolean }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
 export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean }
@@ -54,12 +56,14 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; steeds: SteedView[] }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; steeds: SteedView[]; marchito: MarchitoView | null }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
   | { t: 'built'; s: Structure }
-  | { t: 'toast'; text: string };
+  | { t: 'toast'; text: string }
+  /** El Marchito speaks: a few lines shown as a vision card. */
+  | { t: 'vision'; lines: string[] };
 
 export const NAME_RE = /^[\p{L}\p{N} _-]{1,16}$/u;
 export const PIN_RE = /^\d{4}$/;
