@@ -66,5 +66,9 @@ export const NAMES = {
   thorn: 'espina negra',
   crack: 'la Grieta',
   challengeNights: 'Noches de desafío',
+  /** S5-G: the post-ending raids toggle at the Heart (the spec's challengeNights meant "off by default"). */
+  raidNights: 'Noches de asedio',
+  maker: 'Gabriel',
+  game: 'Bosque',
   credits: 'el sobrino',
 } as const;

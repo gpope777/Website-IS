@@ -30,7 +30,37 @@ export const FOG_EDGE_TEXT = 'La niebla te devuelve. Ahí no hay nada';
 
 export const fogText = (missing: string) => `La niebla aguanta. Falta la ${missing}`;
 
-export function rimCrossBlocked(pz: number, nz: number): boolean {
+/**
+ * La Grieta (S5-G, spec §3/§10.2): after the ending, a 6 m notch at x = 0 cut through el Borde at 30°, from the
+ * rim's foot in la Ceniza south into the mountains until it meets the ground. Walkers cross the rim line in it.
+ */
+export const GRIETA = { half: 3, deg: 30, len: 110 } as const;
+const GRIETA_FOOT = CORRUPT_LANDS.z1 - CORRUPT_LANDS.rim;
+
+/** Inside the Grieta's band (the notch may be shallower than the band: see `withGrieta`). */
+export function inGrieta(x: number, z: number): boolean {
+  return Math.abs(x) < GRIETA.half && z >= GRIETA_FOOT && z <= GRIETA_FOOT + GRIETA.len;
+}
+
+/** The terrain with la Grieta cut while `open()`: in the band, min(ground, foot + tan 30° · metres south of the foot). */
+export function withGrieta(base: Terrain, open: () => boolean): Terrain {
+  let foot: number | null = null;
+  const slope = Math.tan((GRIETA.deg * Math.PI) / 180);
+  return {
+    heightAt: (x, z) => {
+      const h = base.heightAt(x, z);
+      if (!open() || !inGrieta(x, z)) return h;
+      foot ??= base.heightAt(0, GRIETA_FOOT);
+      return Math.min(h, foot + slope * (z - GRIETA_FOOT));
+    },
+    density: (x, z) => base.density(x, z),
+    ...(base.waterAt ? { waterAt: (x: number, z: number) => base.waterAt!(x, z) } : {}),
+  };
+}
+
+/** A ground move crossing the rim northward; with la Grieta open (`grieta`), a move into its band (`nx`) passes. */
+export function rimCrossBlocked(pz: number, nz: number, nx?: number, grieta = false): boolean {
+  if (grieta && nx !== undefined && Math.abs(nx) < GRIETA.half) return false;
   return pz >= RIM_LINE && nz < RIM_LINE;
 }
 
