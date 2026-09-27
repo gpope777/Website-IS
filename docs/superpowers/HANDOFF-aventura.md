@@ -571,3 +571,32 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: en pez hasta el tronco de la Laguna y A. Palancas, altar (J / mantener → 🔥). Tres Llamaradas a las espinas. Sala del gas: Llamarada a las dos lámparas juntas y correr a la tercera (¿10 s es justo?). Pasarela: ¿1,2 s por tabla da para cruzar corriendo? ¿se entiende por qué caes? Bruto de turba: dejarlo en un charco y ver que se cura; quemarlo. Fuera: Candiles solo con Fuego, la pared de Turba, una raíz morada del Pantano. De noche: Llamarada a lobos (¿huyen?) y una hoguera cerca del Corazón. Constantes: `FUEGO`/`HOGUERA` en `src/shared/fuego.ts`, `SWAMP_DUNGEON` en `src/shared/swamp-dungeon.ts`, `ENEMY.elite3`.
+
+## Slice 3 · S3-F — El Zancudo, el farol y el nudo del Zarzal — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-F-zancudo.md` (187f709).
+- Commits: faceb01 (T1 reglas: `src/shared/sim/zancudo.ts`, respiraderos, `ZARZAL_KNOT`), ce9a2cf (T2 el combate en el servidor, protocolo v30), 90cc0ef (T3 el farol y el nudo), 3d4f572 (T4 cliente).
+- Tests: npm test 593 (antes 573), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 30**. Campos guardados nuevos opcionales `SavedWorld.purified3` y `SavedWorld.zarzalBurnt`: las partidas viejas cargan (jefe sin vencer, nudo entero).
+- Dibujo: `public/enemies/enemy9.png` (358 × 291, alfa real según el spec). Va por `PaperActor`, **6 m de ancho** (el riesgo del spec: líneas finas se leen pequeñas).
+- Cómo funciona:
+  - **Sala del jefe** de la mazmorra del Pantano (z 150–180, tras la verja 3). Ya no dice "Aún duerme": al entrar, **El Zancudo despierta**. Cuatro **respiraderos de gas** en (±5, 158) y (±5, 172).
+  - **380 PV**, flota a **4 m**. Los puñetazos no llegan ("Vuela alto. Flechas, o fuego al gas bajo él"); **flechas, ráfagas y Llamaradas hacen el 50 %** (la ráfaga no lo empuja).
+  - **Deriva** de respiradero en respiradero cada 6 s. Una **Llamarada sobre el respiradero que tiene debajo** lo tumba **5 s** ("El gas prende bajo El Zancudo. ¡Cae! Ahora sí"): en el suelo recibe el daño entero y no ataca. Un respiradero sin él encima solo llamea.
+  - **Picado:** su sombra (disco oscuro con borde rojo, sin niebla) marca el sitio durante 1,0 s; luego cae ahí: 14 a todos a ≤1,8 m. Rodar lo esquiva; **parar lo tumba 3 s**. Si acierta, **se engancha** (5 PV/s, máx. 3 s) hasta que ruedas ("Ruedas y te lo quitas de encima"). Enfriamiento 8 s.
+  - Balance: quieto debajo, ~31 s de 100 PV (objetivo 30–45 s).
+  - Sala vacía → se reinicia. **Al caer:** `purified3`, **zona 10 limpia** (así **La Gata Araña deja de venir**: `gataLeads` ya miraba la 10) y visión con los nombres: «Mi zancudo. Mi niebla. Mi gata sin casa…».
+  - **Zancudo blanco:** junto al Corazón (2,5 m al +z) con un farol (bola dorada sin niebla). **De noche, cada 10 s**, todos los **lobos** a ≤12 m del Corazón **huyen 3 s**. Brutos, élites y la Gata no. Sin PV, no muere; no toca PV del Corazón ni tamaño de asedio.
+  - **Nudo del Zarzal:** raíz marchita en `x = −HALF + 8, z = 120` (lado del bosque). **Tres Llamaradas** a ≤5 m ("El nudo del Zarzal humea (1/3)") → `zarzalBurnt`: en `|z − 120| < 5` el Zarzal deja de morder y de frenar, **para todos**, para siempre. Cliente: el nudo y su seto de espinas desaparecen.
+  - Barra: "El Zancudo 380/380 · en el aire / ¡picado! / ¡en el suelo! / chupando a Ana: ¡rueda!". Tumbado se tiñe dorado.
+- Decidido por Claude — revisar:
+  - Arena = la sala que ya había (24 × 30 m), no 22 × 22.
+  - Nudo en un punto **fijo**, no sembrado; la altura del terreno no cambia (el borde se puede andar; solo las espinas cierran). El contador de Llamaradas del nudo es vivo (un reinicio lo pone a 0).
+  - La visión al quemar el nudo queda para S3-G (visiones del Pantano); aquí solo una línea (`// S3-G`).
+  - El farol solo asusta a `kind 'wolf'` (asaltantes o no); "de noche" = `isNight`.
+  - El tinte de espinas del suelo sigue en el hueco (cosmético); los arbustos de espinas sembrados nunca caen en el hueco, que tiene su propio seto hasta arder.
+  - `bite()` ahora dice si el golpe entró (para el enganche); `hurt()` aplica daño con Capa.
+  - Cambios de regla con tests adaptados (ninguno borrado): el test "the boss room is quiet (S3-F)" ahora espera "El Zancudo despierta"; versión de protocolo → 30.
+- **Marcas `// S3-F`:** resueltas todas. Queda `// S3-G` (fogatas y la visión del nudo, en `flameThings`).
+- Rendimiento móvil: 4 anillos + 4 llamaradas (ocultas salvo al prender), 1 disco de sombra, el nudo (1 malla + 1 instanciada ≤120). Sin luces nuevas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: entrar a la sala con Fuego y arco; ¿se lee la sombra del picado en la penumbra?, ¿6 s entre respiraderos da para apuntar?, ¿el enganche se entiende? Vencerlo y ver el farol de noche. Quemar el nudo (junto al borde oeste, z ≈ 120) y cruzar a pie. Constantes: `ZANCUDO`/`FAROL` en `src/shared/sim/zancudo.ts`, `SWAMP_DUNGEON.vents`, `ZARZAL_KNOT` en `src/shared/swamp.ts`.
