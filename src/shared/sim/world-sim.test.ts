@@ -26,6 +26,11 @@ function setup(...names: string[]) {
   return sim;
 }
 
+/** Purify the coast Raíz-madre (zone 6) so raids get no coast brutes. */
+function calmCoast(sim: WorldSim) {
+  (sim as unknown as { cleansed: Set<number> }).cleansed.add(6);
+}
+
 /** Teleport for tests (bypasses move validation). */
 function put(sim: WorldSim, name: string, x: number, z: number) {
   const p = sim.getPlayer(name)!;
@@ -348,6 +353,7 @@ describe('asedios', () => {
 
   it('warns at dusk, attacks at night, levels up at dawn', () => {
     const sim = setup('Ana');
+    calmCoast(sim); // Rule change (S2-D): coast zones add raid brutes; these tests count forest waves only.
     plantHeart(sim);
     stepTo(sim, RAID.warnAt + 0.01);
     expect(sim.raidState()?.phase).toBe('warn');
@@ -365,6 +371,7 @@ describe('asedios', () => {
 
   it('bigger waves with level and players', () => {
     const sim = setup('Ana', 'Leo');
+    calmCoast(sim); // Rule change (S2-D): coast zones add raid brutes; these tests count forest waves only.
     plantHeart(sim);
     sim.raidLevel = 2;
     stepTo(sim, 0.81);
@@ -445,6 +452,7 @@ describe('asedios', () => {
 
   it('a red de raíces holds a raider, rearms, wears and breaks', () => {
     const sim = setup('Ana');
+    calmCoast(sim); // Rule change (S2-D): coast zones add raid brutes; these tests count forest waves only.
     const h = plantHeart(sim);
     sim.getPlayer('Ana')!.inv = { wood: 4, berries: 2 };
     const p = sim.getPlayer('Ana')!;
@@ -981,7 +989,8 @@ describe('coast shrines', () => {
     put(sim, 'Leo', s.parts[0]!.x, s.parts[0]!.z);
     sim.step(0.1);
     expect(take(sim, 'Ana', s.id)).toBe(true);
-    expect(sim.corrupt()).toEqual(before);
+    // Rule change (S2-D): a coast orb now cleanses a coast zone; the forest ones stay.
+    expect(sim.corrupt().filter((i) => i < 6)).toEqual(before.filter((i) => i < 6));
   });
 });
 
@@ -1730,6 +1739,7 @@ describe('corruption from the Raíz-madre', () => {
 
   it('once purified, waves are smaller and bring no brutes', () => {
     const sim = setup('Ana', 'Leo');
+    calmCoast(sim); // Rule change (S2-D): coast zones add raid brutes; these tests count forest waves only.
     plantHeart(sim);
     sim.raidLevel = 2;
     sim.purified = true;
@@ -2384,5 +2394,113 @@ describe('sunken chests and the weapon upgrade', () => {
     again.connect('Ana');
     expect(snap(again, 'Ana').self.chests).toEqual([]);
     expect(snap(again, 'Ana').self.weapon).toBe(0);
+  });
+});
+
+describe('coast corruption (S2-D)', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const takeTide = (sim: WorldSim) => {
+    const s = kind(sim, 'tide');
+    put(sim, 'Leo', s.parts[0]!.x, s.parts[0]!.z);
+    sim.step(0.1);
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    return s;
+  };
+  const coastIds = [6, 7, 8, 9];
+
+  it('a new world has the coast zones corrupt; old saves load with them corrupt', () => {
+    const sim = setup('Ana');
+    expect(snap(sim, 'Ana').corrupt).toEqual(expect.arrayContaining(coastIds));
+    const old = sim.save();
+    old.cleansed = [0, 1];
+    expect(new WorldSim(old).corrupt()).toEqual(expect.arrayContaining(coastIds));
+  });
+
+  it('a coast orb cleanses the nearest corrupt coast zone (never 6, never the forest)', () => {
+    const sim = setup('Ana', 'Leo');
+    msgs(sim);
+    const s = takeTide(sim);
+    const gone = sim.save().cleansed ?? [];
+    expect(gone.length).toBe(1);
+    const near = sim.zones.filter((z) => z.id === 7 || z.id === 8 || z.id === 9).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z))[0]!;
+    expect(gone).toEqual([near.id]);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('un trozo de costa') });
+  });
+
+  it('with only 6 left on the coast, a coast orb cleanses nothing', () => {
+    const w = newWorld(42, 'salt');
+    w.cleansed = [7, 8, 9];
+    const sim = new WorldSim(w);
+    for (const n of ['Ana', 'Leo']) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    const before = sim.corrupt();
+    takeTide(sim);
+    expect(sim.corrupt()).toEqual(before);
+  });
+
+  it('a forest orb never cleanses a coast zone', () => {
+    const probe = setup('Ana');
+    const w = newWorld(42, 'salt');
+    w.cleansed = probe.zones.filter((z) => z.id > 0 && z.id < 6).map((z) => z.id);
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    const i = sim.shrines.findIndex((s) => s.kind === 'ledge');
+    const s = sim.shrines[i]!;
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x: s.orb.x, y: s.orb.y, z: s.orb.z });
+    const before = sim.corrupt();
+    sim.handle('Ana', { t: 'shrine', id: i, part: 0 });
+    expect(p.shrines).toContain(i);
+    expect(sim.corrupt()).toEqual(before);
+  });
+
+  it('Enredadera at a coast root cleanses nothing (Viento will, S2-F)', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const z = sim.zones.find((x) => x.id === 7)!;
+    put(sim, 'Ana', z.x - 3, z.z);
+    sim.handle('Ana', { t: 'power', x: z.x, z: z.z });
+    expect(sim.corrupt()).toContain(7);
+  });
+
+  it('raids get +1 brute per 2 corrupt coast zones while the coast root is corrupt', () => {
+    const run = (cleansed: number[]) => {
+      const w = newWorld(42, 'salt');
+      w.cleansed = cleansed;
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      plantHeart(sim);
+      stepTo(sim, RAID.warnAt + 0.01);
+      const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('Algo sube de la costa'));
+      stepTo(sim, 0.81);
+      const raiders = sim.wolfList.filter((x) => x.raid);
+      return { warn, n: raiders.length, brutes: raiders.filter((x) => x.kind === 'brute').length };
+    };
+    const dirty = run([]);
+    const clean = run([6]);
+    expect(dirty.warn).toBe(true);
+    expect(clean.warn).toBe(false);
+    expect(dirty.n).toBe(clean.n + 2);
+    expect(dirty.brutes).toBe(clean.brutes + 2);
+  });
+
+  it('a night in a corrupt coast zone brings extra beasts', () => {
+    const count = (clean: boolean) => {
+      const w = newWorld(42, 'salt');
+      if (clean) w.cleansed = [7];
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      const z = sim.zones.find((x) => x.id === 7)!;
+      put(sim, 'Ana', z.x, z.z);
+      stepTo(sim, 0.81);
+      return sim.wolfList.filter((x) => !x.raid).length;
+    };
+    expect(count(false)).toBeGreaterThan(count(true));
   });
 });

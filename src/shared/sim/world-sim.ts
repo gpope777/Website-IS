@@ -5,7 +5,7 @@ import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, WA
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
-import { CORRUPTION, generateZones, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
+import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
@@ -247,7 +247,7 @@ export class WorldSim {
     this.island = coastFeatures(saved.seed).island;
     this.fishHome = wildFish(this.terrain, saved.seed);
     this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
-    this.zones = generateZones(this.terrain, saved.seed, this.entrance);
+    this.zones = allZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
     this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
@@ -730,9 +730,11 @@ export class WorldSim {
     p.shrines = [...cleared, id];
     this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
     // The shrine's light cleanses the corrupt zone nearest it (never the Raíz-madre's: that takes the Tragón).
-    // Coast orbs will cleanse coast zones (a later plan); never a forest one.
-    const zn = s.id < COAST_SHRINE.firstId ? nearestZone(this.zones, s.x, s.z, this.corrupt().filter((i) => i !== 0)) : undefined;
-    if (zn) this.cleanse(zn.id, 'La luz del santuario limpia un trozo de bosque');
+    // Coast orbs cleanse coast zones only (never the coast Raíz-madre's: that takes its boss, S2-G); forest orbs forest ones.
+    const coast = s.id >= COAST_SHRINE.firstId;
+    const ids = this.corrupt().filter((i) => i !== 0 && i !== COAST_ZONES.root && isCoastZone(i) === coast);
+    const zn = nearestZone(this.zones, s.x, s.z, ids);
+    if (zn) this.cleanse(zn.id, coast ? 'La luz del santuario limpia un trozo de costa' : 'La luz del santuario limpia un trozo de bosque');
   }
 
   /** Levers, wheels and Marea's pumice block. */
@@ -780,7 +782,8 @@ export class WorldSim {
     this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
-    const zn = this.zones.find((z) => z.id !== 0 && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
+    // Coast roots wither to Viento, not Enredadera (S2-F).
+    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     const knot = inside(DUNGEON.knot);
     if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
@@ -1385,10 +1388,11 @@ export class WorldSim {
       const src = nearestZone(this.zones, heart.x, heart.z, corrupt);
       this.raid = { phase: 'warn', dir: raidDirFrom(heart, this.zones, corrupt, this.rootDir(heart)) + (this.rng() - 0.5) * RAID.jitter };
       const where = !src || src.id === 0 ? `la ${NAMES.forestRoot}` : 'una zona marchita';
+      const coast = coastRaidBrutes(corrupt) > 0 ? '. Algo sube de la costa' : '';
       this.say(
         this.purified
-          ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón`
-          : `El cielo se tiñe de morado hacia ${where}. ${NAMES.villain} envía a sus bestias: vuelvan al Corazón`,
+          ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón${coast}`
+          : `El cielo se tiñe de morado hacia ${where}. ${NAMES.villain} envía a sus bestias: vuelvan al Corazón${coast}`,
       );
     }
     if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {
@@ -1408,14 +1412,16 @@ export class WorldSim {
     const extra = Math.max(0, this.activeCount() - 1);
     const full = Math.min(RAID.maxWave, RAID.base + RAID.perLevel * this.raidLevel + RAID.perPlayer * extra);
     const n = this.purified ? Math.max(1, Math.ceil(full * RAID.cleansed)) : full;
-    for (let i = 0; i < n; i++) {
+    // Coast pressure (Slice 2 §6.4): extra brutes on top, until the coast Raíz-madre is purified (S2-G).
+    const extraBrutes = coastRaidBrutes(this.corrupt());
+    for (let i = 0; i < n + extraBrutes; i++) {
       for (let tries = 0; tries < 10; tries++) {
         const ang = dir + (this.rng() - 0.5) * 0.8;
         const d = RAID.spawnMin + this.rng() * (RAID.spawnMax - RAID.spawnMin);
         const x = heart.x + Math.sin(ang) * d;
         const z = heart.z + Math.cos(ang) * d;
         if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
-          const kind: EnemyKind = !this.purified && this.raidLevel >= 1 && i % 3 === 2 ? 'brute' : 'wolf';
+          const kind: EnemyKind = i >= n || (!this.purified && this.raidLevel >= 1 && i % 3 === 2) ? 'brute' : 'wolf';
           const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, kind);
           w.raid = true;
           this.wolves.push(w);
