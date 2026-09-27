@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { clampMap, HALF, inForest, WATER_LEVEL, type Terrain } from './terrain';
 import type { Crag } from './crags';
 import type { Shrine } from './shrines';
 
@@ -91,7 +91,7 @@ export function withDungeon(base: Terrain): Terrain {
 
 /** Where a step from (px,pz) toward (nx,nz) ends: the interior walls and shut gates (either way) inside, the map edge outside. `gates[i]` = gate i open. */
 export function clampStep(px: number, pz: number, nx: number, nz: number, gates: readonly boolean[]): { x: number; z: number } {
-  if (!inDungeon(px, pz, 2)) return { x: clamp(nx, -HALF + 3, HALF - 3), z: clamp(nz, -HALF + 3, HALF - 3) };
+  if (!inDungeon(px, pz, 2)) return clampMap(nx, nz, 3);
   const x = clamp(nx, DUNGEON.x - DUNGEON.halfW + 0.5, DUNGEON.x + DUNGEON.halfW - 0.5);
   let z = clamp(nz, DUNGEON.z0 + 0.5, DUNGEON.z1 - 0.5);
   DUNGEON.gatesZ.forEach((g, i) => {
@@ -119,7 +119,7 @@ export function generateEntrance(terrain: Terrain, seed: number, crags: readonly
 }
 
 function fits(terrain: Terrain, crags: readonly Crag[], shrines: readonly Shrine[], x: number, z: number): boolean {
-  if (Math.abs(x) > HALF - 25 || Math.abs(z) > HALF - 25) return false;
+  if (!inForest(x, z, 25)) return false;
   const r = DUNGEON.trunkR;
   for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]] as const) if (terrain.heightAt(x + ox, z + oz) < WATER_LEVEL + 0.5) return false;
   return ![...crags, ...shrines].some((c) => Math.hypot(c.x - x, c.z - z) <= DUNGEON.clear);

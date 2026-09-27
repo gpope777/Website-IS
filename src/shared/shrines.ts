@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { inForest, WATER_LEVEL, type Terrain } from './terrain';
 import type { Crag } from './crags';
 
 export type ShrineKind = 'levers' | 'plate' | 'ledge';
@@ -89,7 +89,7 @@ function fits(terrain: Terrain, crags: readonly Crag[], s: Shrine): boolean {
   const pts = [s, ...s.parts];
   if (s.pillar) for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) pts.push({ x: s.x + ox * s.pillar.r, z: s.z + oz * s.pillar.r } as Shrine);
   for (const p of pts) {
-    if (Math.abs(p.x) > HALF - 20 || Math.abs(p.z) > HALF - 20) return false;
+    if (!inForest(p.x, p.z, 20)) return false;
     if (terrain.heightAt(p.x, p.z) < WATER_LEVEL + 0.3) return false;
   }
   return !crags.some((c) => Math.hypot(c.x - s.x, c.z - s.z) < SHRINE.cragClear);

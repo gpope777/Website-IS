@@ -1,5 +1,5 @@
 import { NAMES } from '../names';
-import { HALF, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, WATER_LEVEL, type Terrain } from '../terrain';
 import type { EnemyKind, WolfAnim } from '../protocol';
 
 export type { EnemyKind } from '../protocol';
@@ -149,8 +149,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
   w.target = target?.name ?? null;
 
   if (speed > 0) {
-    const nx = Math.max(-HALF + 4, Math.min(HALF - 4, w.x + dirX * speed * k * dt));
-    const nz = Math.max(-HALF + 4, Math.min(HALF - 4, w.z + dirZ * speed * k * dt));
+    const { x: nx, z: nz } = clampMap(w.x + dirX * speed * k * dt, w.z + dirZ * speed * k * dt, 4);
     if (terrain.heightAt(nx, nz) < WATER_LEVEL) {
       w.wander += Math.PI; // turn around at the shore
     } else {

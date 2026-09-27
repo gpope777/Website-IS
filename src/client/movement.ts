@@ -1,4 +1,4 @@
-import { HALF, WATER_LEVEL, type Terrain } from '../shared/terrain';
+import { clampMap, WATER_LEVEL, type Terrain } from '../shared/terrain';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
@@ -88,7 +88,7 @@ function spend(b: Body, amount: number): void {
 
 /** Where a step from (px,pz) toward (nx,nz) may end: the map edge by default, the dungeon walls inside it. */
 export type Bounds = (px: number, pz: number, nx: number, nz: number) => { x: number; z: number };
-const mapBounds: Bounds = (_px, _pz, nx, nz) => ({ x: Math.max(-HALF + 3, Math.min(HALF - 3, nx)), z: Math.max(-HALF + 3, Math.min(HALF - 3, nz)) });
+const mapBounds: Bounds = (_px, _pz, nx, nz) => clampMap(nx, nz, 3);
 
 export function stepBody(
   b: Body,

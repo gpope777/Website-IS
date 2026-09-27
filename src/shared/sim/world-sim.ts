@@ -1,6 +1,6 @@
 import { NAMES } from '../names';
 import { createRng } from '../rng';
-import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, createTerrain, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
@@ -476,7 +476,7 @@ export class WorldSim {
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
-    const inBounds = inDungeon(m.x, m.z) || (Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2);
+    const inBounds = inDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
     const through = clampStep(p.x, p.z, m.x, m.z, this.gates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
     const wallOk = !inDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
@@ -529,7 +529,7 @@ export class WorldSim {
     if (kind === 'heart' && this.heart()) return toast('Ya hay un Corazón en este mundo');
     if (Math.hypot(x - p.x, z - p.z) > BUILD_REACH) return toast('Demasiado lejos');
     const y = this.terrain.heightAt(x, z);
-    if (y < WATER_LEVEL || Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4) return toast('No se puede construir aquí');
+    if (y < WATER_LEVEL || !inForest(x, z, 4)) return toast('No se puede construir aquí'); // the base stays in the forest
     if (this.structures.some((s) => Math.hypot(s.x - x, s.z - z) < 1.5)) return toast('Hay algo en el camino');
     if (this.structures.length >= MAX_STRUCTURES) return toast('El mundo ya tiene demasiadas construcciones');
     p.inv = removeAll(p.inv, BUILD_COST[kind]);
@@ -645,7 +645,7 @@ export class WorldSim {
     if (p.dead) return;
     if (!p.enredadera) return this.tell(p.name, 'Aún no tienes ese poder');
     if (this.time + EPS < l.powerReadyAt) return this.tell(p.name, `La enredadera aún no brota (${Math.ceil(l.powerReadyAt - this.time - EPS)} s)`);
-    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4;
+    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : !inMap(x, z, 4);
     if (Math.hypot(x - p.x, z - p.z) > ENREDADERA.reach || offMap) return this.tell(p.name, 'Demasiado lejos');
     const others = this.vines.filter((v) => v.owner !== p.name);
     const wrapped = new Set(others.map((v) => v.id));
@@ -1074,7 +1074,7 @@ export class WorldSim {
         const d = WOLF.spawnMin + this.rng() * (WOLF.spawnMax - WOLF.spawnMin);
         const x = a.x + Math.sin(ang) * d;
         const z = a.z + Math.cos(ang) * d;
-        if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
+        if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
           this.wolves.push(createWolf(this.nextWolfId++, x, z, this.terrain, this.rng));
           break;
         }
@@ -1091,7 +1091,7 @@ export class WorldSim {
           const d = 20 + this.rng() * 15;
           const x = a.x + Math.sin(ang) * d;
           const z = a.z + Math.cos(ang) * d;
-          if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
+          if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
             this.wolves.push(createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, i === 0 ? 'brute' : 'wolf'));
             break;
           }
@@ -1144,7 +1144,7 @@ export class WorldSim {
         const d = RAID.spawnMin + this.rng() * (RAID.spawnMax - RAID.spawnMin);
         const x = heart.x + Math.sin(ang) * d;
         const z = heart.z + Math.cos(ang) * d;
-        if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
+        if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
           const kind: EnemyKind = !this.purified && this.raidLevel >= 1 && i % 3 === 2 ? 'brute' : 'wolf';
           const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, kind);
           w.raid = true;
@@ -1269,9 +1269,7 @@ export class WorldSim {
 
   private startInvasion(h: Structure): void {
     const dir = this.rootDir(h);
-    const lim = HALF - 6;
-    const x = Math.max(-lim, Math.min(lim, h.x + Math.sin(dir) * MARCHITO.spawnDist));
-    const z = Math.max(-lim, Math.min(lim, h.z + Math.cos(dir) * MARCHITO.spawnDist));
+    const { x, z } = clampMap(h.x + Math.sin(dir) * MARCHITO.spawnDist, h.z + Math.cos(dir) * MARCHITO.spawnDist, 6);
     this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, pickDefenses(this.structures, h), marchitoWill(this.activeCount()));
     this.vision(VISION.arrive);
   }

@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { COAST_Z0, HALF, inForest, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * A marked climbable rock pillar (peñasco con enredadera). Climbing only works on these:
@@ -34,7 +34,8 @@ export function generateCrags(terrain: Terrain, seed: number): Crag[] {
       if (a > CRAG.chance) continue;
       const x = cx + (b - 0.5) * CRAG.cell * 0.6;
       const z = cz + (c - 0.5) * CRAG.cell * 0.6;
-      if (Math.abs(x) > HALF - 20 || Math.abs(z) > HALF - 20 || Math.hypot(x, z) < CRAG.spawnClear) continue;
+      // No crag within 60 m of the Ciénaga: a glide from one must not skip the mud.
+      if (!inForest(x, z, 20) || z > COAST_Z0 - 60 || Math.hypot(x, z) < CRAG.spawnClear) continue;
       if (terrain.density(x, z) > CRAG.maxDensity) continue; // clearings, so few trees poke through
       const r = CRAG.minR + d * (CRAG.maxR - CRAG.minR);
       let lo = Infinity;

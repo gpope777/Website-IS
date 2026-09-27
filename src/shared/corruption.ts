@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { inForest, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * Corruption by zones (spec §3): purple patches of the forest, seeded like everything else.
@@ -38,7 +38,7 @@ export function generateZones(terrain: Terrain, seed: number, entrance: { x: num
     const r = CORRUPTION.rMin + rng() * (CORRUPTION.rMax - CORRUPTION.rMin);
     const x = Math.sin(ang) * d;
     const z = Math.cos(ang) * d;
-    if (Math.abs(x) > HALF - 15 || Math.abs(z) > HALF - 15) continue;
+    if (!inForest(x, z, 15)) continue;
     if (terrain.heightAt(x, z) < WATER_LEVEL + 0.5) continue;
     if (zones.some((o) => Math.hypot(o.x - x, o.z - z) < (o.r + r) * 0.9)) continue;
     zones.push({ id: zones.length, x, z, r });

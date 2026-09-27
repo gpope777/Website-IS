@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { inForest, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * El Ciervo: the land mount. Taming is a timing ring judged by the server; riding is
@@ -62,7 +62,7 @@ export function generateWild(terrain: Terrain, seed: number, avoid: readonly { x
     const d = MOUNT.minDist + rng() * (MOUNT.maxDist - MOUNT.minDist);
     x = Math.sin(ang) * d;
     z = Math.cos(ang) * d;
-    if (Math.abs(x) > HALF - 25 || Math.abs(z) > HALF - 25) continue;
+    if (!inForest(x, z, 25)) continue;
     if (terrain.heightAt(x, z) < WATER_LEVEL + 1) continue;
     if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) <= MOUNT.clear)) continue;
     break;
