@@ -3,7 +3,7 @@ import type { WolfAnim } from '../protocol';
 import type { Wolf } from './wolves';
 
 /** The purified Tragón (spec §2): it guards the Heart and bites raiders that come close. It cannot die. */
-export const ALLY = { guard: 16, run: 5.5, reach: 2.2, damage: 25, cooldown: 1.2, home: 2.5 } as const;
+export const ALLY = { guard: 16, run: 5.5, reach: 2.2, damage: 25, cooldown: 1.2, home: 2.5, /** Extra bite after the rescue (Invasion 2): "vuelve con rabia". */ rage: 10 } as const;
 
 export interface Ally {
   x: number;

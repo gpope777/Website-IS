@@ -21,7 +21,7 @@ import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type P
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
-import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
+import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -101,6 +101,8 @@ export interface SavedWorld {
   purified2?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
+  /** Invasion 2 (Slice 2 §8): owed since someone tamed a fish, the Tragón taken, or rescued. Optional: older saves have none. */
+  invasion2?: 'pending' | 'taken' | 'rescued';
   /** Corruption zones cleansed so far (ids from generateZones). Optional: older saves have none. */
   cleansed?: number[];
   /** La Ballena, once tamed (it belongs to the world): where it floats. Optional: older saves have a wild one. */
@@ -262,6 +264,8 @@ export class WorldSim {
   private ally: Ally | null = null;
   /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
   invasion: 'none' | 'pending' | 'done';
+  /** Invasion 2 (Slice 2 §8): none yet, owed (a fish was tamed), the Tragón taken, or rescued. */
+  invasion2: 'none' | 'pending' | 'taken' | 'rescued';
   /** Sim time a pending invasion may start. Live-only. */
   private invasionAt: number;
   /** El Marchito in person, while he is here. Live-only. */
@@ -310,6 +314,7 @@ export class WorldSim {
     this.purified2 = saved.purified2 ?? false;
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
+    this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
     this.nextStructureId = saved.nextStructureId;
     this.graves = (saved.graves ?? []).map((g) => ({ ...g, inv: { ...g.inv } }));
     this.nextGraveId = 1 + Math.max(0, ...this.graves.map((g) => g.id));
@@ -484,6 +489,7 @@ export class WorldSim {
     this.stepWhale(dt);
     this.stepSeats();
     this.stepInvasion(dt);
+    this.stepInvasion2(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
 
@@ -512,7 +518,7 @@ export class WorldSim {
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
     const mm = this.marchito;
     if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
-    const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0 } : null;
+    const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0, ...(mm.grab !== null ? { grab: r2(Math.min(1, mm.grab / MARCHITO.grabFor)) } : {}) } : null;
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
@@ -541,6 +547,7 @@ export class WorldSim {
       purified: this.purified,
       ...(this.purified2 ? { purified2: true } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
+      ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
       ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
     };
@@ -989,13 +996,17 @@ export class WorldSim {
   /** The purified Tragón lives by a living Heart and bites raiders that come near it. */
   private stepAlly(dt: number): void {
     const h = this.heart();
-    if (!this.purified || !h || h.hp <= 0) {
+    if (!this.purified || this.invasion2 === 'taken' || !h || h.hp <= 0) {
       this.ally = null;
       return;
     }
     this.ally ??= createAlly(h, this.terrain);
+    if (this.marchito && this.marchito.grab) {
+      this.ally.anim = 'idle'; // wrapped in roots
+      return;
+    }
     const foe = stepAlly(this.ally, h, this.wolves, this.terrain, dt);
-    if (foe) hitWolf(foe, ALLY.damage);
+    if (foe) hitWolf(foe, ALLY.damage + (this.invasion2 === 'rescued' ? ALLY.rage : 0));
   }
 
   /** The purified Antenón lives by a living Heart and gusts raiders away from it every 8 s. */
@@ -1212,6 +1223,7 @@ export class WorldSim {
       if (t.beast === 'fish') {
         p.fish = { x: r2(p.x), z: r2(p.z) };
         l.fish = true;
+        if (this.invasion2 === 'none') this.invasion2 = 'pending';
         return this.tell(p.name, 'El pez es tuyo. B para bucear, A en la orilla para bajar');
       }
       p.steed = { x: r2(p.x), z: r2(p.z) };
@@ -2025,7 +2037,7 @@ export class WorldSim {
       if (watcher) this.startInvasion(h);
     }
     const m = this.marchito;
-    if (!m || this.activeCount() === 0) return; // the world sleeps
+    if (!m || m.grab !== null || this.activeCount() === 0) return; // the world sleeps (or it is Invasion 2)
     const structs = this.structures.filter((s) => m.prey.includes(s.id));
     const ev = stepMarchito(m, structs, this.targets(), (x, z) => this.terrain.heightAt(x, z), dt);
     if (!ev) return;
@@ -2035,6 +2047,44 @@ export class WorldSim {
     } else if (ev.t === 'swipe') this.bite(ev.name, ENEMY.marchito.damage, m);
     else if (ev.t === 'laugh') this.vision(VISION.laugh);
     else this.endInvasion();
+  }
+
+  /** Invasion 2 (Slice 2 §8): at dusk, once someone tamed a fish, he comes up from the coast for the purified Tragón. */
+  private stepInvasion2(dt: number): void {
+    const h = this.heart();
+    if (this.invasion2 === 'pending' && !this.marchito && this.invasion === 'done' && this.purified && h && h.hp > 0) {
+      const f = dayFraction(this.time);
+      const watcher = this.targets().some((t) => !t.dead && !inAnyDungeon(t.x, t.z));
+      if (!isNight(f) && f >= RAID.warnAt && watcher) this.startTheft(h);
+    }
+    const m = this.marchito;
+    if (!m || m.grab === null || this.activeCount() === 0) return;
+    const goal = this.ally ?? (h ? { x: h.x + ALLY.home, z: h.z } : m);
+    const ev = stepThief(m, goal, this.targets(), (x, z) => this.terrain.heightAt(x, z), dt);
+    if (ev?.t === 'swipe') this.bite(ev.name, ENEMY.marchito.damage, m);
+    else if (ev) this.endTheft(true);
+  }
+
+  private startTheft(h: Structure): void {
+    const { x, z } = clampMap(h.x, h.z + MARCHITO.spawnDist, 6);
+    this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, [], thiefWill(this.activeCount()));
+    this.marchito.grab = 0;
+    this.vision(VISION.steal);
+  }
+
+  /** The Tragón is gone either way; left alone, he wrecks the nearest quarter of the defenses on his way out. */
+  private endTheft(wreck: boolean): void {
+    const h = this.heart();
+    this.marchito = null;
+    this.invasion2 = 'taken';
+    this.ally = null;
+    if (wreck && h) {
+      for (const id of pickDefenses(this.structures, h, 0.25)) {
+        const s = this.structures.find((x) => x.id === id);
+        if (s) this.wreck(s);
+      }
+    }
+    if (wreck) this.vision(VISION.stolen(joinNames(this.activeNames())));
   }
 
   private startInvasion(h: Structure): void {
@@ -2059,6 +2109,10 @@ export class WorldSim {
       this.tell(name, VISION.taunt(name));
     }
     if (m.hp > 0) return;
+    if (m.grab !== null) {
+      this.vision(VISION.driven2(joinNames(m.taunted)));
+      return this.endTheft(false);
+    }
     this.vision(VISION.driven(joinNames(m.taunted)));
     this.endInvasion();
   }

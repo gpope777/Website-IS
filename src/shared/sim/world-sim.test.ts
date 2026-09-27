@@ -1603,7 +1603,7 @@ describe('riding the deer', () => {
   });
 });
 
-import { MARCHITO, marchitoWill, VISION } from './marchito';
+import { MARCHITO, marchitoWill, thiefWill, VISION } from './marchito';
 
 describe('El Marchito', () => {
   type Priv = { boss: { hp: number } | null; marchito: { x: number; z: number; hp: number; laugh: number } | null; structures: { id: number; kind: string; x: number; y: number; z: number; rot: number; owner: string; hp: number }[] };
@@ -3152,5 +3152,117 @@ describe('El Antenón (S2-G)', () => {
     const sim = new WorldSim(newWorld(42, 'salt'));
     expect(sim.purified2).toBe(false);
     expect('purified2' in sim.save()).toBe(false);
+  });
+});
+
+describe('Invasion 2: the stolen Tragón (S2-H)', () => {
+  type Priv = { marchito: { x: number; z: number; hp: number; max: number; grab: number | null } | null; ally: { x: number; z: number } | null; structures: { id: number; kind: string; x: number; y: number; z: number; rot: number; owner: string; hp: number }[] };
+  const priv = (sim: WorldSim) => sim as unknown as Priv;
+  const visions = (m: ServerMsg[]) => m.filter((x): x is Extract<ServerMsg, { t: 'vision' }> => x.t === 'vision');
+
+  /** Invasion 1 done, the Tragón purified, a Heart with 8 walls, and a fish tamed by Ana. */
+  function ready(opts: { purified?: boolean; fish?: boolean } = {}) {
+    const sim = setup('Ana', 'Leo');
+    const h = plantHeart(sim);
+    for (let i = 0; i < 8; i++) priv(sim).structures.push({ id: 700 + i, kind: 'wall', x: h.x - 3 - i * 3, y: 0, z: h.z, rot: 0, owner: 'Ana', hp: STRUCTURE_HP.wall });
+    const saved = sim.save();
+    saved.purified = opts.purified ?? true;
+    saved.invasion = 'done';
+    if (opts.fish ?? true) saved.players.find((p) => p.name === 'Ana')!.fish = { x: 0, z: HALF + 70 };
+    const w = new WorldSim(saved);
+    w.connect('Ana');
+    w.connect('Leo');
+    put(w, 'Ana', h.x - 60, h.z - 60);
+    put(w, 'Leo', h.x - 70, h.z - 60);
+    return { sim: w, h };
+  }
+  const dusk = (sim: WorldSim) => {
+    stepTo(sim, RAID.warnAt + 0.005);
+    for (let i = 0; i < 5 && !priv(sim).marchito; i++) sim.step(0.1);
+  };
+
+  it('an old save with a fish owner owes it; a save round-trips it', () => {
+    const { sim } = ready();
+    expect(sim.invasion2).toBe('pending');
+    expect(sim.save().invasion2).toBe('pending');
+    const { sim: none } = ready({ fish: false });
+    expect(none.invasion2).toBe('none');
+    expect(none.save().invasion2).toBeUndefined();
+  });
+
+  it('taming a fish owes it', () => {
+    const { sim } = ready({ fish: false });
+    const l = (sim as unknown as { live: Map<string, { tame: unknown }> }).live.get('Ana')!;
+    sim.getPlayer('Ana')!.x = sim.fishHome.x;
+    sim.getPlayer('Ana')!.z = sim.fishHome.z;
+    l.tame = { beast: 'fish', round: 1, start: sim.time, zone: 0, ax: sim.fishHome.x, az: sim.fishHome.z };
+    // a perfect tap on the last round
+    sim.handle('Ana', { t: 'mount', act: 1, at: sim.time });
+    expect(sim.getPlayer('Ana')!.fish).toBeDefined();
+    expect(sim.invasion2).toBe('pending');
+  });
+
+  it('nothing before dusk, nor in a world that never purified the Tragón', () => {
+    const { sim } = ready();
+    stepTo(sim, RAID.warnAt - 0.05);
+    expect(priv(sim).marchito).toBeNull();
+    const { sim: raw } = ready({ purified: false });
+    dusk(raw);
+    expect(priv(raw).marchito).toBeNull();
+    expect(raw.invasion2).toBe('pending');
+  });
+
+  it('at dusk he comes up from the south with more voluntad, wraps the Tragón and takes it; left alone he wrecks a quarter', () => {
+    const { sim, h } = ready();
+    msgs(sim);
+    dusk(sim);
+    const m = priv(sim).marchito!;
+    expect(m).not.toBeNull();
+    expect(m.z).toBeGreaterThan(h.z + 20);
+    expect(m.max).toBe(thiefWill(2));
+    expect(visions(msgs(sim))[0]!.lines).toEqual(VISION.steal);
+    const out: ServerMsg[] = [];
+    let grabbing = false;
+    for (let i = 0; i < 600 && priv(sim).marchito; i++) {
+      sim.step(0.1);
+      out.push(...msgs(sim));
+      if ((snap(sim, 'Ana').marchito?.grab ?? 0) > 0) grabbing = true;
+    }
+    expect(grabbing).toBe(true);
+    expect(priv(sim).marchito).toBeNull();
+    expect(sim.invasion2).toBe('taken');
+    expect(sim.save().invasion2).toBe('taken');
+    expect(snap(sim, 'Ana').ally).toBeNull();
+    const wrecked = out.filter((x) => x.t === 'wrecked').map((x) => (x as { id: number }).id);
+    expect(wrecked.sort()).toEqual([700, 701]);
+    expect(visions(out).some((v) => v.lines.join(' ').includes('Vengan a por él al mar'))).toBe(true);
+    // it does not come back
+    for (let i = 0; i < 200; i++) sim.step(0.1);
+    expect(priv(sim).marchito).toBeNull();
+  });
+
+  it('driving him off early does not stop the theft, but nothing is wrecked', () => {
+    const { sim } = ready();
+    dusk(sim);
+    const m = priv(sim).marchito!;
+    put(sim, 'Ana', m.x + 1, m.z);
+    sim.getPlayer('Ana')!.vitals.health = 100;
+    m.hp = 1;
+    msgs(sim);
+    sim.handle('Ana', { t: 'attack', id: MARCHITO.id });
+    const out = msgs(sim);
+    expect(priv(sim).marchito).toBeNull();
+    expect(sim.invasion2).toBe('taken');
+    expect(out.filter((x) => x.t === 'wrecked')).toHaveLength(0);
+    expect(visions(out)[0]!.lines).toEqual(VISION.driven2('Ana'));
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally).toBeNull();
+  });
+
+  it('a mid-invasion save owes it again', () => {
+    const { sim } = ready();
+    dusk(sim);
+    expect(priv(sim).marchito).not.toBeNull();
+    expect(sim.save().invasion2).toBe('pending');
   });
 });
