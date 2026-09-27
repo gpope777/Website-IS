@@ -36,7 +36,7 @@ export interface AllyView { x: number; y: number; z: number; yaw: number; anim: 
 /** A deer (or giant fish) standing in the world: the wild one (`owner` null) or a parked, tamed one. */
 export interface SteedView { owner: string | null; x: number; y: number; z: number; yaw: number }
 /** A taming round in progress: needle angle = ringAngle(speed, serverTime - start); tap inside `zone` ± width/2. */
-export interface TameView { round: number; rounds: number; start: number; speed: number; zone: number; width: number }
+export interface TameView { round: number; rounds: number; start: number; speed: number; zone: number; width: number; beast: 'deer' | 'fish' }
 /** El Marchito in the base: voluntad left (he leaves at 0) and whether he is laughing on his way out. */
 export interface MarchitoView { will: number; max: number; laughing: boolean }
 export interface HeartView { id: number; hp: number; max: number }

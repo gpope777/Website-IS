@@ -25,6 +25,8 @@ export class Hud {
   private readonly overlay = el('div', 'overlay');
   private readonly heartRow = el('div', 'stat');
   private readonly raidLine = el('div', 'raid-line');
+  /** The fish's ring race: ring and seconds left. */
+  private readonly raceLine = el('div', 'raid-line race-line');
   private readonly bossLine = el('div', 'raid-line boss-line');
   private readonly stamina = el('div', 'stamina');
   /** Taming ring: tap it (or A / E / Espacio). Outside `.hud` so it can take taps above the touch layer. */
@@ -53,12 +55,13 @@ export class Hud {
     this.heartRow.hidden = true;
     stats.appendChild(this.heartRow);
     this.raidLine.hidden = true;
+    this.raceLine.hidden = true;
     this.bossLine.hidden = true;
     this.banner.hidden = true;
     this.prompt.hidden = true;
     this.overlay.hidden = true;
     this.stamina.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.bossLine, this.stamina);
+    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.raceLine, this.bossLine, this.stamina);
     this.ring.hidden = true;
     this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
     this.ring.addEventListener('pointerdown', (e) => {
@@ -106,6 +109,11 @@ export class Hud {
     (this.heartRow.querySelector('i') as HTMLElement).style.width = `${(h.hp / h.max) * 100}%`;
     (this.heartRow.querySelector('.val') as HTMLElement).textContent = h.hp > 0 ? String(h.hp) : 'marchito';
     this.heartRow.classList.toggle('low', h.hp < h.max * 0.25);
+  }
+
+  setRace(text: string | null): void {
+    this.raceLine.hidden = !text;
+    if (text) this.raceLine.textContent = text;
   }
 
   setRaid(text: string | null): void {

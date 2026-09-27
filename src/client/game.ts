@@ -1,7 +1,10 @@
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
-import { createTerrain, type Terrain } from '../shared/terrain';
+import { coastFeatures, createTerrain, type Islet, type Terrain } from '../shared/terrain';
+import { FISH, fishRings, wildFish } from '../shared/fish';
+import { depthAt } from '../shared/coast';
+import { FishMeshes, RaceRings, type FishPose } from './scene/fish';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
@@ -53,6 +56,8 @@ interface Remote {
   seen: number;
   /** A player riding a deer. */
   ride: boolean;
+  /** A player on the giant fish. */
+  fish: boolean;
   /** Sitting behind this rider. */
   seat: string | null;
   /** Metres per second last frame (the deer's legs). */
@@ -102,6 +107,15 @@ export class Game {
   /** The rider we sit behind (the server moves us with them). */
   private seat: string | null = null;
   private hasSteed = false;
+  private fishMeshes: FishMeshes | null = null;
+  private raceRings: RaceRings | null = null;
+  /** The wild giant fish and parked ones in view. */
+  private fishViews: SteedView[] = [];
+  private hasFish = false;
+  private onFish = false;
+  private race: { i: number; deadline: number } | null = null;
+  /** The dungeon island (the fish keeps out of its aguas bravas). */
+  private island: Islet | null = null;
   private jumpWasHeld = false;
   private light: DayLight;
   private kits: { robot: ModelKit; fox: ModelKit } | null = null;
@@ -277,6 +291,10 @@ export class Game {
     this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
     this.steedMeshes = new SteedMeshes(t.shadows);
     this.scene.add(this.steedMeshes.group);
+    this.island = coastFeatures(seed).island;
+    this.fishMeshes = new FishMeshes(t.shadows);
+    this.raceRings = new RaceRings(fishRings(this.terrain, seed, wildFish(this.terrain, seed)));
+    this.scene.add(this.fishMeshes.group, this.raceRings.group);
     this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
     this.zones = generateZones(this.terrain, seed, this.entrance);
@@ -328,6 +346,7 @@ export class Game {
     this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
+    this.fishViews = m.fish;
     const key = m.corrupt.join(',');
     if (key !== this.corruptKey && this.ground) {
       this.corruptKey = key;
@@ -340,6 +359,7 @@ export class Game {
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
       r.ride = p.ride === 'deer' && !p.dead;
+      r.fish = p.ride === 'fish' && !p.dead;
       r.seat = p.dead ? null : p.seat;
       r.seen = m.time;
     }
@@ -400,7 +420,7 @@ export class Game {
   private remote<K>(map: Map<K, Remote>, key: K, make: () => Puppet): Remote {
     let r = map.get(key);
     if (!r) {
-      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, seat: null, speed: 0 };
+      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, fish: false, seat: null, speed: 0 };
       this.scene.add(r.actor.root);
       map.set(key, r);
     }
@@ -416,7 +436,11 @@ export class Game {
     this.riding = self.riding;
     this.seat = self.seat;
     this.hasSteed = self.steed;
+    this.hasFish = self.fish;
+    this.onFish = self.onFish;
+    this.race = self.race;
     if (this.body) this.body.riding = self.riding;
+    if (this.body) this.body.fish = self.onFish ? this.island : null;
     if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
     if (self.fix && this.body) {
       Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, gliding: false });
@@ -483,7 +507,7 @@ export class Game {
       const ma = this.mountAct();
       if (ma?.act === 1) return this.tapRing();
       if (ma) return this.conn.send({ t: 'mount', act: ma.act });
-      return this.hud.toast(this.hasSteed ? 'Tu ciervo no está cerca' : 'Aún no tienes montura');
+      return this.hud.toast(this.onFish ? 'Aquí es hondo. Acércate a la orilla' : this.hasSteed ? 'Tu ciervo no está cerca' : 'Aún no tienes montura');
     }
     this.act();
   }
@@ -629,7 +653,8 @@ export class Game {
     if (!b || this.dead) return null;
     const seated = new Set([...this.others.values()].flatMap((r) => (r.seat ? [r.seat] : [])));
     const riders = [...this.others].flatMap(([name, r]) => (r.ride ? [{ name, x: r.actor.root.position.x, z: r.actor.root.position.z, full: seated.has(name) }] : []));
-    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders });
+    const shallow = !!this.terrain && depthAt(this.terrain, b.x, b.z) < FISH.shore;
+    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews });
   }
 
   /** One tap on the taming ring: the server judges the needle at our estimate of its clock. */
@@ -747,7 +772,7 @@ export class Game {
     if (now < this.attackUntil) anim = 'attack';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
-    if (this.riding || this.seat || this.tame) anim = 'idle';
+    if (this.riding || this.seat || this.tame || this.onFish) anim = 'idle';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
 
@@ -769,8 +794,8 @@ export class Game {
     }
     const wild = this.steeds.find((s) => s.owner === null);
     if (this.me) {
-      if (this.tame && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
-      else this.me.setPose(b.x, b.y + (this.riding || this.seat ? MOUNT.height : 0), b.z, b.facing);
+      if (this.tame?.beast === 'deer' && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
+      else this.me.setPose(b.x, b.y + (this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third';
@@ -784,6 +809,7 @@ export class Game {
     }
     for (const r of this.allies.values()) this.animateRemote(r, rt, dt);
     this.syncSteeds(dt, wild);
+    this.syncFish(dt);
 
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
@@ -807,7 +833,7 @@ export class Game {
   private syncSteeds(dt: number, wild: SteedView | undefined): void {
     const b = this.body!;
     const poses: SteedPose[] = [];
-    for (const s of this.steeds) poses.push({ key: s.owner ?? '~wild', x: s.x, y: s.y, z: s.z, yaw: s.yaw, speed: 0, wild: s.owner === null, bucking: s.owner === null && !!this.tame && s === wild });
+    for (const s of this.steeds) poses.push({ key: s.owner ?? '~wild', x: s.x, y: s.y, z: s.z, yaw: s.yaw, speed: 0, wild: s.owner === null, bucking: s.owner === null && this.tame?.beast === 'deer' && s === wild });
     if (this.riding) poses.push({ key: `ride:${this.myName}`, x: b.x, y: b.y, z: b.z, yaw: b.facing, speed: Math.hypot(b.vx, b.vz), wild: false, bucking: false });
     for (const [name, r] of this.others) {
       if (!r.ride) continue;
@@ -817,11 +843,34 @@ export class Game {
     this.steedMeshes?.sync(poses, dt, performance.now() / 1000);
   }
 
+  /** Wild and parked fish, one under every fish rider (us included), and the race rings. */
+  private syncFish(dt: number): void {
+    const b = this.body!;
+    const now = performance.now() / 1000;
+    const poses: FishPose[] = [];
+    for (const f of this.fishViews) {
+      // The wild one swims a small circle for show (the server keeps it at its home spot).
+      const a = f.owner === null ? now * 0.5 : 0;
+      const x = f.owner === null ? f.x + Math.sin(a) * 2 : f.x;
+      const z = f.owner === null ? f.z + Math.cos(a) * 2 : f.z;
+      poses.push({ key: f.owner ?? '~wild', x, y: f.y, z, yaw: f.owner === null ? a + Math.PI / 2 : f.yaw, speed: f.owner === null ? 1 : 0, wild: f.owner === null, bucking: false });
+    }
+    if (this.onFish || this.tame?.beast === 'fish') poses.push({ key: `ride:${this.myName}`, x: b.x, y: b.y, z: b.z, yaw: b.facing, speed: Math.hypot(b.vx, b.vz), wild: false, bucking: !this.onFish });
+    for (const [name, r] of this.others) {
+      if (!r.fish) continue;
+      const p = r.actor.root.position;
+      poses.push({ key: `ride:${name}`, x: p.x, y: p.y - FISH.height, z: p.z, yaw: r.actor.root.rotation.y, speed: r.speed, wild: false, bucking: false });
+    }
+    this.fishMeshes?.sync(poses, dt, now);
+    this.raceRings?.sync(this.race ? this.race.i : null, now);
+    this.hud.setRace(this.race ? `Anillo ${this.race.i + 1}/${FISH.rings} · ${Math.max(0, Math.ceil(this.race.deadline - this.serverTime))} s` : null);
+  }
+
   private animateRemote(r: Remote, rt: number, dt: number): void {
     const s = r.buf.at(rt);
     if (s) {
       const before = r.actor.root.position.clone();
-      r.actor.setPose(s.x, s.y + (r.ride || r.seat ? MOUNT.height : 0), s.z, s.yaw);
+      r.actor.setPose(s.x, s.y + (r.ride || r.seat ? MOUNT.height : r.fish ? FISH.height : 0), s.z, s.yaw);
       r.speed = dt > 0 ? Math.hypot(r.actor.root.position.x - before.x, r.actor.root.position.z - before.z) / dt : 0;
     }
     r.actor.play(r.anim);
@@ -840,8 +889,9 @@ export class Game {
     if (sp) return this.hud.setPrompt(sp.part > 0 ? 'E · Tirar de la palanca' : sp.open ? 'E · Tomar el orbe' : 'La verja está cerrada');
     const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
-    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
+    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
     const b = this.body;
+    if (this.onFish) return this.hud.setPrompt('Espacio (mantener) · Bucear');
     if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
     if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
     const res = this.nearestResource();

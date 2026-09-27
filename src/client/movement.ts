@@ -1,4 +1,5 @@
-import { clampMap, WATER_LEVEL, type Terrain } from '../shared/terrain';
+import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
+import { FISH, fishFloor, fishStepOk } from '../shared/fish';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
@@ -35,6 +36,8 @@ export interface Body {
   jumpHeld: boolean;
   /** On the deer (from the server): faster, no climbing, gliding or swimming. */
   riding: boolean;
+  /** On the giant fish (from the server): the dungeon island, whose aguas bravas the fish avoids. */
+  fish: Islet | null;
 }
 
 export interface Circle {
@@ -76,7 +79,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null,
   };
 }
 
@@ -104,6 +107,7 @@ export function stepBody(
   const jumpEdge = input.jump && !b.jumpHeld;
   b.jumpHeld = input.jump;
   if (b.climb) return stepClimb(b, input, dt, terrain, jumpEdge);
+  if (b.fish) return stepFish(b, b.fish, input, camYaw, dt, terrain, bounds);
 
   const hereH = terrain.heightAt(b.x, b.z);
   const swimming = hereH < SWIM_DEPTH;
@@ -226,6 +230,39 @@ export function stepBody(
     regen(b, dt);
   }
   return { ...RESULT_IDLE, moving, running, gliding: b.gliding };
+}
+
+/** On the fish: water only, 9 m/s (14 sprinting, no stamina); B held dives to the seabed, release floats up. */
+function stepFish(b: Body, island: Islet, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, bounds: Bounds): StepResult {
+  let ix = input.x;
+  let iz = input.z;
+  const mag = Math.hypot(ix, iz);
+  if (mag > 1) {
+    ix /= mag;
+    iz /= mag;
+  }
+  const moving = mag > 0.01;
+  const speed = input.sprint ? FISH.run : FISH.walk;
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = ix * c + iz * s;
+  const wz = -ix * s + iz * c;
+  const k = Math.min(1, 4 * dt);
+  b.vx += (wx * speed - b.vx) * k;
+  b.vz += (wz * speed - b.vz) * k;
+  const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
+  if (fishStepOk(terrain, island, to.x, to.z)) {
+    b.x = to.x;
+    b.z = to.z;
+  } else b.vx = b.vz = 0; // the shore, the Ciénaga or the aguas bravas: the fish turns back
+  if (moving) b.facing = Math.atan2(wx, wz);
+  const surface = WATER_LEVEL - 0.9;
+  const floor = Math.min(surface, fishFloor(terrain, b.x, b.z));
+  b.y = input.jump ? Math.max(floor, b.y - FISH.sink * dt) : Math.min(surface, b.y + FISH.rise * dt);
+  b.y = Math.max(floor, b.y);
+  Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null });
+  regen(b, dt);
+  return { ...RESULT_IDLE, moving, swimming: true };
 }
 
 function regen(b: Body, dt: number): void {

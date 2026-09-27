@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
-import { createTerrain, HALF, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, createTerrain, HALF, WATER_LEVEL } from '../shared/terrain';
+import { FISH, fishFloor, fishStepOk, wildFish } from '../shared/fish';
 import { CIENAGA, depthAt, SWIM_MAX_DEPTH } from '../shared/coast';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
@@ -337,5 +338,43 @@ describe('the coast', () => {
     const { b } = run(south, 20, t, none, 0, [], createBody(x, HALF + 80, t));
     expect(depthAt(t, b.x, b.z)).toBeLessThanOrEqual(SWIM_MAX_DEPTH + 0.2);
     expect(b.z).toBeGreaterThan(HALF + 85);
+  });
+});
+
+describe('riding the giant fish', () => {
+  const t = createTerrain(42);
+  const { island } = coastFeatures(42);
+  const home = wildFish(t, 42);
+  const onFish = (x = home.x, z = home.z) => {
+    const b = createBody(x, z, t);
+    b.y = WATER_LEVEL - 0.9;
+    b.fish = island;
+    return b;
+  };
+  const along = { x: 1, z: 0, sprint: false, jump: false }; // camera yaw 0: +x
+
+  it('swims at 9, sprints at 14 without stamina', () => {
+    let { b } = run(along, 1.5, t, none, 0, [], onFish());
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(FISH.walk, 0);
+    ({ b } = run({ ...along, sprint: true }, 1.5, t, none, 0, [], onFish()));
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(FISH.run, 0);
+    expect(b.stamina).toBe(STAMINA.max);
+  });
+
+  it('stops at the shore', () => {
+    const b = onFish();
+    run({ x: 0, z: -1, sprint: true, jump: false }, 8, t, none, 0, [], b); // camera yaw 0: forward is -z, toward the beach
+    expect(fishStepOk(t, island, b.x, b.z)).toBe(true);
+    expect(b.z).toBeGreaterThan(HALF + 40);
+  });
+
+  it('B held dives to the seabed; letting go floats up', () => {
+    const b = onFish();
+    run({ x: 0, z: 0, sprint: false, jump: true }, 0.5, t, none, 0, [], b);
+    expect(b.y).toBeCloseTo(WATER_LEVEL - 0.9 - FISH.sink * 0.5, 0);
+    run({ x: 0, z: 0, sprint: false, jump: true }, 10, t, none, 0, [], b);
+    expect(b.y).toBeCloseTo(fishFloor(t, b.x, b.z), 1);
+    run({ x: 0, z: 0, sprint: false, jump: false }, 10, t, none, 0, [], b);
+    expect(b.y).toBeCloseTo(WATER_LEVEL - 0.9, 5);
   });
 });

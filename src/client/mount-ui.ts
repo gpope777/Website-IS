@@ -1,4 +1,5 @@
 import { MOUNT, ringAngle } from '../shared/mount';
+import { FISH } from '../shared/fish';
 import type { SteedView, TameView } from '../shared/protocol';
 
 export interface MountCtx {
@@ -14,6 +15,12 @@ export interface MountCtx {
   seat: string | null;
   /** Other players riding nearby; `full` = somebody already sits behind them. */
   riders: readonly { name: string; x: number; z: number; full: boolean }[];
+  /** The giant fish: owns one, rides it, is racing the rings, the water here is shallow enough to get off, and fish in view (wild: owner null). */
+  hasFish?: boolean;
+  onFish?: boolean;
+  racing?: boolean;
+  shallow?: boolean;
+  fishes?: readonly SteedView[];
 }
 
 /** The contextual A / E / M action for the deer, if any. The server re-checks everything. */
@@ -21,6 +28,12 @@ export function mountAction(c: MountCtx): { act: number; label: string } | null 
   if (c.tame) return { act: 1, label: '¡Ahora!' };
   if (c.seat) return { act: 5, label: 'Bajar' };
   if (c.riding) return { act: 3, label: 'Bajar del ciervo' };
+  if (c.onFish) return c.shallow ? { act: 8, label: 'Bajar del pez' } : null;
+  if (c.racing) return null;
+  const nearFish = (s: { x: number; z: number }) => Math.hypot(s.x - c.pos.x, s.z - c.pos.z) <= FISH.reach;
+  const fishes = c.fishes ?? [];
+  if (c.hasFish && fishes.some((s) => s.owner === c.me && nearFish(s))) return { act: 7, label: 'Montar el pez' };
+  if (!c.hasFish && fishes.some((s) => s.owner === null && nearFish(s))) return { act: 6, label: 'Domar al pez' };
   const near = (s: { x: number; z: number }) => Math.hypot(s.x - c.pos.x, s.z - c.pos.z) <= MOUNT.reach;
   if (c.hasSteed && c.steeds.some((s) => s.owner === c.me && near(s))) return { act: 2, label: 'Montar' };
   const ride = c.riders.find((r) => !r.full && near(r));

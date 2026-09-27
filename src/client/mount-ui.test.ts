@@ -4,7 +4,7 @@ import { mountAction, ringNeedle, type MountCtx } from './mount-ui';
 const base: MountCtx = { pos: { x: 0, z: 0 }, tame: null, riding: false, hasSteed: false, steeds: [], me: 'Ana', seat: null, riders: [] };
 const wild = { owner: null, x: 1, y: 0, z: 0, yaw: 0 };
 const mine = { owner: 'Ana', x: 2, y: 0, z: 0, yaw: 0 };
-const tame = { round: 0, rounds: 3, start: 10, speed: 2, zone: 1, width: 1 };
+const tame = { round: 0, rounds: 3, start: 10, speed: 2, zone: 1, width: 1, beast: 'deer' as const };
 
 describe('mountAction', () => {
   it('tames the wild deer only without one of your own', () => {
@@ -38,5 +38,20 @@ describe('ringNeedle', () => {
   it('turns at the round speed from its start', () => {
     expect(ringNeedle(tame, 10)).toBeCloseTo(0);
     expect(ringNeedle(tame, 10.5)).toBeCloseTo(1);
+  });
+});
+
+describe('the giant fish', () => {
+  const wildFish = { owner: null, x: 2, y: 0, z: 0, yaw: 0 };
+  const myFish = { owner: 'Ana', x: 3, y: 0, z: 0, yaw: 0 };
+  it('tames the wild fish only without one', () => {
+    expect(mountAction({ ...base, fishes: [wildFish] })).toEqual({ act: 6, label: 'Domar al pez' });
+    expect(mountAction({ ...base, hasFish: true, fishes: [wildFish] })).toBeNull();
+    expect(mountAction({ ...base, racing: true, fishes: [wildFish] })).toBeNull();
+  });
+  it('gets on your fish, and off only in shallow water', () => {
+    expect(mountAction({ ...base, hasFish: true, fishes: [myFish] })).toEqual({ act: 7, label: 'Montar el pez' });
+    expect(mountAction({ ...base, hasFish: true, onFish: true, shallow: true })).toEqual({ act: 8, label: 'Bajar del pez' });
+    expect(mountAction({ ...base, hasFish: true, onFish: true, shallow: false })).toBeNull();
   });
 });

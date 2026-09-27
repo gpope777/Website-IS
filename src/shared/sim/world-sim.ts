@@ -1061,7 +1061,7 @@ export class WorldSim {
     const t = l.tame;
     if (!t) return null;
     const rounds = roundsOf(t.beast);
-    return { round: t.round, rounds: rounds.length, start: t.start, speed: rounds[t.round]!.speed, zone: t.zone, width: r2(this.tameWidth(p, t)) };
+    return { round: t.round, rounds: rounds.length, start: t.start, speed: rounds[t.round]!.speed, zone: t.zone, width: r2(this.tameWidth(p, t)), beast: t.beast };
   }
 
   /** Dying, wandering off or waiting too long ends a taming. */
