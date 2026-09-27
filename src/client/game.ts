@@ -586,13 +586,13 @@ export class Game {
     if (fallen) return this.hud.setPrompt(`E · Levantar a ${fallen}`);
     if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
+    const b = this.body;
+    if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
+    if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
     const res = this.nearestResource();
     if (res) return this.hud.setPrompt(`E · ${HARVEST[res.kind].label}`);
-    const b = this.body;
-    const wall = b && !b.climb && b.onGround ? cragsNear(this.crags, b.x, b.z, 1).find((c) => b.y < c.top - 0.6) : undefined;
-    if (wall) return this.hud.setPrompt(b!.tired ? 'Sin aliento' : 'Empuja contra la roca para trepar');
-    if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
-    this.hud.setPrompt(null);
+    const wall = b && b.onGround ? cragsNear(this.crags, b.x, b.z, 1).find((c) => b.y < c.top - 0.6) : undefined;
+    this.hud.setPrompt(wall ? (b!.tired ? 'Sin aliento' : 'Empuja contra la roca para trepar') : null);
   }
 
   // ---------------------------------------------------------------- desktop mouse
