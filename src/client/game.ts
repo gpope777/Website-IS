@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
 import { createTerrain, type Terrain } from '../shared/terrain';
 import { PROTOCOL_VERSION, r2, type Anim, type HeartView, type RaidView, type ServerMsg, type Structure } from '../shared/protocol';
-import { dayFraction, HEART, PUNCH, REACH } from '../shared/sim/world-sim';
+import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { StructureKind } from '../shared/items';
@@ -20,6 +20,7 @@ import { Connection, wsUrl, type NetStatus } from './net';
 import { loadTier, saveTier, TIERS, type Tier } from './quality';
 import { DayLight } from './scene/sky';
 import { StructureMeshes } from './scene/structures';
+import { GraveMeshes } from './scene/graves';
 import { buildTerrainMesh, buildWater } from './scene/terrain-mesh';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
@@ -60,6 +61,7 @@ export class Game {
   private readonly timer = new THREE.Timer();
   private readonly colliders = new ColliderGrid();
   private readonly structures = new StructureMeshes();
+  private readonly graves = new GraveMeshes();
   private readonly others = new Map<string, Remote>();
   private readonly wolves = new Map<number, Remote>();
   private readonly gone = new Set<number>();
@@ -101,7 +103,7 @@ export class Game {
     root.appendChild(this.renderer.domElement);
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
-    this.scene.add(this.structures.group);
+    this.scene.add(this.structures.group, this.graves.group);
     this.marker.rotation.x = Math.PI; // point down at the target
     this.marker.visible = false;
     this.scene.add(this.marker);
@@ -231,6 +233,7 @@ export class Game {
     this.heart = m.heart;
     this.hud.setHeart(m.heart);
     if (m.heart) this.structures.setHp(m.heart.id, m.heart.hp);
+    this.graves.sync(m.graves, this.myName);
     if (!this.kits) return;
     for (const p of m.players) {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
@@ -271,7 +274,9 @@ export class Game {
       Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0 });
     }
     if (self.dead && !this.dead) this.showDeath();
+    if (!self.dead && this.dead) this.hud.hideOverlay(); // revived by a teammate: close the death panel
     this.dead = self.dead;
+    if (self.dead) this.hud.setReviveLeft(self.reviveLeft);
   }
 
   /** Also re-invoked whenever something (menu toggle, a stray pointer-lock Esc) tries to
@@ -427,6 +432,8 @@ export class Game {
   /** One button does everything: punch the nearest wolf, else gather the nearest resource. */
   private act(): void {
     const b = this.body!;
+    const fallen = this.fallenMate();
+    if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
     if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
@@ -444,6 +451,19 @@ export class Game {
     if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
+  }
+
+  /** Nearest teammate lying dead within revive reach (the server re-checks everything). */
+  private fallenMate(): string | null {
+    const b = this.body!;
+    let best: { name: string; d: number } | null = null;
+    for (const [name, r] of this.others) {
+      if (r.anim !== 'dead') continue;
+      const p = r.actor.root.position;
+      const d = Math.hypot(p.x - b.x, p.z - b.z);
+      if (d <= REVIVE.reach && (!best || d < best.d)) best = { name, d };
+    }
+    return best?.name ?? null;
   }
 
   private canTend(): boolean {
@@ -550,6 +570,8 @@ export class Game {
 
   private updatePrompt(): void {
     if (this.touch || this.dead) return this.hud.setPrompt(null);
+    const fallen = this.body && this.fallenMate();
+    if (fallen) return this.hud.setPrompt(`E · Levantar a ${fallen}`);
     if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const res = this.nearestResource();

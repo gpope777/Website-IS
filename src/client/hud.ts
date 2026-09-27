@@ -103,7 +103,16 @@ export class Hud {
   }
 
   showDeath(onRespawn: () => void): void {
-    this.panel('<h2>Has caído</h2><p>Conservas tu mochila.</p><button data-a="respawn">Reaparecer</button>', { respawn: onRespawn });
+    this.panel(
+      '<h2>Has caído</h2><p>Si reapareces, tu mochila se queda en una tumba aquí.</p><p id="revive-left"></p><button data-a="respawn">Reaparecer</button>',
+      { respawn: onRespawn },
+    );
+  }
+
+  /** Death panel only: how long a teammate still has to get you up. */
+  setReviveLeft(n: number): void {
+    const p = this.overlay.querySelector('#revive-left');
+    if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
   }
 
   showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void }): void {
@@ -112,7 +121,7 @@ export class Hud {
       .join('');
     this.panel(
       `<h2>Menú</h2>
-       <p>E golpear · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
+       <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
