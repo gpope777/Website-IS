@@ -55,6 +55,23 @@ export class Actor {
   }
 
   private glider: THREE.Object3D | null = null;
+  private cape: THREE.Mesh | null = null;
+  private torch: THREE.Object3D | null = null;
+
+  /** Capa de corteza: a bark cape on the back, longer per level (models share materials: no tint). */
+  setCapa(lvl: number): void {
+    if (lvl <= 0 && !this.cape) return;
+    if (!this.cape) this.root.add((this.cape = makeCape()));
+    this.cape.visible = lvl > 0;
+    this.cape.scale.y = 0.6 + 0.2 * Math.min(3, lvl);
+  }
+
+  /** A torch from the Candiles post, held up by the right hand. */
+  setTorch(on: boolean): void {
+    if (!on && !this.torch) return;
+    if (!this.torch) this.root.add((this.torch = makeTorch()));
+    this.torch.visible = on;
+  }
 
   play(anim: string): void {
     if (anim === this.currentName) return;
@@ -98,6 +115,23 @@ function makeGlider(): THREE.Object3D {
   cloth.rotation.y = Math.PI / 4;
   cloth.position.y = 2.5;
   return cloth;
+}
+
+const BARK = new THREE.MeshLambertMaterial({ color: 0x6b4a2b, flatShading: true });
+function makeCape(): THREE.Mesh {
+  const cape = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1, 0.08), BARK);
+  cape.position.set(0, 1.05, -0.32);
+  return cape;
+}
+
+function makeTorch(): THREE.Object3D {
+  const g = new THREE.Group();
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.8, 5), BARK);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.35, 6), new THREE.MeshBasicMaterial({ color: 0xffa040, fog: false }));
+  flame.position.y = 0.55;
+  g.add(stick, flame);
+  g.position.set(0.4, 1.3, 0.25);
+  return g;
 }
 
 function nameTag(text: string): THREE.Sprite {

@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import type { ShrineView } from '../../shared/protocol';
 import type { Shrine } from '../../shared/shrines';
-import type { Terrain } from '../../shared/terrain';
+import { WATER_LEVEL, type Terrain } from '../../shared/terrain';
+import { SWAMP_SHRINE } from '../../shared/swamp-shrines';
 import { buildCrags } from './crags';
 
 const STONE = new THREE.MeshLambertMaterial({ color: 0x8f8a7e, flatShading: true });
 const WOOD = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
 const PUMICE = new THREE.MeshLambertMaterial({ color: 0xd9d4c7, flatShading: true });
+const PEAT = new THREE.MeshLambertMaterial({ color: 0x4a3322, flatShading: true });
+const LILY = new THREE.MeshLambertMaterial({ color: 0x4f8a3a });
+/** Flames ignore the swamp fog: they are the lures. */
+const FLAME = new THREE.MeshBasicMaterial({ color: 0xffa040, fog: false });
 const BEAM = new THREE.MeshBasicMaterial({ color: 0x9fffd0, transparent: true, opacity: 0.18, depthWrite: false });
 
 interface Parts {
@@ -19,6 +24,10 @@ interface Parts {
   plateMat: THREE.MeshLambertMaterial | null;
   /** Marea's pumice block. */
   block: THREE.Mesh | null;
+  /** Candiles: one flame per brazier. */
+  flames: THREE.Mesh[];
+  /** Nenúfares: the pads (lowered while sunk). */
+  pads: THREE.Mesh[];
 }
 
 /** Shrines: a beam of light on the horizon, an orb behind a ring of light, levers or a plate. */
@@ -74,6 +83,42 @@ export class ShrineMeshes {
           this.group.add(post, pivot);
         }
       }
+      const flames: THREE.Mesh[] = [];
+      const pads: THREE.Mesh[] = [];
+      if (s.kind === 'candles') {
+        s.parts.forEach((p, i) => {
+          const y = terrain.heightAt(p.x, p.z);
+          if (i === 3) {
+            // The torch post: a pole with a small flame that never goes out.
+            const pole = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.8, 0.25), WOOD);
+            pole.position.set(p.x, y + 0.9, p.z);
+            const tip = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 6), FLAME);
+            tip.position.set(p.x, y + 2, p.z);
+            this.group.add(pole, tip);
+            return;
+          }
+          const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.4, 0.9, 8), STONE);
+          bowl.position.set(p.x, y + 0.45, p.z);
+          const flame = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 7), FLAME);
+          flame.position.set(p.x, y + 1.5, p.z);
+          flame.visible = false;
+          flames.push(flame);
+          this.group.add(bowl, flame);
+        });
+      }
+      if (s.kind === 'lilies') {
+        for (const p of s.parts) {
+          const pad = new THREE.Mesh(new THREE.CylinderGeometry(SWAMP_SHRINE.padR, SWAMP_SHRINE.padR, 0.12, 12), LILY);
+          pad.position.set(p.x, WATER_LEVEL + SWAMP_SHRINE.padTop - 0.06, p.z);
+          pads.push(pad);
+          this.group.add(pad);
+        }
+      }
+      if (s.kind === 'peat') {
+        // The peat wall replaces the light gate: dark roots that only burn (S3-E).
+        (gate as THREE.Mesh).material = PEAT;
+        gate.geometry = new THREE.CylinderGeometry(1.6, 1.8, 2.6, 10, 1, false);
+      }
       let block: THREE.Mesh | null = null;
       if (s.kind === 'tide') {
         block = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 1.1), PUMICE);
@@ -88,7 +133,7 @@ export class ShrineMeshes {
         plate.position.set(p.x, terrain.heightAt(p.x, p.z) + 0.05, p.z);
         this.group.add(plate);
       }
-      this.parts.push({ beam, orb, orbMat, gate, gateMat, handles, plateMat, block });
+      this.parts.push({ beam, orb, orbMat, gate, gateMat, handles, plateMat, block, flames, pads });
     }
   }
 
@@ -107,6 +152,8 @@ export class ShrineMeshes {
       });
       if (p.block && v.block) p.block.position.set(v.block.x, this.terrain.heightAt(v.block.x, v.block.z) + (v.block.held ? 1.4 : 0.4), v.block.z);
       p.plateMat?.emissive.setHex(v.parts[0] ? 0x2f8a55 : 0x000000);
+      p.flames.forEach((f, i) => (f.visible = !!v.parts[i]));
+      p.pads.forEach((m, i) => (m.position.y = WATER_LEVEL + SWAMP_SHRINE.padTop - (v.parts[i] ? 0.06 : 0.7)));
     }
   }
 
@@ -114,6 +161,7 @@ export class ShrineMeshes {
     for (const p of this.parts) {
       p.orb.rotation.y = t;
       p.gateMat.opacity = 0.35 + Math.sin(t * 3) * 0.1;
+      for (const f of p.flames) f.scale.y = 1 + Math.sin(t * 9 + f.position.x) * 0.15;
     }
   }
 }

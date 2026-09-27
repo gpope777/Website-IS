@@ -43,10 +43,16 @@ export function shrinePartAt(
   cleared: readonly number[],
   b: { x: number; y: number; z: number },
   me: string,
+  torch = false,
 ): { id: number; part: number; open: boolean; label: string } | null {
   for (const s of shrines) {
     const v = views.find((w) => w.id === s.id);
     const open = v?.open ?? false;
+    if (s.kind === 'candles') {
+      const i = s.parts.findIndex((p) => Math.hypot(p.x - b.x, p.z - b.z) <= SHRINE.partReach);
+      if (i === 3) return { id: s.id, part: 4, open, label: 'Coger una antorcha' };
+      if (i >= 0) return { id: s.id, part: i + 1, open, label: torch ? 'Encender el brasero' : 'Hace falta fuego' };
+    }
     if (s.kind === 'tide' && v?.block) {
       const k = v.block;
       if (k.held === me) return { id: s.id, part: 1, open, label: 'Soltar la piedra pómez' };
@@ -58,7 +64,7 @@ export function shrinePartAt(
     }
     if (cleared.includes(s.id)) continue;
     const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
-    if (Math.hypot(s.orb.x - b.x, s.orb.z - b.z) <= reach && b.y >= s.orb.y - 2.5) return { id: s.id, part: 0, open, label: open ? 'Tomar el orbe' : 'La verja está cerrada' };
+    if (Math.hypot(s.orb.x - b.x, s.orb.z - b.z) <= reach && b.y >= s.orb.y - 2.5) return { id: s.id, part: 0, open, label: open ? 'Tomar el orbe' : s.kind === 'peat' ? 'Raíces de turba. Solo arden' : 'La verja está cerrada' };
   }
   return null;
 }

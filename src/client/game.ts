@@ -51,6 +51,9 @@ import { RescueMeshes } from './scene/rescue';
 import { rescueSite, type RescueSite } from '../shared/rescue';
 import type { CageView } from '../shared/protocol';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
+import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
+import { AmberMeshes } from './scene/amber';
+import { swampAction } from './swamp-ui';
 import { buildTerrainMesh, buildThorns, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
@@ -174,6 +177,14 @@ export class Game {
   private opened: number[] = [];
   private weapon = 0;
   private pearls = 0;
+  private amberTrees: AmberTree[] = [];
+  private amberMeshes: AmberMeshes | null = null;
+  /** Amber trees regrowing for us, amber carried, Capa level, torch in hand (from the server). */
+  private regrowing: number[] = [];
+  private amber = 0;
+  private capa = 0;
+  private torch = false;
+  private padKey = '';
   private shrineViews: ShrineView[] = [];
   /** Shrines this player cleared (from the server). */
   private cleared: number[] = [];
@@ -344,11 +355,14 @@ export class Game {
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
     const forest = generateShrines(this.terrain, seed, this.crags);
-    this.shrines = [...forest, ...generateCoastShrines(this.terrain, seed)];
+    this.shrines = [...forest, ...generateCoastShrines(this.terrain, seed), ...generateSwampShrines(this.terrain, seed)];
     this.entrance = generateEntrance(this.terrain, seed, this.crags, forest);
     this.chests = generateChests(this.terrain, seed);
     this.chestMeshes = new ChestMeshes(this.chests);
     this.scene.add(this.chestMeshes.group);
+    this.amberTrees = generateAmberTrees(this.terrain, seed);
+    this.amberMeshes = new AmberMeshes(this.amberTrees, t.shadows);
+    this.scene.add(this.amberMeshes.group);
     this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
     this.steedMeshes = new SteedMeshes(t.shadows);
     this.scene.add(this.steedMeshes.group);
@@ -416,6 +430,11 @@ export class Game {
     this.graves.sync(m.graves, this.myName);
     this.syncVines(m.vines);
     this.shrineViews = m.shrines;
+    const padKey = m.shrines.filter((v) => this.shrines[v.id]?.kind === 'lilies').map((v) => v.parts.join()).join('|');
+    if (padKey !== this.padKey) {
+      this.padKey = padKey;
+      this.rebuildClimbables();
+    }
     this.dungeon = m.dungeon;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
@@ -444,6 +463,7 @@ export class Game {
       r.seat = p.dead ? null : p.seat;
       r.whale = p.ride === 'whale' && !p.dead;
       r.seen = m.time;
+      if (r.actor instanceof Actor) r.actor.setCapa(p.capa);
     }
     this.cage = m.cage ?? null;
     this.rescueMeshes?.sync(this.cage);
@@ -506,7 +526,10 @@ export class Game {
   private rebuildClimbables(): void {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    this.climbList = [...this.crags, ...bare, ...this.vines];
+    // Nenúfares' pads afloat and the amber stumps: stand on them, never climb them (bare).
+    const pads = this.shrines.flatMap((s) => (s.kind === 'lilies' ? lilyPadCrags(s, this.shrineViews.find((v) => v.id === s.id)?.parts ?? s.parts.map(() => true)) : []));
+    const stumps = this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []));
+    this.climbList = [...this.crags, ...bare, ...this.vines, ...pads, ...stumps];
   }
 
   private syncVines(vines: Crag[]): void {
@@ -538,7 +561,12 @@ export class Game {
 
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
     this.hud.setVitals(self.vitals);
-    this.hud.setInventory(self.inv, self.weapon);
+    this.hud.setInventory(self.inv, self.weapon, self.capa);
+    this.regrowing = self.amber;
+    this.amber = self.inv.amber ?? 0;
+    this.capa = self.capa;
+    this.torch = self.torch;
+    this.amberMeshes?.sync(self.amber);
     this.cleared = self.shrines;
     this.opened = self.chests;
     this.weapon = self.weapon;
@@ -756,6 +784,8 @@ export class Game {
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
     const ca = this.coastAct();
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
+    const sa = this.swampAct();
+    if (sa?.t === 'amber') return this.conn.send({ t: 'amber', id: sa.id });
     if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
@@ -772,6 +802,7 @@ export class Game {
     if (ma) return this.conn.send({ t: 'mount', act: ma.act });
     if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
     if (ca?.t === 'upgrade') return this.conn.send({ t: 'upgrade' });
+    if (sa?.t === 'capa') return this.conn.send({ t: 'capa' });
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
   }
@@ -807,7 +838,7 @@ export class Game {
 
   /** Lever, wheel or pumice block within reach (part ≥ 1), or an orb you have not taken yet (part 0). The server re-checks. */
   private shrinePart(): { id: number; part: number; open: boolean; label: string } | null {
-    return shrinePartAt(this.shrines, this.shrineViews, this.cleared, this.body!, this.myName);
+    return shrinePartAt(this.shrines, this.shrineViews, this.cleared, this.body!, this.myName, this.torch);
   }
 
   /** The root cage within reach while the Tragón is taken. */
@@ -823,6 +854,14 @@ export class Game {
     if (!b || this.dead) return null;
     const h = this.heart && this.structures.position(this.heart.id);
     return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon });
+  }
+
+  /** A ripe amber tree within reach, or a Capa level at the Heart. */
+  private swampAct(): ReturnType<typeof swampAction> {
+    const b = this.body;
+    if (!b || this.dead) return null;
+    const h = this.heart && this.structures.position(this.heart.id);
+    return swampAction({ pos: b, trees: this.amberTrees, regrowing: this.regrowing, heart: h ? { x: h.x, z: h.z } : null, amber: this.amber, capa: this.capa });
   }
 
   /** A bare shrine rock beside us, if any (Enredadera wraps it instead of growing a new vine). */
@@ -954,6 +993,8 @@ export class Game {
       if (this.tame?.beast === 'deer' && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
       else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : this.onFrog || this.tame?.beast === 'frog' ? FROG.height : 0), b.z, b.facing);
       this.me.play(anim);
+      this.me.setCapa(this.capa);
+      this.me.setTorch(this.torch);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third';
     }
@@ -983,6 +1024,7 @@ export class Game {
     this.structures.animate(performance.now() / 1000);
     this.shrineMeshes?.animate(performance.now() / 1000);
     this.chestMeshes?.animate(performance.now() / 1000);
+    this.amberMeshes?.animate(performance.now() / 1000);
     if (this.cage) this.rescueMeshes?.animate(performance.now() / 1000);
     this.dungeonMeshes?.animate(performance.now() / 1000);
     this.coastMeshes?.animate(performance.now() / 1000, dt);
@@ -1098,6 +1140,8 @@ export class Game {
     if (sp) return this.hud.setPrompt(sp.part === 0 && !sp.open ? sp.label : `E · ${sp.label}`);
     const ca = this.coastAct();
     if (ca) return this.hud.setPrompt(`E · ${ca.label}`);
+    const sa = this.swampAct();
+    if (sa) return this.hud.setPrompt(`E · ${sa.label}`);
     const ra = this.rescueAct();
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
     const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind));
