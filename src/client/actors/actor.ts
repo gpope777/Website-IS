@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import type { ModelKit } from './models';
+import { makeHat } from './hats';
+import { COLORS } from '../../shared/progression';
 
 export interface ClipDef {
   clip: string;
@@ -50,10 +52,65 @@ export class Actor {
       if ((o as THREE.Mesh).isMesh) o.castShadow = true;
     });
     this.root.add(model);
+    this.model = model;
     this.mixer = new THREE.AnimationMixer(model);
     for (const c of kit.clips) this.actions.set(c.name, this.mixer.clipAction(c));
     if (label) this.root.add(nameTag(label));
     this.play('idle');
+  }
+
+  private readonly model: THREE.Object3D;
+  private tint: THREE.MeshStandardMaterial | null = null;
+  private hat: THREE.Mesh | null = null;
+  private lookKey = '0:0';
+
+  /** P4-C: colour (a per-actor copy of `Main`, made on the first non-default colour) and a hat on the `Head` bone. */
+  setLook(color: number, hat: number): void {
+    const key = `${color}:${hat}`;
+    if (key === this.lookKey) return;
+    this.lookKey = key;
+    this.model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || Array.isArray(m.material)) return;
+      const mat = m.material as THREE.MeshStandardMaterial;
+      const original = (m.userData.main as THREE.MeshStandardMaterial | undefined) ?? (mat.name === 'Main' ? mat : null);
+      if (!original) return;
+      m.userData.main = original;
+      if (color === 0) {
+        m.material = original;
+        return;
+      }
+      if (!this.tint) this.tint = original.clone();
+      this.tint.color.setHex(COLORS[color] ?? COLORS[0]!);
+      m.material = this.tint;
+    });
+    if (this.hat) this.hat.removeFromParent();
+    this.hat = makeHat(hat);
+    if (this.hat) this.attachHat(this.hat);
+  }
+
+  private attachHat(hat: THREE.Mesh): void {
+    let head: THREE.Object3D | undefined;
+    this.model.traverse((o) => {
+      if (!head && o.name === 'Head' && o.children.some((c) => c.name === 'Head_end')) head = o;
+    });
+    if (!head) {
+      hat.position.y = 1.85;
+      this.root.add(hat);
+      return;
+    }
+    const tip = head.children.find((c) => c.name === 'Head_end');
+    this.root.updateMatrixWorld(true);
+    const s = new THREE.Vector3();
+    head.getWorldScale(s);
+    const rs = new THREE.Vector3();
+    this.root.getWorldScale(rs);
+    hat.scale.setScalar(rs.x / s.x);
+    if (tip) {
+      hat.position.copy(tip.position);
+      hat.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.position.clone().normalize());
+    }
+    head.add(hat);
   }
 
   private glider: THREE.Object3D | null = null;
@@ -121,6 +178,8 @@ export class Actor {
 
   dispose(): void {
     this.mixer.stopAllAction();
+    this.tint?.dispose();
+    this.tint = null;
     this.root.removeFromParent();
   }
 }

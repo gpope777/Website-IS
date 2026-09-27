@@ -76,8 +76,9 @@ import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
-import { hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '../shared/progression';
+import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '../shared/progression';
 import { skillsHtml } from './skills-ui';
+import { lookHtml } from './look-ui';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -384,6 +385,9 @@ export class Game {
   private lockMenuOpenedAt = 0;
   /** P4-B: my oficios and Rango (from the snapshot). */
   private skills: SkillId[] = [];
+  /** P4-C: worn colour/hat and the hats unlocked. */
+  private look = { color: 0, hat: 0 };
+  private hats: number[] = [];
   private rank = 1;
 
   constructor(private readonly root: HTMLElement, join: JoinInfo, private readonly onLeave: () => void) {
@@ -721,7 +725,10 @@ export class Game {
       r.seat = p.dead ? null : p.seat;
       r.whale = p.ride === 'whale' && !p.dead;
       r.seen = m.time;
-      if (r.actor instanceof Actor) r.actor.setCapa(p.capa);
+      if (r.actor instanceof Actor) {
+        r.actor.setCapa(p.capa);
+        r.actor.setLook(p.look?.color ?? 0, p.look?.hat ?? 0);
+      }
     }
     this.cage = m.cage ?? null;
     this.rescueMeshes?.sync(this.cage);
@@ -938,6 +945,8 @@ export class Game {
     this.hud.setVitals(self.vitals);
     this.hud.setInventory(self.inv, self.weapon, self.capa, rankLine(self.xp ?? 0, self.rank ?? 1));
     this.skills = self.skills ?? [];
+    this.look = self.look ?? { color: 0, hat: 0 };
+    this.hats = self.hats ?? [];
     this.rank = self.rank ?? 1;
     if (this.body) this.body.skills = this.skills;
     this.regrowing = self.amber;
@@ -1040,6 +1049,7 @@ export class Game {
         },
         raids: raidsMenu(this.ending, this.atHeart(), this.raidsOff),
         onSkills: () => this.showSkills(null),
+        onLook: () => this.showLook(),
         tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,
         onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
@@ -1335,6 +1345,19 @@ export class Game {
     return fogataAction(b, this.fogataSpots, this.fogatasLit, this.torch);
   }
 
+  /** P4-C: the Aspecto panel. Taps apply at once (the server re-checks the hat) and the panel redraws. */
+  private showLook(): void {
+    const send = (color: number, hat: number) => {
+      this.conn.send({ t: 'look', color, hat });
+      if (hat === 0 || this.hats.includes(hat)) this.look = { color, hat };
+      this.showLook();
+    };
+    const actions: Record<string, () => void> = { back: () => this.hud.hideOverlay() };
+    for (let i = 0; i < COLORS.length; i++) actions[`color-${i}`] = () => send(i, this.look.hat);
+    for (let h = 0; h <= HAT_IDS.length; h++) actions[`hat-${h}`] = () => send(this.look.color, h);
+    this.hud.showSkills(lookHtml(this.look, this.hats), actions);
+  }
+
   /** P4-B: the Oficios panel; tapping a oficio re-draws it with its line. The server re-checks everything. */
   private showSkills(chosen: SkillId | null): void {
     const actions: Record<string, () => void> = {
@@ -1560,6 +1583,7 @@ export class Game {
       else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : this.onFrog || this.tame?.beast === 'frog' ? FROG.height : this.onDragon ? DRAGON.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.setCapa(this.capa);
+      this.me.setLook(this.look.color, this.look.hat);
       this.me.setTorch(this.torch);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third';

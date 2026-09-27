@@ -311,3 +311,12 @@ canvas { display: block; }
 .panel .skills button.skill.owned { background: #4a8a3c; color: #fff; }
 .panel .skills button.skill.open { background: transparent; color: var(--fg); border: 2px solid var(--accent); }
 .panel .skills button.skill.locked { background: rgba(255,255,255,0.08); color: var(--muted); }
+
+.panel .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin: 8px 0; }
+.panel .swatches button.swatch { margin: 0; min-height: 36px; aspect-ratio: 1; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); padding: 0; }
+.panel .swatches button.swatch.on { border: 3px solid var(--fg); }
+.panel .hats { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: 10px 0; }
+.panel .hats button.hat { margin: 0; min-height: 48px; padding: 4px; font-size: 12px; line-height: 1.2; white-space: normal; }
+.panel .hats button.hat.on { background: #4a8a3c; color: #fff; }
+.panel .hats button.hat.locked { background: rgba(255,255,255,0.08); color: var(--muted); }
+.panel .hats button.hat small { display: block; font-size: 10px; }
