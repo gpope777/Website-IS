@@ -36,6 +36,10 @@ export const WOLF_CLIPS: Record<string, ClipDef> = {
   dead: { clip: 'Survey', speed: 0 },
 };
 
+/** P4-C: the robot's head is ~0.8 m wide and its dome tops out ~1.33× past `Head_end` (robot.glb, checked in the browser). */
+const HAT_SIZE = 2;
+const HAT_LIFT = 1.3;
+
 /** An animated, independently skinned copy of a model kit, with an optional floating name tag. */
 export class Actor {
   readonly root = new THREE.Group();
@@ -105,9 +109,9 @@ export class Actor {
     head.getWorldScale(s);
     const rs = new THREE.Vector3();
     this.root.getWorldScale(rs);
-    hat.scale.setScalar(rs.x / s.x);
+    hat.scale.setScalar((HAT_SIZE * rs.x) / s.x);
     if (tip) {
-      hat.position.copy(tip.position);
+      hat.position.copy(tip.position).multiplyScalar(HAT_LIFT);
       hat.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.position.clone().normalize());
     }
     head.add(hat);
