@@ -245,6 +245,7 @@ export class Game {
   private quartzMeshes: QuartzMeshes | null = null;
   private quartzRegrowing: number[] = [];
   private quartz = 0;
+  private thorn = 0;
   /** Amber trees regrowing for us, amber carried, Capa level, torch in hand (from the server). */
   private regrowing: number[] = [];
   private amber = 0;
@@ -812,6 +813,7 @@ export class Game {
     this.quartzRegrowing = self.quartz;
     this.quartzMeshes?.sync(self.quartz);
     this.quartz = self.inv.quartz ?? 0;
+    this.thorn = self.inv.thorn ?? 0;
     this.cleared = self.shrines;
     this.opened = self.chests;
     this.weapon = self.weapon;
@@ -1118,7 +1120,7 @@ export class Game {
     const b = this.body;
     if (!b || this.dead) return null;
     const h = this.heart && this.structures.position(this.heart.id);
-    return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon, quartz: this.quartz });
+    return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon, quartz: this.quartz, thorn: this.thorn });
   }
 
   /** A swamp fogata within reach (light it, or go back to the Heart). */
@@ -1140,7 +1142,7 @@ export class Game {
     const b = this.body;
     if (!b || this.dead) return null;
     const h = this.heart && this.structures.position(this.heart.id);
-    return swampAction({ pos: b, trees: this.amberTrees, regrowing: this.regrowing, heart: h ? { x: h.x, z: h.z } : null, amber: this.amber, capa: this.capa });
+    return swampAction({ pos: b, trees: this.amberTrees, regrowing: this.regrowing, heart: h ? { x: h.x, z: h.z } : null, amber: this.amber, capa: this.capa, thorn: this.thorn });
   }
 
   /** A quartz vein we are up beside (S4-C). */

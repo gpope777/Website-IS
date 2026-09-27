@@ -1,10 +1,10 @@
 import { NAMES } from './names';
-export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl' | 'amber' | 'quartz';
+export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl' | 'amber' | 'quartz' | 'thorn';
 export type Inventory = Partial<Record<ItemId, number>>;
 
-export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl', 'amber', 'quartz'];
+export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl', 'amber', 'quartz', 'thorn'];
 const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
-export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s`, amber: cap(NAMES.amber), quartz: cap(NAMES.quartz) };
+export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s`, amber: cap(NAMES.amber), quartz: cap(NAMES.quartz), thorn: `${cap(NAMES.thorn).replace(' ', 's ')}s` };
 
 /** 'pillar' is Piedra's (raised by the power, never placed nor saved). */
 export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots' | 'fire' | 'tower' | 'pillar';
@@ -28,20 +28,25 @@ export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall:
 /** Tending the Heart: berries in, HP back. */
 export const TEND_COST: Inventory = { berries: 5 };
 export const TEND_HEAL = 100;
-/** Weapon upgrade at the Heart (spec §6.2, S4 §5.3): levels 1–3 cost pearls, 4–5 cost mountain quartz; +15 % damage per level. */
-export const UPGRADE = { cost: { pearl: 3, stone: 10, wood: 5 }, costHigh: { quartz: 3, stone: 10, wood: 5 }, pearlMax: 3, step: 0.15, max: 5 } as const;
+/** Weapon upgrade at the Heart (spec §6.2, S4 §5.3, S5 §7.4): levels 1–3 cost pearls, 4–5 mountain quartz, 6 black thorns; +15 % damage per level. */
+export const UPGRADE = { cost: { pearl: 3, stone: 10, wood: 5 }, costHigh: { quartz: 3, stone: 10, wood: 5 }, costTop: { thorn: 6, quartz: 3, stone: 10 }, pearlMax: 3, quartzMax: 5, step: 0.15, max: 6 } as const;
 
 /** What the next level costs, from level `lvl`. */
 export function upgradeCost(lvl: number): Inventory {
-  return lvl < UPGRADE.pearlMax ? UPGRADE.cost : UPGRADE.costHigh;
+  return lvl < UPGRADE.pearlMax ? UPGRADE.cost : lvl < UPGRADE.quartzMax ? UPGRADE.costHigh : UPGRADE.costTop;
 }
 
 export function weaponMult(lvl: number): number {
   return 1 + UPGRADE.step * Math.max(0, Math.min(UPGRADE.max, Math.floor(lvl)));
 }
 
-/** Capa de corteza (spec S3 §6.3): amber from the swamp; −10 % damage taken per level, never the terrain bites. */
-export const CAPA = { cost: { amber: 3, wood: 10, berries: 5 }, step: 0.1, max: 3 } as const;
+/** Capa de corteza (spec S3 §6.3, S5 §7.4): amber for levels 1–3, black thorns for 4; −10 % damage taken per level, never the terrain bites. */
+export const CAPA = { cost: { amber: 3, wood: 10, berries: 5 }, costTop: { thorn: 4, amber: 2 }, amberMax: 3, step: 0.1, max: 4 } as const;
+
+/** What the next Capa level costs, from level `lvl`. */
+export function capaCost(lvl: number): Inventory {
+  return lvl < CAPA.amberMax ? CAPA.cost : CAPA.costTop;
+}
 
 export function capaMult(lvl: number): number {
   return 1 - CAPA.step * Math.max(0, Math.min(CAPA.max, Math.floor(lvl)));

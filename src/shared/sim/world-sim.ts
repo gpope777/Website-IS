@@ -29,7 +29,7 @@ import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges, generateMountainShrines, generateQuartzVeins, MOUNTAIN_SHRINE, QUARTZ, type Cell, type QuartzVein } from '../mountain-shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
-import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaCost, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
@@ -1159,14 +1159,14 @@ export class WorldSim {
     }
   }
 
-  /** Capa de corteza at the Heart: −10 % damage taken per level, up to 3. */
+  /** Capa de corteza at the Heart: −10 % damage taken per level, up to 4 (the 4th costs black thorns). */
   private onCapa(p: SavedPlayer): void {
     const h = this.heart();
     if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
     const lvl = p.capaLvl ?? 0;
     if (lvl >= CAPA.max) return this.tell(p.name, 'La capa ya no admite más corteza');
-    if (!hasAll(p.inv, CAPA.cost)) return this.tell(p.name, 'Faltan materiales');
-    p.inv = removeAll(p.inv, CAPA.cost);
+    if (!hasAll(p.inv, capaCost(lvl))) return this.tell(p.name, 'Faltan materiales');
+    p.inv = removeAll(p.inv, capaCost(lvl));
     p.capaLvl = lvl + 1;
     this.tell(p.name, `${NAMES.capa} ${p.capaLvl}: −${Math.round(CAPA.step * 100 * p.capaLvl)} % de daño`);
   }

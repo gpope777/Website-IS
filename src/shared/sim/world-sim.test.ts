@@ -3906,7 +3906,7 @@ describe('amber trees and the Capa de corteza (S3-C)', () => {
     sim.handle('Ana', { t: 'capa' });
     sim.handle('Ana', { t: 'capa' });
     expect(snap(sim, 'Ana').self.capa).toBe(3);
-    expect(texts(sim)).toContain('La capa ya no admite más corteza');
+    expect(texts(sim)).toContain('Faltan materiales'); // S5: level 4 needs black thorns
     expect(sim.save().players[0]!.capaLvl).toBe(3);
     expect(snap(sim, 'Leo').players.find((v) => v.name === 'Ana')!.capa).toBe(3);
     const w = wolfAt(sim, 1);
@@ -4541,9 +4541,9 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
     sim.getPlayer('Ana')!.fuego = true;
     sim.handle('Ana', { t: 'power', x: f.x, z: f.z, kind: 'fuego' });
     expect(texts(sim).some((t) => t.includes('fogata'))).toBe(true);
-    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false, false, false]);
-    expect(sim.save().fogatas).toEqual([false, true, false, false, false, false]);
-    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false, false, false]);
+    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false, false, false, false]);
+    expect(sim.save().fogatas).toEqual([false, true, false, false, false, false, false]);
+    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false, false, false, false]);
   });
 
   it('a torch lights one and is spent; without one, nothing', () => {
@@ -4640,7 +4640,7 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
 
   it('old saves load with every fogata dark and save none', () => {
     const sim = new WorldSim(newWorld(42, 'salt'));
-    expect(lit(sim)).toEqual([false, false, false, false, false, false]);
+    expect(lit(sim)).toEqual([false, false, false, false, false, false, false]);
     expect('fogatas' in sim.save()).toBe(false);
   });
 
@@ -4850,7 +4850,7 @@ describe('mountain shrines and refugios (S4-C)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(44);
+    expect(PROTOCOL_VERSION).toBe(45);
   });
 });
 
@@ -4883,7 +4883,7 @@ describe('quartz and weapon levels 4–5 (S4-C)', () => {
     expect(again.getPlayer('Ana')!.quartz?.[3]).toBeDefined();
   });
 
-  it('levels 4 and 5 cost 3 cuarzo + 10 piedra + 5 madera; 5 is the top', () => {
+  it('levels 4 and 5 cost 3 cuarzo + 10 piedra + 5 madera; level 6 needs black thorns (S5)', () => {
     const sim = setup('Ana');
     plantHeart(sim);
     const p = sim.getPlayer('Ana')!;
@@ -4897,7 +4897,7 @@ describe('quartz and weapon levels 4–5 (S4-C)', () => {
     expect(p.inv).toEqual({ stone: 10, wood: 20 });
     p.inv = { quartz: 6, stone: 30, wood: 30 };
     sim.handle('Ana', { t: 'upgrade' });
-    expect(texts(sim)).toContain('El arma ya no da más de sí');
+    expect(texts(sim)).toContain('Faltan materiales');
     expect(snap(sim, 'Ana').self.weapon).toBe(5);
   });
 
@@ -5047,7 +5047,7 @@ describe('El Triángulo (S4-D)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(44);
+    expect(PROTOCOL_VERSION).toBe(45);
   });
 });
 

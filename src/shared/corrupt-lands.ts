@@ -1,5 +1,6 @@
 import { NAMES } from './names';
-import { MOUNTAINS, HALF } from './terrain';
+import { MOUNTAINS, HALF, CORRUPT_LANDS, inCorrupt, type Terrain } from './terrain';
+import type { EnemyKind } from './protocol';
 
 /**
  * Las Tierras Corruptas (spec S5 §3): the rules that are not terrain. The rim line is the old muro de niebla (S4-G):
@@ -31,4 +32,21 @@ export const fogText = (missing: string) => `La niebla aguanta. Falta la ${missi
 
 export function rimCrossBlocked(pz: number, nz: number): boolean {
   return pz >= RIM_LINE && nz < RIM_LINE;
+}
+
+/** Day beasts of the Espinar (spec S5 §7.2–7.3): 6 ash beasts (1 brute) and 2–4 rayos, once a game day while someone is up here. */
+export const ASH = { beasts: 6, brutes: 1, rayosMin: 2, rayosMax: 4, rayoCap: 8, dMin: 85, dMax: 165, rayoDrop: 0.5 } as const;
+
+/** Black thorns for a kill: wolves and brutes in the Tierras always drop one; a rayo half the time (`roll` in [0, 1)). */
+export function thornDrop(kind: EnemyKind, x: number, z: number, roll: number): number {
+  if (kind === 'rayo') return roll < ASH.rayoDrop ? 1 : 0;
+  return (kind === 'wolf' || kind === 'brute') && inCorrupt(x, z) ? 1 : 0;
+}
+
+/** Fogata 6 (spec S5 §7.1): a stone ring on la Ceniza, 50 m past the rim, a little east of the middle. */
+export const CENIZA_FOGATA = { x: 24, d: 50 } as const;
+
+export function cenizaFogata(t: Terrain): { x: number; z: number; y: number } {
+  const z = CORRUPT_LANDS.z1 - CENIZA_FOGATA.d;
+  return { x: CENIZA_FOGATA.x, z, y: t.heightAt(CENIZA_FOGATA.x, z) };
 }

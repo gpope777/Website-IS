@@ -55,8 +55,10 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   boss3: { hp: 380, run: 3, damage: 14, reach: 1.8, biteCooldown: 8 },
   /** El Cucurucho, the mountain dungeon's boss (see sim/cucurucho.ts): pokes 8 every 4 s up close, charges from range. */
   boss4: { hp: 420, run: 3, damage: 8, reach: 2.4, biteCooldown: 4 },
+  /** El rayo marchito, the flying common enemy of the Tierras (see sim/rayo.ts): hovers, dives for 10 every 3 s. */
+  rayo: { hp: 60, run: 9, damage: 10, reach: 1.6, biteCooldown: 3 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el ') };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el '), rayo: `un ${NAMES.flier}` };
 
 export interface Wolf {
   id: number;
@@ -83,6 +85,12 @@ export interface Wolf {
   /** Seconds left running away from `fleeFrom` (a Llamarada, a hoguera). */
   flee?: number;
   fleeFrom?: { x: number; z: number };
+  /** Rayo marchito (sim/rayo.ts): dive phase, its timer and aim; seconds left grounded after a gust. */
+  dive?: 'tell' | 'dive' | 'climb';
+  diveT?: number;
+  diveX?: number;
+  diveZ?: number;
+  grounded?: number;
 }
 
 /** Speed factor while slowed by spikes. */

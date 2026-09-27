@@ -16,12 +16,18 @@ export interface CoastCtx {
   weapon: number;
   /** Quartz carried (levels 4–5). */
   quartz?: number;
+  /** Black thorns carried (level 6, S5-B). */
+  thorn?: number;
 }
 
 const c = UPGRADE.cost;
 const UPGRADE_LABEL = `Mejorar el arma (${c.pearl} ${NAMES.pearl}s, ${c.stone} piedra, ${c.wood} madera)`;
 const q = UPGRADE.costHigh;
 const UPGRADE_HIGH = `Mejorar el arma (${q.quartz} ${NAMES.quartz}, ${q.stone} piedra, ${q.wood} madera)`;
+const top = UPGRADE.costTop;
+/** "espina negra" → "espinas negras". */
+export const THORNS = `${NAMES.thorn.replace(' ', 's ')}s`;
+const UPGRADE_TOP = `Mejorar el arma (${top.thorn} ${THORNS}, ${top.quartz} ${NAMES.quartz}, ${top.stone} piedra)`;
 
 /** A sunken chest within reach (diving), else the weapon upgrade at the Heart. The server re-checks. */
 export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: string } | { t: 'upgrade'; label: string } | null {
@@ -31,7 +37,8 @@ export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: strin
   const h = x.heart;
   if (!h || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return null;
   if (x.pearls >= c.pearl && x.weapon < UPGRADE.pearlMax) return { t: 'upgrade', label: UPGRADE_LABEL };
-  if ((x.quartz ?? 0) >= q.quartz && x.weapon >= UPGRADE.pearlMax && x.weapon < UPGRADE.max) return { t: 'upgrade', label: UPGRADE_HIGH };
+  if ((x.quartz ?? 0) >= q.quartz && x.weapon >= UPGRADE.pearlMax && x.weapon < UPGRADE.quartzMax) return { t: 'upgrade', label: UPGRADE_HIGH };
+  if ((x.thorn ?? 0) >= top.thorn && (x.quartz ?? 0) >= top.quartz && x.weapon >= UPGRADE.quartzMax && x.weapon < UPGRADE.max) return { t: 'upgrade', label: UPGRADE_TOP };
   return null;
 }
 

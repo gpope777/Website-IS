@@ -129,3 +129,18 @@ describe('la Torre and the fog gate (S5-A)', () => {
     expect(missingRoot({ ...w(4), purified2: false })).toBe(NAMES.coastRoot);
   });
 });
+
+describe('espinas negras from the Tierras (S5 §7.2–7.3)', () => {
+  it('ash beasts always drop one, rayos half the time, nothing elsewhere', async () => {
+    const { thornDrop, ASH } = await import('./corrupt-lands');
+    const { HALF: H } = await import('./terrain');
+    const z = -H - 220 - 120;
+    expect(thornDrop('wolf', 0, z, 0.9)).toBe(1);
+    expect(thornDrop('brute', 0, z, 0.9)).toBe(1);
+    expect(thornDrop('wolf', 0, 0, 0.1)).toBe(0);
+    expect(thornDrop('rayo', 0, z, 0.3)).toBe(1);
+    expect(thornDrop('rayo', 0, z, 0.7)).toBe(0);
+    expect(thornDrop('lieut1', 0, z, 0.1)).toBe(0);
+    expect(ASH.rayoCap).toBe(8);
+  });
+});

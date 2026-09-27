@@ -25,6 +25,10 @@ describe('swampAction', () => {
     expect(swampAction({ ...at, amber: 2 })).toBeNull();
     expect(swampAction({ ...at, amber: 3 })).toEqual({ t: 'capa', label: 'Capa de corteza (3 ámbar, 10 madera, 5 bayas)' });
     expect(swampAction({ ...at, amber: 3, capa: 3 })).toBeNull();
+    // S5-B: level 4 costs black thorns.
+    expect(swampAction({ ...at, amber: 2, capa: 3, thorn: 4 })).toEqual({ t: 'capa', label: 'Capa de corteza (4 espinas negras, 2 ámbar)' });
+    expect(swampAction({ ...at, amber: 2, capa: 3, thorn: 3 })).toBeNull();
+    expect(swampAction({ ...at, amber: 9, capa: 4, thorn: 9 })).toBeNull();
   });
 });
 
