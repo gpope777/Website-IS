@@ -631,3 +631,28 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: coger antorcha en Candiles y encender la fogata más cercana; de día, E en ella y esperar 5 s; recibir un golpe a mitad; probar de noche. Menú en el Corazón → fogata. ¿Se ve la llama en la niebla? ¿5 s se hacen largos? Constantes: `FOGATA` en `src/shared/fogatas.ts`.
+
+## Slice 4 · S4-A — las Montañas, los Peldaños y la regla de la pendiente — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-A-montanas-peldanos.md` (7ebd5db).
+- Commits: 877151b (T1 terreno de las Montañas, límites en unión de 3 rectángulos, sin peñascos junto a los Peldaños, nombres), 85d7489 (T2 regla de la pendiente en el servidor, protocolo v32), 467ba2c (T3 movimiento en el cliente y aviso), 31770a1 (T4 malla por trozos con silueta, colores y pinos).
+- Tests: npm test 640 (antes 610), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 32** (cambió el terreno). Sin campos guardados nuevos: las partidas viejas cargan y reciben Montañas.
+- Cómo funciona:
+  - **Mapa:** crece al norte: `MOUNTAINS` = x de −HALF a HALF, z de −HALF−220 a −HALF. Todo lo que está al sur de z = −HALF es idéntico (un test compara 120 alturas grabadas antes del cambio). La altura de las Montañas se suma a la del borde del bosque en z = −HALF, así que la costura no tiene escalón. `inMap`/`clampMap` son la unión de 3 rectángulos (bosque+costa, Pantano, Montañas) y `clampMap` lleva al más cercano.
+  - **Los Peldaños:** 4 terrazas de +6 m; cada escalón sube en 1,5 m de carrera (~80°), cada 10 m. Roca lisa (`smoothAt`).
+  - **Faldas** (d 40–120): +24 a +40 con ruido suave (≥85 % por debajo de 30°), **9 paredes** sembradas (mesas de 12–25 m con caras de 56–78°), y el **canal de nieve** (valle de 2 m, |x| < 4) por el centro. **Cumbre** (d 120–200) hasta ~+75 con ruido de cresta. **El Pico**: disco plano de 12 m a +80, cerca de x = 0. Bordes: acantilados hasta +90 al norte (d > 200) y a los lados (|x| > HALF−20).
+  - **Regla de la pendiente** (`src/shared/mountains.ts`, solo dentro de las Montañas): no se puede subir a pie ni en ciervo a una celda de más de **45°** (el servidor tolera 50°). Bajar siempre se puede. También en el aire: un salto que choca con un escalón cae en vez de subirse encima. Avisos: "Roca lisa. Sin agarre" (Peldaños), "El ciervo no trepa", "Demasiado empinado" (paredes); en el cliente como mucho uno cada 3 s.
+  - **La Rana** es la llave: en el suelo tampoco sube, pero su salto alto (7 m) pasa cada escalón si saltas desde 3–5 m antes (un test hace las 4 terrazas). El servidor no aplica la regla a los jinetes de rana (ya tienen el techo de suelo + 13).
+  - **Peñascos:** ninguno en los 60 m del norte del bosque (no se planea a las terrazas).
+  - **Nombres:** los 14 de §13 están en `names.ts`. El test de nombres también prohíbe escribir a mano "Montañas", "Peldaños" y "Cucurucho".
+- Decidido por Claude — revisar:
+  - Terrazas de 10 m de fondo (4 × 10 = 40 m); el salto de la rana tiene una ventana de 3–5 m antes del escalón. Si cuesta en móvil, bajar `PELDANOS.rise` o subir `pitch`.
+  - Las paredes son mesas redondas (cara todo alrededor, cima plana de 3–6 m), no crestas. Caben 9 siempre.
+  - Las alturas van relativas al borde del bosque (varía ±15 m con el ruido); el Pico está a +80 sobre el borde en su x.
+  - La Escalera del Umbral cambiará el terreno en S4-F (una rampa en |x| < 2); aquí no hay nada.
+  - Pinos solo decorativos (sin colisión ni recursos), unos 150 instanciados.
+  - Las Montañas aún no se tiñen de corrupción (llega en S4-D con las zonas 14–17).
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 32; en `coast.test.ts`, el borde norte ya no es z = −HALF sino el de las Montañas, y la esquina (−HALF−1, −HALF−1) ahora se lleva a las Montañas.
+- Rendimiento móvil: **+5 draw calls** (4 trozos de 120 m, cada uno en detalle o en silueta, nunca los dos, + 1 de pinos). Vértices: silueta 4 × 289 = 1.156 siempre; detalle solo a menos de 160 m: gama baja 2.132 por trozo (8.528 con los 4, +26 % sobre ~32.600 — más que los +2.600 que estimaba el spec, porque las columnas tienen que coincidir con las del bosque en la costura), media 3.264/trozo, alta 4.514/trozo. Desde el Corazón (a ~240 m) solo se dibujan siluetas. La niebla y el plano lejano (120–260 m) no se tocaron: en gama baja la cumbre no se ve desde el Corazón.
+- Verificado en navegador local (Chromium headless 1000×600, mundo `montes`, semilla 42, partida importada): a los pies (0, −232) mirando al norte se ve el muro gris liso del primer escalón; en las Faldas (20, −300) se ven pinos, el canal de nieve pálido, una pared oscura y la cumbre nevada detrás. Sin errores de consola. NO verificado: subir con la rana, los avisos en pantalla, el cambio de silueta a detalle al acercarse, ni el móvil.
+- Bloqueos: ninguno.
+- Qué probar: andar al norte desde el bosque hasta los Peldaños (¿se entiende el aviso?). En rana: acercarse y saltar (¿la ventana de 3–5 m es justa?). En las Faldas: rodear una pared, ir al Pico andando por las pendientes suaves (¿hay camino?). Mirar la costura en z = −HALF por si hay grietas lejos (silueta). En móvil: fps al entrar en las Montañas. Constantes: `MOUNTAINS`/`PELDANOS`/`PICO`/`CHUTE` en `terrain.ts`, `STEEP` en `src/shared/mountains.ts`, `MOUNTAIN_LOD` en `terrain-mesh.ts`.
