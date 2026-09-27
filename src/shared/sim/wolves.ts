@@ -71,6 +71,11 @@ export interface Wolf {
   slow?: number;
   /** Speed factor from La Gata Araña's aura (1 or absent: none). */
   haste?: number;
+  /** Seconds left burning (Fuego): 3 PV/s. */
+  burn?: number;
+  /** Seconds left running away from `fleeFrom` (a Llamarada, a hoguera). */
+  flee?: number;
+  fleeFrom?: { x: number; z: number };
 }
 
 /** Speed factor while slowed by spikes. */

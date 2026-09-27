@@ -3776,7 +3776,7 @@ describe('swamp shrines (S3-C)', () => {
     expect(before).toContain(10);
   });
 
-  it('Enredadera at a swamp root cleanses nothing (Fuego will, S3-E)', () => {
+  it('Enredadera at a swamp root cleanses nothing (Fuego does)', () => {
     const sim = setup('Ana');
     sim.getPlayer('Ana')!.enredadera = true;
     const z = sim.zones.find((x) => x.id === 11)!;
@@ -4103,5 +4103,140 @@ describe('swamp dungeon (S3-E)', () => {
     expect(snap(sim, 'Ana').self.fuego).toBe(false);
     const again = new WorldSim(sim.save());
     expect(again.getPlayer('Ana')!.fuego).toBeUndefined();
+  });
+});
+
+describe('Fuego (S3-E)', () => {
+  const S = SWAMP_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const flame = (sim: WorldSim, x: number, z: number, name = 'Ana') => sim.handle(name, { t: 'power', x, z, kind: 'fuego' });
+  const view = (sim: WorldSim, id: number) => snap(sim, 'Ana').shrines.find((v) => v.id === id)!;
+  function fiery(...names: string[]) {
+    const sim = setup(...(names.length ? names : ['Ana']));
+    sim.getPlayer('Ana')!.fuego = true;
+    return sim;
+  }
+  const cool = (sim: WorldSim) => sim.step(FUEGO.cooldown + 0.05);
+
+  it('needs the power, and has its own cooldown', () => {
+    const sim = setup('Ana');
+    flame(sim, 0, 2);
+    expect(texts(sim)).toContain('Aún no tienes ese poder');
+    Object.assign(sim.getPlayer('Ana')!, { fuego: true, viento: true });
+    flame(sim, 0, 2);
+    expect(snap(sim, 'Ana').self.fireLeft).toBe(FUEGO.cooldown);
+    expect(snap(sim, 'Ana').self.windLeft).toBe(0);
+    msgs(sim);
+    flame(sim, 0, 2);
+    expect(texts(sim).some((t) => t.startsWith('El fuego aún no prende'))).toBe(true);
+  });
+
+  it('scorches and sets a wolf ahead burning; it runs; one behind is untouched', () => {
+    const sim = fiery();
+    const w = wolfAt(sim, 0, 4);
+    const back = { ...w, id: 7777, z: w.z - 8 } as Wolf;
+    (sim as unknown as { wolves: Wolf[] }).wolves.push(back);
+    const p = sim.getPlayer('Ana')!;
+    const hp = w.hp;
+    flame(sim, p.x, p.z + 2);
+    expect(w.hp).toBe(hp - FUEGO.damage);
+    expect(w.burn).toBe(FUEGO.burnFor);
+    expect(snap(sim, 'Ana').wolves.find((x) => x.id === w.id)!.burning).toBe(true);
+    const d0 = Math.hypot(w.x - p.x, w.z - p.z);
+    for (let i = 0; i < 10; i++) sim.step(0.1);
+    expect(Math.hypot(w.x - p.x, w.z - p.z)).toBeGreaterThan(d0 + 3);
+    for (let i = 0; i < 40; i++) sim.step(0.1);
+    expect(w.hp).toBeCloseTo(hp - FUEGO.damage - FUEGO.burnDps * FUEGO.burnFor, 0);
+    expect(back.hp).toBe(hp);
+  });
+
+  it('a brute burns but holds its ground', () => {
+    const sim = fiery();
+    const w = wolfAt(sim, 0, 4);
+    w.kind = 'brute';
+    w.hp = 140;
+    const p = sim.getPlayer('Ana')!;
+    flame(sim, p.x, p.z + 2);
+    expect(w.burn).toBe(FUEGO.burnFor);
+    expect(w.flee ?? 0).toBe(0);
+  });
+
+  it('Candiles: a Llamarada lights a brazier without a torch; three open it', () => {
+    const sim = fiery();
+    const s = sim.shrines.find((x) => x.kind === 'candles')!;
+    const braziers = s.parts.slice(0, 3);
+    for (const [i, b] of braziers.entries()) {
+      put(sim, 'Ana', s.x, s.z);
+      const d = Math.hypot(b.x - s.x, b.z - s.z);
+      put(sim, 'Ana', b.x + ((s.x - b.x) / d) * 3, b.z + ((s.z - b.z) / d) * 3);
+      flame(sim, b.x, b.z);
+      expect(view(sim, s.id).parts[i]).toBe(true);
+      if (i < 2) cool(sim);
+    }
+    expect(view(sim, s.id).open).toBe(true);
+  });
+
+  it('Turba: three Llamaradas burn the peat wall; its orb gives amber', () => {
+    const sim = fiery();
+    const s = sim.shrines.find((x) => x.kind === 'peat')!;
+    put(sim, 'Ana', s.x, s.z - 4);
+    flame(sim, s.x, s.z);
+    expect(texts(sim)).toContain(`La turba humea (1/${FUEGO.burns})`);
+    cool(sim);
+    flame(sim, s.x, s.z);
+    expect(view(sim, s.id).open).toBe(false);
+    cool(sim);
+    flame(sim, s.x, s.z);
+    expect(view(sim, s.id).open).toBe(true);
+    expect(view(sim, s.id).parts).toEqual([true, true, true]);
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    expect(snap(sim, 'Ana').self.shrines).toContain(s.id);
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(1);
+  });
+
+  it('a Llamarada at a swamp root (11) cleanses it; zone 10 never', () => {
+    const sim = fiery();
+    const z11 = sim.zones.find((x) => x.id === 11)!;
+    put(sim, 'Ana', z11.x - 3, z11.z);
+    flame(sim, z11.x, z11.z);
+    expect(sim.corrupt()).not.toContain(11);
+    expect(texts(sim)).toContain('El fuego seca la raíz marchita. El pantano respira');
+    const z10 = sim.zones.find((x) => x.id === 10)!;
+    cool(sim);
+    put(sim, 'Ana', z10.x - 3, z10.z);
+    flame(sim, z10.x, z10.z);
+    expect(sim.corrupt()).toContain(10);
+  });
+
+  it('three Llamaradas burn the thorn gate; the gas lamps lit within 10 s open the next', () => {
+    const sim = fiery();
+    const e = sim.swampEntrance;
+    put(sim, 'Ana', e.x, e.z - 3);
+    sim.handle('Ana', { t: 'dungeon', act: 13 });
+    const at = (x: number, z: number) => Object.assign(sim.getPlayer('Ana')!, { x: S.x + x, z, y: S.floor });
+    at(0, S.thorn.z - 3);
+    flame(sim, S.x, S.thorn.z);
+    cool(sim);
+    flame(sim, S.x, S.thorn.z);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[1]).toBe(false);
+    expect(snap(sim, 'Ana').dungeon.swamp.thorn).toBe(2);
+    cool(sim);
+    flame(sim, S.x, S.thorn.z);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[1]).toBe(true);
+    // Lamps: the first two share a Llamarada; the third comes too late, then in time.
+    cool(sim);
+    at(0, 62);
+    flame(sim, S.x, 67);
+    expect(snap(sim, 'Ana').dungeon.swamp.lamps).toEqual([true, true, false]);
+    for (let i = 0; i < (S.lampWindow + 1) * 10; i++) sim.step(0.1);
+    const lamp = S.lamps[2];
+    at(lamp.x + 3, lamp.z);
+    flame(sim, S.x + lamp.x, lamp.z);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[2]).toBe(false);
+    cool(sim);
+    at(0, 62);
+    flame(sim, S.x, 67);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[2]).toBe(true);
   });
 });

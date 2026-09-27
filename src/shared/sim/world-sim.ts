@@ -2,7 +2,7 @@ import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, zarzalAt } from '../swamp';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
-import { FUEGO } from '../fuego';
+import { FUEGO, inFlame } from '../fuego';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
@@ -289,7 +289,7 @@ export class WorldSim {
     bossSaid: false,
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
-  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[] }[];
+  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[]; /** Turba: Llamaradas the peat wall took. */ burns: number }[];
   private readonly players = new Map<string, SavedPlayer>();
   private readonly live = new Map<string, Live>();
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
@@ -367,7 +367,7 @@ export class WorldSim {
     this.whale = saved.whale ? { ...saved.whale } : { ...this.whaleHome, yaw: 0 };
     this.zones = allZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
-    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null, lit: s.kind === 'candles' ? [0, 0, 0] : [], pads: s.kind === 'lilies' ? s.parts.map(() => ({ at: null, downUntil: 0 })) : [] }));
+    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null, burns: 0, lit: s.kind === 'candles' ? [0, 0, 0] : [], pads: s.kind === 'lilies' ? s.parts.map(() => ({ at: null, downUntil: 0 })) : [] }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
     for (const p of this.players.values()) if (p.enredadera === undefined && (p.shrines ?? []).length > 0) p.enredadera = true;
@@ -477,7 +477,7 @@ export class WorldSim {
       case 'shrine':
         return this.onShrine(p, msg.id, msg.part);
       case 'power':
-        return msg.kind === 'viento' ? this.onGust(p, l, msg.x, msg.z) : this.onPower(p, l, msg.x, msg.z);
+        return msg.kind === 'viento' ? this.onGust(p, l, msg.x, msg.z) : msg.kind === 'fuego' ? this.onFlame(p, l, msg.x, msg.z) : this.onPower(p, l, msg.x, msg.z);
       case 'mount':
         return this.onMount(p, l, msg.act, msg.at);
       case 'dungeon':
@@ -543,6 +543,10 @@ export class WorldSim {
     const goal = this.raidGoal();
     const gata = this.wolves.find((w) => w.id === this.gataId && w.hp > 0) ?? null;
     for (const w of this.wolves) {
+      if (w.flee && w.fleeFrom && w.hp > 0) {
+        this.flee(w, w.fleeFrom, dt);
+        continue;
+      }
       if (w.raid) {
         if (!goal) continue;
         if (this.raidFlee > 0) {
@@ -563,6 +567,7 @@ export class WorldSim {
       const bit = stepWolf(w, targets, this.terrain, dt, this.rng);
       if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
+    this.stepBurning(dt);
     this.stepGataFall(dt);
     this.stepSpikes(dt);
     this.stepNets();
@@ -600,7 +605,7 @@ export class WorldSim {
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
-      .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
+      .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid, ...(w.burn && w.hp > 0 ? { burning: true as const } : {}) }));
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
     const sh = this.shield;
@@ -949,8 +954,7 @@ export class WorldSim {
     if (cleared.includes(id)) return;
     const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
     if (Math.hypot(s.orb.x - p.x, s.orb.z - p.z) > reach || p.y < s.orb.y - 2.5) return;
-    // S3-E: three Llamaradas burn the peat wall.
-    if (s.kind === 'peat') return this.tell(p.name, 'Raíces de turba. Esto solo arde. Vuelve luego');
+    if (s.kind === 'peat' && !this.shrineOpen(id)) return this.tell(p.name, 'Raíces de turba. Esto solo arde. Vuelve luego');
     if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
     p.shrines = [...cleared, id];
     // The shrine's light cleanses the corrupt zone of its own biome nearest it, never a Raíz-madre's
@@ -1006,8 +1010,7 @@ export class WorldSim {
       l.torch = true;
       return this.tell(p.name, 'Una antorcha. A junto a un brasero');
     }
-    // S3-E: a Llamarada lights a brazier without a torch.
-    if (!l.torch) return this.tell(p.name, 'Hace falta fuego');
+    if (!l.torch) return this.tell(p.name, 'Hace falta fuego'); // or a Llamarada (onFlame)
     l.torch = false;
     st.lit[part - 1] = this.time + SWAMP_SHRINE.litFor;
     if (st.lit.every((t) => this.time < t)) {
@@ -1035,8 +1038,7 @@ export class WorldSim {
     // Coast roots wither to Viento, not Enredadera (see onGust).
     const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
-    // S3-E: a Llamarada within CORRUPTION.cleanseReach of a swamp root (11–13) cleanses it: "El fuego seca la raíz marchita. El pantano respira".
-    // S3-F: beating El Zancudo cleanses zone 10 (SWAMP_ZONES.root).
+    // Swamp roots (11–13) burn to Fuego (see flameThings). S3-F: beating El Zancudo cleanses zone 10 (SWAMP_ZONES.root).
     const knot = inside(DUNGEON.knot);
     if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
       this.dungeonLive.knot = true;
@@ -1103,6 +1105,101 @@ export class WorldSim {
       }
       const fall = !heavy && w.y < was - VIENTO.ledge ? VIENTO.ledgeDamage : 0;
       this.strike(p.name, w, VIENTO.damage + fall);
+    }
+  }
+
+  /** Fuego: the Llamarada, a short cone of flame. Scorches and sets beasts burning (wolves run), lights braziers and gas lamps, burns thorns, peat and swamp roots. */
+  private onFlame(p: SavedPlayer, l: Live, x: number, z: number): void {
+    if (p.dead) return;
+    if (!p.fuego) return this.tell(p.name, 'Aún no tienes ese poder');
+    const ready = l.fireReadyAt ?? 0;
+    if (this.time + EPS < ready) return this.tell(p.name, `El fuego aún no prende (${Math.ceil(ready - this.time - EPS)} s)`);
+    l.fireReadyAt = this.time + FUEGO.cooldown;
+    const dir = gustDir(p.x, p.z, x, z);
+    const hits = (tx: number, tz: number, range: number = FUEGO.range) => inFlame(p.x, p.z, dir, tx, tz, range);
+    this.flameEnemies(p, hits);
+    this.flameThings(p, hits);
+  }
+
+  private flameEnemies(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    for (const w of foes) {
+      if (w.hp <= 0 || !hits(w.x, w.z)) continue;
+      this.strike(p.name, w, FUEGO.damage);
+      // Bosses, El Marchito and the cage's anchors take the scorch but do not catch fire.
+      if (w === this.boss || w === this.boss2 || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
+      w.burn = FUEGO.burnFor;
+      if (w.kind === 'wolf') this.scare(w, p.x, p.z);
+    }
+  }
+
+  /** A wolf runs away from (x, z) for a while. */
+  private scare(w: Wolf, x: number, z: number): void {
+    w.flee = FUEGO.flee;
+    w.fleeFrom = { x, z };
+  }
+
+  private flameThings(p: SavedPlayer, hits: (x: number, z: number, range?: number) => boolean): void {
+    this.shrines.forEach((s, id) => {
+      const st = this.shrineLive[id]!;
+      if (s.kind === 'candles') {
+        let lit = false;
+        s.parts.slice(0, 3).forEach((b, i) => {
+          if (!hits(b.x, b.z)) return;
+          st.lit[i] = this.time + SWAMP_SHRINE.litFor;
+          lit = true;
+        });
+        if (!lit) return;
+        if (st.lit.every((t) => this.time < t)) {
+          if (!this.shrineOpen(id)) this.tell(p.name, 'Los tres braseros arden. Algo se abre en el santuario');
+          st.openUntil = Math.max(st.openUntil, this.time + SHRINE.openFor);
+        } else this.tell(p.name, 'El brasero prende');
+      }
+      if (s.kind === 'peat' && !this.shrineOpen(id) && hits(s.x, s.z, FUEGO.range + 1.5)) {
+        st.burns++;
+        if (st.burns < FUEGO.burns) return this.tell(p.name, `La turba humea (${st.burns}/${FUEGO.burns})`);
+        st.openUntil = Infinity;
+        this.tell(p.name, 'La turba arde y se deshace. El santuario queda abierto');
+      }
+    });
+    for (const zn of this.zones) {
+      if (!isSwampZone(zn.id) || zn.id === SWAMP_ZONES.root || this.cleansed.has(zn.id)) continue;
+      if (hits(zn.x, zn.z, FUEGO.rootReach)) this.cleanse(zn.id, 'El fuego seca la raíz marchita. El pantano respira');
+    }
+    // S3-F: the Zarzal knot and El Zancudo's gas vents. S3-G: the fogatas.
+    if (!inSwampDungeon(p.x, p.z)) return;
+    const S = SWAMP_DUNGEON;
+    const g = this.swampLive;
+    const thorn = insideSwamp(S.thorn);
+    if (g.thorn < FUEGO.burns && hits(thorn.x, thorn.z)) {
+      g.thorn++;
+      if (g.thorn < FUEGO.burns) this.tell(p.name, `Las espinas humean (${g.thorn}/${FUEGO.burns})`);
+      else this.say('Las espinas arden y caen. La verja se abre');
+    }
+    if (g.lamps) return;
+    let lit = false;
+    S.lamps.forEach((lamp, i) => {
+      const at = insideSwamp(lamp);
+      if (!hits(at.x, at.z)) return;
+      g.lampAt[i] = this.time;
+      lit = true;
+    });
+    if (!lit) return;
+    if (g.lampAt.every((t) => t != null && this.time - t <= S.lampWindow + EPS)) {
+      g.lamps = true;
+      this.say('Las tres lámparas de gas arden. La verja se abre');
+    } else this.tell(p.name, 'La lámpara de gas prende. Rápido, las otras');
+  }
+
+  /** Burning beasts lose 3 PV/s; fleeing timers run down. */
+  private stepBurning(dt: number): void {
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : [])];
+    for (const w of foes) {
+      if (w.flee) w.flee = Math.max(0, w.flee - dt);
+      if (!w.burn) continue;
+      const t = Math.min(dt, w.burn);
+      w.burn = Math.max(0, w.burn - dt);
+      if (w.hp > 0 && hitWolf(w, FUEGO.burnDps * t) && w.kind !== 'wolf') this.say(`${upFirst(ENEMY_LABELS[w.kind])} arde hasta caer`);
     }
   }
 
@@ -2041,7 +2138,7 @@ export class WorldSim {
       if (s.kind === 'plate') return { id, open, parts: [st.pressed] };
       if (s.kind === 'candles') return { id, open, parts: [...st.lit.map((t) => this.time < t), false] };
       if (s.kind === 'lilies') return { id, open, parts: st.pads.map((q) => this.time >= q.downUntil) };
-      if (s.kind === 'peat') return { id, open: false, parts: [] };
+      if (s.kind === 'peat') return { id, open, parts: [0, 1, 2].map((i) => st.burns > i) };
       if (s.kind === 'tide') return { id, open, parts: [st.pressed], block: { x: r2(st.block!.x), z: r2(st.block!.z), held: st.block!.held } };
       const window = s.kind === 'fan' ? COAST_SHRINE.wheelWindow : s.kind === 'sunken' ? COAST_SHRINE.sunkenWindow : SHRINE.leverWindow;
       const parts = s.parts.map((_, i) => st.pulled[i] != null && (open || this.time - st.pulled[i]! <= window + EPS));
@@ -2318,8 +2415,8 @@ export class WorldSim {
     this.vision(VISION.gata(joinNames(present.length ? present : this.activeNames())));
   }
 
-  /** A raider running away from the Heart. */
-  private flee(w: Wolf, goal: RaidGoal, dt: number): void {
+  /** A beast running away from a point (a raider from the Heart, a wolf from fire). */
+  private flee(w: Wolf, goal: { x: number; z: number }, dt: number): void {
     if (w.hp <= 0) return;
     const d = Math.max(Math.hypot(w.x - goal.x, w.z - goal.z), 1e-4);
     const { x, z } = clampMap(w.x + ((w.x - goal.x) / d) * ENEMY[w.kind].run * dt, w.z + ((w.z - goal.z) / d) * ENEMY[w.kind].run * dt, 4);

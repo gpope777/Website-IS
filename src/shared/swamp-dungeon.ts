@@ -27,10 +27,10 @@ export const SWAMP_DUNGEON = {
   altarReach: 2.5,
   /** Gate 1 is the thorn wall itself. */
   thorn: { x: 0, z: 56 },
-  /** Gate 2: the gas hall's three lamps, all lit within `lampWindow` s. Unlit, you see `darkSight` m. */
+  /** Gate 2: the gas hall's three lamps, all lit within `lampWindow` s (the first two share one Llamarada). Unlit, you see `darkSight` m. */
   lamps: [
-    { x: -9, z: 64 },
-    { x: 9, z: 72 },
+    { x: -2, z: 67 },
+    { x: 2, z: 67 },
     { x: -9, z: 80 },
   ],
   lampWindow: 10,
