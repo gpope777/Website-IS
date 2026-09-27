@@ -867,3 +867,26 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (el servidor de desarrollo arrancó; sin Playwright en el proyecto no se entró a jugar). Solo tests + check + build.
 - Bloqueos: ninguno.
 - Qué probar: desde el Corazón, ¿se ve la torre asomando tras las montañas? ¿Al atardecer? Con el dragón y 3 Raíces-madre, tocar la niebla (texto); con las 4, abrirla y bajar en la Ceniza. Intentar bajar el Borde a pie desde el sur. Subir los Escalones con la rana. Constantes: `CORRUPT_LANDS`, `TOWER_FOOT` en `src/shared/terrain.ts`; `TOWER`, `RIM_LINE` en `src/shared/corrupt-lands.ts`; `TOWER_NEAR`, `SKY_AT` en `src/client/scene/villain-tower.ts`.
+
+## Slice 5 · S5-B — rayos marchitos, bestias de ceniza, espinas negras, arma 6 / Capa 4 y la fogata de la Ceniza — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S5-B-rayos-espinas-ceniza.md` (21d2730).
+- Commits: f46b2b3 (T1 reglas: espina negra, `upgradeCost`/`capaCost`, `sim/rayo.ts`, fogata 6, protocolo v45), c4667db (T2 servidor: bestias del Espinar, rayos, espinas, mejoras), 164ab1a (T3 llamar monturas en la Ceniza, v46), 88f105c (T4 cliente).
+- Tests: npm test 827 (antes 809), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 46**. Sin campos guardados nuevos: `SavedWorld.fogatas` de 6 carga con la Ceniza apagada; `weaponLvl` llega a 6 y `capaLvl` a 4. Las partidas viejas cargan.
+- Cómo funciona:
+  - **El rayo marchito** (`enemy11.png`, papel morado de 2 m, 60 PV): flota a 6 m del suelo; si ve a alguien a menos de 20 m se acerca, **destella en blanco 0,8 s**, se lanza en picado adonde estabas y muerde una vez (10 × Capa), y vuelve a subir. Uno cada 3 s. Las **flechas** siempre le llegan; la espada solo cuando está bajo ("Vuela alto. Flechas, o viento"). Una **ráfaga de Viento** lo tira al suelo 3 s (se pone pálido) y ahí se le pega.
+  - **Bestias del Espinar:** con la niebla abierta, la primera vez cada día de juego que alguien vivo está en las Tierras: 6 bestias de ceniza (1 bruto) y 2–4 rayos (nunca más de 8 vivos) en el Espinar (d 85–165). Al amanecer se van con los lobos de siempre.
+  - **Espina negra:** cada lobo o bruto que muere en las Tierras da 1 a quien lo mata; un rayo, la mitad de las veces. Los de asedio no dan.
+  - **Arma 6:** en el Corazón, 6 espinas + 3 cuarzo + 10 piedra → +90 % (tope). **Capa 4:** 4 espinas + 2 ámbar → −40 % (tope).
+  - **Fogata 6, la Ceniza:** anillo de piedras en (24, d 50). Se enciende igual (Llamarada o antorcha); de día lleva al Corazón y el Menú del Corazón dice "Ir a la Ceniza". **Junto a ella encendida, el Menú** muestra "Llamar al ciervo / a la rana / al pez (al Lago Negro)" por cada montura tuya: aparece aparcada ahí (ciervo 3 m al oeste, rana 3 m al norte, pez en el centro del lago). Mensaje nuevo `{ t: 'call', beast }`.
+- Decidido por Claude — revisar:
+  - **Llamar va en el Menú, no en A:** A junto a la fogata sigue siendo "Volver al Corazón". Rejilla táctil sin cambios (10).
+  - **El pez se llama al centro del Lago Negro, que aún está seco** (el agua llega con su Pilar en S5-C): hasta entonces no sirve de nada allí.
+  - Las bestias de día salen una vez por día de juego y solo si alguien está arriba (no hay temporizador de amanecer para una zona vacía). El día ya usado no se guarda: tras reiniciar el servidor pueden salir otra vez ese día.
+  - **Sin tinte de ceniza en lobos y brutos:** sus modelos comparten materiales (igual que la Capa). Solo el rayo es de papel.
+  - Rayos: el Viento no los empuja más que a un lobo; el Fuego los asusta como a los lobos. Nada les pega desde el aire todavía (el zarpazo del dragón es S5-D).
+  - Las etiquetas del cliente (T1) ya miran solo el material clave (perla, cuarzo, espina+cuarzo, ámbar, espina+ámbar), como antes.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 46; nivel 5 del arma sin espinas dice "Faltan materiales" (antes "El arma ya no da más de sí"); la Capa 3 sin espinas igual (antes "La capa ya no admite más corteza"); `weaponMult` topa en 1,9; fogatas 7 (antes 6) en `fogatas.test.ts`, en el protocolo y en los tests del servidor.
+- Rendimiento móvil: los rayos son PaperActor (1 tarjeta + 1 sombra), como mucho 8 de día. La Ceniza reutiliza las mallas de fogata (+~9 mallas pequeñas).
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: abrir la niebla, bajar en la Ceniza y encender la fogata con una Llamarada. Esperar a un rayo: ¿se ve el destello a tiempo para rodar? Flechas contra él; Viento y espada. Cazar espinas (¿cuánto cuesta juntar 10?). Mejorar arma 6 y Capa 4. Junto a la fogata, Menú → llamar al ciervo y a la rana. Constantes: `RAYO` en `src/shared/sim/rayo.ts`, `ASH`/`CENIZA_FOGATA` en `src/shared/corrupt-lands.ts`, `UPGRADE`/`CAPA` en `src/shared/items.ts`.
