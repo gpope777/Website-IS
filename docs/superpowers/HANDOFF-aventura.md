@@ -844,3 +844,26 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: subir al Pico, bajar hacia el canal, correr y pulsar B; ¿se entiende que el canal te lleva? ¿14 m/s es divertido o da miedo en móvil? Constantes: `SNOWSLIDE` en `src/shared/snowslide.ts`.
+
+## Slice 5 · S5-A — las Tierras Corruptas, la niebla del dragón y la torre del horizonte — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S5-A-tierras-niebla-torre.md` (bc3de62).
+- Commits: 5d91763 (T1 terreno + nombres), f827b35 (T2 el Borde solo volando), 8c0100f (T3 puerta de niebla, torre por día, protocolo v44), f9b7fc5 (T4 cliente: trozos, colores, niebla), ffcc0c1 (T5 torre del horizonte).
+- Tests: npm test 809 (antes 789), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 44**. Campos guardados nuevos opcionales: `SavedWorld.fogOpen`, `SavedWorld.towerDay0` (si falta, se pone el día de hoy al cargar: la torre empieza en 60 m). Las partidas viejas cargan con las Tierras tras la niebla.
+- Cómo funciona:
+  - **Mapa:** 480 × 200 m al norte de las Montañas (`CORRUPT_LANDS`, `inCorrupt`, `corruptDepth`). **el Borde** (d 0–20, de +90 a +20, roca lisa), **la Ceniza** (llano gris +15…+25), **el Espinar** (+10…+40), **el Lago Negro** (cuenca al oeste, r 40, ~14 m), **los Escalones rotos** (al este, 4 terrazas de 6 m, lisas) y la **meseta de la Torre** (|x| < 30, d > 170, E(0) + 30). Todo lo que está al sur no cambió (test con alturas grabadas antes). Límites = unión de 4 rectángulos.
+  - **el Borde:** nadie cruza la línea de la vieja niebla (z = −HALF − 200) hacia el norte a pie, a caballo, en rana, nadando ni planeando: "El Borde no se cruza a pie. Solo volando". La pendiente de 45° también rige en las Tierras (la rana sigue exenta).
+  - **La niebla:** un jinete de dragón que la toca: con las 4 Raíces-madre purificadas se abre para todo el mundo (`fogOpen`) con visión «Ya vienes. Bien. Te espero arriba, <nombre>.»; si falta alguna: "La niebla aguanta. Falta la <Raíz-madre>" (orden Bosque → Costa → Pantano → Montaña). Abierta, se vuela hasta el borde norte ("La niebla te devuelve. Ahí no hay nada"). El plano gris de la puerta se desvanece; otro marca el fin del mundo.
+  - **La torre:** en (0, −HALF − 400), cono torcido de 12 lados morado oscuro con punta violeta. Altura `60 + min(80, días desde towerDay0)` (`towerHeight`), llega en `snap.towerH`. A menos de 300 m (y dentro del plano lejano) se ve la de verdad; si no, una **copia de cielo** sin niebla, dibujada primero sin escribir profundidad, al 80 % del plano lejano y escalada para ocupar el mismo ángulo: las montañas tapan su base.
+- Decidido por Claude — revisar:
+  - `snap.fog` es `'closed' | 'ready' | 'open'` (no un booleano): con `'ready'` el cliente deja volar hacia la niebla para que el servidor la abra.
+  - El Lago Negro es solo una **cuenca seca** en S5-A: su agua (nivel local) llega con su Pilar en S5-C, donde el pez la necesita.
+  - La meseta y los Escalones usan una altura fija (E en su x de referencia), no E(x), para que sean planos de verdad.
+  - La roca de las Tierras no se trepa (S4-B solo en las Montañas); los Escalones rechazan con "Demasiado empinado", el Borde con "Roca lisa".
+  - El paso por el Borde se bloquea con una línea (`rimCrossBlocked`), no solo con la pendiente: la roca de la cara sur del Borde sí se trepa desde S4-B.
+  - La torre de verdad se oculta si queda más allá del plano lejano (gama baja: 120 m), así nunca desaparece entre 120 y 300 m.
+  - Sin temporizador de "firstDay con Corazón": `towerDay0` es el día en que el mundo lo vio por primera vez (nuevo o al cargar).
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 44; el borde norte del mapa ya no es el de las Montañas (`coast.test`, `mountains.test`); el test de la niebla del S4-G ahora espera el texto de la Raíz-madre que falta; el test de nombres prohíbe `Flecha` salvo "Flechas" (ya había "Flechas" en un texto).
+- Rendimiento móvil: 4 trozos (detalle a ≤ 160 m, silueta 16 × 16 si no). Vértices de detalle: 8 856 (gama baja, 2 214 por trozo), 13 872 (media), 19 032 (alta); siluetas 1 156. **Todo el grupo está oculto al sur de z = −HALF − 110 salvo volando: 0 draw calls más desde el bosque, la costa y el pantano**; +4 al norte. La torre: **+1 draw call** siempre (la copia de cielo o la real). Niebla: +1 plano.
+- Verificado en navegador: no (el servidor de desarrollo arrancó; sin Playwright en el proyecto no se entró a jugar). Solo tests + check + build.
+- Bloqueos: ninguno.
+- Qué probar: desde el Corazón, ¿se ve la torre asomando tras las montañas? ¿Al atardecer? Con el dragón y 3 Raíces-madre, tocar la niebla (texto); con las 4, abrirla y bajar en la Ceniza. Intentar bajar el Borde a pie desde el sur. Subir los Escalones con la rana. Constantes: `CORRUPT_LANDS`, `TOWER_FOOT` en `src/shared/terrain.ts`; `TOWER`, `RIM_LINE` en `src/shared/corrupt-lands.ts`; `TOWER_NEAR`, `SKY_AT` en `src/client/scene/villain-tower.ts`.
