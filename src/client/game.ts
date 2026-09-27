@@ -4,7 +4,8 @@ import { createTerrain, type Terrain } from '../shared/terrain';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { bossBarText, dungeonAction } from './dungeon-ui';
+import { bossBarText, dungeonAction, marchitoBarText } from './dungeon-ui';
+import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
@@ -38,6 +39,8 @@ import { TouchControls, isTouchDevice } from './touch';
 
 /** The nephew's drawing used for el Tragón de Papel (and, purified, the Heart's defender). */
 const TRAGON_IMG = '/enemies/enemy1.png';
+/** El Marchito in person: the tallest of the nephew's drawings, dyed dark. */
+const MARCHITO_IMG = '/enemies/enemy15.png';
 
 interface Remote {
   actor: Puppet;
@@ -220,6 +223,8 @@ export class Game {
         return this.addStructure(m.s);
       case 'toast':
         return this.hud.toast(m.text);
+      case 'vision':
+        return this.hud.showVision(m.lines);
       case 'hit':
         if (this.heart?.id === m.id) this.heart = { ...this.heart, hp: m.hp };
         this.structures.setHp(m.id, m.hp);
@@ -298,7 +303,7 @@ export class Game {
     this.shrineViews = m.shrines;
     this.dungeon = m.dungeon;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
-    this.hud.setBoss(bossBarText(m.dungeon));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     if (!this.kits) return;
@@ -310,8 +315,11 @@ export class Game {
       r.seen = m.time;
     }
     for (const w of m.wolves) {
-      const r = this.remote(this.wolves, w.id, () => (w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : new Actor(this.kits!.fox, WOLF_CLIPS)));
-      if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
+      const r = this.remote(this.wolves, w.id, () =>
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 640 / 1010) : new Actor(this.kits!.fox, WOLF_CLIPS),
+      );
+      if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
+      else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
       else r.actor.root.scale.setScalar(w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
@@ -407,6 +415,7 @@ export class Game {
   // ---------------------------------------------------------------- actions
 
   private onAction(a: Action): void {
+    if (a === 'dismiss') return this.hud.hideVision();
     if (a === 'menu') {
       if (this.dead) return this.showDeath();
       if (this.hud.menuOpen) {
@@ -519,7 +528,7 @@ export class Game {
     this.marker.visible = !!locked;
     if (locked) {
       const p = this.wolves.get(locked.id)!.actor.root.position;
-      const tall = this.wolves.get(locked.id)!.actor instanceof PaperActor ? 4.9 : 1.6;
+      const tall = locked.id === MARCHITO.id ? MARCHITO.height + 0.4 : this.wolves.get(locked.id)!.actor instanceof PaperActor ? 4.9 : 1.6;
       this.marker.position.set(p.x, p.y + tall + Math.sin(performance.now() / 200) * 0.08, p.z);
       // Soft lock: ease the camera so it sits behind us looking at the target.
       const want = yawTo(b.x, b.z, locked.x, locked.z) + Math.PI;

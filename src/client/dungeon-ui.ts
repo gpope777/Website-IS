@@ -1,5 +1,5 @@
 import { DUNGEON, inDungeon, leverPos } from '../shared/dungeon';
-import type { DungeonView } from '../shared/protocol';
+import type { DungeonView, MarchitoView } from '../shared/protocol';
 
 /** The contextual A / E action around the Raíz-madre, if any. The server re-checks everything. */
 export function dungeonAction(
@@ -21,6 +21,12 @@ export function dungeonAction(
   }
   if (view.gate && !power && near(DUNGEON.x, DUNGEON.altarZ, DUNGEON.altarReach)) return { act: 4, label: 'Tomar la Enredadera' };
   return null;
+}
+
+/** El Marchito's bar while he is in the base. */
+export function marchitoBarText(v: MarchitoView | null): string | null {
+  if (!v) return null;
+  return v.laughing ? 'El Marchito se ríe' : `El Marchito · voluntad ${v.will}/${v.max}`;
 }
 
 export function bossBarText(view: DungeonView): string | null {

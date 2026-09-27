@@ -41,3 +41,9 @@ describe('mount key', () => {
     expect(KEY_ACTIONS.KeyM).toBe('mount');
   });
 });
+
+describe('vision key', () => {
+  it('Enter dismisses a vision', () => {
+    expect(KEY_ACTIONS.Enter).toBe('dismiss');
+  });
+});

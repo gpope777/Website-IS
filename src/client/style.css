@@ -290,3 +290,10 @@ canvas { display: block; }
 .tame-ring .zone { fill: none; stroke: #ffd35a; stroke-width: 12; stroke-linecap: round; }
 .tame-ring .needle { stroke: #fff; stroke-width: 5; stroke-linecap: round; }
 .tame-ring span { position: absolute; left: 0; right: 0; bottom: -22px; text-align: center; color: #fff; font-weight: 700; text-shadow: 0 1px 3px #000; }
+
+.vision { position: absolute; top: 86px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); padding: 12px 40px 12px 16px; border-radius: 10px; background: rgba(30, 10, 40, 0.88); color: #eadcff; border: 1px solid rgba(190, 140, 230, 0.4); box-shadow: 0 0 30px rgba(120, 40, 160, 0.45); z-index: 5; }
+.vision[hidden] { display: none; }
+.vision p { margin: 4px 0; font-style: italic; font-size: 15px; line-height: 1.35; }
+.vision-close { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.12); color: inherit; font-size: 15px; cursor: pointer; pointer-events: auto; }
+.touch .vision { top: 64px; }
+.touch .vision p { font-size: 13px; }

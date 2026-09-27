@@ -36,3 +36,13 @@ describe('bossBarText', () => {
     expect(bossBarText({ ...shut, boss: { hp: 200, max: 300, weak: true } })).toBe('Tragón de Papel 200/300 · ¡expuesto!');
   });
 });
+
+import { marchitoBarText } from './dungeon-ui';
+
+describe('marchitoBarText', () => {
+  it('shows his voluntad, his laugh, or nothing', () => {
+    expect(marchitoBarText(null)).toBeNull();
+    expect(marchitoBarText({ will: 320, max: 400, laughing: false })).toBe('El Marchito · voluntad 320/400');
+    expect(marchitoBarText({ will: 320, max: 400, laughing: true })).toBe('El Marchito se ríe');
+  });
+});

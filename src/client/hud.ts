@@ -29,6 +29,9 @@ export class Hud {
   /** Taming ring: tap it (or A / E / Espacio). Outside `.hud` so it can take taps above the touch layer. */
   private readonly ring = el('div', 'tame-ring');
   onRingTap: () => void = () => {};
+  /** El Marchito's vision card: its ✕ (or Enter) closes it; it also fades by itself. */
+  private readonly visionCard = el('div', 'vision');
+  private visionTimer: ReturnType<typeof setTimeout> | undefined;
   menuOpen = false;
 
   /** True while any overlay panel (menu, death, fatal error) covers the screen. */
@@ -62,7 +65,8 @@ export class Hud {
       e.stopPropagation();
       this.onRingTap();
     });
-    parent.append(this.root, this.ring, this.overlay);
+    this.visionCard.hidden = true;
+    parent.append(this.root, this.ring, this.visionCard, this.overlay);
   }
 
   setVitals(v: Vitals): void {
@@ -125,6 +129,33 @@ export class Hud {
     this.ring.querySelector('span')!.textContent = `Doma ${r.round + 1}/${r.rounds}`;
   }
 
+  showVision(lines: string[]): void {
+    this.visionCard.innerHTML = '';
+    for (const line of lines) {
+      const p = el('p', '');
+      p.textContent = line;
+      this.visionCard.appendChild(p);
+      this.toast(line);
+    }
+    const close = el('button', 'vision-close');
+    close.textContent = '✕';
+    close.setAttribute('aria-label', 'Cerrar visión');
+    close.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.hideVision();
+    });
+    this.visionCard.appendChild(close);
+    this.visionCard.hidden = false;
+    clearTimeout(this.visionTimer);
+    this.visionTimer = setTimeout(() => this.hideVision(), 3000 + 2500 * lines.length);
+  }
+
+  hideVision(): void {
+    clearTimeout(this.visionTimer);
+    this.visionCard.hidden = true;
+  }
+
   setPrompt(text: string | null): void {
     this.prompt.hidden = !text;
     this.prompt.textContent = text ?? '';
@@ -165,6 +196,7 @@ export class Hud {
        <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
        <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 Enredadera (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
        <p>El ciervo salvaje (un halo dorado en el bosque): E / A junto a él para domarlo; pulsa cuando la aguja cruce la zona, tres veces · E / M montar y bajar · Shift: galope</p>
+       <p>El Marchito: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
