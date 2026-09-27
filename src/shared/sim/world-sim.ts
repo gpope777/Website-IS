@@ -48,7 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
-import { addKillXp, killXp, PROGRESS, rankOf, totalXp } from '../progression';
+import { addKillXp, canLearn, hasSkill, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
@@ -150,6 +150,8 @@ export interface SavedPlayer {
   xp?: number;
   /** P4-A: kill Savia today (daily cap). Optional. */
   killDay?: { day: number; xp: number };
+  /** P4-B: oficios learned (ids from SKILL_IDS). Optional. */
+  skills?: string[];
 }
 
 export interface SavedWorld {
@@ -732,6 +734,10 @@ export class WorldSim {
         return this.onPillar(p, l, msg.id);
       case 'raids':
         return this.onRaids(p, msg.on);
+      case 'learn':
+        return this.onLearn(p, msg.id);
+      case 'forget':
+        return this.onForget(p);
       case 'hello':
         return; // the room handles hello
     }
@@ -1101,7 +1107,7 @@ export class WorldSim {
     // Las Montañas: no walking or riding uphill onto a cell over 50° (the client stops at 45°). The frog's high jump is exempt.
     // S4-B: walkers may climb steep rock that is neither smooth nor wet (stamina is the client's, as on crags).
     const wet = this.mountainWet();
-    const steep = !l.frog && m.y < ground + 0.6 && (l.riding || !climbableAt(m.x, m.z, wet)) && steepBlocked(this.terrain, p.x, p.z, m.x, m.z, STEEP.serverDeg);
+    const steep = !l.frog && m.y < ground + 0.6 && (l.riding || !climbableAt(m.x, m.z, wet && !hasSkill(p, 'trepador'))) && steepBlocked(this.terrain, p.x, p.z, m.x, m.z, STEEP.serverDeg);
     if (steep) this.hint(p.name, l, STEEP_TEXT[smoothAt(m.x, m.z) ? 'smooth' : l.riding ? 'deer' : wet ? 'wet' : 'steep']);
     // The server knows who rides: only riders (and just-dismounted ones, for lag) get the deer's speed.
     const mounted = l.riding || l.frog || this.time < l.rodeUntil;
@@ -1110,7 +1116,8 @@ export class WorldSim {
     // El Zarzal slows walkers and riders; the bog slows walkers (same whole-window rule).
     const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ, this.zarzalBurnt) && zarzalAt(this.terrain, m.x, m.z, this.zarzalBurnt);
     const bogged = !mounted && inBog(this.terrain, l.anchorX, l.anchorZ) && inBog(this.terrain, m.x, m.z);
-    const base = thorny ? ZARZAL.speed : l.riding ? (p.star ? ESTRELLA.maxSpeed : MOUNT.maxSpeed) : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
+    const herd = hasSkill(p, 'pastor') ? SKILL_FX.mount : 1; // P4-B Pastor
+    const base = thorny ? ZARZAL.speed : l.riding ? (p.star ? ESTRELLA.maxSpeed : MOUNT.maxSpeed) * herd : l.frog ? FROG.maxSpeed * herd : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
     // El tobogán (S4-H): a belly slide on snow, downhill over the whole window, may go up to 16.
     const sliding = m.anim === 'slide' && !l.riding && !l.frog && slideMoveOk(this.terrain, l.anchorX, l.anchorZ, m.x, m.z);
     const cap = sliding ? Math.max(base, SNOWSLIDE.maxSpeed) : base;
@@ -1192,7 +1199,7 @@ export class WorldSim {
     if (st.uses <= 0) return;
     st.uses -= 1;
     l.harvestReadyAt = this.time + HARVEST_COOLDOWN;
-    p.inv = addItem(p.inv, def.item, def.amount);
+    p.inv = addItem(p.inv, def.item, def.amount + (hasSkill(p, 'mano') ? SKILL_FX.harvest : 0));
     if (st.uses === 0) {
       st.regrow = def.regrow;
       this.outbox.push({ to: null, msg: { t: 'res', id, gone: true } });
@@ -1216,7 +1223,7 @@ export class WorldSim {
     if (this.structures.some((s) => Math.hypot(s.x - x, s.z - z) < 1.5)) return toast('Hay algo en el camino');
     if (this.structures.length >= MAX_STRUCTURES) return toast('El mundo ya tiene demasiadas construcciones');
     p.inv = removeAll(p.inv, BUILD_COST[kind]);
-    const s: Structure = { id: this.nextStructureId++, kind, x: r2(x), y: r2(y), z: r2(z), rot: r2(rot), owner: p.name, hp: STRUCTURE_HP[kind] };
+    const s: Structure = { id: this.nextStructureId++, kind, x: r2(x), y: r2(y), z: r2(z), rot: r2(rot), owner: p.name, hp: (kind === 'spikes' || kind === 'roots') && hasSkill(p, 'trampero') ? STRUCTURE_HP[kind] * SKILL_FX.trap : STRUCTURE_HP[kind] };
     this.structures.push(s);
     this.outbox.push({ to: null, msg: { t: 'built', s } });
     toast(BUILT_TEXT[kind]);
@@ -1252,6 +1259,33 @@ export class WorldSim {
     this.tell(p.name, `Cofre hundido: ${mat[1]} de ${ITEM_LABELS[mat[0]].toLowerCase()} y una ${NAMES.pearl}`);
   }
 
+  /** P4-B Buen ojo: your amber and quartz come back sooner. */
+  private regrowDays(p: SavedPlayer, days: number): number {
+    return hasSkill(p, 'ojo') ? SKILL_FX.regrowDays : days;
+  }
+
+  /** P4-B: spend a point on an oficio (branch order, points from the Rango). */
+  private onLearn(p: SavedPlayer, id: SkillId): void {
+    const skills = p.skills ?? [];
+    const ok = canLearn(skills, id, rankOf(this.xpOf(p)));
+    if (ok === 'owned') return;
+    if (ok === 'order') return this.tell(p.name, 'Antes, el de arriba');
+    if (ok === 'points') return this.tell(p.name, 'Sin puntos. Sube de Rango');
+    p.skills = [...skills, id];
+    this.tell(p.name, `${NAMES.skillNames[id]}. Aprendido`);
+  }
+
+  /** P4-B: at the Heart, 5 bayas, every point back. */
+  private onForget(p: SavedPlayer): void {
+    const h = this.heart();
+    if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
+    if (!p.skills?.length) return this.tell(p.name, 'No hay nada que olvidar');
+    if ((p.inv.berries ?? 0) < SKILL_FX.forgetCost) return this.tell(p.name, `Hacen falta ${SKILL_FX.forgetCost} bayas`);
+    p.inv = removeAll(p.inv, { berries: SKILL_FX.forgetCost });
+    p.skills = [];
+    this.tell(p.name, `Olvidas tus ${NAMES.skills.toLowerCase()}. Los puntos vuelven`);
+  }
+
   private onUpgrade(p: SavedPlayer): void {
     const h = this.heart();
     if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
@@ -1269,7 +1303,7 @@ export class WorldSim {
     const t = this.amberTrees[id];
     if (!t || p.dead || Math.hypot(t.x - p.x, t.z - p.z) > AMBER.reach || p.y < t.y - 1) return;
     const at = p.amber?.[id];
-    if (at !== undefined && this.time - at < AMBER.regrowDays * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brotar');
+    if (at !== undefined && this.time - at < this.regrowDays(p, AMBER.regrowDays) * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brotar');
     p.amber = { ...p.amber, [id]: r2(this.time) };
     p.inv = addItem(p.inv, 'amber', AMBER.yield);
     this.tell(p.name, `${ITEM_LABELS.amber}: ${AMBER.yield}`);
@@ -1280,7 +1314,7 @@ export class WorldSim {
     const v = this.quartzVeins[id];
     if (!v || p.dead || Math.hypot(v.x - p.x, v.z - p.z) > QUARTZ.reach || p.y < v.y - QUARTZ.below) return;
     const at = p.quartz?.[id];
-    if (at !== undefined && this.time - at < QUARTZ.regrowDays * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brillar');
+    if (at !== undefined && this.time - at < this.regrowDays(p, QUARTZ.regrowDays) * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brillar');
     p.quartz = { ...p.quartz, [id]: r2(this.time) };
     p.inv = addItem(p.inv, 'quartz', QUARTZ.yield);
     this.tell(p.name, `${ITEM_LABELS.quartz}: ${QUARTZ.yield}`);
@@ -1319,15 +1353,18 @@ export class WorldSim {
     }
     if (l.riding || l.seat || l.fish || l.frog || l.dragon || this.seatOf(p.name) !== null) return this.tell(p.name, 'Baja de la montura primero');
     if (isNight(dayFraction(this.time))) return this.tell(p.name, 'De noche el fuego no guía a nadie');
-    l.travel = { ...dest, at: this.time + FOGATA.channel, fromX: p.x, fromZ: p.z, hp: p.vitals.health };
-    this.tell(p.name, `Miras el fuego… (${FOGATA.channel} s)`);
+    const secs = hasSkill(p, 'fogatero') ? SKILL_FX.channel : FOGATA.channel;
+    l.travel = { ...dest, at: this.time + secs, fromX: p.x, fromZ: p.z, hp: p.vitals.health };
+    this.tell(p.name, `Miras el fuego… (${secs} s)`);
   }
 
   /** At the lit Ceniza fogata: your own parked deer, frog or fish comes (S5 §4). */
   private onCall(p: SavedPlayer, l: Live, beast: CallBeast): void {
-    const f = this.fogataSpots[FOGATA.ceniza];
+    // P4-B Silbido: any lit fogata within reach will do.
+    const lit = hasSkill(p, 'silbido') ? this.fogataSpots.find((g, i) => this.fogatas[i] && Math.hypot(g.x - p.x, g.z - p.z) <= FOGATA.reach) : undefined;
+    const f = lit ?? this.fogataSpots[FOGATA.ceniza];
     if (!f || p.dead || inAnyDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FOGATA.reach) return;
-    if (!this.fogatas[FOGATA.ceniza]) return this.tell(p.name, `Esa ${NAMES.fogata} sigue apagada`);
+    if (!lit && !this.fogatas[FOGATA.ceniza]) return this.tell(p.name, `Esa ${NAMES.fogata} sigue apagada`);
     const key = beast === 'deer' ? 'steed' : beast;
     if (!p[key]) return this.tell(p.name, CALL_NONE[beast]);
     if ((beast === 'deer' && l.riding) || (beast === 'frog' && l.frog) || (beast === 'fish' && l.fish)) return;
@@ -1432,7 +1469,7 @@ export class WorldSim {
     const t = this.players.get(name);
     const tl = this.live.get(name);
     if (p.dead || !t || !t.dead || !tl || name === p.name || tl.deadAt === null) return;
-    if (Math.hypot(t.x - p.x, t.z - p.z) > REVIVE.reach) return;
+    if (Math.hypot(t.x - p.x, t.z - p.z) > REVIVE.reach * (hasSkill(p, 'amiga') ? SKILL_FX.reviveReach : 1)) return;
     if (this.time - tl.deadAt > REVIVE.window + EPS) return this.tell(p.name, 'Ya es tarde');
     t.dead = false;
     t.vitals = { health: REVIVE.health, hunger: Math.max(t.vitals.hunger, REVIVE.floor), warmth: Math.max(t.vitals.warmth, REVIVE.floor) };
@@ -3810,8 +3847,8 @@ export class WorldSim {
       dragon: !!p.dragon,
       onDragon: l.dragon,
       torch: !!l.torch,
-      quartz: this.quartzVeins.filter((v) => p.quartz?.[v.id] !== undefined && this.time - p.quartz[v.id]! < QUARTZ.regrowDays * DAY_LENGTH).map((v) => v.id),
-      amber: this.amberTrees.filter((t) => p.amber?.[t.id] !== undefined && this.time - p.amber[t.id]! < AMBER.regrowDays * DAY_LENGTH).map((t) => t.id),
+      quartz: this.quartzVeins.filter((v) => p.quartz?.[v.id] !== undefined && this.time - p.quartz[v.id]! < this.regrowDays(p, QUARTZ.regrowDays) * DAY_LENGTH).map((v) => v.id),
+      amber: this.amberTrees.filter((t) => p.amber?.[t.id] !== undefined && this.time - p.amber[t.id]! < this.regrowDays(p, AMBER.regrowDays) * DAY_LENGTH).map((t) => t.id),
       capa: p.capaLvl ?? 0,
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
@@ -3819,6 +3856,7 @@ export class WorldSim {
       travel: l.travel ? Math.max(0, Math.ceil(l.travel.at - this.time - EPS)) : null,
       xp: this.xpOf(p),
       rank: rankOf(this.xpOf(p)),
+      skills: (p.skills ?? []).filter((x): x is SkillId => (SKILL_IDS as readonly string[]).includes(x)),
     };
   }
 
@@ -4334,7 +4372,7 @@ export class WorldSim {
   }
 
   private pickUpGraves(p: SavedPlayer): void {
-    for (const g of this.graves.filter((x) => x.owner === p.name && Math.hypot(x.x - p.x, x.z - p.z) <= GRAVE.pickup)) {
+    for (const g of this.graves.filter((x) => x.owner === p.name && Math.hypot(x.x - p.x, x.z - p.z) <= (hasSkill(p, 'mochila') ? SKILL_FX.gravePickup : GRAVE.pickup))) {
       for (const [item, n] of Object.entries(g.inv) as [ItemId, number][]) p.inv = addItem(p.inv, item, n);
       this.graves.splice(this.graves.indexOf(g), 1);
       this.tell(p.name, 'Recuperaste tus cosas');
