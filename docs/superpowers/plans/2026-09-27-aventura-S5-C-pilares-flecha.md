@@ -1,6 +1,6 @@
 # Aventura — Slice 5 · S5-C: los 4 Pilares-raíz, el agua del Lago Negro, zonas 18–21 y La Flecha — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** The tower's four shields, one per power, each reached with a different mount (spec S5 §4–§6, §9). **Pilar de Enredadera** in a thorn thicket (10 PV/s): Enredadera on its 3 bare roots makes 3 root bridges to the core (walk in). **Pilar de Viento** under **el Lago Negro, which now has water**: dive with the fish to the anchor on the bottom (150 PV, only reachable diving), break it, the core surfaces on the east shore; 3 Viento gusts blow its miasma off. **Pilar de Fuego** in the middle of **la Carrera de ceniza** (hot ash, 4 PV/s on foot, 0 mounted: the deer): 3 Llamaradas burn its thorn cocoon; 3 rayos guard it. **Pilar de Piedra** on top of **los Escalones rotos** (frog or dragon): a lid covers the core until a Piedra pillar (or a friend) weighs its plate. Every core breaks with **A held 3 s** at ≤ 2.5 m: "El Pilar-raíz de <poder> se parte (n/4)", a vision per pillar, a tower crack goes dark, and pillars 0–2 cleanse zones 19–21. **Zones 18–21** (18 = la Torre, r 30, cleansed only by S5-F/G). **`corruptSeen`**: first living player in las Tierras → vision «Mi casa. Limpien los pies, <nombre>.». **La Flecha** (`enemy10.png`, 3 m): while `corruptSeen` and zone 18 is corrupt, leads raids with **`raidN % 3 === 2`** (Gata 0, Triángulo 1: never the same night). 360 PV, wolf walk, kicks 12 / 2 s, **clavada** every 7 s (1.0 s red line, dash 20 m/s, 20 damage; sticks 4 s in a structure it crosses). Beating it: raid flees, 2 espinas negras to each player within 40 m, vision «Mi flecha… Suban, <nombres>. Arriba se acaba.». The 4th pillar leaves a `// S5-D` marker (Invasión 3 is armed in S5-D).
 
@@ -57,9 +57,9 @@ export function isCorruptLandZone(id: number): boolean;   // ≥ 18
 export function isMountainZone(id: number): boolean;      // 14..17 (was ≥ 14)
 export function generateCorruptZones(seed: number): Zone[]; // 18 tower, 19 vine core, 20 lake centre, 21 fire core
 ```
-- [ ] **Step 1: failing tests.** For 4 seeds: `waterLevel` at the lake's centre is 8–12 m above its bed and ≥ 12 m above `WATER_LEVEL`; 50 m east of the lake it is `WATER_LEVEL`; `withEscalera(t)` keeps it. `fishStepOk` true at the lake's centre. Sites: every core `inCorrupt`, in the Espinar or the Ceniza's edge (d 80–170 for 0, 2, 3); the wind core dry (height > lake surface) and within 8 m of the lake's edge; the stone core on the top terrace (height ≥ steps floor + 23); the thicket, the ash disc, the lake and the steps don't overlap; the Ceniza fogata is outside the ash disc. `thicketHurts` true in the ring, false on a bridged root line, false in the clearing, false outside. `ashHurts` inside r 35 only. `lidUp` with a pillar on the plate, with another player on it, not with nothing. Zones: `allZones` ends with 18–21, 18 at the tower (r 30), no overlap with 19–21; `isMountainZone(18) === false`.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): agua del Lago Negro, sitios de los Pilares-raíz y zonas 18–21 (reglas)`.
+- [x] **Step 1: failing tests.** For 4 seeds: `waterLevel` at the lake's centre is 8–12 m above its bed and ≥ 12 m above `WATER_LEVEL`; 50 m east of the lake it is `WATER_LEVEL`; `withEscalera(t)` keeps it. `fishStepOk` true at the lake's centre. Sites: every core `inCorrupt`, in the Espinar or the Ceniza's edge (d 80–170 for 0, 2, 3); the wind core dry (height > lake surface) and within 8 m of the lake's edge; the stone core on the top terrace (height ≥ steps floor + 23); the thicket, the ash disc, the lake and the steps don't overlap; the Ceniza fogata is outside the ash disc. `thicketHurts` true in the ring, false on a bridged root line, false in the clearing, false outside. `ashHurts` inside r 35 only. `lidUp` with a pillar on the plate, with another player on it, not with nothing. Zones: `allZones` ends with 18–21, 18 at the tower (r 30), no overlap with 19–21; `isMountainZone(18) === false`.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(aventura): agua del Lago Negro, sitios de los Pilares-raíz y zonas 18–21 (reglas)`.
 
 ### Task 2: Server — the four pillars, zones, corruptSeen, lake water (protocol v47)
 
@@ -74,7 +74,7 @@ export interface PillarView { broken: boolean[]; roots: boolean[]; anchor: boole
 // world-sim.ts SavedWorld gains pillars?: number[]; corruptSeen?: boolean
 // marchito.ts VISION.corrupt(name), VISION.pillar[0..3](names)
 ```
-- [ ] **Step 1: failing tests** (`world-sim-s5c.test.ts`):
+- [x] **Step 1: failing tests** (`world-sim-s5c.test.ts`):
   - `decodeClient` accepts `pillar` 0–3, rejects 4/−1/"a". Version 47.
   - A living player in las Tierras sets `corruptSeen` (saved) with vision "Mi casa"; once only.
   - Thicket: standing in the ring loses ~10 PV/s; on a bridge after its root is tended, nothing. Enredadera within 3 m of a root → "Una raíz cruza las espinas (1/3)". Pull on core 0 with 2/3 roots → refused "Faltan raíces (2/3)"; with 3/3 → after 3 s broken, zone 19 clean, say "El Pilar-raíz de Enredadera se parte (1/4)", vision. Walking away mid-pull cancels.
@@ -82,8 +82,8 @@ export interface PillarView { broken: boolean[]; roots: boolean[]; anchor: boole
   - Ash: a walker within 35 m of the Fuego core loses ~4 PV/s; a deer rider doesn't. First approach spawns 3 rayos. 3 Llamaradas → burns 3; pull → broken, zone 21 clean.
   - Stone: pull with the lid down → "La tapa no se mueve…"; a Piedra pillar on the plate → pull works, no zone cleaned.
   - 4th pillar: "(4/4)". Broken pillars saved and reloaded; old saves without `pillars` load with none broken.
-- [ ] **Step 2: implement.** Replace `WATER_LEVEL` with `waterLevel(this.terrain, …)` in the fish and swim move checks, the fish's parked y and the dragon's ground. Thorn/ash damage in the vitals step (skip dead, flying, dungeons). `// S5-D` marker where the 4th pillar breaks. `snap.corrupt` includes 18–21.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): los 4 Pilares-raíz, zonas 18–21 y el agua del Lago Negro (protocolo v47)`.
+- [x] **Step 2: implement.** Replace `WATER_LEVEL` with `waterLevel(this.terrain, …)` in the fish and swim move checks, the fish's parked y and the dragon's ground. Thorn/ash damage in the vitals step (skip dead, flying, dungeons). `// S5-D` marker where the 4th pillar breaks. `snap.corrupt` includes 18–21.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): los 4 Pilares-raíz, zonas 18–21 y el agua del Lago Negro (protocolo v47)`.
 
 ### Task 3: La Flecha (rules + server, protocol v48)
 
@@ -96,17 +96,17 @@ export function flechaLeads(raidN: number, corruptSeen: boolean, corrupt: readon
 export function clavadaStop(from, to, structures): { x: number; z: number; stuck: boolean };
 export function stepFlecha(w, targets, structures, goal, terrain, dt, rng): { bite: string | null; hits: string[] };
 ```
-- [ ] **Step 1: failing tests.** Pure: `flechaLeads` truth table (2, 5, 8 → true; never together with `gataLeads`/`triLeads` for n = 1…30; false without seen or with 18 clean). `clavadaStop` stops at a wall on the line (stuck) and not at the Heart. `stepFlecha`: after 7 s with a player 10 m away → `aim` set for 1 s, then dashes and returns the player in `hits` once; a wall on the line leaves it `stuck` 4 s without moving. Sim: raid 2 with `corruptSeen`: warning "La Flecha guía el asedio esta noche", one `lieut3` with 360 PV, `WolfView.aim` during the tell; killing it: raid flees, +2 espinas near, none far, vision "Mi flecha". Version 48.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): La Flecha guía asedios (protocolo v48)`.
+- [x] **Step 1: failing tests.** Pure: `flechaLeads` truth table (2, 5, 8 → true; never together with `gataLeads`/`triLeads` for n = 1…30; false without seen or with 18 clean). `clavadaStop` stops at a wall on the line (stuck) and not at the Heart. `stepFlecha`: after 7 s with a player 10 m away → `aim` set for 1 s, then dashes and returns the player in `hits` once; a wall on the line leaves it `stuck` 4 s without moving. Sim: raid 2 with `corruptSeen`: warning "La Flecha guía el asedio esta noche", one `lieut3` with 360 PV, `WolfView.aim` during the tell; killing it: raid flees, +2 espinas near, none far, vision "Mi flecha". Version 48.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(aventura): La Flecha guía asedios (protocolo v48)`.
 
 ### Task 4: Client — water, pillars, cracks, La Flecha
 
 **Files:** Modify `src/client/movement.ts` (+ test), `src/client/game.ts`, `src/client/scene/villain-tower.ts`; Create `src/client/scene/pillars.ts`, `src/client/corrupt-ui.ts` + test.
-- [ ] **Step 1: failing tests.** `movement.test`: walking into the lake swims at its surface; the fish floats at the lake's surface. `corrupt-ui.test`: `pillarAction` gives "Arrancar el núcleo" within 2.5 m of a standing core, null when broken or far.
-- [ ] **Step 2: implement.** Lake disc at the surface (dark violet, no fog change); `scene/pillars.ts` (spikes, cores, thicket, roots → bridges, anchor chain, cocoon, lid/plate; broken → stump) inside the Tierras group; tower cracks (4 violet emissive strips, dark per broken pillar); contextual A + prompt; La Flecha `PaperActor('/enemies/enemy10.png', 3, camera, 463 / 437)` and a red ground line while `aim`.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): cliente de los Pilares-raíz, el Lago Negro y La Flecha`.
+- [x] **Step 1: failing tests.** `movement.test`: walking into the lake swims at its surface; the fish floats at the lake's surface. `corrupt-ui.test`: `pillarAction` gives "Arrancar el núcleo" within 2.5 m of a standing core, null when broken or far.
+- [x] **Step 2: implement.** Lake disc at the surface (dark violet, no fog change); `scene/pillars.ts` (spikes, cores, thicket, roots → bridges, anchor chain, cocoon, lid/plate; broken → stump) inside the Tierras group; tower cracks (4 violet emissive strips, dark per broken pillar); contextual A + prompt; La Flecha `PaperActor('/enemies/enemy10.png', 3, camera, 463 / 437)` and a red ground line while `aim`.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): cliente de los Pilares-raíz, el Lago Negro y La Flecha`.
 
 ### Task 5: Ship
 
-- [ ] Push `aventura/resto`; append "Slice 5 · S5-C" to `docs/superpowers/HANDOFF-aventura.md`; one short comment on PR #3. No merge, no deploy.
+- [x] Push `aventura/resto`; append "Slice 5 · S5-C" to `docs/superpowers/HANDOFF-aventura.md`; one short comment on PR #3. No merge, no deploy.
