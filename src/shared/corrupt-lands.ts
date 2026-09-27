@@ -1,6 +1,6 @@
 import { NAMES } from './names';
 import { MOUNTAINS, HALF, CORRUPT_LANDS, inCorrupt, type Terrain } from './terrain';
-import type { EnemyKind } from './protocol';
+import type { CallBeast, EnemyKind } from './protocol';
 
 /**
  * Las Tierras Corruptas (spec S5 §3): the rules that are not terrain. The rim line is the old muro de niebla (S4-G):
@@ -50,3 +50,16 @@ export function cenizaFogata(t: Terrain): { x: number; z: number; y: number } {
   const z = CORRUPT_LANDS.z1 - CENIZA_FOGATA.d;
   return { x: CENIZA_FOGATA.x, z, y: t.heightAt(CENIZA_FOGATA.x, z) };
 }
+
+/** Where a called mount lands (spec S5 §4): the deer 3 m west of the Ceniza ring, the frog 3 m north, the fish in the Lago Negro's middle. */
+export function callSpot(beast: CallBeast, fogata: { x: number; z: number }, lake: { x: number; z: number }): { x: number; z: number } {
+  if (beast === 'fish') return { x: lake.x, z: lake.z };
+  return beast === 'deer' ? { x: fogata.x - 3, z: fogata.z } : { x: fogata.x, z: fogata.z - 3 };
+}
+
+export const CALL_TEXT: Record<CallBeast, string> = {
+  deer: 'Silbas. Tu ciervo llega trotando por la ceniza',
+  frog: 'Silbas. Tu rana cae del cielo, más o menos',
+  fish: `Silbas. Tu pez ya espera en ${NAMES.blackLake}`,
+};
+export const CALL_NONE: Record<CallBeast, string> = { deer: 'No tienes ciervo', frog: 'No tienes rana', fish: 'No tienes pez' };

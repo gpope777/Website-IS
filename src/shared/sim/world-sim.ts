@@ -7,7 +7,7 @@ import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
 import { createRng } from '../rng';
-import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, corruptFeatures, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
@@ -22,7 +22,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
-import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, ASH, thornDrop } from '../corrupt-lands';
+import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
 import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -31,7 +31,7 @@ import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaCost, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
+import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
@@ -608,6 +608,8 @@ export class WorldSim {
         return this.onFogata(p, l, msg.id);
       case 'travel':
         return this.onTravel(p, l, msg.to);
+      case 'call':
+        return this.onCall(p, l, msg.beast);
       case 'hello':
         return; // the room handles hello
     }
@@ -1137,6 +1139,18 @@ export class WorldSim {
     if (isNight(dayFraction(this.time))) return this.tell(p.name, 'De noche el fuego no guía a nadie');
     l.travel = { ...dest, at: this.time + FOGATA.channel, fromX: p.x, fromZ: p.z, hp: p.vitals.health };
     this.tell(p.name, `Miras el fuego… (${FOGATA.channel} s)`);
+  }
+
+  /** At the lit Ceniza fogata: your own parked deer, frog or fish comes (S5 §4). */
+  private onCall(p: SavedPlayer, l: Live, beast: CallBeast): void {
+    const f = this.fogataSpots[FOGATA.ceniza];
+    if (!f || p.dead || inAnyDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FOGATA.reach) return;
+    if (!this.fogatas[FOGATA.ceniza]) return this.tell(p.name, `Esa ${NAMES.fogata} sigue apagada`);
+    const key = beast === 'deer' ? 'steed' : beast;
+    if (!p[key]) return this.tell(p.name, CALL_NONE[beast]);
+    if ((beast === 'deer' && l.riding) || (beast === 'frog' && l.frog) || (beast === 'fish' && l.fish)) return;
+    p[key] = callSpot(beast, f, corruptFeatures(this.seed).lake);
+    this.tell(p.name, CALL_TEXT[beast]);
   }
 
   /** Channels land after 5 s; damage, drifting, mounting, death or night stop them. */

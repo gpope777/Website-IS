@@ -4,7 +4,7 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 45;
+export const PROTOCOL_VERSION = 46;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
@@ -105,7 +105,12 @@ export type ClientMsg =
   /** Light a swamp fogata with the torch you carry (beside it). */
   | { t: 'fogata'; id: number }
   /** Start the 5 s channel: from a lit fogata to the Heart, or from the Heart to lit fogata `to` (day only). */
-  | { t: 'travel'; to: 'heart' | number };
+  | { t: 'travel'; to: 'heart' | number }
+  /** At the lit Ceniza fogata (S5-B): bring your own parked deer, frog or fish there. */
+  | { t: 'call'; beast: CallBeast };
+
+export type CallBeast = 'deer' | 'frog' | 'fish';
+export const CALL_BEASTS: readonly CallBeast[] = ['deer', 'frog', 'fish'];
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
@@ -204,6 +209,8 @@ export function decodeClient(raw: string): ClientMsg | null {
       return id(m.id) && m.id < FOGATA.count ? { t: 'fogata', id: m.id } : null;
     case 'travel':
       return m.to === 'heart' || (id(m.to) && m.to < FOGATA.count) ? { t: 'travel', to: m.to } : null;
+    case 'call':
+      return (CALL_BEASTS as readonly unknown[]).includes(m.beast) ? { t: 'call', beast: m.beast as CallBeast } : null;
     default:
       return null;
   }

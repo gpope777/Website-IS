@@ -187,3 +187,50 @@ describe('the last upgrades (S5 §7.4)', () => {
   });
 });
 
+
+describe('calling mounts at la Ceniza (S5 §4, §7.1)', () => {
+  async function atCeniza(lit = true) {
+    const { FOGATA, generateFogatas } = await import('../fogatas');
+    const sim = setup();
+    const f = generateFogatas(sim.terrain, 42)[FOGATA.ceniza]!;
+    put(sim, f.x + 1, f.z);
+    if (lit) (sim as unknown as { fogatas: boolean[] }).fogatas[FOGATA.ceniza] = true;
+    sim.drain();
+    return { sim, f, p: sim.getPlayer('Ana')! };
+  }
+  it('the deer and the frog come to the ring; the fish to the Lago Negro', async () => {
+    const { sim, f, p } = await atCeniza();
+    const { corruptFeatures } = await import('../terrain');
+    const { CALL_TEXT } = await import('../corrupt-lands');
+    p.steed = { x: 10, z: 10 };
+    p.frog = { x: -300, z: 200 };
+    p.fish = { x: 0, z: 300 };
+    sim.handle('Ana', { t: 'call', beast: 'deer' });
+    expect(Math.hypot(p.steed.x - f.x, p.steed.z - f.z)).toBeLessThan(4);
+    expect(texts(sim)).toContain(CALL_TEXT.deer);
+    sim.handle('Ana', { t: 'call', beast: 'frog' });
+    expect(Math.hypot(p.frog.x - f.x, p.frog.z - f.z)).toBeLessThan(4);
+    sim.handle('Ana', { t: 'call', beast: 'fish' });
+    const lake = corruptFeatures(42).lake;
+    expect(p.fish).toEqual({ x: lake.x, z: lake.z });
+    expect(sim.save().players[0]!.steed).toEqual(p.steed);
+  });
+  it('refused: unlit, far, without the beast, riding it', async () => {
+    const dark = await atCeniza(false);
+    dark.p.steed = { x: 10, z: 10 };
+    dark.sim.handle('Ana', { t: 'call', beast: 'deer' });
+    expect(dark.p.steed).toEqual({ x: 10, z: 10 });
+    expect(texts(dark.sim)).toContain('Esa fogata sigue apagada');
+    const { sim, f, p } = await atCeniza();
+    sim.handle('Ana', { t: 'call', beast: 'frog' });
+    expect(texts(sim)).toContain('No tienes rana');
+    p.steed = { x: 10, z: 10 };
+    put(sim, f.x + 10, f.z);
+    sim.handle('Ana', { t: 'call', beast: 'deer' });
+    expect(p.steed).toEqual({ x: 10, z: 10 });
+    put(sim, f.x + 1, f.z);
+    (sim as unknown as { live: Map<string, { riding: boolean }> }).live.get('Ana')!.riding = true;
+    sim.handle('Ana', { t: 'call', beast: 'deer' });
+    expect(p.steed).toEqual({ x: 10, z: 10 });
+  });
+});
