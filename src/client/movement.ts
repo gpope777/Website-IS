@@ -1,5 +1,11 @@
-import { HALF, WATER_LEVEL, type Terrain } from '../shared/terrain';
+import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
+import { FISH, fishFloor, fishStepOk } from '../shared/fish';
+import { seatOffset, WHALE, whaleStepOk } from '../shared/whale';
+import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
+import { MOUNT } from '../shared/mount';
+import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
+import { VIENTO } from '../shared/viento';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
 export interface MoveInput {
@@ -19,6 +25,26 @@ export interface Body {
   onGround: boolean;
   /** Protocol yaw: atan2(dirX, dirZ). */
   facing: number;
+  /** 0..staminaMax. Client-side, like the roll dash. */
+  stamina: number;
+  /** STAMINA.max plus the shrine orbs (see staminaFor). */
+  staminaMax: number;
+  /** Ran dry: no climbing, gliding or fast swimming until the meter is full again. */
+  tired: boolean;
+  /** The crag being climbed, if any. */
+  climb: Crag | null;
+  gliding: boolean;
+  /** Jump was held last step (glider/leap need a fresh press). */
+  jumpHeld: boolean;
+  /** On the deer (from the server): faster, no climbing, gliding or swimming. */
+  riding: boolean;
+  /** On the giant fish (from the server): the dungeon island, whose aguas bravas the fish avoids. */
+  fish: Islet | null;
+  /** Piloting the whale (from the server): the body is the pilot seat; surface only, 3 m of water. */
+  whale: boolean;
+  /** Metres of Viento lift still to rise, and whether this flight already used its lift. */
+  lift: number;
+  boosted: boolean;
 }
 
 export interface Circle {
@@ -31,20 +57,85 @@ export interface StepResult {
   moving: boolean;
   running: boolean;
   swimming: boolean;
+  climbing: boolean;
+  gliding: boolean;
 }
 
-export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2 } as const;
+export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2, swimFast: 4 } as const;
 export const PLAYER_RADIUS = 0.45;
+export const STAMINA = { max: 100, regen: 30, climbMove: 10, climbHold: 3, leap: 20, glide: 4, swimFast: 12, perOrb: 20 } as const;
+/** Glide speed stays under the server's MAX_SPEED (9 m/s). */
+export const GLIDE = { speed: 7, sink: 1.6, minHeight: 1.5 } as const;
+/** Metres per second up/down (and around) a crag. */
+export const CLIMB_SPEED = 2.2;
 const SWIM_DEPTH = WATER_LEVEL - 0.6;
 const GRAVITY = 14;
 const JUMP_SPEED = 5.2;
+const LEAP = { out: 4, up: 4 } as const;
 
-export function createBody(x: number, z: number, terrain: Terrain): Body {
-  return { x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0 };
+/** Max stamina with this many upgrade orbs. */
+export function staminaFor(orbs: number): number {
+  return STAMINA.max + orbs * STAMINA.perOrb;
 }
 
-export function stepBody(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, nearby: (x: number, z: number) => Circle[]): StepResult {
-  const swimming = terrain.heightAt(b.x, b.z) < SWIM_DEPTH;
+/** Stick input (camera-relative) that moves along `facing`: used for the roll dash. */
+export function rollInput(facing: number, camYaw: number): MoveInput {
+  return { x: Math.sin(facing - camYaw), z: Math.cos(facing - camYaw), sprint: true, jump: false };
+}
+
+export function createBody(x: number, z: number, terrain: Terrain): Body {
+  return {
+    x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, lift: 0, boosted: false,
+  };
+}
+
+/** Rise speed while a Viento lift lasts (the server allows the climb for VIENTO.boostFor s). */
+const LIFT_SPEED = 12;
+
+/** A Viento gust while gliding lifts you VIENTO.boost metres, once per flight. False when it does not apply. */
+export function boost(b: Body): boolean {
+  if (!b.gliding || b.boosted) return false;
+  b.boosted = true;
+  b.lift = VIENTO.boost;
+  return true;
+}
+
+const RESULT_IDLE: StepResult = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
+
+function spend(b: Body, amount: number): void {
+  b.stamina = Math.max(0, b.stamina - amount);
+  if (b.stamina === 0) b.tired = true;
+}
+
+/** Where a step from (px,pz) toward (nx,nz) may end: the map edge by default, the dungeon walls inside it. */
+export type Bounds = (px: number, pz: number, nx: number, nz: number) => { x: number; z: number };
+const mapBounds: Bounds = (_px, _pz, nx, nz) => clampMap(nx, nz, 3);
+
+export function stepBody(
+  b: Body,
+  input: MoveInput,
+  camYaw: number,
+  dt: number,
+  terrain: Terrain,
+  nearby: (x: number, z: number) => Circle[],
+  crags: readonly Crag[] = [],
+  bounds: Bounds = mapBounds,
+): StepResult {
+  const jumpEdge = input.jump && !b.jumpHeld;
+  b.jumpHeld = input.jump;
+  if (b.climb) return stepClimb(b, input, dt, terrain, jumpEdge);
+  if (b.fish) return stepFish(b, b.fish, input, camYaw, dt, terrain, bounds);
+  if (b.whale) return stepWhale(b, input, camYaw, dt, terrain, bounds);
+
+  const hereH = terrain.heightAt(b.x, b.z);
+  const swimming = hereH < SWIM_DEPTH;
+  if (swimming || b.onGround || b.riding) b.gliding = false;
+  else if (jumpEdge) {
+    // A fresh jump press in the air toggles the glider (B on touch).
+    const below = Math.max(hereH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
+    b.gliding = !b.gliding && !b.tired && b.y - below > GLIDE.minHeight;
+  }
   let ix = input.x;
   let iz = input.z;
   const mag = Math.hypot(ix, iz);
@@ -54,7 +145,9 @@ export function stepBody(b: Body, input: MoveInput, camYaw: number, dt: number, 
   }
   const moving = mag > 0.01;
   const running = input.sprint && moving && !swimming;
-  const speed = swimming ? SPEED.swim : running ? SPEED.run : SPEED.walk;
+  const swimFast = swimming && input.sprint && moving && !b.tired;
+  const wading = !b.riding && b.onGround && inCienaga(b.x, b.z);
+  const speed = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
 
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
   const s = Math.sin(camYaw);
@@ -62,9 +155,12 @@ export function stepBody(b: Body, input: MoveInput, camYaw: number, dt: number, 
   const wx = ix * c + iz * s;
   const wz = -ix * s + iz * c;
 
-  const k = Math.min(1, (b.onGround ? 12 : 3) * dt);
-  b.vx += (wx * speed - b.vx) * k;
-  b.vz += (wz * speed - b.vz) * k;
+  // The glider keeps drifting along the facing when the stick is idle.
+  const dx0 = b.gliding && !moving ? Math.sin(b.facing) : wx;
+  const dz0 = b.gliding && !moving ? Math.cos(b.facing) : wz;
+  const k = Math.min(1, (b.onGround ? 12 : b.gliding ? 2 : 3) * dt);
+  b.vx += (dx0 * speed - b.vx) * k;
+  b.vz += (dz0 * speed - b.vz) * k;
 
   let nx = b.x + b.vx * dt;
   let nz = b.z + b.vz * dt;
@@ -79,8 +175,41 @@ export function stepBody(b: Body, input: MoveInput, camYaw: number, dt: number, 
       nz += dz * push;
     }
   }
-  b.x = Math.max(-HALF + 3, Math.min(HALF - 3, nx));
-  b.z = Math.max(-HALF + 3, Math.min(HALF - 3, nz));
+  for (const cr of crags) {
+    if (b.y >= cr.top - 0.6) continue; // on (or level with) the top: walk over it
+    const dx = nx - cr.x;
+    const dz = nz - cr.z;
+    const d = Math.hypot(dx, dz);
+    const min = PLAYER_RADIUS + cr.r;
+    if (d >= min || d < 1e-4) continue;
+    // Pushing the stick at the rock grabs it (fallback B: only marked crags are climbable; bare shrine rocks are not).
+    if (!cr.bare && !b.riding && !swimming && !b.tired && moving && (wx * -dx + wz * -dz) / d > 0.5 * Math.hypot(wx, wz)) {
+      b.x = cr.x + (dx / d) * min;
+      b.z = cr.z + (dz / d) * min;
+      b.climb = cr;
+      b.gliding = false;
+      b.vx = b.vz = b.vy = 0;
+      b.onGround = false;
+      b.facing = Math.atan2(-dx, -dz);
+      return { ...RESULT_IDLE, moving: true, climbing: true };
+    }
+    nx = cr.x + (dx / d) * min;
+    nz = cr.z + (dz / d) * min;
+  }
+  const to = bounds(b.x, b.z, nx, nz);
+  if (b.riding && terrain.heightAt(to.x, to.z) < SWIM_DEPTH) {
+    // The deer will not swim: it stops at the shore.
+    to.x = b.x;
+    to.z = b.z;
+    b.vx = b.vz = 0;
+  } else if (swimming && !deepStepOk(terrain, b.x, b.z, to.x, to.z)) {
+    // Past 4 m of sea the current turns you back (the server checks the same).
+    to.x = b.x;
+    to.z = b.z;
+    b.vx = b.vz = 0;
+  }
+  b.x = to.x;
+  b.z = to.z;
   if (moving) b.facing = Math.atan2(wx, wz);
 
   const terrainH = terrain.heightAt(b.x, b.z);
@@ -88,14 +217,28 @@ export function stepBody(b: Body, input: MoveInput, camYaw: number, dt: number, 
     b.y = WATER_LEVEL - 0.9;
     b.vy = 0;
     b.onGround = true;
-    return { moving, running: false, swimming: true };
+    b.boosted = false;
+    b.lift = 0;
+    if (swimFast) spend(b, STAMINA.swimFast * dt);
+    else regen(b, dt);
+    return { ...RESULT_IDLE, moving, swimming: true };
   }
-  const ground = Math.max(terrainH, SWIM_DEPTH);
+  const ground = Math.max(terrainH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
   if (input.jump && b.onGround) {
     b.vy = JUMP_SPEED;
     b.onGround = false;
   }
-  b.vy -= GRAVITY * dt;
+  if (b.gliding) {
+    spend(b, STAMINA.glide * dt);
+    if (b.tired) b.gliding = false;
+  }
+  if (b.gliding) b.vy = -GLIDE.sink;
+  else b.vy -= GRAVITY * dt;
+  if (b.lift > 0) {
+    const up = Math.min(b.lift, LIFT_SPEED * dt);
+    b.lift -= up;
+    b.y += up;
+  }
   const ny = b.y + b.vy * dt;
   if (ny <= ground) {
     b.y = ground;
@@ -108,10 +251,140 @@ export function stepBody(b: Body, input: MoveInput, camYaw: number, dt: number, 
     b.y = ny;
     b.onGround = false;
   }
-  return { moving, running, swimming: false };
+  if (b.onGround) {
+    b.gliding = false;
+    b.boosted = false;
+    b.lift = 0;
+    regen(b, dt);
+  }
+  return { ...RESULT_IDLE, moving, running, gliding: b.gliding };
+}
+
+/** On the fish: water only, 9 m/s (14 sprinting, no stamina); B held dives to the seabed, release floats up. */
+function stepFish(b: Body, island: Islet, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, bounds: Bounds): StepResult {
+  let ix = input.x;
+  let iz = input.z;
+  const mag = Math.hypot(ix, iz);
+  if (mag > 1) {
+    ix /= mag;
+    iz /= mag;
+  }
+  const moving = mag > 0.01;
+  const speed = input.sprint ? FISH.run : FISH.walk;
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = ix * c + iz * s;
+  const wz = -ix * s + iz * c;
+  const k = Math.min(1, 4 * dt);
+  b.vx += (wx * speed - b.vx) * k;
+  b.vz += (wz * speed - b.vz) * k;
+  const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
+  if (fishStepOk(terrain, island, to.x, to.z)) {
+    b.x = to.x;
+    b.z = to.z;
+  } else b.vx = b.vz = 0; // the shore, the Ciénaga or the aguas bravas: the fish turns back
+  if (moving) b.facing = Math.atan2(wx, wz);
+  const surface = WATER_LEVEL - 0.9;
+  const floor = Math.min(surface, fishFloor(terrain, b.x, b.z));
+  b.y = input.jump ? Math.max(floor, b.y - FISH.sink * dt) : Math.min(surface, b.y + FISH.rise * dt);
+  b.y = Math.max(floor, b.y);
+  Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null });
+  regen(b, dt);
+  return { ...RESULT_IDLE, moving, swimming: true };
+}
+
+/** Piloting the whale: 5 m/s (7 sprinting), on the surface, never where the sea is under 3 m (aguas bravas are fine). */
+function stepWhale(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, bounds: Bounds): StepResult {
+  let ix = input.x;
+  let iz = input.z;
+  const mag = Math.hypot(ix, iz);
+  if (mag > 1) {
+    ix /= mag;
+    iz /= mag;
+  }
+  const moving = mag > 0.01;
+  const speed = input.sprint ? WHALE.run : WHALE.walk;
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = ix * c + iz * s;
+  const wz = -ix * s + iz * c;
+  const k = Math.min(1, 1.5 * dt); // heavy: slow to get going
+  b.vx += (wx * speed - b.vx) * k;
+  b.vz += (wz * speed - b.vz) * k;
+  const facing = moving ? Math.atan2(wx, wz) : b.facing;
+  const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
+  const off = seatOffset(0, facing);
+  if (whaleStepOk(terrain, to.x - off.x, to.z - off.z)) {
+    b.x = to.x;
+    b.z = to.z;
+    b.facing = facing;
+  } else b.vx = b.vz = 0; // "La ballena no cabe"
+  Object.assign(b, { y: WATER_LEVEL, vy: 0, onGround: true, gliding: false, climb: null });
+  regen(b, dt);
+  return { ...RESULT_IDLE, moving };
+}
+
+function regen(b: Body, dt: number): void {
+  b.stamina = Math.min(b.staminaMax, b.stamina + STAMINA.regen * dt);
+  if (b.stamina === b.staminaMax) b.tired = false;
+}
+
+/** On a crag: stick forward/back = up/down, strafe = around it. */
+function stepClimb(b: Body, input: MoveInput, dt: number, terrain: Terrain, jumpEdge: boolean): StepResult {
+  const c = b.climb!;
+  const ring = c.r + PLAYER_RADIUS;
+  let ang = Math.atan2(b.x - c.x, b.z - c.z);
+  const out = { x: Math.sin(ang), z: Math.cos(ang) };
+  const moving = Math.hypot(input.x, input.z) > 0.01;
+  spend(b, (moving ? STAMINA.climbMove : STAMINA.climbHold) * dt);
+
+  if (jumpEdge || b.tired) {
+    b.climb = null;
+    b.onGround = false;
+    if (jumpEdge && !b.tired) {
+      spend(b, STAMINA.leap);
+      b.vx = out.x * LEAP.out;
+      b.vz = out.z * LEAP.out;
+      b.vy = LEAP.up;
+      b.facing = ang;
+    } else {
+      b.vx = out.x; // slip off
+      b.vz = out.z;
+      b.vy = 0;
+    }
+    return RESULT_IDLE;
+  }
+
+  b.y -= Math.max(-1, Math.min(1, input.z)) * CLIMB_SPEED * dt;
+  // Facing the rock (ang + π), "right" is the direction of increasing angle.
+  ang += (Math.max(-1, Math.min(1, input.x)) * CLIMB_SPEED * dt) / ring;
+  b.x = c.x + Math.sin(ang) * ring;
+  b.z = c.z + Math.cos(ang) * ring;
+  b.facing = ang + Math.PI;
+  b.vx = b.vz = b.vy = 0;
+
+  if (b.y >= c.top) {
+    // Mantle onto the top.
+    b.y = c.top;
+    b.x = c.x + Math.sin(ang) * (c.r - 0.6);
+    b.z = c.z + Math.cos(ang) * (c.r - 0.6);
+    b.climb = null;
+    b.onGround = true;
+    return { ...RESULT_IDLE, moving };
+  }
+  const foot = Math.max(terrain.heightAt(b.x, b.z), SWIM_DEPTH);
+  if (b.y <= foot) {
+    b.y = foot;
+    b.climb = null;
+    b.onGround = true;
+    return { ...RESULT_IDLE, moving };
+  }
+  return { ...RESULT_IDLE, moving, climbing: true };
 }
 
 export function animFor(r: StepResult, b: Body): Anim {
+  if (r.climbing) return 'climb';
+  if (r.gliding) return 'glide';
   if (r.swimming) return 'swim';
   if (!b.onGround) return 'jump';
   if (!r.moving) return 'idle';

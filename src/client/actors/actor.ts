@@ -15,6 +15,12 @@ export const PLAYER_CLIPS: Record<string, ClipDef> = {
   jump: { clip: 'Jump', once: true },
   swim: { clip: 'Walking', speed: 0.5 },
   attack: { clip: 'Punch', once: true },
+  // The robot kit has no roll/guard/bow clips: placeholders until real animations exist.
+  roll: { clip: 'WalkJump', speed: 1.6, once: true },
+  block: { clip: 'Idle', speed: 0.3 },
+  bow: { clip: 'Punch', speed: 0.7, once: true },
+  climb: { clip: 'Punch', speed: 0.6 },
+  glide: { clip: 'Jump', speed: 0.4, once: true },
   dead: { clip: 'Death', once: true },
 };
 
@@ -48,8 +54,12 @@ export class Actor {
     this.play('idle');
   }
 
+  private glider: THREE.Object3D | null = null;
+
   play(anim: string): void {
     if (anim === this.currentName) return;
+    if (anim === 'glide' && !this.glider) this.root.add((this.glider = makeGlider()));
+    if (this.glider) this.glider.visible = anim === 'glide';
     const def = this.clips[anim] ?? this.clips.idle!;
     const next = this.actions.get(def.clip);
     if (!next) return;
@@ -76,6 +86,18 @@ export class Actor {
     this.mixer.stopAllAction();
     this.root.removeFromParent();
   }
+}
+
+/** A leaf-cloth canopy over the head, shown while the anim is 'glide' (so teammates see it too). */
+function makeGlider(): THREE.Object3D {
+  const cloth = new THREE.Mesh(
+    new THREE.ConeGeometry(1.3, 0.45, 4, 1, true),
+    new THREE.MeshLambertMaterial({ color: 0x6fae4a, side: THREE.DoubleSide }),
+  );
+  cloth.scale.set(1.4, 1, 0.8);
+  cloth.rotation.y = Math.PI / 4;
+  cloth.position.y = 2.5;
+  return cloth;
 }
 
 function nameTag(text: string): THREE.Sprite {

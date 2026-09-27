@@ -1,3 +1,4 @@
+import { NAMES } from '../shared/names';
 import { ITEM_LABELS, ITEMS, type Inventory } from '../shared/items';
 import type { ErrorCode } from '../shared/protocol';
 import type { Vitals } from '../shared/survival';
@@ -22,6 +23,18 @@ export class Hud {
   private readonly banner = el('div', 'banner');
   private readonly prompt = el('div', 'prompt-line');
   private readonly overlay = el('div', 'overlay');
+  private readonly heartRow = el('div', 'stat');
+  private readonly raidLine = el('div', 'raid-line');
+  /** The fish's ring race: ring and seconds left. */
+  private readonly raceLine = el('div', 'raid-line race-line');
+  private readonly bossLine = el('div', 'raid-line boss-line');
+  private readonly stamina = el('div', 'stamina');
+  /** Taming ring: tap it (or A / E / Espacio). Outside `.hud` so it can take taps above the touch layer. */
+  private readonly ring = el('div', 'tame-ring');
+  onRingTap: () => void = () => {};
+  /** El Marchito's vision card: its ✕ (or Enter) closes it; it also fades by itself. */
+  private readonly visionCard = el('div', 'vision');
+  private visionTimer: ReturnType<typeof setTimeout> | undefined;
   menuOpen = false;
 
   /** True while any overlay panel (menu, death, fatal error) covers the screen. */
@@ -38,11 +51,26 @@ export class Hud {
       stats.appendChild(row);
       this.bars[key] = row;
     }
+    this.heartRow.innerHTML = '<span>🌳</span><div class="bar"><i style="background:#5fd38a"></i></div><span class="val"></span>';
+    this.heartRow.hidden = true;
+    stats.appendChild(this.heartRow);
+    this.raidLine.hidden = true;
+    this.raceLine.hidden = true;
+    this.bossLine.hidden = true;
     this.banner.hidden = true;
     this.prompt.hidden = true;
     this.overlay.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt);
-    parent.append(this.root, this.overlay);
+    this.stamina.hidden = true;
+    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.raceLine, this.bossLine, this.stamina);
+    this.ring.hidden = true;
+    this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
+    this.ring.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onRingTap();
+    });
+    this.visionCard.hidden = true;
+    parent.append(this.root, this.ring, this.visionCard, this.overlay);
   }
 
   setVitals(v: Vitals): void {
@@ -54,8 +82,18 @@ export class Hud {
     }
   }
 
-  setInventory(inv: Inventory): void {
+  /** Stamina ring by the player; hidden when full, red while tired. */
+  setStamina(frac: number, tired: boolean): void {
+    const full = frac >= 1 && !tired;
+    if (this.stamina.hidden !== full) this.stamina.hidden = full;
+    if (full) return;
+    this.stamina.style.setProperty('--p', `${Math.round(frac * 100)}%`);
+    this.stamina.classList.toggle('tired', tired);
+  }
+
+  setInventory(inv: Inventory, weapon = 0): void {
     const parts = ITEMS.filter((i) => (inv[i] ?? 0) > 0).map((i) => `${ITEM_LABELS[i]} ${inv[i]}`);
+    if (weapon > 0) parts.push(`Arma +${weapon}`);
     this.inv.textContent = parts.length ? parts.join(' · ') : 'Mochila vacía';
   }
 
@@ -64,6 +102,68 @@ export class Hud {
     d.textContent = text;
     this.log.prepend(d);
     setTimeout(() => d.remove(), 6000);
+  }
+
+  setHeart(h: { hp: number; max: number } | null): void {
+    this.heartRow.hidden = !h;
+    if (!h) return;
+    (this.heartRow.querySelector('i') as HTMLElement).style.width = `${(h.hp / h.max) * 100}%`;
+    (this.heartRow.querySelector('.val') as HTMLElement).textContent = h.hp > 0 ? String(h.hp) : 'marchito';
+    this.heartRow.classList.toggle('low', h.hp < h.max * 0.25);
+  }
+
+  setRace(text: string | null): void {
+    this.raceLine.hidden = !text;
+    if (text) this.raceLine.textContent = text;
+  }
+
+  setRaid(text: string | null): void {
+    this.raidLine.hidden = !text;
+    if (text) this.raidLine.textContent = text;
+  }
+
+  setBoss(text: string | null): void {
+    this.bossLine.hidden = !text;
+    if (text) this.bossLine.textContent = text;
+  }
+
+  /** Show the ring (angles in radians, 0 = top, clockwise), or hide it with null. */
+  setRing(r: { needle: number; zone: number; width: number; round: number; rounds: number } | null): void {
+    this.ring.hidden = !r;
+    if (!r) return;
+    const pt = (a: number) => `${(Math.sin(a) * 60).toFixed(1)} ${(-Math.cos(a) * 60).toFixed(1)}`;
+    const a0 = r.zone - r.width / 2;
+    const a1 = r.zone + r.width / 2;
+    this.ring.querySelector('.zone')!.setAttribute('d', `M ${pt(a0)} A 60 60 0 ${r.width > Math.PI ? 1 : 0} 1 ${pt(a1)}`);
+    this.ring.querySelector('.needle')!.setAttribute('transform', `rotate(${((r.needle * 180) / Math.PI).toFixed(1)})`);
+    this.ring.querySelector('span')!.textContent = `Doma ${r.round + 1}/${r.rounds}`;
+  }
+
+  showVision(lines: string[]): void {
+    this.visionCard.innerHTML = '';
+    for (const line of lines) {
+      const p = el('p', '');
+      p.textContent = line;
+      this.visionCard.appendChild(p);
+      this.toast(line);
+    }
+    const close = el('button', 'vision-close');
+    close.textContent = '✕';
+    close.setAttribute('aria-label', 'Cerrar visión');
+    close.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.hideVision();
+    });
+    this.visionCard.appendChild(close);
+    this.visionCard.hidden = false;
+    clearTimeout(this.visionTimer);
+    this.visionTimer = setTimeout(() => this.hideVision(), 3000 + 2500 * lines.length);
+  }
+
+  hideVision(): void {
+    clearTimeout(this.visionTimer);
+    this.visionCard.hidden = true;
   }
 
   setPrompt(text: string | null): void {
@@ -84,20 +184,40 @@ export class Hud {
   }
 
   showDeath(onRespawn: () => void): void {
-    this.panel('<h2>Has caído</h2><p>Conservas tu mochila.</p><button data-a="respawn">Reaparecer</button>', { respawn: onRespawn });
+    this.panel(
+      '<h2>Has caído</h2><p>Si reapareces, tu mochila se queda en una tumba aquí.</p><p id="revive-left"></p><button data-a="respawn">Reaparecer</button>',
+      { respawn: onRespawn },
+    );
   }
 
-  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void }): void {
+  /** Death panel only: how long a teammate still has to get you up. */
+  setReviveLeft(n: number): void {
+    const p = this.overlay.querySelector('#revive-left');
+    if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
+  }
+
+  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void }): void {
     const options = (Object.keys(TIER_LABELS) as Tier[])
       .map((t) => `<option value="${t}" ${t === tier ? 'selected' : ''}>${TIER_LABELS[t]}</option>`)
       .join('');
     this.panel(
       `<h2>Menú</h2>
+       <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
+       <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
+       <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 ${NAMES.powerVine} (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
+       <p>El ciervo salvaje (un halo dorado en el bosque): E / A junto a él para domarlo; pulsa cuando la aguja cruce la zona, tres veces · E / M montar y bajar · Shift: galope</p>
+       <p>${NAMES.villain}: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
+       <p>Si ${NAMES.villain} se lleva al ${NAMES.bossForestShort}: está en una jaula de raíces en el fondo del mar, junto a la isla. Rompe las tres anclas (una por islote; el ${NAMES.powerWind} pega triple) y pulsa E / A junto a la jaula</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
+       <p>La ${NAMES.forestRoot}: palancas, un nudo que abre la ${NAMES.powerVine}, una losa (un compañero o el bloque encima), una linterna para el brasero y un ${NAMES.eliteForest}: cuando se agache, apártate o rueda. E / A coge y suelta</p>
+       <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la ${NAMES.powerVine} junto a su raíz marchita o venciendo al ${NAMES.bossForestShort}</p>
+       <p>Poderes: H lanza el elegido (🌿 ${NAMES.powerVine} / 🌬️ ${NAMES.powerWind}) · J cambia · en táctil, mantén pulsado el botón de poder medio segundo para cambiar. El ${NAMES.powerWind} (altar de la ${NAMES.coastRoot}) empuja bestias (el mar se las lleva), desliza la piedra pómez, gira molinos, arranca raíces marchitas de la costa y, planeando, te sube una vez por vuelo</p>
+       <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · 🗡️ pone la elegida</p>
+       <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
        <button class="secondary" data-a="leave">Salir</button>`,
-      { resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, leave: h.onLeave },
+      { resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
     );
     this.menuOpen = true;
     this.overlay.querySelector('select')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));

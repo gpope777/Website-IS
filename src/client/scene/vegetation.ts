@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createRng } from '../../shared/rng';
-import { HALF, WATER_LEVEL, type Terrain } from '../../shared/terrain';
+import { COAST_Z0, HALF, WATER_LEVEL, type Terrain } from '../../shared/terrain';
 import type { ResourceSpawn } from '../../shared/resources';
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -91,7 +91,7 @@ export function buildGrass(terrain: Terrain, count: number, seed: number): THREE
     const x = (rng() * 2 - 1) * (HALF - 6);
     const z = (rng() * 2 - 1) * (HALF - 6);
     const h = terrain.heightAt(x, z);
-    if (h < WATER_LEVEL + 0.2 || terrain.density(x, z) > 0.55) continue;
+    if (z >= COAST_Z0 || h < WATER_LEVEL + 0.2 || terrain.density(x, z) > 0.55) continue; // grass is the forest's
     const s = 0.7 + rng() * 0.8;
     q.setFromAxisAngle(up, rng() * Math.PI);
     m.compose(new THREE.Vector3(x, h - 0.05, z), q, new THREE.Vector3(s, s, s));

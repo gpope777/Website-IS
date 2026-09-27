@@ -4,6 +4,7 @@ import type { TierSettings } from '../quality';
 const DAY = new THREE.Color(0xa8c8d8);
 const NIGHT = new THREE.Color(0x0b1220);
 const DUSK = new THREE.Color(0xd9865a);
+const RAID_SKY = new THREE.Color(0x4a1f5c);
 
 /** Sun, moon, hemisphere light and fog driven by the shared day clock (0 = midnight). */
 export class DayLight {
@@ -30,7 +31,7 @@ export class DayLight {
     scene.add(this.sun, this.sun.target, this.moon, this.hemi);
   }
 
-  update(f: number, focus: THREE.Vector3): void {
+  update(f: number, focus: THREE.Vector3, raid = 0): void {
     const angle = (f - 0.25) * Math.PI * 2; // sunrise at 0.25
     const sunY = Math.sin(angle);
     const sunX = Math.cos(angle);
@@ -46,6 +47,7 @@ export class DayLight {
 
     const dusk = 1 - Math.abs(sunY) > 0.85 && sunY > -0.2 ? 1 - Math.abs(sunY) - 0.85 : 0;
     this.bg.copy(NIGHT).lerp(DAY, daylight).lerp(DUSK, Math.min(1, dusk * 4) * 0.6);
+    if (raid > 0) this.bg.lerp(RAID_SKY, raid);
     this.fog.color.copy(this.bg);
     this.fog.near = 20 + 20 * daylight;
     this.fog.far = Math.min(this.tier.drawDistance * 0.8, 60 + 100 * daylight);

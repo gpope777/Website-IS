@@ -1,5 +1,6 @@
 import { exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { PROTOCOL_VERSION } from '../../src/shared/protocol';
 import { ADMIN, BASE, Client, createWorld, sleep } from './helpers';
 
 describe('admin', () => {
@@ -28,7 +29,7 @@ describe('admin', () => {
 describe('joining', () => {
   it('rejects unknown worlds and old clients', async () => {
     const a = await Client.open('no-such-world');
-    a.send({ t: 'hello', v: 1, name: 'Ana', pin: '1234' });
+    a.send({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ana', pin: '1234' });
     expect((await a.next('error')).code).toBe('noworld');
     await createWorld('join-v');
     const b = await Client.open('join-v');
@@ -42,7 +43,7 @@ describe('joining', () => {
     expect((await a.join('Ana', '1111')).you).toBe('Ana');
     a.close();
     const b = await Client.open('join-pin');
-    b.send({ t: 'hello', v: 1, name: 'Ana', pin: '2222' });
+    b.send({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ana', pin: '2222' });
     expect((await b.next('error')).code).toBe('pin');
     const c = await Client.open('join-pin');
     expect((await c.join('Ana', '1111')).you).toBe('Ana');
@@ -55,7 +56,7 @@ describe('joining', () => {
     const codes: string[] = [];
     for (let i = 0; i < 6; i++) {
       const c = await Client.open('join-rate');
-      c.send({ t: 'hello', v: 1, name: 'Ana', pin: '9999' });
+      c.send({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ana', pin: '9999' });
       codes.push((await c.next('error')).code);
     }
     expect(codes.slice(0, 5)).toEqual(['pin', 'pin', 'pin', 'pin', 'pin']);
@@ -67,7 +68,7 @@ describe('joining', () => {
     const owner = await Client.open('join-rate2');
     await owner.join('Ana', '1111');
     const guessers = await Promise.all(Array.from({ length: 8 }, () => Client.open('join-rate2')));
-    for (const g of guessers) g.send({ t: 'hello', v: 1, name: 'Ana', pin: '9999' });
+    for (const g of guessers) g.send({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ana', pin: '9999' });
     const codes = await Promise.all(guessers.map((g) => g.next('error').then((e) => e.code)));
     expect(codes.filter((c) => c === 'pin').length).toBeLessThanOrEqual(5);
     expect(codes.filter((c) => c === 'rate').length).toBeGreaterThanOrEqual(3);
@@ -89,8 +90,8 @@ describe('joining', () => {
   it('ignores a second hello racing the first on the same socket', async () => {
     await createWorld('join-race');
     const a = await Client.open('join-race');
-    a.send({ t: 'hello', v: 1, name: 'Ana', pin: '1111' });
-    a.send({ t: 'hello', v: 1, name: 'Leo', pin: '2222' });
+    a.send({ t: 'hello', v: PROTOCOL_VERSION, name: 'Ana', pin: '1111' });
+    a.send({ t: 'hello', v: PROTOCOL_VERSION, name: 'Leo', pin: '2222' });
     expect((await a.next('welcome')).you).toBe('Ana');
     a.close();
     await sleep(100);

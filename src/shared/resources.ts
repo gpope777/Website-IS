@@ -1,5 +1,5 @@
 import { createRng } from './rng';
-import { HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { COAST_Z0, HALF, WATER_LEVEL, type Terrain } from './terrain';
 import type { ItemId } from './items';
 
 export type ResourceKind = 'tree' | 'rock' | 'bush';
@@ -34,7 +34,7 @@ export function generateResources(terrain: Terrain, seed: number): ResourceSpawn
       const jz = z + (rng() - 0.5) * STEP;
       const roll = rng();
       const extra = rng();
-      if (Math.hypot(jx, jz) < SPAWN_CLEAR) continue;
+      if (Math.hypot(jx, jz) < SPAWN_CLEAR || jz >= COAST_Z0) continue; // forest only
       const h = terrain.heightAt(jx, jz);
       if (h < WATER_LEVEL) continue;
       const d = terrain.density(jx, jz);
