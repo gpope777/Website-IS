@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, createTerrain, HALF, inMap, inRiver, LAGUNA, RIVER, SWAMP, swampFeatures, WATER_LEVEL } from './terrain';
 import { generateCrags } from './crags';
+import { coastFeatures } from './terrain';
+import { deepStepOk, depthAt } from './coast';
+import { fishStepOk } from './fish';
+import { inBog, swampFog, zarzalAt } from './swamp';
 
 const SEEDS = [1, 42, 777, 12345];
 const depth = (t: ReturnType<typeof createTerrain>, x: number, z: number) => WATER_LEVEL - t.heightAt(x, z);
@@ -91,5 +95,56 @@ describe('swamp terrain', () => {
 
   it('keeps crags 64 m from the west edge (no gliding over el Zarzal)', () => {
     for (const s of SEEDS) for (const c of generateCrags(createTerrain(s), s)) expect(c.x).toBeGreaterThan(-HALF + 64);
+  });
+});
+
+describe('swamp rules', () => {
+  const t = createTerrain(42);
+  it('el Zarzal covers the dry west rim and the first 60 m of the swamp, not the water', () => {
+    expect(zarzalAt(t, -HALF + 2, 100)).toBe(WATER_LEVEL - t.heightAt(-HALF + 2, 100) < 1);
+    expect(zarzalAt(t, -HALF - 40, 100)).toBe(true);
+    expect(zarzalAt(t, -HALF + 6, 100)).toBe(false);
+    expect(zarzalAt(t, -HALF - 20, RIVER.z)).toBe(false);
+    expect(zarzalAt(t, -HALF - 80, 100)).toBe(false);
+    expect(zarzalAt(t, -HALF - 40, 20)).toBe(false);
+  });
+
+  it('the bog is the ankle-deep swamp water outside the thorns', () => {
+    let bog = 0;
+    for (let z = 60; z < 300; z += 10) if (inBog(t, -HALF - 90, z)) bog++;
+    expect(bog).toBeGreaterThan(5);
+    expect(inBog(t, -HALF - 40, 100)).toBe(false);
+    expect(inBog(t, 0, 0)).toBe(false);
+  });
+
+  it('the river lets swimmers go downstream only; the Laguna lets them head shallower', () => {
+    const x = -HALF - 20;
+    expect(deepStepOk(t, x, RIVER.z, x + 1, RIVER.z)).toBe(true);
+    expect(deepStepOk(t, x, RIVER.z, x - 1, RIVER.z)).toBe(false);
+    expect(deepStepOk(t, LAGUNA.x, LAGUNA.z, LAGUNA.x, LAGUNA.z - 1)).toBe(true);
+    expect(deepStepOk(t, LAGUNA.x, LAGUNA.z - 1, LAGUNA.x, LAGUNA.z)).toBe(false);
+    // From the coast's shallows into the 5 m channel: turned back.
+    expect(deepStepOk(t, -HALF + 31, RIVER.z, -HALF + 29, RIVER.z)).toBe(depthAt(t, -HALF + 29, RIVER.z) < depthAt(t, -HALF + 31, RIVER.z));
+  });
+
+  it('the fish needs a metre of water in the swamp', () => {
+    const { island } = coastFeatures(42);
+    expect(fishStepOk(t, island, -HALF - 20, RIVER.z)).toBe(true);
+    expect(fishStepOk(t, island, LAGUNA.x, LAGUNA.z)).toBe(true);
+    let bogs = 0;
+    for (let z = 60; z < 300; z += 10) if (inBog(t, -HALF - 90, z)) { bogs++; expect(fishStepOk(t, island, -HALF - 90, z)).toBe(false); }
+    expect(bogs).toBeGreaterThan(0);
+  });
+
+  it('swamp fog blends in over 20 m', () => {
+    expect(swampFog(-HALF + 1, 200)).toBe(0);
+    expect(swampFog(-HALF - 20, 200)).toBe(1);
+    expect(swampFog(-HALF - 100, 0)).toBe(0);
+    let last = 0;
+    for (let x = -HALF; x >= -HALF - 20; x -= 2) {
+      const f = swampFog(x, 200);
+      expect(f).toBeGreaterThanOrEqual(last);
+      last = f;
+    }
   });
 });

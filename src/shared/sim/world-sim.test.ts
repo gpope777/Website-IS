@@ -8,7 +8,8 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
-import { HALF, WATER_LEVEL } from '../terrain';
+import { HALF, RIVER, WATER_LEVEL } from '../terrain';
+import { inBog, ZARZAL, zarzalAt } from '../swamp';
 import { CIENAGA, depthAt } from '../coast';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
@@ -2057,6 +2058,76 @@ describe('la Ciénaga and the deep sea', () => {
     Object.assign(p, { y: WATER_LEVEL + 3 });
     sim.handle('Ana', { t: 'move', x, y: WATER_LEVEL + 2.9, z: z, yaw: 0, anim: 'jump' });
     expect(p.z).toBe(z);
+  });
+});
+
+describe('el Zarzal, the bog and the river', () => {
+  const THORN_X = -HALF - 40;
+  const Z = 100;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+
+  it('the thorns bite walkers and deer riders (~10 PV/s)', () => {
+    const sim = setup('Ana', 'Leo', 'Eva');
+    expect(zarzalAt(sim.terrain, THORN_X, Z)).toBe(true);
+    put(sim, 'Ana', THORN_X, Z);
+    put(sim, 'Leo', 5, 5);
+    put(sim, 'Eva', THORN_X, Z + 4);
+    sim.getPlayer('Eva')!.steed = { x: THORN_X, z: Z + 4 };
+    sim.handle('Eva', { t: 'mount', act: 2 });
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    const hp = (n: string) => sim.getPlayer(n)!.vitals.health;
+    expect(hp('Leo') - hp('Ana')).toBeGreaterThan(ZARZAL.dps * 5 - 4);
+    expect(hp('Leo') - hp('Ana')).toBeLessThanOrEqual(ZARZAL.dps * 5);
+    expect(hp('Leo') - hp('Eva')).toBeGreaterThan(ZARZAL.dps * 5 - 4);
+    expect(texts(sim).some((t) => t.includes('Las espinas no respetan al ciervo'))).toBe(true);
+  });
+
+  it('the thorns hold everyone to 3 m/s', () => {
+    const tryMove = (riding: boolean, dist: number) => {
+      const sim = setup('Ana');
+      put(sim, 'Ana', THORN_X, Z);
+      if (riding) {
+        sim.getPlayer('Ana')!.steed = { x: THORN_X, z: Z };
+        sim.handle('Ana', { t: 'mount', act: 2 });
+      }
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      const x = THORN_X - dist;
+      sim.handle('Ana', { t: 'move', x, y: sim.terrain.heightAt(x, Z), z: Z, yaw: 0, anim: 'walk' });
+      return sim.getPlayer('Ana')!.x === x;
+    };
+    expect(tryMove(false, 3)).toBe(true);
+    expect(tryMove(false, 8)).toBe(false);
+    expect(tryMove(true, 3)).toBe(true);
+    expect(tryMove(true, 8)).toBe(false);
+  });
+
+  it('walkers wade through the bog at 60 %', () => {
+    const sim0 = setup('Ana');
+    let bz = 60;
+    while (!(inBog(sim0.terrain, -HALF - 90, bz) && inBog(sim0.terrain, -HALF - 90, bz + 7))) bz++;
+    const tryMove = (dist: number) => {
+      const sim = setup('Ana');
+      put(sim, 'Ana', -HALF - 90, bz);
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      const z = bz + dist;
+      sim.handle('Ana', { t: 'move', x: -HALF - 90, y: sim.terrain.heightAt(-HALF - 90, z), z, yaw: 0, anim: 'walk' });
+      return sim.getPlayer('Ana')!.z === z;
+    };
+    expect(tryMove(4.5)).toBe(true);
+    expect(tryMove(7)).toBe(false);
+  });
+
+  it('swimmers go down the river to the sea, never up it', () => {
+    const sim = setup('Ana');
+    const x = -HALF - 20;
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x, z: RIVER.z, y: WATER_LEVEL - 0.9 });
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x: x - 1, y: WATER_LEVEL - 0.9, z: RIVER.z, yaw: 0, anim: 'swim' });
+    expect(p.x).toBe(x);
+    expect(texts(sim)).toContain('La corriente te devuelve');
+    sim.handle('Ana', { t: 'move', x: x + 1, y: WATER_LEVEL - 0.9, z: RIVER.z, yaw: 0, anim: 'swim' });
+    expect(p.x).toBe(x + 1);
   });
 });
 

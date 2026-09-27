@@ -1,5 +1,6 @@
 import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
+import { BOG, inBog, ZARZAL, zarzalAt } from '../swamp';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
@@ -56,6 +57,7 @@ export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
+const upFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida' };
 
 export interface SavedPlayer {
@@ -456,6 +458,10 @@ export class WorldSim {
         p.vitals = damage(p.vitals, CIENAGA.dps * dt);
         this.hint(p.name, l, 'El barro marchito muerde. A lomos del ciervo no');
       }
+      if (!l.fish && zarzalAt(this.terrain, p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
+        p.vitals = damage(p.vitals, ZARZAL.dps * dt);
+        this.hint(p.name, l, `${upFirst(NAMES.swampGate)} muerde. Las espinas no respetan al ciervo`);
+      }
       if (p.vitals.health <= 0) this.kill(p);
       else this.pickUpGraves(p);
     }
@@ -669,7 +675,10 @@ export class WorldSim {
     const mounted = l.riding || this.time < l.rodeUntil;
     // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).
     const wading = !mounted && inCienaga(l.anchorX, l.anchorZ) && inCienaga(m.x, m.z);
-    const cap = l.riding ? MOUNT.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : MAX_SPEED;
+    // El Zarzal slows walkers and riders; the bog slows walkers (same whole-window rule).
+    const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ) && zarzalAt(this.terrain, m.x, m.z);
+    const bogged = !mounted && inBog(this.terrain, l.anchorX, l.anchorZ) && inBog(this.terrain, m.x, m.z);
+    const cap = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
     if (!inBounds || !wallOk || !yOk || !dryOk || !seaOk || moved > cap * elapsed + 1) {
       l.fix = true;

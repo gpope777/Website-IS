@@ -1,4 +1,4 @@
-import { COAST, COAST_Z0, HALF, WATER_LEVEL, type Terrain } from './terrain';
+import { COAST, COAST_Z0, HALF, inRiver, inSwamp, WATER_LEVEL, type Terrain } from './terrain';
 
 /** La Ciénaga: withered mud across the whole map between the forest and the beach. Only the deer crosses it unhurt. */
 export const CIENAGA = { speed: 3, dps: 8, z0: COAST_Z0, z1: HALF + COAST.mudTo } as const;
@@ -15,10 +15,11 @@ export function depthAt(t: Terrain, x: number, z: number): number {
 
 /**
  * A swimmer's step in the sea: fine while the water is at most SWIM_MAX_DEPTH deep, and past that only
- * if it gets shallower. Forest lakes are left alone (the rule is the sea's, spec §3.3).
+ * if it gets shallower. Forest lakes are left alone (the rule is the sea's and the swamp's, spec §3.3, S3 §3.2).
  */
 export function deepStepOk(t: Terrain, px: number, pz: number, nx: number, nz: number): boolean {
-  if (nz < COAST_Z0) return true;
+  if (nz < COAST_Z0 && !inSwamp(nx, nz)) return true;
+  if (inRiver(nx, nz) && nx > px) return true; // downstream is always fine: nobody gets stuck in the swamp
   const d = depthAt(t, nx, nz);
   return d <= SWIM_MAX_DEPTH || d < depthAt(t, px, pz);
 }
