@@ -1,4 +1,5 @@
 import { weatherAt, weatherLine, wetAt, type Weather } from '../shared/weather';
+import { rankLine, rankUpText, RANK_FLASH } from './rank-ui';
 import { dawnCrossed, stormDim, WeatherFx } from './scene/weather';
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
@@ -468,6 +469,12 @@ export class Game {
         return this.hud.showVision(m.lines);
       case 'ending':
         return this.hud.showEnding(m.cards, m.credits);
+      case 'rankUp': {
+        const a = m.name === this.myName ? this.me : this.others.get(m.name)?.actor;
+        if (a instanceof Actor) a.flash(RANK_FLASH);
+        if (m.name === this.myName) this.hud.showVision([rankUpText(m.rank)], 3000, false);
+        return;
+      }
       case 'hit':
         if (this.heart?.id === m.id) this.heart = { ...this.heart, hp: m.hp };
         this.structures.setHp(m.id, m.hp);
@@ -924,7 +931,7 @@ export class Game {
 
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
     this.hud.setVitals(self.vitals);
-    this.hud.setInventory(self.inv, self.weapon, self.capa);
+    this.hud.setInventory(self.inv, self.weapon, self.capa, rankLine(self.xp ?? 0, self.rank ?? 1));
     this.regrowing = self.amber;
     this.amber = self.inv.amber ?? 0;
     this.capa = self.capa;

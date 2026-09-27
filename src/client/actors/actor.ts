@@ -68,6 +68,20 @@ export class Actor {
     this.cape.scale.y = 0.6 + 0.2 * Math.min(3, lvl);
   }
 
+  private glow: THREE.Mesh | null = null;
+  private glowLeft = 0;
+
+  /** P4-A: a short green glow round the robot (a Rango up), seen by everyone. Its own material: models share theirs. */
+  flash(seconds: number): void {
+    if (!this.glow) {
+      this.glow = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7dff7a, transparent: true, opacity: 0.35, depthWrite: false }));
+      this.glow.position.y = 1;
+      this.root.add(this.glow);
+    }
+    this.glowLeft = seconds;
+    this.glow.visible = true;
+  }
+
   /** A torch from the Candiles post, held up by the right hand. */
   setTorch(on: boolean): void {
     if (!on && !this.torch) return;
@@ -99,6 +113,10 @@ export class Actor {
 
   update(dt: number): void {
     this.mixer.update(dt);
+    if (this.glow && this.glowLeft > 0) {
+      this.glowLeft -= dt;
+      if (this.glowLeft <= 0) this.glow.visible = false;
+    }
   }
 
   dispose(): void {

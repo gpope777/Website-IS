@@ -95,11 +95,12 @@ export class Hud {
     this.stamina.classList.toggle('tired', tired);
   }
 
-  setInventory(inv: Inventory, weapon = 0, capa = 0): void {
+  setInventory(inv: Inventory, weapon = 0, capa = 0, rank = ''): void {
     const parts = ITEMS.filter((i) => (inv[i] ?? 0) > 0).map((i) => `${ITEM_LABELS[i]} ${inv[i]}`);
     if (weapon > 0) parts.push(`Arma +${weapon}`);
     if (capa > 0) parts.push(`Capa ${capa}`);
-    this.inv.textContent = parts.length ? parts.join(' · ') : 'Mochila vacía';
+    const bag = parts.length ? parts.join(' · ') : 'Mochila vacía';
+    this.inv.textContent = rank ? `${rank} · ${bag}` : bag;
   }
 
   toast(text: string): void {
