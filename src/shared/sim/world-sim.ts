@@ -5,7 +5,7 @@ import { weatherAt, wetAt } from '../weather';
 import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
-import { PIEDRA, pillarSpot, structureCrags } from '../piedra';
+import { PIEDRA, pillarSpot, pushDir, structureCrags } from '../piedra';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
@@ -15,6 +15,7 @@ import { ENREDADERA, planVine } from '../enredadera';
 import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
+import { boulders, dungeonBlockCell, inMountainDungeon, inRockfall, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
 import { createElite, createPeat, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
@@ -23,7 +24,7 @@ import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
-import { blockCell, blocksCentre, blocksSolved, BLOCKS, corniceLedges, generateMountainShrines, generateQuartzVeins, MOUNTAIN_SHRINE, QUARTZ, type Cell, type QuartzVein } from '../mountain-shrines';
+import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges, generateMountainShrines, generateQuartzVeins, MOUNTAIN_SHRINE, QUARTZ, type Cell, type QuartzVein } from '../mountain-shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -246,6 +247,8 @@ export class WorldSim {
   readonly coastEntrance: { x: number; z: number };
   /** The swamp Raíz-madre's sunken trunk, in the Laguna Negra. */
   readonly swampEntrance: { x: number; z: number } = swampEntrance();
+  /** The mountain cave's mouth, beside the Raíz-madre de la Montaña (zone 14). */
+  readonly mountainEntrance: { x: number; z: number } = mountainEntrance();
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
   readonly wild: { x: number; y: number; z: number };
   /** Where the wild giant fish waits, and its race rings (seeded). */
@@ -314,6 +317,17 @@ export class WorldSim {
     lamps: false,
     planks: Array.from({ length: SWAMP_DUNGEON.planks }, () => ({ at: null as number | null, downUntil: 0 })),
     eliteDown: false,
+  };
+  /** The mountain interior (live-only): levers, gate 0, the high plate, the block room, the bruto de roca, rockfall hit graces. */
+  private readonly mountainLive = {
+    pulled: [null, null] as (number | null)[],
+    gate: false,
+    plate: false,
+    cells: MOUNTAIN_DUNGEON.blocks.starts.map((c) => [c[0], c[1]] as const) as Cell[],
+    blocksDone: false,
+    eliteDown: false,
+    bossSaid: false,
+    hitAt: new Map<string, number>(),
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[]; /** Turba: Llamaradas the peat wall took. */ burns: number; /** Bloques: each block's grid cell. */ cells: Cell[]; /** Losas gemelas: when the boulder reached plate 2 (null = home). */ boulderAt: number | null }[];
@@ -651,6 +665,7 @@ export class WorldSim {
     this.stepDungeon();
     this.stepCoastDungeon();
     this.stepSwampDungeon();
+    this.stepMountainDungeon();
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepPeatFight(dt);
@@ -747,7 +762,7 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges, ...structureCrags(this.structures)];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges, shelfCrag(), ...structureCrags(this.structures)];
   }
 
   /** Nenúfares' pads still afloat. */
@@ -826,7 +841,7 @@ export class WorldSim {
       return;
     }
     const inBounds = inAnyDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
-    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates());
+    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
     const wallOk = !inAnyDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
@@ -1652,6 +1667,7 @@ export class WorldSim {
       this.teleport(p, l, DUNGEON.x, DUNGEON.entryZ + 1.5);
       return this.tell(p.name, `Dentro de la ${NAMES.forestRoot}. Huele a papel viejo`);
     }
+    if (act >= 18) return this.onMountainDungeon(p, l, act, near);
     if (act >= 13) return this.onSwampDungeon(p, l, act, near);
     if (act >= 8) return this.onCoastDungeon(p, l, act, near);
     if (!inDungeon(p.x, p.z)) return;
@@ -1778,9 +1794,102 @@ export class WorldSim {
     return [g.gate, g.thorn >= FUEGO.burns, g.lamps, g.eliteDown];
   }
 
-  /** Which of the four mountain gates are open (S4-E T3 fills them in). */
+  /** The mountain cave: 18 enter, 19 leave, 20/21 levers, 22 the Piedra altar, 23/24 push block 0/1, 25 the reset lever. */
+  private onMountainDungeon(p: SavedPlayer, l: Live, act: number, near: (x: number, z: number, r: number) => boolean): void {
+    const M = MOUNTAIN_DUNGEON;
+    const e = this.mountainEntrance;
+    if (act === 18) {
+      if (!near(e.x, e.z, M.mouthR + M.enterReach)) return;
+      this.teleport(p, l, M.x, M.entryZ + 1.5);
+      return this.tell(p.name, `Dentro de la cueva de la ${NAMES.mountainRoot}. Hace un frío de piedra`);
+    }
+    if (!inMountainDungeon(p.x, p.z)) return;
+    const g = this.mountainLive;
+    if (act === 19) {
+      if (!near(M.x, M.entryZ, M.exitReach)) return;
+      return this.teleport(p, l, e.x, e.z + M.mouthR + 2);
+    }
+    if (act === 20 || act === 21) {
+      const i = act - 20;
+      const lever = insideMountain(M.levers[i]!);
+      if (!near(lever.x, lever.z, M.leverReach) || g.gate) return;
+      g.pulled[i] = this.time;
+      const other = g.pulled[1 - i];
+      if (other != null && this.time - other <= M.leverWindow + EPS) {
+        g.gate = true;
+        return this.say('La verja de raíces se abre. Cruje de frío');
+      }
+      return this.tell(p.name, 'La raíz cede. Falta la otra');
+    }
+    if (act === 22) {
+      if (!g.gate || !near(M.x, M.altarZ, M.altarReach) || p.piedra) return;
+      p.piedra = true;
+      return this.tell(p.name, `Despierta la ${NAMES.powerStone}: J cambia de poder (o mantén pulsado el botón de poder), H alza un pilar`);
+    }
+    if (act === 23 || act === 24) {
+      const i = act - 23;
+      const at = dungeonBlockCell(g.cells[i]!);
+      if (!near(at.x, at.z, M.pushReach) || g.blocksDone) return;
+      if (!p.piedra) return this.tell(p.name, 'No se mueve');
+      const next = pushBlock(g.cells, i, pushDir(p.x, p.z, at.x, at.z), M.blocks.n);
+      if (!next) return this.tell(p.name, 'Algo lo frena');
+      g.cells = next;
+      if (blocksSolved(g.cells, M.blocks.slots)) {
+        g.blocksDone = true;
+        return this.say('Los bloques encajan. La verja se abre');
+      }
+      return this.tell(p.name, 'La roca se arrastra');
+    }
+    if (act === 25) {
+      const lever = insideMountain(M.resetLever);
+      if (!near(lever.x, lever.z, M.leverReach) || g.blocksDone) return;
+      g.cells = M.blocks.starts.map((c) => [c[0], c[1]] as const);
+      return this.tell(p.name, 'Los bloques vuelven a su sitio');
+    }
+  }
+
+  /** Which of the four mountain gates are open: levers, high plate (only while weighted), blocks, the bruto de roca. */
   private mountainGates(): boolean[] {
-    return [false, false, false, false];
+    const g = this.mountainLive;
+    return [g.gate, g.plate, g.blocksDone, g.eliteDown];
+  }
+
+  /** Live Piedra pillars within r of (x, z). */
+  private pillarOn(x: number, z: number, r: number = PIEDRA.plateR): boolean {
+    return this.structures.some((s) => s.kind === 'pillar' && Math.hypot(s.x - x, s.z - z) <= r);
+  }
+
+  /** The high plate reads a pillar or a player on the shelf; the rockfall rolls over whoever is in a lane. */
+  private stepMountainDungeon(): void {
+    const M = MOUNTAIN_DUNGEON;
+    const g = this.mountainLive;
+    const plate = insideMountain(M.shelf);
+    const top = M.floor + M.shelf.h;
+    const onShelf = [...this.live].some(([name, l]) => {
+      const p = this.players.get(name)!;
+      return !p.dead && l.awayFor === null && Math.hypot(p.x - plate.x, p.z - plate.z) <= M.plateR && p.y >= top - 0.5;
+    });
+    const was = g.plate;
+    g.plate = onShelf || this.pillarOn(plate.x, plate.z);
+    if (g.plate && !was) for (const n of this.live.keys()) if (inMountainDungeon(this.players.get(n)!.x, this.players.get(n)!.z)) this.tell(n, 'La losa de arriba cede. La verja se abre mientras pese');
+    const blockers = this.structures.filter((s) => s.kind === 'pillar');
+    for (const [name, l] of this.live) {
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null || !inRockfall(p.x, p.z) || p.y > M.floor + 1.5) continue;
+      if (this.time < (g.hitAt.get(name) ?? -Infinity)) continue;
+      const lane = rockfallLane(p.x);
+      if (lane < 0 || !boulders(this.time, lane, blockers).some((bz) => Math.abs(bz - p.z) <= M.hitZ)) continue;
+      const out = resolveHit(l.guard, this.time, M.damage);
+      if (out.kind === 'dodged') continue;
+      g.hitAt.set(name, this.time + M.grace);
+      if (out.kind === 'parried') {
+        this.tell(name, 'Paras la roca. Duele en los brazos');
+        continue;
+      }
+      this.teleport(p, l, p.x, Math.max(M.rockfall[0] - 1, p.z - M.knock));
+      this.hurt(p, out.dmg);
+      this.tell(name, 'Una roca te arrolla. Un pilar la pararía');
+    }
   }
 
   /** Boardwalk planks under ~1.2 s of weight sink for 4 s; the mud sends fallers back to the gas hall's gate. */
@@ -2304,7 +2413,15 @@ export class WorldSim {
       boss: this.boss3 && this.boss3.hp > 0 ? { hp: Math.round(this.boss3.hp), max: ENEMY.boss3.hp, grounded: this.boss3.grounded > 0, diving: this.boss3.windup > 0, shadow: this.boss3.shadow ? { x: r2(this.boss3.shadow.x), z: r2(this.boss3.shadow.z) } : null, latch: this.boss3.latch } : null,
       vents: this.ventAt.map((t) => this.time - t < 1),
     };
-    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp };
+    const m = this.mountainLive;
+    const mountain = {
+      gates: this.mountainGates(),
+      levers: m.pulled.map((t) => t != null && (m.gate || this.time - t <= MOUNTAIN_DUNGEON.leverWindow + EPS)),
+      plate: m.plate,
+      blocks: m.cells.map((c) => dungeonBlockCell(c)),
+      elite: null,
+    };
+    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp, mountain };
   }
 
   /** Which of the five dungeon gates are open. */
