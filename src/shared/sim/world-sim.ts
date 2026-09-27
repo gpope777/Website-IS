@@ -1,7 +1,7 @@
 import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
-import { smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
+import { altitudeCold, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
@@ -545,7 +545,7 @@ export class WorldSim {
     for (const [name, l] of this.live) {
       const p = this.players.get(name)!;
       if (p.dead || l.awayFor !== null) continue; // away players are frozen: the world sleeps for them
-      p.vitals = tickVitals(p.vitals, { night, nearFire: this.nearFire(p.x, p.z) }, dt);
+      p.vitals = tickVitals(p.vitals, { night, nearFire: this.nearFire(p.x, p.z), cold: altitudeCold(this.terrain, p.x, p.z) }, dt);
       if (!l.riding && !l.seat && inCienaga(p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
         p.vitals = damage(p.vitals, CIENAGA.dps * dt);
         this.hint(p.name, l, 'El barro marchito muerde. A lomos del ciervo no');
@@ -1238,6 +1238,7 @@ export class WorldSim {
     const ready = l.fireReadyAt ?? 0;
     if (this.time + EPS < ready) return this.tell(p.name, `El fuego aún no prende (${Math.ceil(ready - this.time - EPS)} s)`);
     l.fireReadyAt = this.time + FUEGO.cooldown;
+    p.vitals = { ...p.vitals, warmth: Math.min(100, p.vitals.warmth + COLD.warmFlame) }; // the flame warms your hands (S4 §3.4)
     const dir = gustDir(p.x, p.z, x, z);
     const hits = (tx: number, tz: number, range: number = FUEGO.range) => inFlame(p.x, p.z, dir, tx, tz, range);
     this.flameEnemies(p, hits);

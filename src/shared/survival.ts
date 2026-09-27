@@ -37,11 +37,13 @@ export function isNight(dayFraction: number): boolean {
 export interface VitalsEnv {
   night: boolean;
   nearFire: boolean;
+  /** High in las Montañas (S4 §3.4): away from a fire, warmth drains like night by day and twice as fast at night. */
+  cold?: boolean;
 }
 
 export function tickVitals(v: Vitals, env: VitalsEnv, dt: number): Vitals {
   const hunger = clamp(v.hunger - RATES.hunger * dt);
-  const warmthRate = env.nearFire ? RATES.warmthFire : env.night ? -RATES.warmthNight : RATES.warmthDay;
+  const warmthRate = env.nearFire ? RATES.warmthFire : env.cold ? -RATES.warmthNight * (env.night ? 2 : 1) : env.night ? -RATES.warmthNight : RATES.warmthDay;
   const warmth = clamp(v.warmth + warmthRate * dt);
   let hurt = 0;
   if (hunger === 0) hurt += RATES.starve;

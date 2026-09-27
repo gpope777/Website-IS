@@ -4711,3 +4711,24 @@ describe('las Montañas: the steep rule on the server', () => {
     expect(moveTo(sim, 0, zd(PELDANOS.first + PELDANOS.run + 4))).toBe(true);
   });
 });
+
+describe('las Montañas: cold (S4-B)', () => {
+  it('the Pico drains warmth by day; the forest warms; a Llamarada warms the caster', () => {
+    const sim = setup('Ana');
+    sim.time = DAY_LENGTH * 0.5;
+    const { pico } = mountainFeatures(42);
+    put(sim, 'Ana', pico.x, pico.z);
+    const ana = sim.getPlayer('Ana')!;
+    ana.vitals.warmth = 50;
+    for (let i = 0; i < 100; i++) sim.step(0.1);
+    expect(ana.vitals.warmth).toBeLessThan(50);
+    ana.fuego = true;
+    const before = ana.vitals.warmth;
+    sim.handle('Ana', { t: 'power', x: pico.x, z: pico.z + 2, kind: 'fuego' });
+    expect(sim.getPlayer('Ana')!.vitals.warmth).toBeCloseTo(before + 20, 5);
+    put(sim, 'Ana', 40, 40);
+    const low = sim.getPlayer('Ana')!.vitals.warmth;
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect(sim.getPlayer('Ana')!.vitals.warmth).toBeGreaterThan(low);
+  });
+});

@@ -36,3 +36,10 @@ export function steepBlocked(t: Terrain, px: number, pz: number, nx: number, nz:
   }
   return false;
 }
+
+/** Altitude cold (spec S4 §3.4): above COLD.y of terrain height in the mountains; a Llamarada warms its caster by warmFlame. */
+export const COLD = { y: 30, warmFlame: 20 } as const;
+
+export function altitudeCold(t: Terrain, x: number, z: number): boolean {
+  return inMountains(x, z) && t.heightAt(x, z) > COLD.y;
+}

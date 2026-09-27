@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, createTerrain, HALF, inMap, inMountains, MOUNTAINS, mountainFeatures, PELDANOS, PICO, SWAMP } from './terrain';
 import { generateCrags } from './crags';
-import { slopeAt, smoothAt, steepBlocked } from './mountains';
+import { altitudeCold, slopeAt, smoothAt, steepBlocked } from './mountains';
 import snapshot from './terrain-s3.snapshot.json';
 
 const SEEDS = [42, 7, 1234];
@@ -127,5 +127,15 @@ describe('las Montañas: the steep rule', () => {
     const p = paredes[0]!;
     const out = p.rt + p.w + 1;
     expect(steepBlocked(t, p.x + out, p.z, p.x + p.rt + 1, p.z)).toBe(true);
+  });
+});
+
+describe('altitude cold', () => {
+  it('is cold high up in the mountains only', () => {
+    const t = createTerrain(42);
+    const { pico } = mountainFeatures(42);
+    expect(altitudeCold(t, pico.x, pico.z)).toBe(true);
+    expect(altitudeCold(t, 0, 0)).toBe(false);
+    expect(altitudeCold(t, 0, -HALF - 0.5)).toBe(false);
   });
 });
