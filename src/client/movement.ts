@@ -11,6 +11,7 @@ import { BOG, inBog, ZARZAL, zarzalAt } from '../shared/swamp';
 import { climbableAt, slopeAt, smoothAt, STEEP, steepBlocked } from '../shared/mountains';
 import { inMountains } from '../shared/terrain';
 import { VIENTO } from '../shared/viento';
+import { inChute, slideDir, snowAt, SNOWSLIDE } from '../shared/snowslide';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
 export interface MoveInput {
@@ -61,6 +62,10 @@ export interface Body {
   dragon?: boolean;
   /** A raid near the Heart: the dragon keeps DRAGON.noLandY up (the server refuses lower). */
   noLand?: boolean;
+  /** On your belly down the snow (S4-H tobogán). */
+  sliding?: boolean;
+  /** Seconds the slide has been on a flat (< SNOWSLIDE.stopDeg) off the chute. */
+  flatFor?: number;
   /** Metres of Viento lift still to rise, and whether this flight already used its lift. */
   lift: number;
   boosted: boolean;
@@ -80,6 +85,8 @@ export interface StepResult {
   gliding: boolean;
   /** Las Montañas refused an uphill step (for a toast): smooth rock, the deer, or just too steep. */
   steep?: 'smooth' | 'deer' | 'steep' | 'wet';
+  /** On your belly down the snow (S4-H). */
+  sliding?: boolean;
 }
 
 export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2, swimFast: 4 } as const;
@@ -153,6 +160,7 @@ export function stepBody(
   if (b.whale) return stepWhale(b, input, camYaw, dt, terrain, bounds);
   if (b.dragon) return stepDragon(b, input, camYaw, dt, terrain, bounds);
   if (b.frog) return stepFrog(b, input, camYaw, dt, terrain, nearby, crags, bounds, jumpEdge);
+  if (b.sliding && !b.riding) return stepSlide(b, input, camYaw, dt, terrain, nearby, crags, bounds, jumpEdge);
 
   const hereH = terrain.heightAt(b.x, b.z);
   const swimming = hereH < SWIM_DEPTH;
@@ -171,6 +179,11 @@ export function stepBody(
   }
   const moving = mag > 0.01;
   const running = input.sprint && moving && !swimming;
+  // El tobogán (S4-H): B while running on steep snow throws you on your belly instead of jumping.
+  if (jumpEdge && running && b.onGround && !b.riding && !b.tired && snowAt(terrain, b.x, b.z) && slopeAt(terrain, b.x, b.z) > SNOWSLIDE.startDeg) {
+    Object.assign(b, { sliding: true, flatFor: 0, gliding: false });
+    return stepSlide(b, input, camYaw, dt, terrain, nearby, crags, bounds, false);
+  }
   const swimFast = swimming && input.sprint && moving && !b.tired;
   const wading = !b.riding && b.onGround && inCienaga(b.x, b.z);
   const base = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
@@ -468,6 +481,43 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
   return { ...RESULT_IDLE, moving, running: input.sprint && moving, steep };
 }
 
+/**
+ * The tobogán: downhill (south in the chute) with the stick bending it up to ±30°, ramping to 14 m/s, hugging the ground.
+ * Ends on B, on a tree or rock (a stop, no damage), off snow, or after 1 s on a flat outside the chute.
+ */
+function stepSlide(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, nearby: (x: number, z: number) => Circle[], crags: readonly Crag[], bounds: Bounds, jumpEdge: boolean): StepResult {
+  const stop = (): StepResult => {
+    Object.assign(b, { sliding: false, flatFor: 0, vx: 0, vz: 0 });
+    return { ...RESULT_IDLE };
+  };
+  if (jumpEdge) return stop();
+  const d = slideDir(terrain, b.x, b.z);
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = input.x * c + input.z * s;
+  const wz = -input.x * s + input.z * c;
+  // The stick's sideways part (relative to downhill) bends the slide, never more than `steer`.
+  const lat = Math.max(-1, Math.min(1, d.z * wx - d.x * wz));
+  const a = lat * SNOWSLIDE.steer;
+  const dx = d.x * Math.cos(a) + d.z * Math.sin(a);
+  const dz = d.z * Math.cos(a) - d.x * Math.sin(a);
+  const sp = Math.min(SNOWSLIDE.speed, Math.hypot(b.vx, b.vz) + SNOWSLIDE.accel * dt);
+  b.vx = dx * sp;
+  b.vz = dz * sp;
+  const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
+  if (nearby(to.x, to.z).some((o) => Math.hypot(to.x - o.x, to.z - o.z) < PLAYER_RADIUS + o.r)) return stop();
+  if (crags.some((cr) => cr.top > b.y + 0.6 && Math.hypot(to.x - cr.x, to.z - cr.z) < PLAYER_RADIUS + cr.r)) return stop();
+  b.x = to.x;
+  b.z = to.z;
+  b.facing = Math.atan2(dx, dz);
+  b.y = terrain.heightAt(b.x, b.z);
+  Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null, wall: false });
+  if (!snowAt(terrain, b.x, b.z)) return stop();
+  b.flatFor = !inChute(b.x, b.z) && slopeAt(terrain, b.x, b.z) < SNOWSLIDE.stopDeg ? (b.flatFor ?? 0) + dt : 0;
+  if (b.flatFor >= SNOWSLIDE.stopAfter) return stop();
+  return { ...RESULT_IDLE, moving: true, sliding: true };
+}
+
 /** On the dragon: 15 m/s along the stick, B held climbs, released sinks; ceiling ground + 35 (y ≤ 120); never into the fog. */
 function stepDragon(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, bounds: Bounds): StepResult {
   let ix = input.x;
@@ -598,6 +648,7 @@ function stepClimb(b: Body, input: MoveInput, dt: number, terrain: Terrain, jump
 export function animFor(r: StepResult, b: Body): Anim {
   if (r.climbing) return 'climb';
   if (r.gliding) return 'glide';
+  if (r.sliding) return 'slide';
   if (r.swimming) return 'swim';
   if (!b.onGround) return 'jump';
   if (!r.moving) return 'idle';

@@ -696,3 +696,83 @@ describe('flying el Dragón', () => {
     expect(c.y).toBeCloseTo(6, 1);
   });
 });
+
+describe('tobogán de nieve (S4-H)', () => {
+  const z0 = -HALF - 100;
+  /** Snowy mountain slope at x ≈ 40 (off the chute): downhill is +z, flat from zFlat on, height 100 at z0. */
+  const slope = (deg: number, zFlat = Infinity, low = -1000): Terrain => ({
+    heightAt: (_x, z) => Math.max(low, 100 - Math.tan((deg * Math.PI) / 180) * (Math.min(z, zFlat) - z0)),
+    density: () => 0.5,
+  });
+  const runSide: MoveInput = { x: 1, z: 0, sprint: true, jump: false };
+  const start = (t: Terrain) => {
+    const b = createBody(40, z0, t);
+    stepBody(b, runSide, 0, 1 / 60, t, none);
+    const r = stepBody(b, { ...runSide, jump: true }, 0, 1 / 60, t, none);
+    return { b, r };
+  };
+  const go = (b: Body, t: Terrain, input: MoveInput, s: number, nearby: Parameters<typeof stepBody>[5] = none) => {
+    let r = stepBody(b, input, 0, 1 / 60, t, nearby);
+    for (let k = 0; k < s * 60; k++) r = stepBody(b, input, 0, 1 / 60, t, nearby);
+    return r;
+  };
+
+  it('B while running on steep snow: a belly slide downhill up to 14 m/s', () => {
+    const t = slope(25, Infinity, -1000);
+    const { b, r } = start(t);
+    expect(b.sliding).toBe(true);
+    expect(animFor(r, b)).toBe('slide');
+    const r2 = go(b, t, { x: 0, z: 0, sprint: false, jump: false }, 3);
+    expect(b.sliding).toBe(true);
+    expect(animFor(r2, b)).toBe('slide');
+    expect(b.vz).toBeCloseTo(14, 0);
+    expect(b.onGround).toBe(true);
+    expect(b.y).toBeCloseTo(t.heightAt(b.x, b.z), 3);
+  });
+  it('on a gentle slope B is still a jump', () => {
+    const { b } = start(slope(10, Infinity, -1000));
+    expect(b.sliding).toBeFalsy();
+    expect(b.onGround).toBe(false);
+  });
+  it('the stick steers at most 30°', () => {
+    const t = slope(25, Infinity, -1000);
+    const { b } = start(t);
+    go(b, t, { x: 1, z: 0, sprint: false, jump: false }, 2);
+    expect(Math.abs(Math.atan2(b.vx, b.vz))).toBeLessThanOrEqual(Math.PI / 6 + 1e-6);
+    expect(b.vx).toBeGreaterThan(1);
+  });
+  it('B again gets you up', () => {
+    const t = slope(25, Infinity, -1000);
+    const { b } = start(t);
+    go(b, t, { x: 0, z: 0, sprint: false, jump: false }, 0.5);
+    go(b, t, { x: 0, z: 0, sprint: false, jump: true }, 0);
+    expect(b.sliding).toBe(false);
+  });
+  it('stops on a flat after about 1 s, off snow, or at a tree', () => {
+    const flatAt = z0 + 20;
+    const t = slope(25, flatAt);
+    const { b } = start(t);
+    go(b, t, { x: 0, z: 0, sprint: false, jump: false }, 8);
+    expect(b.sliding).toBe(false);
+    expect(b.z).toBeGreaterThan(flatAt + 5);
+    const low = slope(25, Infinity, -1000); // runs below 55 m: off snow
+    const s = start(low).b;
+    go(s, low, { x: 0, z: 0, sprint: false, jump: false }, 10);
+    expect(s.sliding).toBe(false);
+    expect(low.heightAt(s.x, s.z)).toBeLessThan(60);
+    const tree = start(t).b;
+    go(tree, t, { x: 0, z: 0, sprint: false, jump: false }, 3, () => [{ x: 40, z: z0 + 8, r: 0.5 }]);
+    expect(tree.sliding).toBe(false);
+    expect(tree.z).toBeLessThan(z0 + 8);
+  });
+  it('the chute carries you from the Cumbre down to the Umbral', () => {
+    const t = createTerrain(42);
+    const b = createBody(0, -HALF - 140, t);
+    b.sliding = true;
+    go(b, t, { x: 0, z: 0, sprint: false, jump: false }, 25);
+    expect(b.sliding).toBe(false);
+    expect(Math.abs(b.x)).toBeLessThan(2);
+    expect(b.z).toBeGreaterThan(-HALF - 2);
+    expect(b.z).toBeLessThan(-HALF + 4);
+  });
+});

@@ -256,6 +256,8 @@ export class Game {
   private travelLeft: number | null = null;
   /** Las Montañas: when the next "too steep" toast may show (ms). */
   private steepToastAt = 0;
+  /** The tobogán's one-time hint was shown this session (S4-H). */
+  private slideTold = false;
   /** Mountain weather (S4-B): rain/snow cloud and the last day fraction (for the dawn line). */
   private weatherFx!: WeatherFx;
   private lastFrac: number | null = null;
@@ -1250,6 +1252,10 @@ export class Game {
     if (res.steep && now >= this.steepToastAt) {
       this.steepToastAt = now + 3000;
       this.hud.toast(STEEP_TEXT[res.steep]);
+    }
+    if (res.sliding && !this.slideTold) {
+      this.slideTold = true;
+      this.hud.toast('Tobogán. B para levantarte');
     }
     this.hud.setStamina(b.stamina / b.staminaMax, b.tired);
     let anim: Anim | 'dead' = animFor(res, b);

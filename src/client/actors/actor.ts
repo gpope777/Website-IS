@@ -21,6 +21,8 @@ export const PLAYER_CLIPS: Record<string, ClipDef> = {
   bow: { clip: 'Punch', speed: 0.7, once: true },
   climb: { clip: 'Punch', speed: 0.6 },
   glide: { clip: 'Jump', speed: 0.4, once: true },
+  // ponytail: no belly-slide clip in the robot kit; a held jump pose until real animations exist.
+  slide: { clip: 'Jump', speed: 0.6, once: true },
   dead: { clip: 'Death', once: true },
 };
 
