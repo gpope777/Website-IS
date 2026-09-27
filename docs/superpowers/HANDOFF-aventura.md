@@ -632,6 +632,14 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Bloqueos: ninguno.
 - Qué probar: coger antorcha en Candiles y encender la fogata más cercana; de día, E en ella y esperar 5 s; recibir un golpe a mitad; probar de noche. Menú en el Corazón → fogata. ¿Se ve la llama en la niebla? ¿5 s se hacen largos? Constantes: `FOGATA` en `src/shared/fogatas.ts`.
 
+## Slice 4 — resumen (LEER PRIMERO)
+- **S4-A a S4-H: todos hechos, ninguno bloqueado.** Rama `aventura/resto`, PR draft #3. Nada mergeado ni desplegado.
+- Tests finales: npm test 789, test:workers 12, check + build verdes. **PROTOCOL_VERSION = 43.** Todos los campos guardados nuevos son opcionales (`SavedPlayer.quartz/piedra/dragon`, `SavedWorld.mountainsSeen/purified4/escalera`, fogatas 6): las partidas viejas cargan y reciben Montañas.
+- **Qué hay:** S4-A las Montañas al norte, los Peldaños (rana) y la regla de la pendiente · S4-B trepar roca, frío de altura y clima sembrado (lluvia/tormenta) · S4-C santuarios 9–11, cuarzo, arma 4–5 y 2 refugios · S4-D zonas 14–17 y El Triángulo (asedios) · S4-E mazmorra de la Montaña y la Piedra (🌿→🌬️→🔥→🪨) · S4-F El Cucurucho, la atalaya y la Escalera del Umbral · S4-G el Dragón (tormentas, salto desde el Pico, vuelo) · S4-H tobogán de nieve y las últimas visiones.
+- **Decidido por Claude — revisar (lo gordo):** 60/25/15 % de clima cede ante "una tormenta cada 4 días"; el frío empieza a 30 m absolutos (casi todas las Faldas); pilares = construcciones; la rampa de la Escalera cambia el terreno (`withEscalera`); el dragón vuela a radio 22 m (no 14) y la ventana del salto va por rumbo; el tobogán dura ~15 s del Pico al Umbral (no ~40 s) y en el canal siempre baja al sur; visiones de entrada (Pantano y Montañas) una vez por mundo.
+- **Balance a revisar en juego:** `PELDANOS` (salto de la rana), `COLD.y`, coste de cuarzo, vida y carga de El Cucurucho, 1,5 s de ventana del dragón y sus 5 rondas, `SNOWSLIDE` (15° para empezar, 14 m/s).
+- **Orden de prueba:** rana por los Peldaños (visión «Qué alto…») → trepar y frío → santuarios y cuarzo → un asedio con El Triángulo → mazmorra y Piedra → Escalera (visión) → El Cucurucho → tormenta y dragón → tobogán desde el Pico hasta el Umbral.
+
 ## Slice 4 · S4-A — las Montañas, los Peldaños y la regla de la pendiente — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-A-montanas-peldanos.md` (7ebd5db).
 - Commits: 877151b (T1 terreno de las Montañas, límites en unión de 3 rectángulos, sin peñascos junto a los Peldaños, nombres), 85d7489 (T2 regla de la pendiente en el servidor, protocolo v32), 467ba2c (T3 movimiento en el cliente y aviso), 31770a1 (T4 malla por trozos con silueta, colores y pinos).
@@ -815,3 +823,24 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: vencer al Cucurucho y esperar una tormenta (≤ 4 días); subir al Pico y ver el dragón morado. ¿Se entiende el aro dorado? ¿1,5 s basta? Las 5 rondas (¿se nota el cambio de sentido?). Fallar a propósito y abrir el planeador. Volar: subir con B, soltar, salir del Pico en picado, ir hasta la niebla. Llevar a un amigo detrás. Constantes: `DRAGON` en `src/shared/dragon.ts`, `FAR_K` en `src/client/camera-rig.ts`.
+
+## Slice 4 · S4-H — tobogán de nieve y visiones de la Montaña — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-H-tobogan.md`.
+- Commits: 8bd7375 (T1 reglas `src/shared/snowslide.ts` y tope 16 en el servidor, protocolo v43), 60b4677 (T2 visiones de entrada y de la Escalera), a94254c (T3 cliente).
+- Tests: npm test 789 (antes 774), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 43** (`'slide'` en `ANIMS`; el servidor acepta deslizadores más rápidos). Sin campos guardados nuevos.
+- Cómo funciona:
+  - **Tobogán:** en nieve (Montañas con altura > 55 m, o el canal |x| < 5) con pendiente > 15°, **B / Espacio corriendo** → de barriga cuesta abajo, acelera hasta **14 m/s**; el stick lo tuerce ±30°. Termina con B, contra un árbol o roca (se para, sin daño), fuera de la nieve o tras 1 s en llano (< 8°) fuera del canal. Primera vez: "Tobogán. B para levantarte".
+  - **El canal** te lleva siempre al sur, Peldaños abajo, y te para en el borde del bosque, a 3 m del Umbral.
+  - **Servidor:** con anim `'slide'`, tope **16 m/s** si el principio y el final de la ventana son nieve y no sube más de 3 m; 1 s de gracia después.
+  - **Visiones:** la primera vez que alguien entra en las Montañas («Qué alto, <nombre>. Qué frío.») y al alzar la Escalera (nombra a los presentes). Ya no queda ninguna marca `// S4-H`.
+- Decidido por Claude — revisar:
+  - "Nieve" = altura absoluta > 55 (la cima y la falda del Pico) o el canal; las Faldas fuera del canal no son nieve.
+  - En el canal la bajada no depende de la pendiente local (tiene tramos de 7° y baches de 2–3 m); por eso el servidor tolera subir 3 m en la ventana.
+  - Del Pico (d = 170) al Umbral son ~15 s a 14 m/s, no ~40 s: se respetó la velocidad del spec.
+  - Sin animación de barriga en el kit de robots: la pose es la del salto sostenida (marcada `ponytail`).
+  - La visión de las Montañas es una vez por mundo: los mundos que ya tenían `mountainsSeen` no la reciben.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 43 en `protocol.test.ts` y `world-sim.test.ts`.
+- Rendimiento móvil: nada nuevo que dibujar.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: subir al Pico, bajar hacia el canal, correr y pulsar B; ¿se entiende que el canal te lleva? ¿14 m/s es divertido o da miedo en móvil? Constantes: `SNOWSLIDE` en `src/shared/snowslide.ts`.
