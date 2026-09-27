@@ -36,7 +36,8 @@ import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
 import { PaperActor, type Puppet } from './actors/paper';
 import { guardianAction, guardianLine, raidsMenu } from './ending-ui';
-import { ENDING, guardianSpot } from '../shared/ending';
+import { ENDING, guardianSpot, withLookout } from '../shared/ending';
+import { ESTRELLA } from '../shared/estrella';
 import { withGrieta } from '../shared/corrupt-lands';
 import { DungeonMeshes } from './scene/dungeon';
 import { CoastDungeonMeshes, GustFx } from './scene/coast-dungeon';
@@ -122,6 +123,9 @@ const CORE_IMG = '/enemies/enemy8.png';
 const CORE_ASPECT = 638 / 536;
 const GUARDIAN_IMG = '/enemies/enemy6.png';
 const GUARDIAN_ASPECT = 512 / 280;
+/** S5-H: la Estrella (enemy14.png, 423 × 430). */
+const STAR_IMG = '/enemies/enemy14.png';
+const STAR_ASPECT = 423 / 430;
 /** The four brotes' tints (Enredadera, Viento, Fuego, Piedra). */
 const BROTE_TINT = [0x7ad07a, 0xbfe6ff, 0xff9a5a, 0xc8b89a];
 
@@ -132,6 +136,8 @@ interface Remote {
   seen: number;
   /** A player riding a deer. */
   ride: boolean;
+  /** S5-H: that deer is la Estrella. */
+  star?: boolean;
   /** A player on the giant fish. */
   fish: boolean;
   /** A player on a frog. */
@@ -231,6 +237,10 @@ export class Game {
   /** The rider we sit behind (the server moves us with them). */
   private seat: string | null = null;
   private hasSteed = false;
+  /** S5-H: our steed is la Estrella; the wild one in view; her papers by key. */
+  private hasStar = false;
+  private estrella: SteedView | null = null;
+  private readonly stars = new Map<string, PaperActor>();
   private fishMeshes: FishMeshes | null = null;
   private whaleMesh: WhaleMesh | null = null;
   /** La Ballena from the last snapshot, where we draw it (smoothed), and our seat on it. */
@@ -493,7 +503,7 @@ export class Game {
     this.escaleraUp = false;
     this.ending = false;
     const plain = withDungeon(createTerrain(seed));
-    this.terrain = withGrieta(withEscalera(plain, () => this.escaleraUp), () => this.ending);
+    this.terrain = withLookout(withGrieta(withEscalera(plain, () => this.escaleraUp), () => this.ending), () => this.ending);
     this.spawns = generateResources(this.terrain, seed);
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
@@ -653,7 +663,7 @@ export class Game {
       this.villainTower?.setWhite(this.ending);
     }
     this.raidsOff = m.raidsOff ?? false;
-    if (this.body) this.body.grieta = this.ending;
+    if (this.body) Object.assign(this.body, { grieta: this.ending, lookout: this.ending, star: this.hasStar });
     this.syncGuardian();
     this.umbral?.sync(m.escalera);
     this.fogatasLit = m.fogatas;
@@ -673,6 +683,7 @@ export class Game {
     this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? rockBarText(m.dungeon.mountain) ?? cucuruchoBarText(m.dungeon.mountain) ?? (m.dungeon.tower ? (finalBarText(m.dungeon.tower) ?? flechaBarText(m.dungeon.tower)) : null) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
+    this.estrella = m.estrella ?? null;
     this.fishViews = m.fish;
     this.frogViews = m.frogs;
     this.dragonViews = m.dragons ?? [];
@@ -691,6 +702,7 @@ export class Game {
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
       r.ride = p.ride === 'deer' && !p.dead;
+      r.star = !!p.star;
       r.fish = p.ride === 'fish' && !p.dead;
       r.frog = p.ride === 'frog' && !p.dead;
       r.dragon = p.ride === 'dragon' && !p.dead;
@@ -945,6 +957,7 @@ export class Game {
     this.riding = self.riding;
     this.seat = self.seat;
     this.hasSteed = self.steed;
+    this.hasStar = self.star ?? false;
     this.hasFish = self.fish;
     this.onFish = self.onFish;
     this.race = self.race;
@@ -1165,7 +1178,7 @@ export class Game {
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     const sp = this.shrinePart();
     if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
-    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final);
+    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending);
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
     const ca = this.coastAct();
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
@@ -1210,7 +1223,7 @@ export class Game {
     const pico = this.pico;
     const onPico = !!pico && Math.hypot(b.x - pico.x, b.z - pico.z) <= DRAGON.rim && b.y >= pico.top - 2;
     const shallow = !!this.terrain && depthAt(this.terrain, b.x, b.z) < FISH.shore;
-    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews, hasFrog: this.hasFrog, onFrog: this.onFrog, frogs: this.frogViews, whale: this.whaleView, whaleSeat: this.whaleSeat, hasDragon: this.hasDragon, onDragon: this.onDragon, landed: b.onGround, onPico, dragons: this.dragonViews });
+    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews, hasFrog: this.hasFrog, onFrog: this.onFrog, frogs: this.frogViews, whale: this.whaleView, whaleSeat: this.whaleSeat, hasDragon: this.hasDragon, onDragon: this.onDragon, landed: b.onGround, onPico, dragons: this.dragonViews, hasStar: this.hasStar, estrella: this.estrella });
   }
 
   /** One tap on the taming ring: the server judges the needle at our estimate of its clock. */
@@ -1598,14 +1611,46 @@ export class Game {
   private syncSteeds(dt: number, wild: SteedView | undefined): void {
     const b = this.body!;
     const poses: SteedPose[] = [];
-    for (const s of this.steeds) poses.push({ key: s.owner ?? '~wild', x: s.x, y: s.y, z: s.z, yaw: s.yaw, speed: 0, wild: s.owner === null, bucking: s.owner === null && this.tame?.beast === 'deer' && s === wild });
-    if (this.riding) poses.push({ key: `ride:${this.myName}`, x: b.x, y: b.y, z: b.z, yaw: b.facing, speed: Math.hypot(b.vx, b.vz), wild: false, bucking: false });
+    const stars: { key: string; x: number; y: number; z: number; yaw: number; moving: boolean }[] = [];
+    if (this.estrella) stars.push({ key: '~wild', ...this.estrella, moving: true });
+    for (const s of this.steeds) if (s.star) stars.push({ key: s.owner ?? '?', x: s.x, y: s.y, z: s.z, yaw: s.yaw, moving: false });
+    if (this.riding && this.hasStar) stars.push({ key: `ride:${this.myName}`, x: b.x, y: b.y, z: b.z, yaw: b.facing, moving: Math.hypot(b.vx, b.vz) > 0.3 });
     for (const [name, r] of this.others) {
-      if (!r.ride) continue;
+      if (!r.ride || !r.star) continue;
+      const p = r.actor.root.position;
+      stars.push({ key: `ride:${name}`, x: p.x, y: p.y - MOUNT.height, z: p.z, yaw: r.actor.root.rotation.y, moving: r.speed > 0.3 });
+    }
+    this.syncStars(stars, dt);
+    for (const s of this.steeds) if (!s.star) poses.push({ key: s.owner ?? '~wild', x: s.x, y: s.y, z: s.z, yaw: s.yaw, speed: 0, wild: s.owner === null, bucking: s.owner === null && this.tame?.beast === 'deer' && s === wild });
+    if (this.riding && !this.hasStar) poses.push({ key: `ride:${this.myName}`, x: b.x, y: b.y, z: b.z, yaw: b.facing, speed: Math.hypot(b.vx, b.vz), wild: false, bucking: false });
+    for (const [name, r] of this.others) {
+      if (!r.ride || r.star) continue;
       const p = r.actor.root.position;
       poses.push({ key: `ride:${name}`, x: p.x, y: p.y - MOUNT.height, z: p.z, yaw: r.actor.root.rotation.y, speed: r.speed, wild: false, bucking: false });
     }
     this.steedMeshes?.sync(poses, dt, performance.now() / 1000);
+  }
+
+  /** S5-H: la Estrella as paper (wild, parked or ridden); she spins as she rolls. */
+  private syncStars(list: readonly { key: string; x: number; y: number; z: number; yaw: number; moving: boolean }[], dt: number): void {
+    const seen = new Set<string>();
+    for (const s of list) {
+      seen.add(s.key);
+      let a = this.stars.get(s.key);
+      if (!a) {
+        a = new PaperActor(STAR_IMG, ESTRELLA.h, this.camera, STAR_ASPECT);
+        this.scene.add(a.root);
+        this.stars.set(s.key, a);
+      }
+      a.play(s.moving ? 'walk' : 'idle');
+      a.setPose(s.x, s.y, s.z, s.yaw);
+      a.update(dt);
+    }
+    for (const [k, a] of this.stars) {
+      if (seen.has(k)) continue;
+      a.root.removeFromParent();
+      this.stars.delete(k);
+    }
   }
 
   /** Wild and parked fish, one under every fish rider (us included), and the race rings. */
@@ -1725,7 +1770,7 @@ export class Game {
     if (pa) return this.hud.setPrompt(`E · ${pa.label}`);
     const ga = this.guardianAct();
     if (ga) return this.hud.setPrompt(`E · ${ga.label}`);
-    const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(this.body, this.towerDoor, this.towerOpen, this.dungeon.tower.final));
+    const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(this.body, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma?.act === 17) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio (mantener) · Subir`);
     if (ma?.act === 14) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio · Salto alto`);

@@ -231,3 +231,10 @@ describe('finalBarText and the brote action (S5-F)', () => {
     expect(towerDungeonAction(at, { x: 0, z: 0 }, true, { ...f, phase: 1 })).toBeNull();
   });
 });
+
+describe('towerDungeonAction after the ending (S5-H)', () => {
+  it('the door says Subir', () => {
+    const door = towerEntrance();
+    expect(towerDungeonAction({ x: door.x, z: door.z + 2 }, door, true, null, true)).toEqual({ act: 26, label: "Subir al Árbol-torre" });
+  });
+});

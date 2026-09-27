@@ -1,3 +1,5 @@
+import { ESTRELLA } from '../shared/estrella';
+import { inLookout } from '../shared/ending';
 import { clampMap, WATER_LEVEL, waterLevel, type Islet, type Terrain } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
 import { FROG, frogHop, frogMoveOk } from '../shared/frog';
@@ -27,6 +29,12 @@ export interface Body {
   thornsOpen?: boolean;
   /** S5-G: la Grieta is open (the ending, from the snapshot): walkers cross el Borde in it. */
   grieta?: boolean;
+  /** S5-H: the steed is la Estrella (faster). */
+  star?: boolean;
+  /** S5-H: el Árbol-torre's top is open (after the ending). */
+  lookout?: boolean;
+  /** S5-H: la corriente: left the top and hasn't landed yet (the glider is free). */
+  corriente?: boolean;
   x: number;
   y: number;
   z: number;
@@ -192,7 +200,7 @@ export function stepBody(
   }
   const swimFast = swimming && input.sprint && moving && !b.tired;
   const wading = !b.riding && b.onGround && inCienaga(b.x, b.z);
-  const base = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
+  const base = b.riding ? (b.star ? (input.sprint ? ESTRELLA.run : ESTRELLA.walk) : input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
   // El Zarzal holds walkers and deer to a crawl; the swamp's bog slows walkers (the server checks both).
   const grounded = b.onGround && !swimming;
   const speed = grounded && zarzalAt(terrain, b.x, b.z, b.thornsOpen) ? Math.min(base, ZARZAL.speed) : grounded && !b.riding && inBog(terrain, b.x, b.z) ? base * BOG.k : base;
@@ -279,7 +287,8 @@ export function stepBody(
     b.vy = JUMP_SPEED;
     b.onGround = false;
   }
-  if (b.gliding) {
+  if (b.onGround && Math.abs(b.y - terrainH) < 0.5) b.corriente = !!b.lookout && inLookout(b.x, b.z); // touched ground: on the top it starts, anywhere else it ends
+  if (b.gliding && !b.corriente) {
     spend(b, STAMINA.glide * dt);
     if (b.tired) b.gliding = false;
   }

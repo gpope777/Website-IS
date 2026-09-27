@@ -188,11 +188,11 @@ export function rockBarText(view: MountainDungeonView): string | null {
 }
 
 /** The contextual A / E at the tower (acts 26–27): the door (the server says if it is shut) and the way out. Every floor is solved with a power. */
-export function towerDungeonAction(pos: { x: number; z: number }, door: { x: number; z: number }, open: boolean, final: FinalView | null = null): { act: number; label: string } | null {
+export function towerDungeonAction(pos: { x: number; z: number }, door: { x: number; z: number }, open: boolean, final: FinalView | null = null, ending = false): { act: number; label: string } | null {
   const T = TOWER_DUNGEON;
   const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
   const name = NAMES.villainTower;
-  if (!inTowerDungeon(pos.x, pos.z)) return near(door.x, door.z, T.doorReach) ? { act: 26, label: open ? `Entrar en ${name}` : 'La puerta' } : null;
+  if (!inTowerDungeon(pos.x, pos.z)) return near(door.x, door.z, T.doorReach) ? { act: 26, label: ending ? `Subir a ${NAMES.treeTower}`.replace("a el ", "al ") : open ? `Entrar en ${name}` : 'La puerta' } : null;
   if (near(T.x, T.entryZ, T.exitReach)) return { act: 27, label: `Salir de ${name}` };
   // S5-F: a brote within reach (act 28; a closed one: the server says what it wants).
   const br = final?.phase === 2 ? final.brotes.find((b) => !b.broken && near(b.x, b.z, FINAL.pullReach)) : undefined;

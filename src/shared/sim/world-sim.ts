@@ -2238,7 +2238,7 @@ export class WorldSim {
         if (l.dragon || l.riding || l.frog || l.fish || l.tame || l.seat) return this.tell(p.name, 'Bájate antes de subir');
         const top = lookoutTop(this.terrain);
         this.teleport(p, l, top.x + FOGATA.arrive, top.z);
-        return this.tell(p.name, `Subes a la cima de ${NAMES.treeTower}. Desde aquí se ve todo el bosque. Y se planea lejos`);
+        return this.tell(p.name, `Subes a la cima de ${NAMES.treeTower}. Desde aquí se ve todo el bosque. Y se planea lejos`.replace("de el ", "del "));
       }
       if (!this.towerOpen) return this.tell(p.name, this.pillarsBroken.every(Boolean) ? 'Una raíz cierra la puerta. Él vendrá antes' : 'Una raíz cierra la puerta. Rompan los Pilares');
       if (l.dragon || l.riding || l.frog || l.fish || l.tame) return this.tell(p.name, 'Bájate antes de entrar');

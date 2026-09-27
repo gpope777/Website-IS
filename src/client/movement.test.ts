@@ -812,3 +812,35 @@ describe('las Tierras Corruptas (S5-A)', () => {
     expect(r.steep).toBe('rim');
   });
 });
+
+describe('S5-H: la Estrella and la corriente', () => {
+  it('la Estrella runs 13 m/s', async () => {
+    const { ESTRELLA } = await import('../shared/estrella');
+    const b = createBody(0, 0, flat);
+    b.riding = true;
+    b.star = true;
+    run({ ...fwd, sprint: true }, 2, flat, none, 0, [], b);
+    expect(Math.abs(b.vz)).toBeCloseTo(ESTRELLA.run, 1);
+  });
+
+  it('leaving the top of el Árbol-torre, the glide costs no stamina until you land', async () => {
+    const { TOWER } = await import('../shared/corrupt-lands');
+    const { withLookout } = await import('../shared/ending');
+    const t = withLookout(flat, () => true);
+    const b = createBody(TOWER.x, TOWER.z + 5, t);
+    b.lookout = true;
+    run(fwd, 0.5, t, none, 0, [], b); // walk on the top
+    run(fwd, 3.5, t, none, 0, [], b); // walk off the edge (north, -z)
+    run({ ...fwd, jump: true }, 0, t, none, 0, [], b);
+    expect(b.gliding).toBe(true);
+    run(fwd, 3, t, none, 0, [], b);
+    expect(b.stamina).toBe(b.staminaMax);
+    // a normal glide still pays
+    const c = createBody(0, 0, flat);
+    c.y = 20;
+    c.onGround = false;
+    run({ ...fwd, jump: true }, 0, flat, none, 0, [], c);
+    run(fwd, 1, flat, none, 0, [], c);
+    expect(c.stamina).toBeLessThan(c.staminaMax);
+  });
+});

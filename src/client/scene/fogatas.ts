@@ -26,7 +26,7 @@ export class FogataMeshes {
           this.group.add(w);
         }
       }
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < (f.lookout ? 0 : 8); i++) { // the top of el Árbol-torre: a flame, no ring (it floats until the ending)
         const a = (i / 8) * Math.PI * 2;
         const s = new THREE.Mesh(stone, STONE);
         s.position.set(f.x + Math.cos(a) * 0.9, f.y + 0.15, f.z + Math.sin(a) * 0.9);

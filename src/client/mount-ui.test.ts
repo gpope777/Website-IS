@@ -104,3 +104,16 @@ describe('el Dragón', () => {
     expect(mountAction({ ...base, tame: { ...tame, beast: 'dragon' } })).toEqual({ act: 1, label: '¡Ahora!' });
   });
 });
+
+describe('la Estrella (S5-H)', () => {
+  const star = { owner: null, x: 2, y: 0, z: 0, yaw: 0 };
+  it('tames her when she is near and you have none; even with a deer', () => {
+    expect(mountAction({ ...base, estrella: star })).toEqual({ act: 18, label: 'Domar la Estrella' });
+    expect(mountAction({ ...base, hasSteed: true, estrella: star })).toEqual({ act: 18, label: 'Domar la Estrella' });
+    expect(mountAction({ ...base, hasStar: true, hasSteed: true, estrella: star })).toBeNull();
+    expect(mountAction({ ...base, estrella: { ...star, x: 9 } })).toBeNull();
+  });
+  it('gets off her by name', () => {
+    expect(mountAction({ ...base, riding: true, hasSteed: true, hasStar: true })).toEqual({ act: 3, label: 'Bajar de la Estrella' });
+  });
+});
