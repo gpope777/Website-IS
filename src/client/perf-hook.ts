@@ -14,6 +14,7 @@ export interface PerfStop {
 
 export interface PerfTarget {
   renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
   ready(): boolean;
   tier(): string;
   stop(p: PerfStop | null): void;
@@ -32,5 +33,22 @@ export function installPerfHook(t: PerfTarget): () => void {
       return { calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 };
     },
   };
+  (w.__perf as Record<string, unknown>).top = (n = 15) => triangleHogs(t.scene, n);
   return () => delete w.__perf;
+}
+
+/** Rough upper bound of triangles each visible mesh submits (ignores frustum culling), biggest first. */
+export function triangleHogs(scene: THREE.Object3D, n: number): { name: string; tris: number; culled: boolean }[] {
+  const out: { name: string; tris: number; culled: boolean }[] = [];
+  scene.traverseVisible((o) => {
+    const m = o as THREE.Mesh & { count?: number; isInstancedMesh?: boolean };
+    if (!m.isMesh || !m.geometry) return;
+    const g = m.geometry;
+    const per = (g.index ? g.index.count : (g.attributes.position?.count ?? 0)) / 3;
+    const inst = m.isInstancedMesh ? (m.count ?? 1) : 1;
+    let name = m.name || m.parent?.name || '';
+    if (!name) name = `${m.type}:${g.type}:${per}`;
+    out.push({ name, tris: Math.round(per * inst), culled: m.frustumCulled });
+  });
+  return out.sort((a, b) => b.tris - a.tris).slice(0, n);
 }

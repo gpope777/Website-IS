@@ -4,6 +4,8 @@
 //   npm run perf                 measure and compare with scripts/perf/baseline.json
 //   npm run perf -- --update     measure and rewrite the baseline
 //   npm run perf -- --tier low   one tier only (no baseline rewrite of the others)
+//   npm run perf -- --stop bosque  one stop only (comma list allowed)
+//   npm run perf -- --top        also print the biggest meshes (triangle hogs) per reading
 //   npm run perf -- --shots      also save a PNG per reading in scratch/perf/shots/
 //
 // Builds the client with `--mode perf` (it has the `?perf=1` hook) into scratch/perf/dist, starts
@@ -28,6 +30,8 @@ const FRAMES = 30;
 const args = process.argv.slice(2);
 const UPDATE = args.includes('--update');
 const SHOTS = args.includes('--shots');
+const onlyStop = args.includes('--stop') ? args[args.indexOf('--stop') + 1] : null;
+const TOP = args.includes('--top');
 const onlyTier = args.includes('--tier') ? args[args.indexOf('--tier') + 1] : null;
 
 /** Spec §3 budgets (worst biome, by day). */
@@ -135,7 +139,7 @@ async function main() {
     await page.waitForFunction(() => window.__perf?.ready(), null, { timeout: 180_000, polling: 500 });
     const got = await page.evaluate(() => window.__perf.tier());
     if (got !== tier) throw new Error(`gama ${got}, esperaba ${tier}`);
-    for (const s of STOPS)
+    for (const s of STOPS.filter((q) => !onlyStop || onlyStop.split(',').includes(q.name)))
       for (const h of HOURS) {
         const key = `${tier}/${s.name}/${h.name}`;
         await page.evaluate((p) => window.__perf.stop(p), { x: s.x, z: s.z, y: s.y, yaw: s.yaw, pitch: s.pitch, frac: h.frac });
@@ -149,6 +153,7 @@ async function main() {
           FRAMES,
         );
         readings[key] = await page.evaluate(() => window.__perf.info());
+        if (TOP) console.log((await page.evaluate(() => window.__perf.top(12))).map((h) => `      ${String(h.tris).padStart(8)} ${h.culled ? ' ' : '*'} ${h.name}`).join('\n'));
         if (SHOTS) await page.screenshot({ path: join(OUT, 'shots', `${key.replaceAll('/', '_')}.png`) });
         process.stdout.write(`  ${key.padEnd(26)} ${readings[key].calls} llamadas, ${readings[key].triangles} triángulos\n`);
       }

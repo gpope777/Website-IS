@@ -64,6 +64,10 @@ import { FpsGuard, hasSavedTier, loadTier, lowerTier, PROBE, probeVerdict, saveT
 import { FpsMeter } from './fps-meter';
 import type { PerfStop } from './perf-hook';
 
+/** Resources are drawn within drawDistance × this (the fog is opaque from drawDistance × 0.8) plus a crown's height. */
+const NEAR_RADIUS = 0.9;
+/** Grass tufts (0.9 m tall) are specks past this. */
+const GRASS_NEAR = 70;
 /** V2-A: `?perf=1` exposes window.__perf for `npm run perf`. Only in dev and `--mode perf` builds; production strips it. */
 const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
 const OFFER_KEY = 'bosque.tierOffer';
@@ -105,6 +109,7 @@ import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
+import { NearInstances } from './scene/near-instances';
 import { TouchControls, isTouchDevice } from './touch';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
@@ -393,6 +398,8 @@ export class Game {
   /** Resource spawns inside a crag: hidden and uncollided on the client. */
   private readonly buried = new Set<number>();
   private resMeshes: ResourceMeshes | null = null;
+  private grass: NearInstances | null = null;
+  private readonly tmpFwd = new THREE.Vector3();
   private body: Body | null = null;
   private me: Actor | null = null;
   private myName = '';
@@ -480,6 +487,7 @@ export class Game {
         if (this.disposed) return;
         this.perfOff = m.installPerfHook({
           renderer: this.renderer,
+          scene: this.scene,
           ready: () => !!this.body && !!this.terrain && !!this.kits,
           tier: () => this.tier,
           stop: (p) => (this.perfStop = p),
@@ -717,7 +725,7 @@ export class Game {
     this.scene.add(this.rescueMeshes.group);
     this.corruptKey = '';
     this.scene.add(this.corruptionMeshes.group);
-    this.scene.add(this.ground, buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
+    this.scene.add(this.ground, buildWater(), this.grassNear(buildGrass(this.terrain, t.grass, seed)), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
     const solid = this.climbList;
     for (const s of this.spawns) {
@@ -1937,8 +1945,24 @@ export class Game {
     this.hud.setRing(this.tame ? { needle: ringNeedle(this.tame, this.serverTime), zone: this.tame.zone, width: this.tame.width, round: this.tame.round, rounds: this.tame.rounds } : null);
     this.updatePrompt();
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
+    this.packNear();
     if (this.guardian?.root.visible) this.guardian.update(dt);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private grassNear(g: { mesh: THREE.InstancedMesh; near: NearInstances }): THREE.InstancedMesh {
+    this.grass = g.near;
+    return g.mesh;
+  }
+
+  /** V2-B perf: only trees, rocks, bushes and grass near the camera go to the GPU (past the fog they are invisible anyway). */
+  private packNear(): void {
+    const c = this.camera.position;
+    const fwd = this.camera.getWorldDirection(this.tmpFwd);
+    const f = Math.hypot(fwd.x, fwd.z) > 0.2 ? { x: fwd.x, z: fwd.z } : null;
+    const r = TIERS[this.tier].drawDistance * NEAR_RADIUS;
+    this.resMeshes?.update(c.x, c.z, r, f);
+    this.grass?.update(c.x, c.z, Math.min(r, GRASS_NEAR), f);
   }
 
   /** Parked and wild deer from the snapshot, plus one under every rider (us included). */
