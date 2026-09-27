@@ -235,6 +235,14 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Bloqueos: ninguno.
 - Qué probar: de noche, estacas en el camino del asedio (¿se nota el frenazo?); una red delante de un muro; quedarse quieto junto al Tragón (~37 s); echar al Marchito solo (300) y con 3–4. Buscar una mancha morada, pasar la noche dentro (más bestias), lanzar la Enredadera junto a la raíz violeta. En la mazmorra: el nudo con 🌿, la losa con un compañero y luego sola con el bloque, la linterna en la sala oscura, rodar la carga del bruto. Constantes: `SPIKES`/`NET` en `world-sim.ts`, `SLOWED` y `ENEMY` en `wolves.ts`, `BOSS`, `marchitoWill`, `CORRUPTION` en `corruption.ts`, `DUNGEON` en `dungeon.ts`, `ELITE` en `elite.ts`.
 
+## Slice 2 — resumen (LEER PRIMERO)
+- **S2-A a S2-H: todos hechos, ninguno bloqueado.** Rama `aventura/slice-1`, PR draft #2. Nada mergeado ni desplegado.
+- Tests finales: npm test 456, test:workers 12, check + build verdes. **PROTOCOL_VERSION = 22.** Todos los campos guardados nuevos son opcionales: las partidas viejas cargan.
+- **Qué hay:** S2-A la Costa al sur (Ciénaga que muerde a pie, playa, bajíos, mar hondo, 3 islotes, isla), `names.ts`, ciervo para dos · S2-B el Pez Grande (carrera de 6 anillos + anillo de 2 rondas, bucear con B) · S2-C 3 santuarios de la Costa, 6 cofres hundidos, perlas y mejora de arma · S2-D 4 zonas corruptas de la Costa y "algo sube de la costa" (+brutos) · S2-E la Ballena (doma con 2+, 4 asientos, aguas bravas) · S2-F la mazmorra de la Costa, el Viento (J / mantener el botón de poder para cambiar) y el bruto escudado · S2-G El Antenón (enemy3) y el Antenón blanco que sopla asaltantes · S2-H Invasión 2: El Marchito se lleva al Tragón purificado y el rescate de la jaula con 3 anclas.
+- **Nada del Slice 2 se probó en navegador real** (solo tests + build). Es lo primero que hay que hacer.
+- **Balance a revisar:** daño de la Ciénaga (8 PV/s) y si un amigo sin ciervo se siente fuera; 7 s entre anillos del pez nadando; rondas de la ballena con 2 jugadores; perlas (3) + coste de la mejora (+15 % por nivel, máx. 3); brutos de la costa por zona; Viento: 3 muertes por agua por ráfaga, 6 s de enfriamiento; bruto escudado 420 PV; El Antenón (~43 s quieto a su lado, 360 PV); voluntad del Marchito en la Invasión 2 (×1,2); anclas (150 PV, ráfaga ×3) y guardias (2 lobos); +10 de mordisco al volver. Constantes: `CIENAGA`, `FISH`, `WHALE`, `UPGRADE`, `VIENTO`, `ELITE`, `ANTENON`, `MARCHITO`, `RESCUE`, `ALLY`.
+- **Qué probar (en orden de historia):** ciervo por la Ciénaga (con un amigo detrás) → domar el pez → santuarios Marea/Hundido → cofres y perla → al atardecer siguiente, El Marchito sube de la costa y se lleva al Tragón (probar echarlo antes y no echarlo: ¿rompe un cuarto de defensas?) → noche sin Tragón → romper las 3 anclas (lobos guardianes) y abrir la jaula → domar la ballena con 2 → mazmorra de la Costa → Viento → bruto escudado → El Antenón → Antenón blanco de noche. En móvil: rejilla de 10 pastillas, cambiar de poder con pulsación larga, bucear.
+
 ## Slice 2 · S2-A — Costa, Ciénaga, nombres y ciervo para dos — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-A-costa-cienaga.md` (03211ba).
 - Commits: 09c9dac (T1 `names.ts`), bcc0844 (T2 terreno de la Costa), 01db40d (T3 Ciénaga + mar hondo), c5812f5 (T4 el ciervo lleva a dos, protocolo v13), e86b0a7 (T5 cliente de la Costa).
@@ -393,3 +401,28 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: pasar el bruto escudado y entrar en la sala. Atraerlo junto a un pilar, colocarse al otro lado y 🌬️: ¿se lee que se abre? Parar el barrido con 🛡️ justo antes del golpe. Rodar el anillo rojo; apartarse de la franja de la carga. ¿El dibujo se ve bien de tamaño en móvil? Tras vencerlo: la visión, la mancha de la isla limpia, de noche el Antenón blanco soplando junto al Tragón. Constantes: `ANTENON` y `ANTENON_ALLY` en `src/shared/sim/antenon.ts`, `COAST_DUNGEON.pillars`, `ENEMY.boss2`.
+
+## Slice 2 · S2-H — Invasión 2: El Marchito se lleva al Tragón, y el rescate — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-H-invasion2-rescate.md` (bbc9b6c).
+- Commits: 0843906 (T1 reglas: `src/shared/rescue.ts`, `stepThief` en `marchito.ts`), 0adb6ad (T2 la invasión en el servidor, protocolo v21), f3f41ac (T3 jaula, anclas, guardias y rescate, v22), 58233ae (T4 cliente).
+- Tests: npm test 456 (antes 434), test:workers 12, check + build verdes. PROTOCOL_VERSION = 22. Campos guardados nuevos opcionales `SavedWorld.invasion2` ('pending' | 'taken' | 'rescued') y `SavedWorld.anchors`: las partidas viejas cargan.
+- Cómo funciona:
+  - **Disparo:** cuando alguien doma un pez, `invasion2 = 'pending'`. En la franja del aviso de asedio (atardecer), si la Invasión 1 ya pasó, el Tragón está purificado, hay Corazón vivo y alguien fuera de las mazmorras, **El Marchito sube desde el sur** (28 m del Corazón, lado de la costa) con voluntad ×1,2 ("Esta vez no mira los muros").
+  - **El robo:** va recto al Tragón blanco y lo **envuelve en raíces 6 s** (barra: "El Marchito envuelve al Tragón · 40 % · voluntad …"; el Tragón se queda quieto). Sigue dando zarpazos (14) a quien esté a 3 m. Al terminar se lo lleva y **rompe el cuarto de defensas más cercano** al Corazón. Visión: «Me llevo al perrito de papel. Vengan a por él al mar, Ana.»
+  - **Echarlo antes** (voluntad a 0) **no evita el robo**: se va con el Tragón en ese momento, pero **sin romper nada** ("Los muros, otro día").
+  - **Sin Tragón:** de noche no hay defensor que muerda (el Antenón blanco sigue si lo tienen).
+  - **La jaula:** en el fondo, justo fuera de las aguas bravas de la isla (hacia el norte si cabe), se llega con el pez. Barrotes oscuros con el papel pálido dentro; baja 1,5 m por cada ancla rota.
+  - **Anclas:** una por islote (a 0,3 r al norte del centro, en tierra): raíz marchita con brillo violeta y una cadena morada hacia el cielo. **150 PV**; golpes y flechas normales; una **ráfaga del Viento pega ×3** (15). Van en `snap.wolves` como `kind: 'anchor'`, así que fijar, arco y auto-apuntado funcionan; no se mueven ni muerden. Al romperse: "Se parte una cadena. La jaula baja. Quedan 2".
+  - **Guardias:** la primera vez (por carga de la sala) que alguien vivo llega a `r + 12` m de un islote con el ancla en pie salen **2 lobos** junto a ella ("Unos lobos marchitos guardan el ancla").
+  - **Liberar:** E / A a ≤5 m de la jaula. Con anclas en pie: "La jaula aguanta: quedan 2 anclas en los islotes". Con las 3 rotas: `invasion2 = 'rescued'`, el Tragón vuelve junto al Corazón y **muerde 35 (25 + 10, "con rabia")**; visión del Marchito enfurruñado con los nombres.
+- Decisiones/desvíos:
+  - **Mundos que nunca purificaron al Tragón:** no pasa nada; la invasión espera hasta que se cumplan todas las condiciones (el primer atardecer tras purificarlo). Sin jaula ni anclas.
+  - Partidas viejas donde alguien ya tenía pez cargan como 'pending' (vendrá al próximo atardecer). Un pez domado durante el propio atardecer puede dispararla ese mismo día (lo más simple).
+  - Guardar a mitad del robo deja 'pending': vuelve en la siguiente franja de atardecer; lo roto sigue roto.
+  - El Marchito desaparece en el acto al llevárselo (sin animación de irse al mar).
+  - El daño parcial de las anclas es solo en vivo (al recargar, las que siguen en pie vuelven a 150); las rotas quedan rotas (`anchors`). Los guardias salen una vez por carga, y el amanecer los borra como a cualquier lobo.
+  - Mensaje nuevo `{ t: 'rescue' }` (validado en `decodeClient`, el servidor comprueba estado, distancia y anclas). Sin pastilla nueva: E / botón A contextual. Línea nueva en el Menú.
+  - La visión de robo usa "Vengan" (ustedes, como el resto del juego) en vez de "Venid" del spec.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: con Invasión 1 hecha y el Tragón purificado, domar el pez y esperar al atardecer junto al Corazón: ¿se ve venir del sur? ¿Se lee la barra de "envuelve"? Probar echarlo (con 2 jugadores, voluntad 504) y no echarlo (¿qué muros rompe?). Pasar una noche sin Tragón. Buscar las cadenas moradas desde la playa, ir a cada islote en pez, pelear los 2 lobos, romper el ancla a golpes y con 🌬️. Ver bajar la jaula. Bucear hasta ella y A. De noche, el Tragón con rabia. Constantes: `RESCUE` en `src/shared/rescue.ts`, `MARCHITO.grabFor` y `thiefWill` en `src/shared/sim/marchito.ts`, `ALLY.rage`.
