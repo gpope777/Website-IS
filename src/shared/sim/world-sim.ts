@@ -17,6 +17,7 @@ import { pillarZone, allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoast
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { clampTowerDungeon, columnCrags, inArena, inCopa, inTowerDungeon, insideTower, towerEntrance, towerFloor, towerShelfCrag, TOWER_DUNGEON, TOWER_ROCKFALL } from '../tower-dungeon';
+import { createTowerAlly, stepTowerAlly, TOWER_ALLY_KINDS, type TowerAlly } from './tower-allies';
 import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
 import { crash, createElite, createPeat, createRockBrute, createShielded, ELITE, rockFront, shieldBlocks, stepElite, type Elite } from './elite';
@@ -77,6 +78,23 @@ export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const
 const EPS = 1e-6;
 
 const upFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** The tower's floor as a terrain, for beasts stepped in the tower's frame. */
+const TOWER_FLAT: Terrain = { heightAt: () => TOWER_DUNGEON.floor, density: () => 0 };
+/**
+ * Beast steps clamp to the map (clampMap), and the tower is off the map: step a tower beast with
+ * everything shifted onto the map's centre line (x − TOWER_DUNGEON.x), then shift back.
+ */
+function towerFrame<R>(w: Wolf, targets: readonly WolfTarget[], step: (ts: WolfTarget[]) => R): R {
+  const ox = TOWER_DUNGEON.x;
+  w.x -= ox;
+  if (w.aim) w.aim = { x: w.aim.x - ox, z: w.aim.z };
+  if (w.clav) w.clav = { ...w.clav, x: w.clav.x - ox };
+  const out = step(targets.map((t) => ({ ...t, x: t.x - ox })));
+  w.x += ox;
+  if (w.aim) w.aim = { x: w.aim.x + ox, z: w.aim.z };
+  if (w.clav) w.clav = { ...w.clav, x: w.clav.x + ox };
+  return out;
+}
 const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida', fire: 'Hoguera lista. Ya arderá', tower: 'Torre alzada. Desde arriba se ve lejos', pillar: 'Se alza un pilar' };
 
 /** S5-D: Invasion 3's raid is half again as big, with a flock of rayos; a raid rayo's dive on a structure deals `rayoStruct`. */
@@ -378,6 +396,7 @@ export class WorldSim {
     woke: [false, false, false, false],
     copaSeen: false,
     hitAt: new Map<string, number>(),
+    allies: [null, null, null, null] as (TowerAlly | null)[],
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[]; /** Turba: Llamaradas the peat wall took. */ burns: number; /** Bloques: each block's grid cell. */ cells: Cell[]; /** Losas gemelas: when the boulder reached plate 2 (null = home). */ boulderAt: number | null }[];
@@ -716,7 +735,7 @@ export class WorldSim {
     this.stepPillars();
     this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
-    if (!night && this.wasNight) this.wolves = [];
+    if (!night && this.wasNight) this.wolves = this.wolves.filter((w) => inTowerDungeon(w.x, w.z)); // the tower's beasts stay
     this.wasNight = night;
     if (!night) this.spawnAsh();
 
@@ -724,7 +743,18 @@ export class WorldSim {
     const goal = this.raidGoal();
     const gata = this.wolves.find((w) => w.id === this.gataId && w.hp > 0) ?? null;
     let marks: WolfTarget[] | undefined; // Invasion 3: raid rayos also dive at structures
+    let inTower: WolfTarget[] | undefined; // S5-E: beasts in the tower hunt there (the interior is "warm", so not with `targets`)
     for (const w of this.wolves) {
+      if (inTowerDungeon(w.x, w.z)) {
+        w.flee = undefined; // nowhere to run up here
+        const [px, pz] = [w.x, w.z];
+        inTower ??= targets.filter((t) => inTowerDungeon(t.x, t.z)).map((t) => ({ ...t, fires: false }));
+        const bit = towerFrame(w, inTower, (ts) => stepWolf(w, ts, TOWER_FLAT, dt, this.rng));
+        if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
+        const c = clampTowerDungeon(px, pz, w.x, w.z, this.towerGates());
+        [w.x, w.z] = [c.x, c.z];
+        continue;
+      }
       if (w.flee && w.fleeFrom && w.hp > 0) {
         this.flee(w, w.fleeFrom, dt);
         continue;
@@ -784,7 +814,7 @@ export class WorldSim {
     this.stepCoastDungeon();
     this.stepSwampDungeon();
     this.stepMountainDungeon();
-    this.stepTowerDungeon();
+    this.stepTowerDungeon(dt);
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepPeatFight(dt);
@@ -1539,6 +1569,7 @@ export class WorldSim {
       const was = this.terrain.heightAt(w.x, w.z);
       let to = slide(w.x, w.z, dir, heavy ? VIENTO.heavyPush : VIENTO.push);
       if (!inAnyDungeon(w.x, w.z)) to = clampMap(to.x, to.z, 3);
+      else if (inTowerDungeon(w.x, w.z)) to = clampTowerDungeon(w.x, w.z, to.x, to.z, this.towerGates());
       w.x = to.x;
       w.z = to.z;
       w.y = this.terrain.heightAt(w.x, w.z);
@@ -2215,7 +2246,7 @@ export class WorldSim {
   }
 
   /** Floor 4: the plate on the shelf (a pillar or someone on top; it jams once someone is through) and the rockfall. */
-  private stepTowerDungeon(): void {
+  private stepTowerDungeon(dt: number): void {
     const T = TOWER_DUNGEON;
     const M = MOUNTAIN_DUNGEON;
     const g = this.towerLive;
@@ -2226,6 +2257,7 @@ export class WorldSim {
       return !p.dead && l.awayFor === null && inTowerDungeon(p.x, p.z);
     });
     if (!inside.length) return;
+    this.stepTowerFloors(inside.map(([n]) => this.players.get(n)!), dt);
     const onShelf = inside.some(([name]) => {
       const p = this.players.get(name)!;
       return Math.hypot(p.x - plate.x, p.z - plate.z) <= T.plateR && p.y >= top - 0.5;
@@ -2255,6 +2287,41 @@ export class WorldSim {
       this.teleport(p, l, p.x, Math.max(z0 - 1, p.z - M.knock));
       this.hurt(p, out.dmg);
       this.tell(name, 'Una roca te arrolla. Un pilar la pararía');
+    }
+  }
+
+  /** Each floor: its beasts wake the first time someone walks in (once per server life); its white ally (if purified) follows and helps. */
+  private stepTowerFloors(inside: SavedPlayer[], dt: number): void {
+    const T = TOWER_DUNGEON;
+    const g = this.towerLive;
+    const purified = [this.purified, this.purified2, this.purified3, this.purified4];
+    const names = [NAMES.bossForestShort, NAMES.bossCoast, NAMES.bossSwamp, NAMES.bossMountain].map((n) => n.replace(/^El /, 'el '));
+    for (let f = 0; f < 4; f++) {
+      const here = inside.filter((p) => towerFloor(p.x, p.z) === f);
+      const spot = T.beastsAt[f];
+      if (!g.woke[f] && here.length) {
+        g.woke[f] = true;
+        if (spot) {
+          const at = insideTower(spot);
+          [-3, 3].forEach((dx, i) => this.wolves.push(createWolf(this.nextWolfId++, at.x + dx, at.z, this.terrain, this.rng, f === 3 && i === 1 ? 'brute' : 'wolf')));
+          this.sayTower(f === 3 ? 'Algo grande gruñe detrás de las rocas' : 'Algo se despierta en este piso');
+        }
+      }
+      if (!purified[f]) {
+        g.allies[f] = null;
+        continue;
+      }
+      const [z0, z1] = T.floors[f]!;
+      const home = insideTower({ x: -4, z: (z0 + z1) / 2 });
+      if (!g.allies[f]) g.allies[f] = createTowerAlly(TOWER_ALLY_KINDS[f]!, home, T.floor);
+      const a = g.allies[f]!;
+      const foes = this.wolves.filter((w) => w.hp > 0 && towerFloor(w.x, w.z) === f);
+      const hit = stepTowerAlly(a, here, foes, dt);
+      a.x = Math.min(Math.max(a.x, T.x - T.halfW + 0.5), T.x + T.halfW - 0.5); // stays on its floor
+      a.z = Math.min(Math.max(a.z, z0), z1);
+      if (!hit) continue;
+      hitWolf(hit.foe, hit.damage);
+      if (a.kind === 'antenon') this.sayTower(`${upFirst(names[f]!)} blanco sopla y una bestia cae por la cornisa`);
     }
   }
 
@@ -2883,7 +2950,7 @@ export class WorldSim {
   private towerView(): TowerDungeonView {
     const g = this.towerLive;
     const T = TOWER_DUNGEON;
-    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: null, allies: [] };
+    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: null, allies: g.allies.flatMap((a) => (a ? [{ kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: r2(a.yaw), anim: a.anim }] : [])) };
   }
 
   private dungeonView(): DungeonView {
