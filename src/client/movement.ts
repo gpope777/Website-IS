@@ -1,6 +1,7 @@
 import { HALF, WATER_LEVEL, type Terrain } from '../shared/terrain';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
+import { MOUNT } from '../shared/mount';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
 export interface MoveInput {
@@ -31,6 +32,8 @@ export interface Body {
   gliding: boolean;
   /** Jump was held last step (glider/leap need a fresh press). */
   jumpHeld: boolean;
+  /** On the deer (from the server): faster, no climbing, gliding or swimming. */
+  riding: boolean;
 }
 
 export interface Circle {
@@ -72,7 +75,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false,
   };
 }
 
@@ -103,7 +106,7 @@ export function stepBody(
 
   const hereH = terrain.heightAt(b.x, b.z);
   const swimming = hereH < SWIM_DEPTH;
-  if (swimming || b.onGround) b.gliding = false;
+  if (swimming || b.onGround || b.riding) b.gliding = false;
   else if (jumpEdge) {
     // A fresh jump press in the air toggles the glider (B on touch).
     const below = Math.max(hereH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
@@ -119,7 +122,7 @@ export function stepBody(
   const moving = mag > 0.01;
   const running = input.sprint && moving && !swimming;
   const swimFast = swimming && input.sprint && moving && !b.tired;
-  const speed = b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : running ? SPEED.run : SPEED.walk;
+  const speed = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : running ? SPEED.run : SPEED.walk;
 
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
   const s = Math.sin(camYaw);
@@ -155,7 +158,7 @@ export function stepBody(
     const min = PLAYER_RADIUS + cr.r;
     if (d >= min || d < 1e-4) continue;
     // Pushing the stick at the rock grabs it (fallback B: only marked crags are climbable; bare shrine rocks are not).
-    if (!cr.bare && !swimming && !b.tired && moving && (wx * -dx + wz * -dz) / d > 0.5 * Math.hypot(wx, wz)) {
+    if (!cr.bare && !b.riding && !swimming && !b.tired && moving && (wx * -dx + wz * -dz) / d > 0.5 * Math.hypot(wx, wz)) {
       b.x = cr.x + (dx / d) * min;
       b.z = cr.z + (dz / d) * min;
       b.climb = cr;
@@ -169,6 +172,12 @@ export function stepBody(
     nz = cr.z + (dz / d) * min;
   }
   const to = bounds(b.x, b.z, nx, nz);
+  if (b.riding && terrain.heightAt(to.x, to.z) < SWIM_DEPTH) {
+    // The deer will not swim: it stops at the shore.
+    to.x = b.x;
+    to.z = b.z;
+    b.vx = b.vz = 0;
+  }
   b.x = to.x;
   b.z = to.z;
   if (moving) b.facing = Math.atan2(wx, wz);

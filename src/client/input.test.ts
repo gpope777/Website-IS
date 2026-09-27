@@ -35,3 +35,9 @@ describe('power key', () => {
     expect(KEY_ACTIONS.KeyH).toBe('power');
   });
 });
+
+describe('mount key', () => {
+  it('M gets on or off the deer', () => {
+    expect(KEY_ACTIONS.KeyM).toBe('mount');
+  });
+});

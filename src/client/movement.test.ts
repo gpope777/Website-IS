@@ -3,6 +3,7 @@ import type { Terrain } from '../shared/terrain';
 import { HALF, WATER_LEVEL } from '../shared/terrain';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
+import { MOUNT } from '../shared/mount';
 import { animFor, createBody, GLIDE, PLAYER_RADIUS, rollInput, SPEED, STAMINA, staminaFor, stepBody, type Body, type MoveInput } from './movement';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
@@ -284,5 +285,35 @@ describe('Enredadera and orbs', () => {
     const wall = (_px: number, _pz: number, nx: number, nz: number) => ({ x: nx, z: Math.max(-1, nz) });
     for (let t = 0; t < 2; t += 1 / 60) stepBody(b, fwd, 0, 1 / 60, flat, none, [], wall);
     expect(b.z).toBe(-1);
+  });
+});
+
+describe('riding', () => {
+  const mounted = (terrain = flat) => {
+    const b = createBody(0, 0, terrain);
+    b.riding = true;
+    return b;
+  };
+  it('the deer walks and runs faster than you', () => {
+    expect(Math.hypot(run(fwd, 2, flat, none, 0, [], mounted()).b.vz, 0)).toBeCloseTo(MOUNT.walk, 1);
+    const { b, r } = run({ ...fwd, sprint: true }, 2, flat, none, 0, [], mounted());
+    expect(Math.abs(b.vz)).toBeCloseTo(MOUNT.run, 1);
+    expect(animFor(r, b)).toBe('run');
+  });
+  it('stops at the shore', () => {
+    const shore: Terrain = { heightAt: (_x, z) => (z < -3 ? WATER_LEVEL - 3 : 1), density: () => 0.5 };
+    const { b, r } = run(fwd, 3, shore, none, 0, [], mounted(shore));
+    expect(b.z).toBeGreaterThan(-3.2);
+    expect(r.swimming).toBe(false);
+  });
+  it('does not grab crags nor open the glider', () => {
+    const crag: Crag = { id: 1, x: 0, z: -3, r: 1, base: 0, top: 10 };
+    const { b } = run(fwd, 2, flat, none, 0, [crag], mounted());
+    expect(b.climb).toBeNull();
+    const air = mounted();
+    air.y = 5;
+    air.onGround = false;
+    stepBody(air, { ...fwd, jump: true }, 0, 1 / 60, flat, none);
+    expect(air.gliding).toBe(false);
   });
 });
