@@ -338,3 +338,33 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador: no (solo tests + build).
 - Bloqueos: ninguno.
 - Qué probar: con dos jugadores en pez, ir al chorro del mar hondo, A, calmarla entre los dos (¿4 rondas son muchas?). Probar solo (debe negarse). Subir los dos, pilotar hasta la isla cruzando las aguas bravas, intentar entrar en los bajíos (se para), bajar junto al pez. Dejarla lejos 10 min y ver que vuelve. Constantes: `WHALE` en `src/shared/whale.ts`.
+
+## Slice 2 · S2-F — mazmorra de la Costa y el Viento — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-F-viento-mazmorra.md` (f3c7e08).
+- Commits: c454549 (T1 reglas: `src/shared/viento.ts`, `src/shared/coast-dungeon.ts`), 6bcaf9b (T2 mazmorra en el servidor, protocolo v19), 4dae55e (T3 la ráfaga), 7f72b0d (T4 bruto escudado), da7d50d (T5 cliente).
+- Tests: npm test 417 (antes 388), test:workers 12, check + build verdes. PROTOCOL_VERSION = 19. Campo guardado nuevo opcional `SavedPlayer.viento`: las partidas viejas cargan.
+- Cómo funciona:
+  - **Entrada:** el tronco gris verdoso de la **Raíz-madre de la Costa** está en la isla de la mazmorra, 5 m al norte del centro (el centro es la raíz marchita de la zona 6). Solo se llega en ballena. A / E junto al tronco → dentro (quien va en la ballena baja; la ballena se queda).
+  - **Interior** en `x = HALF + 300`, 24 × 180 m, suelo plano a 30 m, cálido. Cuatro verjas:
+    1. **Palancas** (como en el bosque, 6 s) → verja 0.
+    2. **Altar del Viento** (A / E) → `viento` guardado.
+    3. **Molino** (verja 1): una ráfaga lo gira y se abre.
+    4. **Piedra pómez + canal de 10 m + losa:** la pómez solo se mueve a ráfagas (6 m cada una; tres la llevan del inicio a la losa). A pie, el canal solo se cruza por un **puente estrecho** junto a la pared oeste. Con la pómez en la losa, la verja 2 se abre para siempre (hasta reiniciar la sala). La losa no cuenta a los jugadores.
+    5. **Sima de 20 m** (sin verja): planear + la subida del Viento. Si caes 4 m por debajo del borde, vuelves al borde con −10 PV ("El hueco te escupe arriba").
+    6. **Bruto escudado** (420 PV): el bruto reforzado con un escudo delante. De frente, golpes y flechas no entran ("El escudo para el golpe…"). Una ráfaga lo gira y queda **expuesto 3 s**; una parada también. Al caer, verja 3.
+    7. **Sala del jefe:** vacía y lista para S2-G ("La sala está en calma. Algo duerme bajo la marea").
+  - **Viento** (H / botón de poder): cono de 8 m y 70°, 6 s de enfriamiento propio (el de la Enredadera sigue aparte). Bestias: empujadas 6 m, aturdidas 1 s, −5. Jefes, élites y El Marchito: 2 m. Lobos y asaltantes que acaban en mar de más de 4 m: "Se los lleva el mar" (máx. 3 por ráfaga). Caída de más de 3 m: −20. Estacas y red funcionan solas.
+  - **Planeando**, la primera ráfaga del vuelo te sube 6 m (el servidor acepta la subida 2 s; al tocar suelo o agua se recarga).
+  - **Cambio de poder (decisión de Gabriel):** H lanza, **J cambia**; en táctil, tocar lanza y **mantener 0,5 s** cambia. El icono del botón pasa de 🌿 a 🌬️. El Menú lo explica. La elección es del cliente y viaja en `power.kind`; el servidor comprueba que lo tienes.
+  - **Marcas `// S2-F` resueltas:** el santuario **Islote** se abre con una ráfaga a sus ruedas (ya se puede solo); la pómez de **Marea** se desliza con una ráfaga (si nadie la lleva); una ráfaga a ≤5 m de la raíz marchita de una zona de la Costa (7–9) la limpia ("El viento arranca la raíz marchita. La costa respira"). La 6 no: eso es del jefe (S2-G).
+- Decisiones/desvíos:
+  - **Sin refactor a `DUNGEONS[]`:** `DUNGEON`/`inDungeon` siguen siendo el bosque; la Costa tiene `COAST_DUNGEON`/`inCoastDungeon`, y `inAnyDungeon` cubre lo común (calor, sin monturas, límites). `withDungeon` y `clampStep` cubren las dos (menos líneas tocadas).
+  - Cuatro verjas, no cinco: la sima no necesita verja.
+  - En el canal la pómez no se lleva en brazos: solo ráfagas. Por eso la losa solo cuenta la piedra (si no, bastaba con cruzar el puente y pisarla).
+  - `SelfState` gana `viento` y `windLeft` (no `powers: string[]`: menos cambio).
+  - El bruto escudado es el zorro a escala 2,4 con una tabla azul delante; no tiene modelo propio.
+  - Cambios de regla con tests adaptados (ninguno borrado): `decodeClient` acepta `dungeon` hasta 12 (el test que rechazaba 8 ahora rechaza 13); versión de protocolo en los tests → 19.
+  - ponytail: los golpes de la pómez con los muros solo se sujetan a la sala (no choca con nada más). La subida del Viento es una ventana de 2 s con techo +6,5 m, no física.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: en ballena hasta la isla, A junto al tronco. Palancas, altar (J / mantener el botón para cambiar a 🌬️). Ráfaga al molino. Tres ráfagas a la pómez hasta la losa, cruzando por el puente. En la sima: correr, saltar al vacío, B para planear y H a medio camino (¿llega?). Bruto escudado: pegar de frente (nada), ráfaga y pegar rápido. Fuera: ráfaga a las ruedas del Islote, a la pómez de Marea y a una raíz morada de la playa. De noche, en la orilla, empujar lobos al mar. Constantes: `VIENTO` en `src/shared/viento.ts`, `COAST_DUNGEON` en `src/shared/coast-dungeon.ts`, `ELITE.exposedFor`.
