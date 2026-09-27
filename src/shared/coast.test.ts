@@ -85,7 +85,7 @@ describe('coast terrain', () => {
   it('bounds the map: south edge at SOUTH, the forest at COAST_Z0', () => {
     expect(inMap(0, HALF + 100, 2)).toBe(true);
     expect(inMap(0, SOUTH, 2)).toBe(false);
-    expect(inMap(0, -HALF - 220, 2)).toBe(false); // S4: the north edge is the mountains' rim now
+    expect(inMap(0, -HALF - 420, 2)).toBe(false); // S5: the north edge is the Tierras Corruptas' now
     expect(inMap(HALF, 300, 2)).toBe(false);
     expect(inForest(0, 150, 4)).toBe(true);
     expect(inForest(0, COAST_Z0, 4)).toBe(false);

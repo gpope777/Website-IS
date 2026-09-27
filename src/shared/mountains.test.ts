@@ -83,7 +83,7 @@ describe('las Montañas: terrain', () => {
     expect(inMap(-HALF - 10, -HALF - 10, 2)).toBe(false);
     expect(inMap(0, -HALF - 0.5, 2)).toBe(true);
     expect(inMap(0, -HALF + 0.5, 2)).toBe(true);
-    expect(clampMap(0, -HALF - 400, 3)).toEqual({ x: 0, z: MOUNTAINS.z0 + 3 });
+    expect(clampMap(0, -HALF - 400, 3)).toEqual({ x: 0, z: -HALF - 400 }); // S5: the Tierras continue north
     expect(clampMap(-HALF - 300, 100, 3)).toEqual({ x: SWAMP.x0 + 3, z: 100 });
     expect(clampMap(HALF + 10, -HALF - 50, 3)).toEqual({ x: HALF - 3, z: -HALF - 50 });
   });

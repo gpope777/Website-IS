@@ -27,6 +27,35 @@ export const PICO = { d: 170, r: 6, skirt: 25, rise: 80 } as const;
 /** The snow chute: a shallow valley |x| < half down the middle, from the Faldas' foot up. */
 export const CHUTE = { half: 4, blend: 6, depth: 2 } as const;
 
+/**
+ * Las Tierras Corruptas (spec S5 §3.1): 480 × 200 m north of the mountains. d = metres north of the mountains' rim.
+ * el Borde (d < rim, +90 → +20, smooth), la Ceniza (to d 80), el Espinar (to d 170), la Torre's plateau beyond.
+ */
+export const CORRUPT_LANDS = { x0: -HALF, x1: HALF, z0: -HALF - 420, z1: -HALF - 220, rim: 20, ceniza: 80, espinar: 170, sideRim: 15, rimTop: 90, rimFoot: 20 } as const;
+/** The tower's plateau: |x| < half, d ≥ d, flat at E(0) + top. */
+export const TOWER_FOOT = { half: 30, d: 170, top: 30, blend: 6 } as const;
+
+/** el Lago Negro's basin (dry in S5-A; its water comes with its pillar). */
+export interface Basin {
+  x: number;
+  z: number;
+  r: number;
+  depth: number;
+}
+
+/** los Escalones rotos: 4 smooth terraces climbing north from d0, |x − x| < half, flat floor at `floor`. */
+export interface Steps {
+  x: number;
+  d0: number;
+  half: number;
+  steps: number;
+  rise: number;
+  pitch: number;
+  run: number;
+  /** Absolute height of the floor before the first riser. */
+  floor: number;
+}
+
 export interface Terrain {
   heightAt(x: number, z: number): number;
   /** Vegetation density 0..1: clearings vs dense groves. */
@@ -86,6 +115,25 @@ export function mountainFeatures(seed: number): { paredes: Pared[]; pico: { x: n
   return { paredes, pico };
 }
 
+/** Metres north of the mountains' rim (the Tierras Corruptas' depth). */
+export function corruptDepth(z: number): number {
+  return CORRUPT_LANDS.z1 - z;
+}
+
+/** Inside the Tierras Corruptas rectangle. */
+export function inCorrupt(x: number, z: number): boolean {
+  return x > CORRUPT_LANDS.x0 && x < CORRUPT_LANDS.x1 && z > CORRUPT_LANDS.z0 && z < CORRUPT_LANDS.z1;
+}
+
+/** el Lago Negro (west) and los Escalones rotos (east), from the seed. `floor` is filled by createTerrain (needs E). */
+export function corruptFeatures(seed: number): { lake: Basin; steps: Omit<Steps, 'floor'> } {
+  const rng = createRng(seed ^ 0xc0770);
+  const lakeD = 110 + rng() * 30;
+  const lake = { x: -HALF + 100 + rng() * 60, z: CORRUPT_LANDS.z1 - lakeD, r: 40, depth: 14 };
+  const steps = { x: 100 + rng() * 50, d0: 110 + rng() * 10, half: 15, steps: 4, rise: 6, pitch: 8, run: 1.5 };
+  return { lake, steps };
+}
+
 /** Inside the swamp rectangle (west of the forest's edge). */
 export function inSwamp(x: number, z: number): boolean {
   return x < SWAMP.x1 && x > SWAMP.x0 && z > SWAMP.z0 && z < SWAMP.z1;
@@ -101,14 +149,16 @@ const swampRect = (pad: number) => ({ x0: SWAMP.x0 + pad, x1: -HALF + pad + 1, z
 const mainRect = (pad: number) => ({ x0: -HALF + pad, x1: HALF - pad, z0: -HALF + pad, z1: SOUTH - pad });
 // Same for the mountains on their south side.
 const mountainRect = (pad: number) => ({ x0: MOUNTAINS.x0 + pad, x1: MOUNTAINS.x1 - pad, z0: MOUNTAINS.z0 + pad, z1: -HALF + pad + 1 });
-const rects = (pad: number) => [mainRect(pad), swampRect(pad), mountainRect(pad)];
+// And the Tierras on theirs.
+const corruptRect = (pad: number) => ({ x0: CORRUPT_LANDS.x0 + pad, x1: CORRUPT_LANDS.x1 - pad, z0: CORRUPT_LANDS.z0 + pad, z1: CORRUPT_LANDS.z1 + pad + 1 });
+const rects = (pad: number) => [mainRect(pad), swampRect(pad), mountainRect(pad), corruptRect(pad)];
 
-/** Inside the playable map (forest ∪ coast ∪ swamp ∪ mountains), `pad` metres from its edge. */
+/** Inside the playable map (forest ∪ coast ∪ swamp ∪ mountains ∪ Tierras), `pad` metres from its edge. */
 export function inMap(x: number, z: number, pad: number): boolean {
   return rects(pad).some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
 }
 
-/** The nearest point of the map (union of the three rectangles; ties go to the forest's). */
+/** The nearest point of the map (union of the four rectangles; ties go to the forest's). */
 export function clampMap(x: number, z: number, pad: number): { x: number; z: number } {
   if (inMap(x, z, pad)) return { x, z };
   let best = { x, z };
@@ -172,6 +222,7 @@ export function createTerrain(seed: number): Terrain {
   const bumps = [...islets, island];
   const { mounds } = swampFeatures(seed);
   const { paredes, pico } = mountainFeatures(seed);
+  const cf = corruptFeatures(seed);
   const xRim = (x: number) => {
     const e = Math.abs(x) / HALF;
     return e > 0.85 ? (e - 0.85) * 60 : 0; // hills at the border keep players in
@@ -263,10 +314,52 @@ export function createTerrain(seed: number): Terrain {
     }
     return h;
   };
+  let e0 = NaN; // E(0): the plateau's reference
+  let stepsFloor = NaN;
+  let lakeTop = NaN;
+  const C = CORRUPT_LANDS;
+  const corrupt = (x: number, z: number) => {
+    const d = C.z1 - z;
+    const E = main(x, -HALF);
+    let r: number;
+    if (d < C.rim) r = lerp(C.rimTop, C.rimFoot, smooth(clamp01(d / C.rim)));
+    else {
+      const ramp = clamp01((d - C.rim) / 8);
+      r = C.rimFoot + (noise.fbm(x * 0.03 + 1200, z * 0.03 + 1200, 3) - 0.5) * 10 * ramp;
+      if (d > C.ceniza) r += 8 * smooth(clamp01((d - C.ceniza) / 40)) + (noise.fbm(x * 0.015 + 1300, z * 0.015 + 1300, 3) - 0.5) * 16 * clamp01((d - C.ceniza) / 10);
+    }
+    let h = E + r;
+    // el Lago Negro: a bowl.
+    const q = Math.hypot(x - cf.lake.x, z - cf.lake.z) / cf.lake.r;
+    if (q < 1) {
+      if (Number.isNaN(lakeTop)) lakeTop = main(cf.lake.x, -HALF) + C.rimFoot;
+      h = lerp(lakeTop - cf.lake.depth * (1 - q * q), h, smooth(clamp01((q - 0.6) / 0.4)));
+    }
+    // los Escalones rotos: a flat floor, 4 risers, a back wall.
+    const s = cf.steps;
+    const sd = d - s.d0;
+    if (Math.abs(x - s.x) < s.half + s.run && sd > -4 - s.run && sd < 40 + s.run) {
+      if (Number.isNaN(stepsFloor)) stepsFloor = main(s.x, -HALF) + C.rimFoot + 4;
+      let top = stepsFloor;
+      for (let k = 0; k < s.steps; k++) top += s.rise * smooth(clamp01((sd - s.pitch * k) / s.run));
+      const m = smooth(clamp01((s.half + s.run - Math.abs(x - s.x)) / s.run)) * smooth(clamp01((sd + 4 + s.run) / s.run)) * smooth(clamp01((40 + s.run - sd) / s.run));
+      h = lerp(h, top, m);
+    }
+    // la Torre's plateau.
+    const tf = TOWER_FOOT;
+    if (d > tf.d && Math.abs(x) < tf.half) {
+      if (Number.isNaN(e0)) e0 = main(0, -HALF);
+      h = lerp(h, e0 + tf.top, smooth(clamp01((tf.half - Math.abs(x)) / tf.blend)) * smooth(clamp01((d - tf.d) / tf.blend)));
+    }
+    const side = Math.abs(x) - (HALF - C.sideRim);
+    if (side > 0 && d > C.rim) h = lerp(h, E + C.rimTop, smooth(clamp01(side / C.sideRim)) * clamp01((d - C.rim) / 10));
+    return h;
+  };
   return {
     heightAt(x, z) {
       let h: number;
-      if (x >= -HALF && z < -HALF) h = mountains(x, z);
+      if (x >= -HALF && z < CORRUPT_LANDS.z1) h = corrupt(x, z);
+      else if (x >= -HALF && z < -HALF) h = mountains(x, z);
       else if (x >= -HALF) h = main(x, z);
       else {
         const edge = main(-HALF, z);
