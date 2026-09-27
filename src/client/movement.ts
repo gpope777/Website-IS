@@ -1,6 +1,6 @@
 import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
-import { FROG, frogHop, frogStepOk } from '../shared/frog';
+import { FROG, frogHop, frogMoveOk } from '../shared/frog';
 import { seatOffset, WHALE, whaleStepOk } from '../shared/whale';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
@@ -347,10 +347,10 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
     }
   }
   const to = bounds(b.x, b.z, nx, nz);
-  if (frogStepOk(terrain, to.x, to.z)) {
+  if (frogMoveOk(terrain, b, to, !b.onGround, crags)) {
     b.x = to.x;
     b.z = to.z;
-  } else b.vx = b.vz = 0; // too deep for the frog
+  } else b.vx = b.vz = 0; // too deep for the frog (it may still hop over, land on a pad, or float back shallower)
   const ground = Math.max(terrain.heightAt(b.x, b.z), WATER_LEVEL, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
   if (b.onGround) b.y = ground;
   else {

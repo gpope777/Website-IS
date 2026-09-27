@@ -528,6 +528,16 @@ describe('riding la Rana', () => {
     expect(c.onGround).toBe(true);
   });
 
+  it('hops over deep water onto a lily pad (S3-C)', () => {
+    const lake: Terrain = { heightAt: (_x, z) => (z > 2 ? WATER_LEVEL - 6 : 0), density: () => 0.5 };
+    const pad = { id: 1200, x: 0, z: FROG.hop.fwd, r: 1.1, base: WATER_LEVEL - 1, top: WATER_LEVEL + 0.15, bare: true };
+    const b = frogBody(lake);
+    stepBody(b, { x: 0, z: 0, sprint: false, jump: true }, 0, 1 / 60, lake, none, [pad]);
+    for (let i = 0; i < 400 && !b.onGround; i++) stepBody(b, { x: 0, z: 0, sprint: false, jump: false }, 0, 1 / 60, lake, none, [pad]);
+    expect(Math.hypot(b.x - pad.x, b.z - pad.z)).toBeLessThan(pad.r + 0.5);
+    expect(b.y).toBeCloseTo(pad.top, 1);
+  });
+
   it('floats on shallow water', () => {
     const shallow: Terrain = { heightAt: () => WATER_LEVEL - 1.5, density: () => 0.5 };
     const { b, r } = run(fwd, 1, shallow, none, 0, [], frogBody(shallow));

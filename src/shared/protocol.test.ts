@@ -54,7 +54,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -104,12 +104,13 @@ describe('power and shrine protocol', () => {
     ok({ t: 'power', x: 1, z: 2 });
     ok({ t: 'shrine', id: 0, part: 2 });
     ok({ t: 'shrine', id: 5, part: 3 });
-    bad('{"t":"shrine","id":0,"part":4}');
+    ok({ t: 'shrine', id: 6, part: 4 });
+    bad('{"t":"shrine","id":0,"part":5}');
     bad('{"t":"shrine","id":0,"part":-1}');
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
 });
 
@@ -131,7 +132,7 @@ describe('mount protocol', () => {
     ok({ t: 'mount', act: 14 });
     bad('{"t":"mount","act":15}');
     bad('{"t":"mount","act":-1}');
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
 });
 
@@ -142,7 +143,7 @@ describe('chest and upgrade protocol', () => {
     bad('{"t":"chest","id":-1}');
     bad('{"t":"chest","id":1.5}');
     bad('{"t":"chest"}');
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
 });
 
@@ -152,13 +153,13 @@ describe('S2-F protocol', () => {
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'viento' }))).toEqual({ t: 'power', x: 1, z: 2, kind: 'viento' });
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'enredadera' }))).toEqual({ t: 'power', x: 1, z: 2, kind: 'enredadera' });
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'fuego' }))).toBeNull();
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
 });
 
 describe('rescue protocol (S2-H)', () => {
   it('decodes the cage release', () => {
     ok({ t: 'rescue' });
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
 });

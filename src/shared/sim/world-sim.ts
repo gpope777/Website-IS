@@ -13,7 +13,8 @@ import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon,
 import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
-import { FROG, frogPads, wildFrog } from '../frog';
+import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
+import { AMBER, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
@@ -128,6 +129,8 @@ export interface Outgoing {
 }
 
 interface Live {
+  /** Carrying a torch from the Candiles post (spent on one brazier). */
+  torch?: boolean;
   anim: Anim;
   awayFor: number | null;
   anchorX: number;
@@ -256,7 +259,7 @@ export class WorldSim {
     block: { ...insideCoast(COAST_DUNGEON.blockStart) },
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
-  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null }[];
+  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[] }[];
   private readonly players = new Map<string, SavedPlayer>();
   private readonly live = new Map<string, Live>();
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
@@ -312,7 +315,7 @@ export class WorldSim {
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
-    this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed)];
+    this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed), ...generateSwampShrines(this.terrain, saved.seed)];
     this.chests = generateChests(this.terrain, saved.seed);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...forest, this.entrance]);
@@ -327,7 +330,7 @@ export class WorldSim {
     this.whale = saved.whale ? { ...saved.whale } : { ...this.whaleHome, yaw: 0 };
     this.zones = allZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
-    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null }));
+    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null, lit: s.kind === 'candles' ? [0, 0, 0] : [], pads: s.kind === 'lilies' ? s.parts.map(() => ({ at: null, downUntil: 0 })) : [] }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
     for (const p of this.players.values()) if (p.enredadera === undefined && (p.shrines ?? []).length > 0) p.enredadera = true;
@@ -593,7 +596,12 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags()];
+  }
+
+  /** Nenúfares' pads still afloat. */
+  private padCrags(): Crag[] {
+    return this.shrines.flatMap((s, id) => (s.kind === 'lilies' ? lilyPadCrags(s, this.shrineLive[id]!.pads.map((p) => this.time >= p.downUntil)) : []));
   }
 
   /** Ids of the zones still corrupt. */
@@ -678,7 +686,7 @@ export class WorldSim {
     const lifted = this.time < l.boostUntil && m.y <= l.boostCeil; // a gust's lift while gliding
     // ponytail: the frog's high jump is only a ceiling (ground + FROG.ceil), no server jump physics.
     const yOk = m.y > ground - 1 && (m.y < ground + (l.frog ? FROG.ceil : 4) || (!l.riding && !l.frog && m.y < cragCeiling) || m.y <= p.y || lifted);
-    const dryOk = l.frog ? this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - FROG.deep : !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
+    const dryOk = l.frog ? frogMoveOk(this.terrain, p, m, m.y > Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL) + 0.5, this.climbables()) : !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
     // The sea past 4 m turns swimmers back (they may only head shallower); gliders fly over it.
     const swimming = m.y < WATER_LEVEL - 0.5;
     const seaOk = !swimming || deepStepOk(this.terrain, p.x, p.z, m.x, m.z);
@@ -860,12 +868,19 @@ export class WorldSim {
     if (cleared.includes(id)) return;
     const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
     if (Math.hypot(s.orb.x - p.x, s.orb.z - p.z) > reach || p.y < s.orb.y - 2.5) return;
+    // S3-E: three Llamaradas burn the peat wall.
+    if (s.kind === 'peat') return this.tell(p.name, 'Raíces de turba. Esto solo arde. Vuelve luego');
     if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
     p.shrines = [...cleared, id];
+    if (s.id >= SWAMP_SHRINE.firstId) {
+      p.inv = addItem(p.inv, 'amber', AMBER.orb);
+      // S3-D: a swamp orb cleanses the nearest swamp zone (10–13) once they exist.
+      return this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${AMBER.orb} de ${NAMES.amber}`);
+    }
     this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
     // The shrine's light cleanses the corrupt zone nearest it (never the Raíz-madre's: that takes the Tragón).
     // Coast orbs cleanse coast zones only (never the coast Raíz-madre's: that takes its boss, S2-G); forest orbs forest ones.
-    const coast = s.id >= COAST_SHRINE.firstId;
+    const coast = s.id >= COAST_SHRINE.firstId && s.id < SWAMP_SHRINE.firstId;
     const ids = this.corrupt().filter((i) => i !== 0 && i !== COAST_ZONES.root && isCoastZone(i) === coast);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
     if (zn) this.cleanse(zn.id, coast ? 'La luz del santuario limpia un trozo de costa' : 'La luz del santuario limpia un trozo de bosque');
@@ -873,6 +888,7 @@ export class WorldSim {
 
   /** Levers, wheels and Marea's pumice block. */
   private onShrinePart(p: SavedPlayer, s: Shrine, st: (typeof this.shrineLive)[number], part: number): void {
+    if (s.kind === 'candles') return this.onCandle(p, s, st, part);
     if (s.kind === 'tide') {
       const b = st.block!;
       if (part !== 1) return;
@@ -897,6 +913,27 @@ export class WorldSim {
     }
     if (s.kind === 'fan') return this.tell(p.name, `La verja-molino no se mueve. Quizá con ${NAMES.powerWind.toLowerCase()}… o con tres manos`);
     return this.tell(p.name, s.kind === 'sunken' ? 'La palanca cede. Falta la otra, y hay prisa' : 'La palanca cede. Falta la otra');
+  }
+
+  /** Candiles: part 4 = take a torch at the post; 1–3 = light that brazier with it (the torch is spent). */
+  private onCandle(p: SavedPlayer, s: Shrine, st: (typeof this.shrineLive)[number], part: number): void {
+    const l = this.live.get(p.name);
+    const spot = s.parts[part - 1];
+    if (!l || !spot || Math.hypot(spot.x - p.x, spot.z - p.z) > SHRINE.partReach) return;
+    if (part === 4) {
+      if (l.torch) return this.tell(p.name, 'Ya llevas una antorcha');
+      l.torch = true;
+      return this.tell(p.name, 'Una antorcha. A junto a un brasero');
+    }
+    // S3-E: a Llamarada lights a brazier without a torch.
+    if (!l.torch) return this.tell(p.name, 'Hace falta fuego');
+    l.torch = false;
+    st.lit[part - 1] = this.time + SWAMP_SHRINE.litFor;
+    if (st.lit.every((t) => this.time < t)) {
+      st.openUntil = this.time + SHRINE.openFor;
+      return this.tell(p.name, 'Los tres braseros arden. Algo se abre en el santuario');
+    }
+    this.tell(p.name, 'El brasero prende. La antorcha se consume');
   }
 
   private onPower(p: SavedPlayer, l: Live, x: number, z: number): void {
@@ -1837,6 +1874,9 @@ export class WorldSim {
       const st = this.shrineLive[id]!;
       const open = this.shrineOpen(id);
       if (s.kind === 'plate') return { id, open, parts: [st.pressed] };
+      if (s.kind === 'candles') return { id, open, parts: [...st.lit.map((t) => this.time < t), false] };
+      if (s.kind === 'lilies') return { id, open, parts: st.pads.map((q) => this.time >= q.downUntil) };
+      if (s.kind === 'peat') return { id, open: false, parts: [] };
       if (s.kind === 'tide') return { id, open, parts: [st.pressed], block: { x: r2(st.block!.x), z: r2(st.block!.z), held: st.block!.held } };
       const window = s.kind === 'fan' ? COAST_SHRINE.wheelWindow : s.kind === 'sunken' ? COAST_SHRINE.sunkenWindow : SHRINE.leverWindow;
       const parts = s.parts.map((_, i) => st.pulled[i] != null && (open || this.time - st.pulled[i]! <= window + EPS));
@@ -1845,7 +1885,9 @@ export class WorldSim {
   }
 
   private stepShrines(): void {
+    for (const [name, l] of this.live) if (l.torch && this.players.get(name)!.dead) l.torch = false; // dropped in the mud
     this.shrines.forEach((s, id) => {
+      if (s.kind === 'lilies') return this.stepLilies(id);
       if (s.kind !== 'plate' && s.kind !== 'tide') return;
       const st = this.shrineLive[id]!;
       const plate = s.parts[0]!;
@@ -1865,6 +1907,30 @@ export class WorldSim {
         st.pressed = true;
       }
       if (st.pressed) st.openUntil = this.time + SHRINE.plateHold;
+    });
+  }
+
+  /** Nenúfares: a pad sinks a while after someone stands on it, and comes back; standing on the last one opens the gate. */
+  private stepLilies(id: number): void {
+    const S = SWAMP_SHRINE;
+    const s = this.shrines[id]!;
+    const st = this.shrineLive[id]!;
+    const top = WATER_LEVEL + S.padTop;
+    st.pads.forEach((q, i) => {
+      if (this.time < q.downUntil) return;
+      const pad = s.parts[i]!;
+      const on = [...this.live].some(([name, l]) => {
+        const p = this.players.get(name)!;
+        return !p.dead && l.awayFor === null && Math.hypot(pad.x - p.x, pad.z - p.z) <= S.padR + 0.3 && p.y > top - 0.5 && p.y < top + 1.5;
+      });
+      if (on) {
+        q.at ??= this.time;
+        if (i === st.pads.length - 1) st.openUntil = this.time + SHRINE.openFor;
+      }
+      if (q.at !== null && this.time - q.at >= S.sinkAfter - EPS) {
+        q.at = null;
+        q.downUntil = this.time + S.downFor;
+      }
     });
   }
 
@@ -1915,6 +1981,7 @@ export class WorldSim {
       race: l.race ? { i: l.race.i, deadline: r2(l.race.deadline), beast: l.race.beast } : null,
       frog: !!p.frog,
       onFrog: l.frog,
+      torch: !!l.torch,
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
       whaleSeat: this.seatOf(p.name),

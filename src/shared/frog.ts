@@ -1,5 +1,6 @@
 import { createRng } from './rng';
 import { inBog } from './swamp';
+import type { Crag } from './crags';
 import { inMap, LAGUNA, swampFeatures, WATER_LEVEL, type Terrain } from './terrain';
 
 /** La Rana: the swamp mount. Tamed with a lily-pad chase and then the timing ring (spec S3 §5). */
@@ -78,4 +79,15 @@ export function frogStepOk(t: Terrain, x: number, z: number): boolean {
 export function frogHop(gravity: number): { vy: number; fwd: number } {
   const vy = Math.sqrt(2 * gravity * FROG.hop.up);
   return { vy, fwd: FROG.hop.fwd / ((2 * vy) / gravity) };
+}
+
+/**
+ * A frog step (S3-C): where the frog may be, or in the air, or on something afloat (lily pads, the platform);
+ * dropped into deep water it may only float back toward shallower water. Client and server share it.
+ */
+export function frogMoveOk(t: Terrain, from: { x: number; z: number }, to: { x: number; z: number }, airborne: boolean, solids: readonly Crag[]): boolean {
+  if (frogStepOk(t, to.x, to.z) || airborne) return true;
+  if (!inMap(to.x, to.z, 2)) return false;
+  if (solids.some((c) => c.top >= WATER_LEVEL - 0.5 && Math.hypot(c.x - to.x, c.z - to.z) <= c.r + 0.3)) return true;
+  return t.heightAt(to.x, to.z) > t.heightAt(from.x, from.z);
 }

@@ -17,6 +17,7 @@ import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
 import { FROG } from '../frog';
+import { SWAMP_SHRINE } from '../swamp-shrines';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
@@ -884,7 +885,7 @@ describe('shrines', () => {
     const again = new WorldSim(saved);
     again.connect('Ana');
     expect(snap(again, 'Ana').self.shrines).toEqual([]);
-    expect(snap(again, 'Ana').shrines).toHaveLength(6); // S2-C: the coast's three follow the forest's (intentional change)
+    expect(snap(again, 'Ana').shrines).toHaveLength(9); // S2-C/S3-C: the coast's and the swamp's three follow the forest's (intentional change)
   });
 });
 
@@ -3645,5 +3646,144 @@ describe('riding la Rana', () => {
     down(sim, 'Ana');
     expect(snap(sim, 'Ana').self.onFrog).toBe(false);
     expect(sim.getPlayer('Ana')!.frog).toBeDefined();
+  });
+});
+
+describe('swamp shrines (S3-C)', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const view = (sim: WorldSim, name: string, id: number) => snap(sim, name).shrines.find((v) => v.id === id)!;
+  const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const take = (sim: WorldSim, name: string, id: number, y?: number) => {
+    const s = sim.shrines[id]!;
+    put(sim, name, s.orb.x, s.orb.z);
+    if (y !== undefined) sim.getPlayer(name)!.y = y;
+    use(sim, name, id, 0);
+    return snap(sim, name).self.shrines.includes(id);
+  };
+  const standOn = (sim: WorldSim, name: string, p: { x: number; z: number }) => {
+    put(sim, name, p.x, p.z);
+    sim.getPlayer(name)!.y = WATER_LEVEL + SWAMP_SHRINE.padTop;
+  };
+
+  it('Candiles: a torch per brazier, all three lit at once open it', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'candles');
+    expect(s.id).toBe(6);
+    const [b0, b1, b2, post] = s.parts as [{ x: number; z: number }, { x: number; z: number }, { x: number; z: number }, { x: number; z: number }];
+    put(sim, 'Ana', b0.x, b0.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(texts(sim)).toContain('Hace falta fuego');
+    expect(view(sim, 'Ana', s.id).parts.slice(0, 3)).toEqual([false, false, false]);
+    put(sim, 'Ana', post.x, post.z);
+    use(sim, 'Ana', s.id, 4);
+    expect(snap(sim, 'Ana').self.torch).toBe(true);
+    use(sim, 'Ana', s.id, 4);
+    expect(texts(sim)).toContain('Ya llevas una antorcha');
+    for (const [i, b] of [b0, b1, b2].entries()) {
+      put(sim, 'Ana', b.x, b.z);
+      use(sim, 'Ana', s.id, i + 1);
+      expect(snap(sim, 'Ana').self.torch).toBe(false);
+      if (i < 2) {
+        put(sim, 'Ana', post.x, post.z);
+        use(sim, 'Ana', s.id, 4);
+      }
+    }
+    expect(view(sim, 'Ana', s.id).parts.slice(0, 3)).toEqual([true, true, true]);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    const amber = sim.getPlayer('Ana')!.inv.amber ?? 0;
+    expect(take(sim, 'Ana', s.id)).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(amber + 1);
+  });
+
+  it('Candiles: a brazier goes out after 12 s, and a torch is lost on death', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'candles');
+    const [b0, , , post] = s.parts as { x: number; z: number }[];
+    put(sim, 'Ana', post!.x, post!.z);
+    use(sim, 'Ana', s.id, 4);
+    put(sim, 'Ana', b0!.x, b0!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(true);
+    for (let i = 0; i < SWAMP_SHRINE.litFor * 10 + 2; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(false);
+    put(sim, 'Ana', post!.x, post!.z);
+    use(sim, 'Ana', s.id, 4);
+    sim.getPlayer('Ana')!.dead = true;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.torch).toBe(false);
+  });
+
+  it('Nenúfares: pads sink under you and come back; the last one opens the gate', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'lilies');
+    expect(s.id).toBe(7);
+    const pads = s.parts;
+    const padIds = () => sim.climbables().filter((c) => c.id >= SWAMP_SHRINE.padId && c.id < SWAMP_SHRINE.padId + 100).length;
+    expect(padIds()).toBe(SWAMP_SHRINE.pads);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(false);
+    standOn(sim, 'Ana', pads[0]!);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(true);
+    for (let i = 0; i < SWAMP_SHRINE.sinkAfter * 10 + 2; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(false);
+    expect(padIds()).toBe(SWAMP_SHRINE.pads - 1);
+    put(sim, 'Ana', pads[0]!.x + 20, pads[0]!.z);
+    for (let i = 0; i < SWAMP_SHRINE.downFor * 10 + 2; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(true);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    standOn(sim, 'Ana', pads[pads.length - 1]!);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
+  });
+
+  it('Turba: only fire burns the peat wall (not yet)', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'peat');
+    expect(s.id).toBe(8);
+    expect(take(sim, 'Ana', s.id)).toBe(false);
+    expect(texts(sim)).toContain('Raíces de turba. Esto solo arde. Vuelve luego');
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+  });
+
+  it('a swamp orb cleanses no zone', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'lilies');
+    const before = sim.corrupt();
+    standOn(sim, 'Leo', s.parts[s.parts.length - 1]!);
+    sim.step(0.1);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
+    expect(sim.corrupt()).toEqual(before);
+  });
+
+  it('the frog hops over deep water onto the pads, and swims back only toward the shore', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'lilies');
+    const pad = s.parts[4]!;
+    standOn(sim, 'Ana', s.parts[2]!);
+    sim.getPlayer('Ana')!.frog = { x: s.parts[2]!.x, z: s.parts[2]!.z };
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    const p = sim.getPlayer('Ana')!;
+    const mid = { x: (p.x + pad.x) / 2, z: (p.z + pad.z) / 2 };
+    const go = (x: number, y: number, z: number) => {
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      const before = { x: p.x, z: p.z };
+      sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'idle' });
+      return p.x !== before.x || p.z !== before.z;
+    };
+    expect(go(mid.x, WATER_LEVEL + 5, mid.z)).toBe(true); // in the air
+    expect(go(pad.x, WATER_LEVEL + SWAMP_SHRINE.padTop, pad.z)).toBe(true); // on a pad
+    const plat = s.pillar!;
+    const len = Math.hypot(plat.x - pad.x, plat.z - pad.z);
+    const deep = { x: pad.x - ((plat.z - pad.z) / len) * 4, z: pad.z + ((plat.x - pad.x) / len) * 4 }; // 4 m to the side of the path
+    expect(depthAt(sim.terrain, deep.x, deep.z)).toBeGreaterThan(FROG.deep);
+    expect(go(deep.x, WATER_LEVEL, deep.z)).toBe(false); // floating out deeper: no
+    put(sim, 'Ana', deep.x, deep.z);
+    p.y = WATER_LEVEL;
+    const shore = s.parts[0]!;
+    const back = { x: deep.x + (shore.x - deep.x) * 0.3, z: deep.z + (shore.z - deep.z) * 0.3 };
+    expect(depthAt(sim.terrain, back.x, back.z)).toBeLessThan(depthAt(sim.terrain, deep.x, deep.z));
+    expect(go(back.x, WATER_LEVEL, back.z)).toBe(true); // back toward the shore: yes
   });
 });

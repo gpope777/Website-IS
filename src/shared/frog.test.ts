@@ -54,3 +54,18 @@ describe('la Rana', () => {
     expect(fwd * ((2 * vy) / g)).toBeCloseTo(FROG.hop.fwd, 1);
   });
 });
+
+describe('the frog over deep water (S3-C)', () => {
+  it('flies over it, stands on pads, and only floats back toward shallower water', async () => {
+    const { frogMoveOk } = await import('./frog');
+    const { createTerrain: ct, LAGUNA: L, WATER_LEVEL: W } = await import('./terrain');
+    const t = ct(42);
+    const deep = { x: L.x, z: L.z };
+    const lessDeep = { x: L.x - 30, z: L.z };
+    expect(frogMoveOk(t, lessDeep, deep, false, [])).toBe(false);
+    expect(frogMoveOk(t, lessDeep, deep, true, [])).toBe(true);
+    expect(frogMoveOk(t, deep, lessDeep, false, [])).toBe(true);
+    const pad = { id: 1, x: deep.x, z: deep.z, r: 1.1, base: W - 1, top: W + 0.15, bare: true };
+    expect(frogMoveOk(t, lessDeep, deep, false, [pad])).toBe(true);
+  });
+});
