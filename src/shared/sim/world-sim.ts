@@ -8,8 +8,8 @@ import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
 import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
-import { COAST_DUNGEON, coastEntrance, inChasm, inCoastDungeon, insideCoast } from '../coast-dungeon';
-import { createElite, ELITE, stepElite, type Elite } from './elite';
+import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
+import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -225,6 +225,8 @@ export class WorldSim {
   };
   /** The bruto reforzado while someone is in its room. Live-only. */
   private elite: Elite | null = null;
+  /** The bruto escudado in the coast interior. */
+  private shield: Elite | null = null;
   /** The coast interior (live-only, like the forest one): levers, gates, the pumice block, the bruto escudado. */
   private readonly coastLive = {
     pulled: [null, null] as (number | null)[],
@@ -463,6 +465,7 @@ export class WorldSim {
     this.stepDungeon();
     this.stepCoastDungeon();
     this.stepEliteFight(dt);
+    this.stepShieldFight(dt);
     this.stepBossFight(dt);
     this.stepAlly(dt);
     this.stepRace();
@@ -491,6 +494,8 @@ export class WorldSim {
       .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
+    const sh = this.shield;
+    if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const el = this.elite;
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
     const mm = this.marchito;
@@ -883,7 +888,7 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.boss ? [this.boss] : []), ...(this.marchito ? [this.marchito] : [])];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.marchito ? [this.marchito] : [])];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
@@ -913,7 +918,12 @@ export class WorldSim {
   }
 
   /** Hook for enemies that react to wind (the bruto escudado turns around). */
-  private onGusted(_w: Wolf): void {}
+  private onGusted(w: Wolf): void {
+    if (w !== this.shield) return;
+    this.shield.yaw += Math.PI;
+    this.shield.exposed = ELITE.exposedFor;
+    this.say(`El ${NAMES.eliteCoast} gira con la ráfaga. ¡Espalda al aire!`);
+  }
 
   private gustThings(p: SavedPlayer, dir: Dir, hits: (x: number, z: number, range?: number) => boolean): void {
     const C = COAST_DUNGEON;
@@ -964,6 +974,7 @@ export class WorldSim {
   private enemy(id: number): Wolf | undefined {
     if (this.marchito && this.marchito.id === id) return this.marchito;
     if (this.elite && this.elite.id === id) return this.elite;
+    if (this.shield && this.shield.id === id) return this.shield;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
@@ -971,6 +982,8 @@ export class WorldSim {
   private strike(name: string, w: Wolf, dmg: number): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
+    const by = this.players.get(name);
+    if (w === this.shield && by && shieldBlocks(w as Elite, by.x, by.z)) return this.tell(name, 'El escudo para el golpe. Dale la vuelta con viento, o párale');
     if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
   }
 
@@ -1529,7 +1542,7 @@ export class WorldSim {
       levers: c.pulled.map((t) => t != null && (c.gate || this.time - t <= COAST_DUNGEON.leverWindow + EPS)),
       block: { x: r2(c.block.x), z: r2(c.block.z) },
       plate: c.plate,
-      elite: null,
+      elite: this.shield && this.shield.hp > 0 ? { hp: Math.round(this.shield.hp), max: ENEMY.elite2.hp, exposed: this.shield.exposed > 0, charging: this.shield.windup > 0 || this.shield.charge > 0 } : null,
     };
     return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast };
   }
@@ -1591,6 +1604,37 @@ export class WorldSim {
     }
     const hit = stepElite(this.elite, fighters, dt);
     if (hit) this.bite(hit.name, hit.dmg, this.elite);
+  }
+
+  /** The bruto escudado, like the forest elite: lives while someone is in its room; once down, gate 3 opens. */
+  private stepShieldFight(dt: number): void {
+    const g = this.coastLive;
+    if (!g.calm && this.targets().some((t) => !t.dead && inCoastBossRoom(t.x, t.z))) {
+      g.calm = true;
+      this.say('La sala está en calma. Algo duerme bajo la marea');
+    }
+    const e = this.shield;
+    if (e && e.hp <= 0) {
+      if (!g.eliteDown) {
+        g.eliteDown = true;
+        this.say(`El ${NAMES.eliteCoast} suelta el escudo y se deshace en espuma. La última verja se abre`);
+      }
+      e.deadFor += dt;
+      if (e.deadFor >= ELITE.corpseTime) this.shield = null;
+      return;
+    }
+    if (g.eliteDown) return;
+    const fighters = this.targets().filter((t) => !t.dead && inShieldRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.shield = null;
+      return;
+    }
+    if (!this.shield) {
+      this.shield = createShielded();
+      this.say(`Un ${NAMES.eliteCoast} se levanta. De frente no le entra nada`);
+    }
+    const hit = stepElite(this.shield, fighters, dt);
+    if (hit) this.bite(hit.name, hit.dmg, this.shield);
   }
 
   /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */
@@ -1878,6 +1922,7 @@ export class WorldSim {
     if (out.kind === 'parried') {
       w.stun = BLOCK.parryStun;
       if (w === this.boss) this.boss.weak = BOSS.weakFor;
+      if (w === this.shield) this.shield.exposed = ELITE.exposedFor;
       this.strike(name, w, BLOCK.parryDamage);
       return this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : 'Parada');
     }

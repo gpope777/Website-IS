@@ -67,3 +67,27 @@ describe('stepElite (bruto reforzado)', () => {
     expect(e.charge).toBe(0);
   });
 });
+
+describe('the bruto escudado (S2-F)', () => {
+  it('lives in the coast room and keeps to it', async () => {
+    const { createShielded } = await import('./elite');
+    const { COAST_DUNGEON: C } = await import('../coast-dungeon');
+    const e = createShielded();
+    expect(e).toMatchObject({ kind: 'elite2', x: C.x, z: C.eliteZ, hp: ENEMY.elite2.hp });
+    for (let i = 0; i < 60; i++) stepElite(e, [t(C.x, C.eliteRoomZ - 20)], 0.1);
+    expect(e.z).toBeGreaterThanOrEqual(C.eliteRoomZ + 1.5);
+  });
+
+  it('its shield blocks from the front until it is exposed', async () => {
+    const { createShielded, shieldBlocks } = await import('./elite');
+    const e = createShielded();
+    e.yaw = 0; // facing +z
+    expect(shieldBlocks(e, e.x, e.z + 2)).toBe(true);
+    expect(shieldBlocks(e, e.x, e.z - 2)).toBe(false);
+    e.exposed = ELITE.exposedFor;
+    expect(shieldBlocks(e, e.x, e.z + 2)).toBe(false);
+    stepElite(e, [], ELITE.exposedFor + 0.1);
+    expect(e.exposed).toBe(0);
+    expect(shieldBlocks(createElite(), 0, 0)).toBe(false);
+  });
+});

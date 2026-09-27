@@ -2954,3 +2954,71 @@ describe('Viento (S2-F)', () => {
     expect(up(g + 12)).toBe(false);
   });
 });
+
+describe('the bruto escudado (S2-F)', () => {
+  const C = COAST_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  function arena() {
+    const sim = setup('Ana');
+    const e = sim.coastEntrance;
+    put(sim, 'Ana', e.x, e.z + 3);
+    sim.handle('Ana', { t: 'dungeon', act: 8 });
+    put(sim, 'Ana', C.x, C.eliteZ - 3);
+    sim.step(0.1);
+    const w = snap(sim, 'Ana').wolves.find((x) => x.kind === 'elite2')!;
+    const priv = sim as unknown as { shield: Wolf & { exposed: number; chargeReady: number } };
+    priv.shield.chargeReady = 99;
+    return { sim, id: w.id, sh: () => priv.shield };
+  }
+  const punch = (sim: WorldSim, id: number) => {
+    sim.step(1);
+    sim.handle('Ana', { t: 'attack', id });
+  };
+
+  it('rises when someone enters its room', () => {
+    const { sim, sh } = arena();
+    expect(sh().kind).toBe('elite2');
+    expect(snap(sim, 'Ana').dungeon.coast.elite?.hp).toBe(ENEMY.elite2.hp);
+  });
+
+  it('its shield blocks punches from the front; a gust turns it and exposes it', () => {
+    const { sim, id, sh } = arena();
+    const s = sh();
+    Object.assign(s, { x: C.x, z: C.eliteZ, yaw: Math.PI }); // facing Ana (−z)
+    put(sim, 'Ana', C.x, C.eliteZ - 2);
+    msgs(sim);
+    punch(sim, id);
+    s.yaw = Math.PI;
+    expect(s.hp).toBe(ENEMY.elite2.hp);
+    expect(texts(sim).some((t) => t.startsWith('El escudo para el golpe'))).toBe(true);
+    sim.getPlayer('Ana')!.viento = true;
+    sim.handle('Ana', { t: 'power', x: C.x, z: C.eliteZ, kind: 'viento' });
+    expect(s.exposed).toBeGreaterThan(0);
+    expect(snap(sim, 'Ana').dungeon.coast.elite?.exposed).toBe(true);
+    const hp = s.hp;
+    put(sim, 'Ana', s.x, s.z - 2);
+    punch(sim, id);
+    expect(s.hp).toBeLessThan(hp);
+  });
+
+  it('at 0 HP gate 3 opens and the boss room waits, calm', () => {
+    const { sim, sh } = arena();
+    sh().hp = 0;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.coast.gates[3]).toBe(true);
+    put(sim, 'Ana', C.x, C.bossRoomZ + 5);
+    msgs(sim);
+    sim.step(0.1);
+    expect(texts(sim)).toContain('La sala está en calma. Algo duerme bajo la marea');
+  });
+
+  it('an empty room resets it', () => {
+    const { sim, sh } = arena();
+    sh().hp = 100;
+    put(sim, 'Ana', C.x, C.altarZ);
+    sim.step(0.1);
+    put(sim, 'Ana', C.x, C.eliteZ - 3);
+    sim.step(0.1);
+    expect(sh().hp).toBe(ENEMY.elite2.hp);
+  });
+});

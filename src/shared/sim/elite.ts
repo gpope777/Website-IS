@@ -1,4 +1,5 @@
 import { DUNGEON } from '../dungeon';
+import { COAST_DUNGEON } from '../coast-dungeon';
 import { ENEMY, type Wolf, type WolfTarget } from './wolves';
 
 /**
@@ -6,7 +7,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * brute, and from mid range it crouches (a long, readable wind-up) and charges in a straight line.
  * Roll through the charge, or step aside.
  */
-export const ELITE = { id: 900_001, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
+export const ELITE = { id: 900_001, shieldId: 900_002, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
 
 export interface Elite extends Wolf {
   /** Seconds left crouching before the charge (the telegraph). */
@@ -20,6 +21,10 @@ export interface Elite extends Wolf {
   chargeReady: number;
   /** This charge already hit someone. */
   landed: boolean;
+  /** Its room: centre line x, half width, z span. */
+  box: { x: number; halfW: number; z0: number; z1: number };
+  /** Seconds its back is turned (the bruto escudado only: its shield covers the front otherwise). */
+  exposed: number;
 }
 
 export type EliteHit = { name: string; dmg: number } | null;
@@ -28,12 +33,26 @@ export function createElite(): Elite {
   return {
     id: ELITE.id, x: DUNGEON.x, y: DUNGEON.floor, z: DUNGEON.eliteZ, yaw: Math.PI, hp: ENEMY.elite.hp, target: null, cooldown: 0, deadFor: 0,
     wander: 0, anim: 'idle', raid: false, kind: 'elite', stun: 0, windup: 0, charge: 0, dirX: 0, dirZ: -1, chargeReady: 2, landed: false,
+    box: { x: DUNGEON.x, halfW: DUNGEON.halfW, z0: DUNGEON.eliteRoomZ, z1: DUNGEON.bossRoomZ }, exposed: 0,
   };
 }
 
+/** The coast dungeon's mini-boss: the same brute with a front shield (spec §7.2). */
+export function createShielded(): Elite {
+  const C = COAST_DUNGEON;
+  return { ...createElite(), id: ELITE.shieldId, kind: 'elite2', x: C.x, y: C.floor, z: C.eliteZ, box: { x: C.x, halfW: C.halfW, z0: C.eliteRoomZ, z1: C.bossRoomZ } };
+}
+
+/** Whether a hit from (x, z) lands on its shield: from its front half, while not exposed. */
+export function shieldBlocks(e: Elite, x: number, z: number): boolean {
+  if (e.kind !== 'elite2' || e.exposed > 0) return false;
+  return (x - e.x) * Math.sin(e.yaw) + (z - e.z) * Math.cos(e.yaw) > 0;
+}
+
 const clampRoom = (e: Elite) => {
-  e.x = Math.max(DUNGEON.x - DUNGEON.halfW + 1.5, Math.min(DUNGEON.x + DUNGEON.halfW - 1.5, e.x));
-  e.z = Math.max(DUNGEON.eliteRoomZ + 1.5, Math.min(DUNGEON.bossRoomZ - 1.5, e.z));
+  const b = e.box;
+  e.x = Math.max(b.x - b.halfW + 1.5, Math.min(b.x + b.halfW - 1.5, e.x));
+  e.z = Math.max(b.z0 + 1.5, Math.min(b.z1 - 1.5, e.z));
 };
 
 /** One tick. Returns who it hit (bite or charge) and how hard. */
@@ -46,6 +65,7 @@ export function stepElite(e: Elite, targets: readonly WolfTarget[], dt: number):
   const def = ENEMY.elite;
   e.cooldown = Math.max(0, e.cooldown - dt);
   e.chargeReady = Math.max(0, e.chargeReady - dt);
+  e.exposed = Math.max(0, e.exposed - dt);
   if (e.stun > 0) {
     e.stun = Math.max(0, e.stun - dt);
     e.windup = 0;
