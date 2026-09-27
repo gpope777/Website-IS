@@ -1,15 +1,19 @@
-import { HALF, MOUNTAINS, mountainFeatures, type Terrain } from './terrain';
+import { HALF, MOUNTAINS, mountainFeatures, PICO, type Terrain } from './terrain';
 import { weatherAt } from './weather';
 
 /** El Dragón Marchito: the flying mount (spec S4 §10). Circles the Pico on storm days once El Cucurucho is purified. */
 export const DRAGON = {
-  /** Its circle round the Pico: radius, metres below the top, seconds per lap. */
-  radius: 14,
+  /**
+   * Its circle round the Pico: radius, metres below the top, seconds per lap, and the least clearance over the
+   * ground under the circle. (The spec's 14 m ran inside the Pico's skirt; 22 m clears it.)
+   */
+  radius: 22,
   below: 8,
   lap: 10,
-  /** The leap: dragon within this horizontally, below you, at most `leapMaxDrop` below. */
-  leapR: 4,
-  leapMaxDrop: 14,
+  clearance: 3,
+  /** The leap: from the Pico's top (within `rim` of its centre), when the dragon's bearing is within `window` rad of yours (~1.5 s a lap). */
+  rim: PICO.r + 3,
+  window: 0.47,
   /** 5 rounds; a negative speed runs the needle backwards (rounds 3 and 5 reverse). */
   rounds: [
     { speed: 3.4, width: 0.9 },
@@ -46,16 +50,31 @@ export function dragonOut(seed: number, day: number, purified4: boolean): boolea
   return purified4 && weatherAt(seed, day) === 'storm';
 }
 
-/** The Pico's centre and flat top (from the seed and the terrain). */
-export function picoOf(t: Terrain, seed: number): { x: number; z: number; top: number } {
+export interface PicoCircle {
+  x: number;
+  z: number;
+  /** The flat top's height. */
+  top: number;
+  /** The height the dragon circles at. */
+  fly: number;
+}
+
+/** The Pico's centre, its flat top, and the dragon's flying height (never through the mountain). */
+export function picoOf(t: Terrain, seed: number): PicoCircle {
   const { pico } = mountainFeatures(seed);
-  return { x: pico.x, z: pico.z, top: t.heightAt(pico.x, pico.z) };
+  const top = t.heightAt(pico.x, pico.z);
+  let ground = -Infinity;
+  for (let i = 0; i < 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    ground = Math.max(ground, t.heightAt(pico.x + Math.sin(a) * DRAGON.radius, pico.z + Math.cos(a) * DRAGON.radius));
+  }
+  return { x: pico.x, z: pico.z, top, fly: Math.max(top - DRAGON.below, ground + DRAGON.clearance) };
 }
 
 /** The wild dragon at `time`: a pure function (client and server agree). Yaw = heading along its circle. */
-export function dragonPos(pico: { x: number; z: number; top: number }, time: number): { x: number; y: number; z: number; yaw: number } {
+export function dragonPos(pico: PicoCircle, time: number): { x: number; y: number; z: number; yaw: number } {
   const a = ((time % DRAGON.lap) / DRAGON.lap) * Math.PI * 2;
-  return { x: pico.x + Math.sin(a) * DRAGON.radius, y: pico.top - DRAGON.below, z: pico.z + Math.cos(a) * DRAGON.radius, yaw: a + Math.PI / 2 };
+  return { x: pico.x + Math.sin(a) * DRAGON.radius, y: pico.fly, z: pico.z + Math.cos(a) * DRAGON.radius, yaw: a + Math.PI / 2 };
 }
 
 /** Highest a dragon may fly over ground of height `ground`. */
@@ -68,9 +87,14 @@ export function inFog(z: number): boolean {
   return z < -HALF - MOUNTAINS.rimFrom;
 }
 
-/** Can a player at `p` leap onto the wild dragon at `time`? */
-export function leapOk(pico: { x: number; z: number; top: number }, time: number, p: { x: number; y: number; z: number }): boolean {
+/** Can a player at `p` leap onto the wild dragon at `time`? On the Pico's top, with the dragon passing below on your side. */
+export function leapOk(pico: PicoCircle, time: number, p: { x: number; y: number; z: number }): boolean {
+  const r = Math.hypot(p.x - pico.x, p.z - pico.z);
+  if (r > DRAGON.rim || p.y < pico.top - 2) return false;
+  if (r < 1) return true; // dead centre: every side is your side
   const d = dragonPos(pico, time);
-  const drop = p.y - d.y;
-  return Math.hypot(d.x - p.x, d.z - p.z) <= DRAGON.leapR && drop > 0 && drop <= DRAGON.leapMaxDrop;
+  const mine = Math.atan2(p.x - pico.x, p.z - pico.z);
+  const its = Math.atan2(d.x - pico.x, d.z - pico.z);
+  const diff = Math.abs(((its - mine + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+  return diff <= DRAGON.window;
 }
