@@ -107,6 +107,7 @@ export function joinNames(names: readonly string[]): string {
 /** What he says. Dry, short, a little theatrical. */
 export const VISION = {
   purified: (names: string) => ['Una voz como hojas secas:', `«Así que muerden, las ramitas. ${names}.»`, '«Iré a ver ese Corazón yo mismo.»'],
+  purified2: (names: string) => ['La voz, más cerca, con sal:', `«Primero el papel, ahora la cáscara. ${names}.»`, `«La costa era mía. El ${NAMES.heart} también lo será.»`],
   arrive: [`${NAMES.villain} entra en el claro. No se le puede matar.`, '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],
   laugh: [`${NAMES.villain} se ríe como una rama al partirse.`, '«Solo vine a mirar. La próxima vez me quedo.»'],
   driven: (names: string) => [`${NAMES.villain} retrocede entre la niebla.`, `«${names}. Me acordaré de sus nombres.»`],

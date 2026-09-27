@@ -18,6 +18,8 @@ import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
 import { VIENTO } from '../viento';
+import { ANTENON } from './antenon';
+import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
@@ -3001,7 +3003,8 @@ describe('the bruto escudado (S2-F)', () => {
     expect(s.hp).toBeLessThan(hp);
   });
 
-  it('at 0 HP gate 3 opens and the boss room waits, calm', () => {
+  // Rule change (S2-G): the boss room no longer waits calm; El Antenón wakes there.
+  it('at 0 HP gate 3 opens and El Antenón wakes in the boss room', () => {
     const { sim, sh } = arena();
     sh().hp = 0;
     sim.step(0.1);
@@ -3009,7 +3012,7 @@ describe('the bruto escudado (S2-F)', () => {
     put(sim, 'Ana', C.x, C.bossRoomZ + 5);
     msgs(sim);
     sim.step(0.1);
-    expect(texts(sim)).toContain('La sala está en calma. Algo duerme bajo la marea');
+    expect(texts(sim).some((t) => t.startsWith(`${NAMES.bossCoast} despierta`))).toBe(true);
   });
 
   it('an empty room resets it', () => {
@@ -3020,5 +3023,114 @@ describe('the bruto escudado (S2-F)', () => {
     put(sim, 'Ana', C.x, C.eliteZ - 3);
     sim.step(0.1);
     expect(sh().hp).toBe(ENEMY.elite2.hp);
+  });
+});
+
+describe('El Antenón (S2-G)', () => {
+  const C = COAST_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  type A = Wolf & { exposed: number; sweepReady: number; chargeReady: number; windup: number };
+  function room(...names: string[]) {
+    const sim = setup(...(names.length ? names : ['Ana']));
+    for (const n of names.length ? names : ['Ana']) put(sim, n, C.x, C.bossRoomZ + 3);
+    sim.step(0.1);
+    const priv = sim as unknown as { boss2: A | null; cleansed: Set<number>; purified2: boolean };
+    return { sim, a: () => priv.boss2!, priv };
+  }
+  const punch = (sim: WorldSim, a: A) => {
+    put(sim, 'Ana', a.x, a.z - 2);
+    sim.step(1);
+    sim.handle('Ana', { t: 'attack', id: a.id });
+  };
+
+  it('wakes when someone enters its room and resets when it empties', () => {
+    const { sim, a } = room();
+    expect(a().kind).toBe('boss2');
+    expect(snap(sim, 'Ana').dungeon.coast.boss?.hp).toBe(ENEMY.boss2.hp);
+    expect(snap(sim, 'Ana').wolves.some((w) => w.kind === 'boss2')).toBe(true);
+    a().hp = 50;
+    put(sim, 'Ana', C.x, C.altarZ);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.coast.boss).toBeNull();
+    put(sim, 'Ana', C.x, C.bossRoomZ + 3);
+    sim.step(0.1);
+    expect(a().hp).toBe(ENEMY.boss2.hp);
+  });
+
+  it('its shell shrugs off punches until exposed', () => {
+    const { sim, a } = room();
+    const b = a();
+    Object.assign(b, { sweepReady: 99, chargeReady: 99 });
+    msgs(sim);
+    punch(sim, b);
+    expect(b.hp).toBe(ENEMY.boss2.hp);
+    expect(texts(sim).some((t) => t.startsWith('La cáscara de marea aguanta'))).toBe(true);
+  });
+
+  it('a gust into a coral pillar exposes it 5 s; a punch then lands', () => {
+    const { sim, a } = room();
+    const b = a();
+    Object.assign(b, { sweepReady: 99, chargeReady: 99 });
+    const p = C.pillars[0]!;
+    Object.assign(b, { x: C.x + p.x, z: p.z - 3.3 });
+    put(sim, 'Ana', C.x + p.x, p.z - 6);
+    sim.getPlayer('Ana')!.viento = true;
+    msgs(sim);
+    sim.handle('Ana', { t: 'power', x: b.x, z: b.z, kind: 'viento' });
+    expect(b.exposed).toBeCloseTo(ANTENON.slamFor);
+    expect(texts(sim)).toContain('¡Contra el coral! La cáscara se abre');
+    expect(snap(sim, 'Ana').dungeon.coast.boss?.exposed).toBe(true);
+    const hp = b.hp;
+    punch(sim, b);
+    expect(b.hp).toBeLessThan(hp);
+  });
+
+  it('a gust in open floor only moves it', () => {
+    const { sim, a } = room();
+    const b = a();
+    Object.assign(b, { sweepReady: 99, chargeReady: 99, x: C.x, z: 166 });
+    put(sim, 'Ana', C.x, 163);
+    sim.getPlayer('Ana')!.viento = true;
+    sim.handle('Ana', { t: 'power', x: C.x, z: 166, kind: 'viento' });
+    expect(b.z).toBeCloseTo(166 + VIENTO.heavyPush);
+    expect(b.exposed).toBe(0);
+    expect(b.hp).toBe(ENEMY.boss2.hp);
+  });
+
+  it('parrying its sweep exposes it 3 s', () => {
+    const { sim, a } = room();
+    const b = a();
+    Object.assign(b, { x: C.x, z: 166, sweepReady: 0, chargeReady: 99 });
+    put(sim, 'Ana', C.x, 164);
+    sim.step(0.1);
+    expect(b.windup).toBeGreaterThan(0);
+    sim.step(ANTENON.sweepWindup - 0.15);
+    sim.handle('Ana', { t: 'block', on: true });
+    sim.step(0.2);
+    expect(b.exposed).toBeGreaterThan(2);
+  });
+
+  it('beaten: purified for good, zone 6 clean, no coast brutes, a vision with names', () => {
+    const { sim, a, priv } = room();
+    expect(coastRaidBrutes(snap(sim, 'Ana').corrupt)).toBeGreaterThan(0);
+    a().hp = 0;
+    msgs(sim);
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(priv.purified2).toBe(true);
+    expect(snap(sim, 'Ana').corrupt).not.toContain(6);
+    expect(coastRaidBrutes(snap(sim, 'Ana').corrupt)).toBe(0);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Ana')))).toBe(true);
+    expect(sim.save().purified2).toBe(true);
+    sim.step(ANTENON.corpseTime + 1);
+    expect(snap(sim, 'Ana').dungeon.coast.boss).toBeNull();
+    const again = new WorldSim(sim.save());
+    expect(again.purified2).toBe(true);
+  });
+
+  it('old saves load without purified2', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(sim.purified2).toBe(false);
+    expect('purified2' in sim.save()).toBe(false);
   });
 });

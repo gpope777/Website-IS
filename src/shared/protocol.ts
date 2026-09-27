@@ -2,7 +2,7 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -34,7 +34,7 @@ export interface DungeonView {
   coast: CoastDungeonView;
 }
 /** The coast interior: gates (levers, fan, plate, bruto escudado), levers pulled, the pumice block, the plate, and the bruto escudado's bar. */
-export interface CoastDungeonView { gates: boolean[]; levers: boolean[]; block: { x: number; z: number }; plate: boolean; elite: { hp: number; max: number; exposed: boolean; charging: boolean } | null }
+export interface CoastDungeonView { gates: boolean[]; levers: boolean[]; block: { x: number; z: number }; plate: boolean; elite: { hp: number; max: number; exposed: boolean; charging: boolean } | null; /** El Antenón while it fights; `tell` = the attack it is winding up. */ boss: { hp: number; max: number; exposed: boolean; tell: 'sweep' | 'charge' | null } | null }
 /** The purified boss guarding the Heart. */
 export interface AllyView { x: number; y: number; z: number; yaw: number; anim: WolfAnim }
 /** A deer (or giant fish) standing in the world: the wild one (`owner` null) or a parked, tamed one. */

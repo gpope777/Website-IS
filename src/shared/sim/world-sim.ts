@@ -20,6 +20,7 @@ import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, ty
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
+import { ANTENON, createAntenon, pushAntenon, stepAntenon, type Antenon } from './antenon';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
@@ -96,6 +97,8 @@ export interface SavedWorld {
   graves?: Grave[];
   /** The dungeon boss was beaten and now guards the Heart. Optional: older saves have none. */
   purified?: boolean;
+  /** El Antenón was beaten and now guards the Heart too. Optional: older saves have none. */
+  purified2?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
   /** Corruption zones cleansed so far (ids from generateZones). Optional: older saves have none. */
@@ -234,7 +237,6 @@ export class WorldSim {
     fan: false,
     plate: false,
     eliteDown: false,
-    calm: false,
     block: { ...insideCoast(COAST_DUNGEON.blockStart) },
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
@@ -251,6 +253,9 @@ export class WorldSim {
   purified: boolean;
   /** Live while someone is in its room; null otherwise (it resets). */
   private boss: Boss | null = null;
+  /** El Antenón (saved once beaten) and, live while someone is in its room, the fight. */
+  purified2: boolean;
+  private boss2: Antenon | null = null;
   /** The purified Tragón by the Heart; live-only, rebuilt from `purified`. */
   private ally: Ally | null = null;
   /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
@@ -300,6 +305,7 @@ export class WorldSim {
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.raidLevel = saved.raidLevel ?? 0;
     this.purified = saved.purified ?? false;
+    this.purified2 = saved.purified2 ?? false;
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
     this.nextStructureId = saved.nextStructureId;
@@ -467,6 +473,7 @@ export class WorldSim {
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepBossFight(dt);
+    this.stepAntenonFight(dt);
     this.stepAlly(dt);
     this.stepRace();
     this.stepTaming();
@@ -495,6 +502,8 @@ export class WorldSim {
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
     const sh = this.shield;
+    const b2 = this.boss2;
+    if (b2 && near(b2.x, b2.z)) wolves.push({ id: b2.id, kind: b2.kind, x: r2(b2.x), y: r2(b2.y), z: r2(b2.z), yaw: r2(b2.yaw), anim: b2.anim, raid: false });
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const el = this.elite;
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
@@ -527,6 +536,7 @@ export class WorldSim {
       raidLevel: this.raidLevel,
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
+      ...(this.purified2 ? { purified2: true } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
       ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
@@ -888,10 +898,14 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.marchito ? [this.marchito] : [])];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : [])];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
+      if (w === this.boss2) {
+        this.gustAntenon(p.name, this.boss2, dir);
+        continue;
+      }
       const heavy = w.kind !== 'wolf' && w.kind !== 'brute';
       const was = this.terrain.heightAt(w.x, w.z);
       let to = slide(w.x, w.z, dir, heavy ? VIENTO.heavyPush : VIENTO.push);
@@ -915,6 +929,17 @@ export class WorldSim {
       const fall = !heavy && w.y < was - VIENTO.ledge ? VIENTO.ledgeDamage : 0;
       this.strike(p.name, w, VIENTO.damage + fall);
     }
+  }
+
+  /** El Antenón moves 2 m; into a coral pillar, its shell cracks open (spec §7.3). */
+  private gustAntenon(name: string, a: Antenon, dir: Dir): void {
+    a.stun = Math.max(a.stun, VIENTO.stun);
+    if (pushAntenon(a, dir, VIENTO.heavyPush)) {
+      a.exposed = Math.max(a.exposed, ANTENON.slamFor);
+      a.stun = Math.max(a.stun, ANTENON.slamStun);
+      this.say('¡Contra el coral! La cáscara se abre');
+    }
+    if (a.exposed > 0) this.strike(name, a, VIENTO.damage);
   }
 
   /** Hook for enemies that react to wind (the bruto escudado turns around). */
@@ -975,6 +1000,7 @@ export class WorldSim {
     if (this.marchito && this.marchito.id === id) return this.marchito;
     if (this.elite && this.elite.id === id) return this.elite;
     if (this.shield && this.shield.id === id) return this.shield;
+    if (this.boss2 && this.boss2.id === id) return this.boss2;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
@@ -982,6 +1008,7 @@ export class WorldSim {
   private strike(name: string, w: Wolf, dmg: number): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
+    if (w === this.boss2 && this.boss2.exposed <= 0) return this.tell(name, 'La cáscara de marea aguanta. Empújalo contra el coral, o párale');
     const by = this.players.get(name);
     if (w === this.shield && by && shieldBlocks(w as Elite, by.x, by.z)) return this.tell(name, 'El escudo para el golpe. Dale la vuelta con viento, o párale');
     if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
@@ -1542,6 +1569,7 @@ export class WorldSim {
       levers: c.pulled.map((t) => t != null && (c.gate || this.time - t <= COAST_DUNGEON.leverWindow + EPS)),
       block: { x: r2(c.block.x), z: r2(c.block.z) },
       plate: c.plate,
+      boss: this.boss2 && this.boss2.hp > 0 ? { hp: Math.round(this.boss2.hp), max: ENEMY.boss2.hp, exposed: this.boss2.exposed > 0, tell: this.boss2.windup > 0 ? this.boss2.move : null } : null,
       elite: this.shield && this.shield.hp > 0 ? { hp: Math.round(this.shield.hp), max: ENEMY.elite2.hp, exposed: this.shield.exposed > 0, charging: this.shield.windup > 0 || this.shield.charge > 0 } : null,
     };
     return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast };
@@ -1606,13 +1634,38 @@ export class WorldSim {
     if (hit) this.bite(hit.name, hit.dmg, this.elite);
   }
 
+  /** El Antenón lives while someone alive is in its room; an empty room resets it. Beaten once: purified, zone 6 clean, a vision. */
+  private stepAntenonFight(dt: number): void {
+    const a = this.boss2;
+    if (a && a.hp <= 0 && !this.purified2) {
+      this.purified2 = true;
+      this.say(`${NAMES.bossCoast} se deshace en espuma limpia. Ahora sopla por el ${NAMES.heart}`);
+      this.cleanse(COAST_ZONES.root, `La ${NAMES.coastRoot} deja de supurar morado. Nada más sube de la costa`);
+      this.vision(VISION.purified2(joinNames(this.activeNames())));
+    }
+    if (this.purified2) {
+      if (a && a.hp <= 0) {
+        a.deadFor += dt;
+        if (a.deadFor >= ANTENON.corpseTime) this.boss2 = null;
+      } else this.boss2 = null;
+      return;
+    }
+    const fighters = this.targets().filter((t) => !t.dead && inCoastBossRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.boss2 = null;
+      return;
+    }
+    if (!this.boss2) {
+      this.boss2 = createAntenon();
+      this.say(`${NAMES.bossCoast} despierta. Su cáscara de marea no se rompe: empújalo contra el coral, o párale`);
+    }
+    const b = this.boss2;
+    for (const hit of stepAntenon(b, fighters, dt)) this.bite(hit.name, hit.dmg, b);
+  }
+
   /** The bruto escudado, like the forest elite: lives while someone is in its room; once down, gate 3 opens. */
   private stepShieldFight(dt: number): void {
     const g = this.coastLive;
-    if (!g.calm && this.targets().some((t) => !t.dead && inCoastBossRoom(t.x, t.z))) {
-      g.calm = true;
-      this.say('La sala está en calma. Algo duerme bajo la marea');
-    }
     const e = this.shield;
     if (e && e.hp <= 0) {
       if (!g.eliteDown) {
@@ -1923,8 +1976,9 @@ export class WorldSim {
       w.stun = BLOCK.parryStun;
       if (w === this.boss) this.boss.weak = BOSS.weakFor;
       if (w === this.shield) this.shield.exposed = ELITE.exposedFor;
+      if (w === this.boss2) this.boss2.exposed = Math.max(this.boss2.exposed, ANTENON.parryFor);
       this.strike(name, w, BLOCK.parryDamage);
-      return this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : 'Parada');
+      return this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : 'Parada');
     }
     p.vitals = damage(p.vitals, out.dmg);
     if (p.vitals.health <= 0) this.kill(p);

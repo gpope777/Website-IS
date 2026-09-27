@@ -8,7 +8,7 @@ export function emptyDungeonView(): DungeonView {
   return {
     gate: false, gates: [false, false, false, false, false], levers: [false, false], purified: false, boss: null, plate: false,
     block: { ...inside(DUNGEON.blockStart), held: null }, lantern: { ...inside(DUNGEON.lantern), held: null }, lit: false, elite: null,
-    coast: { gates: [false, false, false, false], levers: [false, false], block: insideCoast(COAST_DUNGEON.blockStart), plate: false, elite: null },
+    coast: { gates: [false, false, false, false], levers: [false, false], block: insideCoast(COAST_DUNGEON.blockStart), plate: false, elite: null, boss: null },
   };
 }
 
