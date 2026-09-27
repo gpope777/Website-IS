@@ -37,6 +37,9 @@ import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
 import { buildCrags, buildVine } from './scene/crags';
 import { ShrineMeshes } from './scene/shrines';
+import { ChestMeshes } from './scene/chests';
+import { coastAction, shrinePartAt } from './coast-ui';
+import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
 import { buildTerrainMesh, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
 import { CorruptionMeshes } from './scene/corruption';
 import { generateZones, type Zone } from '../shared/corruption';
@@ -125,6 +128,12 @@ export class Game {
   private crags: Crag[] = [];
   private shrines: Shrine[] = [];
   private shrineMeshes: ShrineMeshes | null = null;
+  private chests: Chest[] = [];
+  private chestMeshes: ChestMeshes | null = null;
+  /** Sunken chests this player opened, weapon level and pearls carried (from the server). */
+  private opened: number[] = [];
+  private weapon = 0;
+  private pearls = 0;
   private shrineViews: ShrineView[] = [];
   /** Shrines this player cleared (from the server). */
   private cleared: number[] = [];
@@ -286,8 +295,12 @@ export class Game {
     this.spawns = generateResources(this.terrain, seed);
     this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
     this.crags = generateCrags(this.terrain, seed);
-    this.shrines = generateShrines(this.terrain, seed, this.crags);
-    this.entrance = generateEntrance(this.terrain, seed, this.crags, this.shrines);
+    const forest = generateShrines(this.terrain, seed, this.crags);
+    this.shrines = [...forest, ...generateCoastShrines(this.terrain, seed)];
+    this.entrance = generateEntrance(this.terrain, seed, this.crags, forest);
+    this.chests = generateChests(this.terrain, seed);
+    this.chestMeshes = new ChestMeshes(this.chests);
+    this.scene.add(this.chestMeshes.group);
     this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
     this.steedMeshes = new SteedMeshes(t.shadows);
     this.scene.add(this.steedMeshes.group);
@@ -429,8 +442,12 @@ export class Game {
 
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
     this.hud.setVitals(self.vitals);
-    this.hud.setInventory(self.inv);
+    this.hud.setInventory(self.inv, self.weapon);
     this.cleared = self.shrines;
+    this.opened = self.chests;
+    this.weapon = self.weapon;
+    this.pearls = self.inv.pearl ?? 0;
+    this.chestMeshes?.sync(self.chests);
     this.hasPower = self.power;
     this.tame = self.tame;
     this.riding = self.riding;
@@ -628,6 +645,8 @@ export class Game {
     if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
     const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
+    const ca = this.coastAct();
+    if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
     if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
@@ -644,6 +663,7 @@ export class Game {
     if (best) return this.conn.send({ t: 'attack', id: best.id });
     if (ma) return this.conn.send({ t: 'mount', act: ma.act });
     if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
+    if (ca?.t === 'upgrade') return this.conn.send({ t: 'upgrade' });
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
   }
@@ -677,20 +697,17 @@ export class Game {
     return best?.name ?? null;
   }
 
-  /** Lever within reach (part 1/2), or an orb you have not taken yet (part 0). The server re-checks. */
-  private shrinePart(): { id: number; part: number; open: boolean } | null {
-    const b = this.body!;
-    for (const s of this.shrines) {
-      const open = this.shrineViews.find((v) => v.id === s.id)?.open ?? false;
-      if (s.kind === 'levers') {
-        const i = s.parts.findIndex((p) => Math.hypot(p.x - b.x, p.z - b.z) <= SHRINE.partReach);
-        if (i >= 0) return { id: s.id, part: i + 1, open };
-      }
-      if (this.cleared.includes(s.id)) continue;
-      const reach = s.pillar ? s.pillar.r : SHRINE.orbReach;
-      if (Math.hypot(s.orb.x - b.x, s.orb.z - b.z) <= reach && b.y >= s.orb.y - 2.5) return { id: s.id, part: 0, open };
-    }
-    return null;
+  /** Lever, wheel or pumice block within reach (part ≥ 1), or an orb you have not taken yet (part 0). The server re-checks. */
+  private shrinePart(): { id: number; part: number; open: boolean; label: string } | null {
+    return shrinePartAt(this.shrines, this.shrineViews, this.cleared, this.body!, this.myName);
+  }
+
+  /** A sunken chest within reach, or the weapon upgrade at the Heart. */
+  private coastAct(): ReturnType<typeof coastAction> {
+    const b = this.body;
+    if (!b || this.dead) return null;
+    const h = this.heart && this.structures.position(this.heart.id);
+    return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon });
   }
 
   /** A bare shrine rock beside us, if any (Enredadera wraps it instead of growing a new vine). */
@@ -816,6 +833,7 @@ export class Game {
     this.hud.setRaid(raidText(this.raid, this.rig.yaw));
     this.structures.animate(performance.now() / 1000);
     this.shrineMeshes?.animate(performance.now() / 1000);
+    this.chestMeshes?.animate(performance.now() / 1000);
     this.dungeonMeshes?.animate(performance.now() / 1000);
     this.rig.apply(this.camera, b, terrain);
     if (this.tame) {
@@ -886,7 +904,9 @@ export class Game {
     if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const sp = this.body && this.shrinePart();
-    if (sp) return this.hud.setPrompt(sp.part > 0 ? 'E · Tirar de la palanca' : sp.open ? 'E · Tomar el orbe' : 'La verja está cerrada');
+    if (sp) return this.hud.setPrompt(sp.part === 0 && !sp.open ? sp.label : `E · ${sp.label}`);
+    const ca = this.coastAct();
+    if (ca) return this.hud.setPrompt(`E · ${ca.label}`);
     const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 ? `E / M · ${ma.label}` : `E · ${ma.label}`);

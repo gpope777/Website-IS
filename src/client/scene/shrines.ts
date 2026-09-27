@@ -6,6 +6,7 @@ import { buildCrags } from './crags';
 
 const STONE = new THREE.MeshLambertMaterial({ color: 0x8f8a7e, flatShading: true });
 const WOOD = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
+const PUMICE = new THREE.MeshLambertMaterial({ color: 0xd9d4c7, flatShading: true });
 const BEAM = new THREE.MeshBasicMaterial({ color: 0x9fffd0, transparent: true, opacity: 0.18, depthWrite: false });
 
 interface Parts {
@@ -16,6 +17,8 @@ interface Parts {
   gateMat: THREE.MeshBasicMaterial;
   handles: THREE.Object3D[];
   plateMat: THREE.MeshLambertMaterial | null;
+  /** Marea's pumice block. */
+  block: THREE.Mesh | null;
 }
 
 /** Shrines: a beam of light on the horizon, an orb behind a ring of light, levers or a plate. */
@@ -23,7 +26,7 @@ export class ShrineMeshes {
   readonly group = new THREE.Group();
   private readonly parts: Parts[] = [];
 
-  constructor(shrines: readonly Shrine[], terrain: Terrain, shadows: boolean) {
+  constructor(shrines: readonly Shrine[], private readonly terrain: Terrain, shadows: boolean) {
     const pillars = shrines.flatMap((s) => (s.pillar ? [s.pillar] : []));
     this.group.add(buildCrags(pillars, shadows));
     for (const s of shrines) {
@@ -41,7 +44,7 @@ export class ShrineMeshes {
       this.group.add(beam, orb, gate);
       const handles: THREE.Object3D[] = [];
       let plateMat: THREE.MeshLambertMaterial | null = null;
-      if (s.kind === 'levers') {
+      if (s.kind === 'levers' || s.kind === 'sunken') {
         for (const p of s.parts) {
           const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.5), STONE);
           const y = terrain.heightAt(p.x, p.z);
@@ -56,14 +59,36 @@ export class ShrineMeshes {
           this.group.add(post, pivot);
         }
       }
-      if (s.kind === 'plate') {
+      if (s.kind === 'fan') {
+        for (const p of s.parts) {
+          const y = terrain.heightAt(p.x, p.z);
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.4), STONE);
+          post.position.set(p.x, y + 0.6, p.z);
+          const pivot = new THREE.Object3D();
+          pivot.position.set(p.x, y + 1.3, p.z);
+          pivot.rotation.y = Math.atan2(p.x - s.x, p.z - s.z);
+          const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 6, 12), WOOD);
+          wheel.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.1), WOOD));
+          pivot.add(wheel);
+          handles.push(pivot);
+          this.group.add(post, pivot);
+        }
+      }
+      let block: THREE.Mesh | null = null;
+      if (s.kind === 'tide') {
+        block = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 1.1), PUMICE);
+        const b = s.parts[1]!;
+        block.position.set(b.x, terrain.heightAt(b.x, b.z) + 0.4, b.z);
+        this.group.add(block);
+      }
+      if (s.kind === 'plate' || s.kind === 'tide') {
         plateMat = new THREE.MeshLambertMaterial({ color: 0x8f8a7e, emissive: 0x000000 });
         const p = s.parts[0]!;
         const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 0.25, 12), plateMat);
         plate.position.set(p.x, terrain.heightAt(p.x, p.z) + 0.05, p.z);
         this.group.add(plate);
       }
-      this.parts.push({ beam, orb, orbMat, gate, gateMat, handles, plateMat });
+      this.parts.push({ beam, orb, orbMat, gate, gateMat, handles, plateMat, block });
     }
   }
 
@@ -80,6 +105,7 @@ export class ShrineMeshes {
         const h = p.handles[i];
         if (h) h.rotation.z = on ? -0.6 : 0.6;
       });
+      if (p.block && v.block) p.block.position.set(v.block.x, this.terrain.heightAt(v.block.x, v.block.z) + (v.block.held ? 1.4 : 0.4), v.block.z);
       p.plateMat?.emissive.setHex(v.parts[0] ? 0x2f8a55 : 0x000000);
     }
   }
