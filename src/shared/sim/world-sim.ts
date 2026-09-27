@@ -3,11 +3,12 @@ import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
-import { clampStep, DUNGEON, generateEntrance, inDungeon, leverPos, withDungeon } from '../dungeon';
+import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, leverPos, withDungeon } from '../dungeon';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type Structure, type WolfView } from '../protocol';
+import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -66,6 +67,8 @@ export interface SavedWorld {
   players: SavedPlayer[];
   raidLevel?: number;
   graves?: Grave[];
+  /** The dungeon boss was beaten and now guards the Heart. Optional: older saves have none. */
+  purified?: boolean;
 }
 
 export interface Grave extends GraveView {
@@ -127,6 +130,10 @@ export class WorldSim {
   private readonly graves: Grave[];
   private nextGraveId: number;
   raidLevel: number;
+  /** El Tragón de Papel was beaten (saved). */
+  purified: boolean;
+  /** Live while someone is in its room; null otherwise (it resets). */
+  private boss: Boss | null = null;
   private vines: (Crag & { owner: string; until: number })[] = [];
   private nextVineId: number = ENREDADERA.idBase;
   private regenClock = 0;
@@ -153,6 +160,7 @@ export class WorldSim {
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.raidLevel = saved.raidLevel ?? 0;
+    this.purified = saved.purified ?? false;
     this.nextStructureId = saved.nextStructureId;
     this.graves = (saved.graves ?? []).map((g) => ({ ...g, inv: { ...g.inv } }));
     this.nextGraveId = 1 + Math.max(0, ...this.graves.map((g) => g.id));
@@ -302,6 +310,7 @@ export class WorldSim {
       if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
     this.stepSpikes(dt);
+    this.stepBossFight(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
 
@@ -320,6 +329,8 @@ export class WorldSim {
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
       .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
+    const b = this.boss;
+    if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
@@ -345,6 +356,7 @@ export class WorldSim {
       players: [...this.players.values()].map((p) => structuredClone(p)),
       raidLevel: this.raidLevel,
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
+      purified: this.purified,
     };
   }
 
@@ -442,12 +454,12 @@ export class WorldSim {
   }
 
   private onAttack(p: SavedPlayer, l: Live, id: number): void {
-    const w = this.wolves.find((x) => x.id === id);
+    const w = this.enemy(id);
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < l.punchReadyAt) return;
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     l.punchReadyAt = this.time + PUNCH.cooldown;
     l.anim = 'attack';
-    if (hitWolf(w, PUNCH.damage)) this.outbox.push({ to: null, msg: { t: 'toast', text: `${p.name} derrotó a ${ENEMY_LABELS[w.kind]}` } });
+    this.strike(p.name, w, PUNCH.damage);
   }
 
   private onEat(p: SavedPlayer): void {
@@ -490,13 +502,13 @@ export class WorldSim {
   }
 
   private onShoot(p: SavedPlayer, l: Live, id: number): void {
-    const w = this.wolves.find((x) => x.id === id);
+    const w = this.enemy(id);
     const g = l.guard;
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < g.bowReadyAt) return;
     if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
     g.bowReadyAt = this.time + BOW.cooldown;
     l.anim = 'bow';
-    if (hitWolf(w, BOW.damage)) this.say(`${p.name} derrotó a ${ENEMY_LABELS[w.kind]}`);
+    this.strike(p.name, w, BOW.damage);
   }
 
   private onRevive(p: SavedPlayer, name: string): void {
@@ -555,6 +567,50 @@ export class WorldSim {
     this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
+    const b = this.boss;
+    if (b && b.hp > 0 && Math.hypot(b.x - plan.x, b.z - plan.z) <= BOSS.rootRadius + plan.r) {
+      b.rooted = BOSS.rootFor;
+      b.weak = Math.max(b.weak, BOSS.rootFor);
+      this.say('La enredadera atrapa al Tragón. El papel se desdobla');
+    }
+  }
+
+  /** Wolves, raiders or the boss. */
+  private enemy(id: number): Wolf | undefined {
+    return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
+  }
+
+  /** Hurt an enemy for a player; the folded boss shrugs it off. */
+  private strike(name: string, w: Wolf, dmg: number): void {
+    if (w === this.boss && this.boss.weak <= 0) return this.tell(name, 'El papel doblado aguanta. Párale o enrédalo');
+    if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
+  }
+
+  /** The boss lives while someone alive is in its room; an empty room resets it. Beaten once, it is purified for good. */
+  private stepBossFight(dt: number): void {
+    const fighters = this.targets().filter((t) => !t.dead && inBossRoom(t.x, t.z));
+    if (this.boss && this.boss.hp <= 0 && !this.purified) {
+      this.purified = true;
+      this.say('El Tragón se deshace en papel limpio. Ahora cuida el Corazón');
+    }
+    if (this.purified) {
+      if (this.boss && this.boss.hp <= 0) {
+        this.boss.deadFor += dt;
+        if (this.boss.deadFor >= BOSS.corpseTime) this.boss = null;
+      } else this.boss = null;
+      return;
+    }
+    if (!fighters.length) {
+      this.boss = null;
+      return;
+    }
+    if (!this.boss) {
+      this.boss = createBoss();
+      this.say('El Tragón de Papel despierta. El papel doblado no se rompe: párale o enrédalo');
+    }
+    const b = this.boss;
+    const bit = stepBoss(b, fighters, dt);
+    if (bit) this.bite(bit, ENEMY.boss.damage, b);
   }
 
   private onDungeon(p: SavedPlayer, l: Live, act: number): void {
@@ -608,7 +664,9 @@ export class WorldSim {
   private dungeonView(): DungeonView {
     const g = this.dungeonLive;
     const pulled = g.pulled.map((t) => t != null && (g.gate || this.time - t <= DUNGEON.leverWindow + EPS));
-    return { gate: g.gate, levers: pulled, purified: false, boss: null };
+    const b = this.boss;
+    const boss = b && b.hp > 0 ? { hp: Math.round(b.hp), max: ENEMY.boss.hp, weak: b.weak > 0 } : null;
+    return { gate: g.gate, levers: pulled, purified: this.purified, boss };
   }
 
   /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */
@@ -816,8 +874,9 @@ export class WorldSim {
     if (out.kind === 'dodged') return;
     if (out.kind === 'parried') {
       w.stun = BLOCK.parryStun;
-      if (hitWolf(w, BLOCK.parryDamage)) this.say(`${name} derrotó a ${ENEMY_LABELS[w.kind]}`);
-      return this.tell(name, 'Parada');
+      if (w === this.boss) this.boss.weak = BOSS.weakFor;
+      this.strike(name, w, BLOCK.parryDamage);
+      return this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : 'Parada');
     }
     p.vitals = damage(p.vitals, out.dmg);
     if (p.vitals.health <= 0) this.kill(p);

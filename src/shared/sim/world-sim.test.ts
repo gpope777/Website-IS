@@ -6,7 +6,8 @@ import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
 import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, leverPos } from '../dungeon';
-import { AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
+import { BOSS } from './boss';
+import { PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
   const sim = new WorldSim(newWorld(42, 'salt'));
@@ -1010,5 +1011,124 @@ describe('dungeon', () => {
     const before = sim.getPlayer('Ana')!.vitals.warmth;
     for (let i = 0; i < 50; i++) sim.step(0.1);
     expect(sim.getPlayer('Ana')!.vitals.warmth).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('boss', () => {
+  function arena(...names: string[]) {
+    const sim = setup(...names);
+    for (const n of names) put(sim, n, DUNGEON.x, DUNGEON.bossZ - 3);
+    sim.step(0.1);
+    return sim;
+  }
+  const bossOf = (sim: WorldSim, name = 'Ana') => snap(sim, name).wolves.find((w) => w.kind === 'boss');
+  const hp = (sim: WorldSim) => snap(sim, 'Ana').dungeon.boss?.hp;
+
+  it('wakes when someone enters its room and shows a bar', () => {
+    const sim = setup('Ana');
+    sim.step(0.1);
+    expect(bossOf(sim)).toBeUndefined();
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.bossZ - 3);
+    sim.step(0.1);
+    expect(bossOf(sim)).toMatchObject({ id: BOSS.id, kind: 'boss' });
+    expect(snap(sim, 'Ana').dungeon.boss).toEqual({ hp: ENEMY.boss.hp, max: ENEMY.boss.hp, weak: false });
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('Tragón') });
+  });
+
+  it('folded paper shrugs off punches and arrows', () => {
+    const sim = arena('Ana');
+    sim.handle('Ana', { t: 'attack', id: BOSS.id });
+    sim.getPlayer('Ana')!.yaw = 0;
+    sim.handle('Ana', { t: 'shoot', id: BOSS.id });
+    expect(hp(sim)).toBe(ENEMY.boss.hp);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('aguanta') });
+  });
+
+  it('a parried bite unfolds it and then blows land', () => {
+    const sim = arena('Ana');
+    // Wait for the wind-up, then raise the guard just before the bite lands.
+    let parried = false;
+    for (let i = 0; i < 60 && !parried; i++) {
+      if (bossOf(sim)!.anim === 'attack') {
+        for (let k = 0; k < 5; k++) sim.step(0.1);
+        sim.handle('Ana', { t: 'block', on: true });
+        for (let k = 0; k < 3; k++) sim.step(0.1);
+      } else sim.step(0.1);
+      parried = msgs(sim).some((m) => m.t === 'toast' && m.text.startsWith('Parada'));
+    }
+    expect(parried).toBe(true);
+    expect(snap(sim, 'Ana').dungeon.boss!.weak).toBe(true);
+    const before = hp(sim)!;
+    expect(before).toBeLessThan(ENEMY.boss.hp); // the parry itself hurts
+    sim.handle('Ana', { t: 'block', on: false });
+    const b = snap(sim, 'Ana').wolves.find((w) => w.kind === 'boss')!;
+    put(sim, 'Ana', b.x, b.z - 1.5);
+    sim.handle('Ana', { t: 'attack', id: BOSS.id });
+    expect(hp(sim)).toBe(before - 20);
+  });
+
+  it('Enredadera next to it tangles it: it stops and can be hurt', () => {
+    const sim = arena('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const b0 = bossOf(sim)!;
+    put(sim, 'Ana', b0.x, b0.z - 4);
+    sim.handle('Ana', { t: 'power', x: b0.x + 1.5, z: b0.z - 1 });
+    expect(snap(sim, 'Ana').vines).toHaveLength(1);
+    expect(snap(sim, 'Ana').dungeon.boss!.weak).toBe(true);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('atrapa') });
+    sim.step(1);
+    expect(bossOf(sim)!.z).toBe(b0.z);
+    put(sim, 'Ana', b0.x, b0.z - 2);
+    sim.handle('Ana', { t: 'attack', id: BOSS.id });
+    expect(hp(sim)).toBe(ENEMY.boss.hp - 20);
+  });
+
+  it('an empty room resets it', () => {
+    const sim = arena('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const b0 = bossOf(sim)!;
+    put(sim, 'Ana', b0.x, b0.z - 2);
+    sim.handle('Ana', { t: 'power', x: b0.x + 1.5, z: b0.z });
+    sim.handle('Ana', { t: 'attack', id: BOSS.id });
+    expect(hp(sim)).toBeLessThan(ENEMY.boss.hp);
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.altarZ);
+    sim.step(0.1);
+    expect(bossOf(sim)).toBeUndefined();
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.bossZ - 3);
+    sim.step(0.1);
+    expect(hp(sim)).toBe(ENEMY.boss.hp);
+  });
+
+  it('beaten, it is purified for good (saved), and old saves load', () => {
+    const sim = arena('Ana');
+    const b0 = bossOf(sim)!;
+    put(sim, 'Ana', b0.x, b0.z - 2);
+    sim.getPlayer('Ana')!.enredadera = true;
+    for (let i = 0; i < 400 && hp(sim)! > 0; i++) {
+      const b = bossOf(sim)!;
+      const s = snap(sim, 'Ana');
+      const ana = sim.getPlayer('Ana')!;
+      ana.vitals = { ...ana.vitals, health: 100 };
+      put(sim, 'Ana', b.x, b.z - 2);
+      if (!s.dungeon.boss!.weak && s.self.powerLeft === 0) sim.handle('Ana', { t: 'power', x: b.x + 1.5, z: b.z });
+      sim.handle('Ana', { t: 'attack', id: BOSS.id });
+      sim.step(PUNCH.cooldown);
+    }
+    expect(snap(sim, 'Ana').dungeon.purified).toBe(true);
+    expect(snap(sim, 'Ana').dungeon.boss).toBeNull();
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Ana derrotó al Tragón de Papel' });
+    for (let i = 0; i < 60; i++) sim.step(0.1);
+    expect(bossOf(sim)).toBeUndefined();
+    const saved = sim.save();
+    expect(saved.purified).toBe(true);
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    again.step(0.1);
+    expect(snap(again, 'Ana').dungeon.purified).toBe(true);
+    expect(snap(again, 'Ana').wolves.find((w) => w.kind === 'boss')).toBeUndefined();
+    delete saved.purified;
+    const old = new WorldSim(saved);
+    old.connect('Ana');
+    expect(snap(old, 'Ana').dungeon.purified).toBe(false);
   });
 });
