@@ -22,3 +22,5 @@ Minor findings from task and final reviews, deliberately deferred (triaged as sa
 ## Not verified live (browser pane throttled to 1 fps)
 - Wolf chase/bite on screen (covered by unit tests).
 - One-Esc menu under real pointer lock (synthetic events can't take pointer lock).
+- Defense in depth: WorldRoom.fetch() trusts /admin/* paths (only index.ts can route them there, after a constant-time token check). Add a second ADMIN_TOKEN check inside the DO, and strip pinHash from /admin/export.
+- Live test world has a leftover player "Prueba" (PIN 4242) from the deploy smoke test.
