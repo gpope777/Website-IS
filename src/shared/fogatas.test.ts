@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { createTerrain, inSwamp, WATER_LEVEL } from './terrain';
+import { createTerrain, inMountains, inSwamp, WATER_LEVEL } from './terrain';
 import { FOGATA, generateFogatas } from './fogatas';
 import { claimedMounds, generateAmberTrees } from './swamp-shrines';
 import { VISION } from './sim/marchito';
 
 describe('fogatas del Pantano (S3 §9)', () => {
   for (const seed of [42, 7, 1234]) {
-    it(`seed ${seed}: 4 dry rings on free montículos, apart and clear of amber trees`, () => {
+    it(`seed ${seed}: 4 dry rings on free montículos and 2 mountain refugios, apart and clear of amber trees`, () => {
       const t = createTerrain(seed);
-      const f = generateFogatas(t, seed);
+      const f = generateFogatas(t, seed).slice(0, FOGATA.swamp);
+      const all = generateFogatas(t, seed);
+      expect(all.map((x) => x.id)).toEqual([0, 1, 2, 3, 4, 5]);
+      expect(FOGATA.count).toBe(6);
+      expect(all.slice(4).every((x) => x.refugio && inMountains(x.x, x.z))).toBe(true);
       expect(f.map((x) => x.id)).toEqual([0, 1, 2, 3]);
-      expect(FOGATA.count).toBe(4);
       const { frog, candles, peat, mounds } = claimedMounds(t, seed);
       const used = [frog, candles, peat].map((i) => mounds[i]!);
       const trees = generateAmberTrees(t, seed);
@@ -23,7 +26,7 @@ describe('fogatas del Pantano (S3 §9)', () => {
         for (const tr of trees) expect(Math.hypot(tr.x - a.x, tr.z - a.z)).toBeGreaterThan(2.5);
         for (const b of f) if (b !== a) expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThan(10);
       }
-      expect(generateFogatas(t, seed)).toEqual(f);
+      expect(generateFogatas(t, seed)).toEqual(all);
     });
   }
 

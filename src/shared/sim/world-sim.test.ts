@@ -2474,7 +2474,8 @@ describe('sunken chests and the weapon upgrade', () => {
     sim.handle('Ana', { t: 'upgrade' });
     expect(snap(sim, 'Ana').self.weapon).toBe(3);
     expect(p.inv.pearl).toBe(11);
-    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'El arma ya no da más de sí' });
+    // S4-C: level 4 costs quartz, not pearls.
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Faltan materiales' });
     expect(sim.save().players[0]!.weaponLvl).toBe(3);
     const w = wolfAt(sim, 0, 10);
     sim.handle('Ana', { t: 'shoot', id: w.id });
@@ -4536,9 +4537,9 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
     sim.getPlayer('Ana')!.fuego = true;
     sim.handle('Ana', { t: 'power', x: f.x, z: f.z, kind: 'fuego' });
     expect(texts(sim).some((t) => t.includes('fogata'))).toBe(true);
-    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false]);
-    expect(sim.save().fogatas).toEqual([false, true, false, false]);
-    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false]);
+    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false, false, false]);
+    expect(sim.save().fogatas).toEqual([false, true, false, false, false, false]);
+    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false, false, false]);
   });
 
   it('a torch lights one and is spent; without one, nothing', () => {
@@ -4635,7 +4636,7 @@ describe('fogatas del Pantano and swamp visions (S3-G)', () => {
 
   it('old saves load with every fogata dark and save none', () => {
     const sim = new WorldSim(newWorld(42, 'salt'));
-    expect(lit(sim)).toEqual([false, false, false, false]);
+    expect(lit(sim)).toEqual([false, false, false, false, false, false]);
     expect('fogatas' in sim.save()).toBe(false);
   });
 

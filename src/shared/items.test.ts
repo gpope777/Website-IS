@@ -36,12 +36,18 @@ describe('aventura structures', () => {
 });
 
 describe('weapon upgrade', () => {
-  it('adds 15 % per level, up to 3', async () => {
-    const { weaponMult, UPGRADE } = await import('./items');
+  it('adds 15 % per level, up to 5 (S4: levels 4–5 cost quartz)', async () => {
+    const { weaponMult, UPGRADE, upgradeCost, ITEM_LABELS } = await import('./items');
+    const { NAMES } = await import('./names');
     expect(weaponMult(0)).toBe(1);
     expect(weaponMult(3)).toBeCloseTo(1.45, 6);
-    expect(weaponMult(9)).toBeCloseTo(1.45, 6);
+    expect(weaponMult(5)).toBeCloseTo(1.75, 6);
+    expect(weaponMult(9)).toBeCloseTo(1.75, 6);
     expect(UPGRADE.cost.pearl).toBe(3);
+    expect(upgradeCost(2).pearl).toBe(3);
+    expect(upgradeCost(3)).toEqual({ quartz: 3, stone: 10, wood: 5 });
+    expect(upgradeCost(4).quartz).toBe(3);
+    expect(ITEM_LABELS.quartz.toLowerCase()).toBe(NAMES.quartz);
   });
 });
 

@@ -1,10 +1,10 @@
 import { NAMES } from './names';
-export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl' | 'amber';
+export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl' | 'amber' | 'quartz';
 export type Inventory = Partial<Record<ItemId, number>>;
 
-export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl', 'amber'];
+export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl', 'amber', 'quartz'];
 const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
-export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s`, amber: cap(NAMES.amber) };
+export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s`, amber: cap(NAMES.amber), quartz: cap(NAMES.quartz) };
 
 export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots' | 'fire';
 export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots', 'fire'];
@@ -23,8 +23,13 @@ export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall:
 /** Tending the Heart: berries in, HP back. */
 export const TEND_COST: Inventory = { berries: 5 };
 export const TEND_HEAL = 100;
-/** Weapon upgrade at the Heart (spec §6.2): pearls from the sunken chests plus a fixed cost; +15 % damage per level. */
-export const UPGRADE = { cost: { pearl: 3, stone: 10, wood: 5 }, step: 0.15, max: 3 } as const;
+/** Weapon upgrade at the Heart (spec §6.2, S4 §5.3): levels 1–3 cost pearls, 4–5 cost mountain quartz; +15 % damage per level. */
+export const UPGRADE = { cost: { pearl: 3, stone: 10, wood: 5 }, costHigh: { quartz: 3, stone: 10, wood: 5 }, pearlMax: 3, step: 0.15, max: 5 } as const;
+
+/** What the next level costs, from level `lvl`. */
+export function upgradeCost(lvl: number): Inventory {
+  return lvl < UPGRADE.pearlMax ? UPGRADE.cost : UPGRADE.costHigh;
+}
 
 export function weaponMult(lvl: number): number {
   return 1 + UPGRADE.step * Math.max(0, Math.min(UPGRADE.max, Math.floor(lvl)));

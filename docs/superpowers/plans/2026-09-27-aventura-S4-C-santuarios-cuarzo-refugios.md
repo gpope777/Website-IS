@@ -15,7 +15,7 @@
 - Player-facing text in **Spanish**, dry voice. Names via `NAMES` (`NAMES.quartz`, `NAMES.refugio`, `NAMES.heart`, `NAMES.powerStone`, `NAMES.powerWind`, `NAMES.frog`).
 - **Phones first. Touch grid stays at 10 pills.** Everything new is the contextual **A** (keyboard E): take quartz, push a block (refused for now), pull the reset lever, buy weapon levels 4–5, light/travel at a refugio. Plates need no button.
 - **Trust boundary:** every client message through `decodeClient`; the server checks vein reach and height, per-player regrow, costs and the level cap, plate occupancy, lever reach.
-- **Protocol:** Task 2 bumps `PROTOCOL_VERSION` 33 → 34 (shrine part ≤ 7, `ShrineView.blocks`, `travel.to` < 6); Task 3 bumps 34 → 35 (`quartz` message, `SelfState.quartz`, weapon 0–5). New saved fields optional only.
+- **Protocol:** Task 1 bumps `PROTOCOL_VERSION` 33 → 34 (`fogata`/`travel` ids < 6 via `FOGATA.count`, weapon 0–5: the shared tables change what the server accepts, so the server's upgrade cost and the client's pearl offer move with it); Task 2 bumps 34 → 35 (shrine part ≤ 7, `ShrineView.blocks`); Task 3 bumps 35 → 36 (`quartz` message, `SelfState.quartz`). New saved fields optional only.
 - **Piedra does not exist yet (S4-E).** Built and visible now: the Bloques grid, blocks, cells and lever ("No se mueve"; the lever resets); the Losas plates (a pillar weighing a plate). The Empujar path and "pillar on plate" are `// S4-E` markers.
 - **Mountain corruption does not exist yet (S4-D).** A mountain orb cleanses nothing (and must not cleanse a swamp zone, which the current `id >= 6` rule would do): `// S4-D` marker.
 - **[D] Cornisa has no gate** (like Roca Lisa): the climb is the challenge; the orb's height check (`p.y ≥ orb.y − 2.5`) is the lock.
@@ -56,7 +56,7 @@ export function upgradeCost(lvl: number): Inventory; // lvl < 3 → cost, else c
 - [ ] **Step 2: implement** (`createRng(seed ^ 0x6d7c)`; spots found by bounded ring searches with fallbacks; test updated: fogatas count 4 → 6, intentional).
 - [ ] **Step 3:** green, self-review, commit `feat(aventura): santuarios de la Montaña, cuarzo y refugios (reglas)`.
 
-### Task 2: Mountain shrines and refugios on the server (protocol v34)
+### Task 2: Mountain shrines and refugios on the server (protocol v35)
 
 **Files:** Modify `src/shared/protocol.ts`, `src/shared/sim/world-sim.ts`; Tests `protocol.test.ts`, `world-sim.test.ts`.
 
@@ -64,7 +64,7 @@ export function upgradeCost(lvl: number): Inventory; // lvl < 3 → cost, else c
 - [ ] **Step 2: implement** (`shrineLive` gains `blocks` (cells) and `boulderAt`; `stepShrines` handles `twins`; `gustThings` rolls the boulder; `// S4-E` markers for Empujar and pillars on plates; `// S4-D` marker for mountain cleansing; `nearFire` includes lit fogatas).
 - [ ] **Step 3:** green, self-review, commit `feat(aventura): santuarios de la Montaña y refugios en el servidor (protocolo v34)`.
 
-### Task 3: Quartz and weapon levels 4–5 on the server (protocol v35)
+### Task 3: Quartz and weapon levels 4–5 on the server (protocol v36)
 
 **Files:** Modify `src/shared/protocol.ts`, `src/shared/sim/world-sim.ts`; Tests `protocol.test.ts`, `world-sim.test.ts`.
 

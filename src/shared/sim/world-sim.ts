@@ -23,7 +23,7 @@ import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SH
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
-import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
@@ -91,7 +91,7 @@ export interface SavedPlayer {
   frog?: { x: number; z: number };
   /** Sunken chest ids opened. Optional: older saves have none. */
   chests?: number[];
-  /** Weapon upgrade level 0–3. Optional: older saves have none. */
+  /** Weapon upgrade level 0–5. Optional: older saves have none. */
   weaponLvl?: number;
   /** Amber tree id → sim time you last harvested it. Optional: older saves have none. */
   amber?: Record<number, number>;
@@ -909,8 +909,9 @@ export class WorldSim {
     if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
     const lvl = p.weaponLvl ?? 0;
     if (lvl >= UPGRADE.max) return this.tell(p.name, 'El arma ya no da más de sí');
-    if (!hasAll(p.inv, UPGRADE.cost)) return this.tell(p.name, 'Faltan materiales');
-    p.inv = removeAll(p.inv, UPGRADE.cost);
+    const cost = upgradeCost(lvl);
+    if (!hasAll(p.inv, cost)) return this.tell(p.name, 'Faltan materiales');
+    p.inv = removeAll(p.inv, cost);
     p.weaponLvl = lvl + 1;
     this.tell(p.name, `El ${NAMES.heart} templa tu arma: +${Math.round(UPGRADE.step * 100 * p.weaponLvl)} % de daño`);
   }

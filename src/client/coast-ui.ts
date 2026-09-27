@@ -24,7 +24,7 @@ export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: strin
   const ch = x.chests.find((k) => !x.opened.includes(k.id) && Math.hypot(k.x - p.x, k.z - p.z) <= CHEST.reach && p.y <= k.y + CHEST.above);
   if (ch) return { t: 'chest', id: ch.id, label: 'Abrir el cofre' };
   const h = x.heart;
-  if (h && x.pearls >= c.pearl && x.weapon < UPGRADE.max && Math.hypot(h.x - p.x, h.z - p.z) <= HEART.tendReach) return { t: 'upgrade', label: UPGRADE_LABEL };
+  if (h && x.pearls >= c.pearl && x.weapon < UPGRADE.pearlMax && Math.hypot(h.x - p.x, h.z - p.z) <= HEART.tendReach) return { t: 'upgrade', label: UPGRADE_LABEL };
   return null;
 }
 
