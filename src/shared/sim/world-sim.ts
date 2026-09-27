@@ -4,7 +4,8 @@ import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
 import { CORRUPTION, generateZones, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
-import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, leverPos, withDungeon } from '../dungeon';
+import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
+import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
@@ -145,8 +146,25 @@ export class WorldSim {
   /** Zone ids cleansed (saved). */
   private readonly cleansed: Set<number>;
   time: number;
-  /** Live-only: root lever pull times and whether the gate opened (stays open until the room restarts). */
-  private readonly dungeonLive = { pulled: [null, null] as (number | null)[], gate: false };
+  /**
+   * Live-only dungeon state (it all resets when the room restarts): root lever pull times and gate 0,
+   * the knot (gate 1), the plate (gate 2: held open until `plateUntil`, jammed once someone is through),
+   * the brazier (gate 3), the mini-boss (gate 4), and the two things you can carry.
+   */
+  private readonly dungeonLive = {
+    pulled: [null, null] as (number | null)[],
+    gate: false,
+    knot: false,
+    plateUntil: -Infinity,
+    pressed: false,
+    jammed: false,
+    lit: false,
+    eliteDown: false,
+    block: { ...inside(DUNGEON.blockStart), held: null as string | null },
+    lantern: { ...inside(DUNGEON.lantern), held: null as string | null },
+  };
+  /** The bruto reforzado while someone is in its room. Live-only. */
+  private elite: Elite | null = null;
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean }[];
   private readonly players = new Map<string, SavedPlayer>();
@@ -355,6 +373,8 @@ export class WorldSim {
     }
     this.stepSpikes(dt);
     this.stepNets();
+    this.stepDungeon();
+    this.stepEliteFight(dt);
     this.stepBossFight(dt);
     this.stepAlly(dt);
     this.stepTaming();
@@ -379,6 +399,8 @@ export class WorldSim {
       .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid }));
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
+    const el = this.elite;
+    if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
     const mm = this.marchito;
     if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
     const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0 } : null;
@@ -454,7 +476,7 @@ export class WorldSim {
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
     const inBounds = inDungeon(m.x, m.z) || (Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2);
-    const through = clampStep(p.x, p.z, m.x, m.z, this.dungeonLive.gate);
+    const through = clampStep(p.x, p.z, m.x, m.z, this.gates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
     const wallOk = !inDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
@@ -635,6 +657,11 @@ export class WorldSim {
     this.tell(p.name, 'Crece una enredadera');
     const zn = this.zones.find((z) => z.id !== 0 && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
+    const knot = inside(DUNGEON.knot);
+    if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
+      this.dungeonLive.knot = true;
+      this.say('La enredadera se mete en el nudo y lo abre');
+    }
     const b = this.boss;
     if (b && b.hp > 0 && Math.hypot(b.x - plan.x, b.z - plan.z) <= BOSS.rootRadius + plan.r) {
       b.rooted = BOSS.rootFor;
@@ -658,6 +685,7 @@ export class WorldSim {
   /** Wolves, raiders or the boss. */
   private enemy(id: number): Wolf | undefined {
     if (this.marchito && this.marchito.id === id) return this.marchito;
+    if (this.elite && this.elite.id === id) return this.elite;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
@@ -734,6 +762,28 @@ export class WorldSim {
       if (!g.gate || !near(DUNGEON.x, DUNGEON.altarZ, DUNGEON.altarReach) || p.enredadera) return;
       p.enredadera = true;
       this.tell(p.name, 'Despierta la Enredadera: H o 🌿 hace crecer una enredadera trepable');
+      return;
+    }
+    if (act === 5 || act === 6) {
+      const it = act === 5 ? g.block : g.lantern;
+      const other = act === 5 ? g.lantern : g.block;
+      if (it.held === p.name) {
+        it.held = null;
+        it.x = r2(p.x);
+        it.z = r2(p.z);
+        return;
+      }
+      if (it.held || other.held === p.name || !near(it.x, it.z, DUNGEON.carryReach)) return;
+      if (act === 6 && g.lit) return;
+      it.held = p.name;
+      return this.tell(p.name, act === 5 ? 'Pesa. A para soltarlo' : 'La linterna ilumina poco. Llévala al brasero');
+    }
+    if (act === 7) {
+      const br = inside(DUNGEON.brazier);
+      if (g.lit || g.lantern.held !== p.name || !near(br.x, br.z, DUNGEON.carryReach)) return;
+      g.lit = true;
+      Object.assign(g.lantern, { x: br.x, z: br.z, held: null });
+      this.say('El brasero prende. La verja de raíces se retira');
     }
   }
 
@@ -844,7 +894,69 @@ export class WorldSim {
     const pulled = g.pulled.map((t) => t != null && (g.gate || this.time - t <= DUNGEON.leverWindow + EPS));
     const b = this.boss;
     const boss = b && b.hp > 0 ? { hp: Math.round(b.hp), max: ENEMY.boss.hp, weak: b.weak > 0 } : null;
-    return { gate: g.gate, levers: pulled, purified: this.purified, boss };
+    const e = this.elite;
+    const elite = e && e.hp > 0 ? { hp: Math.round(e.hp), max: ENEMY.elite.hp, charging: e.windup > 0 || e.charge > 0 } : null;
+    const carry = (c: { x: number; z: number; held: string | null }) => ({ x: r2(c.x), z: r2(c.z), held: c.held });
+    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite };
+  }
+
+  /** Which of the five dungeon gates are open. */
+  private gates(): boolean[] {
+    const g = this.dungeonLive;
+    return [g.gate, g.knot, g.jammed || this.time < g.plateUntil, g.lit, g.eliteDown];
+  }
+
+  /** Carried things follow their carrier (or drop); the plate reads who and what stands on it. */
+  private stepDungeon(): void {
+    const g = this.dungeonLive;
+    for (const [it, start] of [[g.block, DUNGEON.blockStart], [g.lantern, DUNGEON.lantern]] as const) {
+      if (!it.held) continue;
+      const p = this.players.get(it.held);
+      const l = this.live.get(it.held);
+      if (p && l && !p.dead && l.awayFor === null && inDungeon(p.x, p.z)) {
+        it.x = p.x;
+        it.z = p.z;
+        continue;
+      }
+      it.held = null;
+      if (!p || !inDungeon(p.x, p.z)) Object.assign(it, inside(start)); // taken out of the Raíz-madre: it goes back
+    }
+    const plate = inside(DUNGEON.plate);
+    const on = (x: number, z: number) => Math.hypot(x - plate.x, z - plate.z) <= DUNGEON.plateRadius;
+    g.pressed = (!g.block.held && on(g.block.x, g.block.z)) || this.targets().some((t) => !t.dead && on(t.x, t.z));
+    if (g.pressed) g.plateUntil = this.time + DUNGEON.plateHold;
+    const gz = DUNGEON.gatesZ[2];
+    if (!g.jammed && this.time < g.plateUntil && this.targets().some((t) => !t.dead && inDungeon(t.x, t.z) && t.z > gz)) {
+      g.jammed = true;
+      this.say('Alguien cruzó: la verja de la losa se atasca abierta');
+    }
+  }
+
+  /** The bruto reforzado lives while someone alive is in its room; an empty room resets it. Once down, gate 4 opens. */
+  private stepEliteFight(dt: number): void {
+    const g = this.dungeonLive;
+    const e = this.elite;
+    if (e && e.hp <= 0) {
+      if (!g.eliteDown) {
+        g.eliteDown = true;
+        this.say('El bruto reforzado se deshace en hojas secas. La última verja se abre');
+      }
+      e.deadFor += dt;
+      if (e.deadFor >= ELITE.corpseTime) this.elite = null;
+      return;
+    }
+    if (g.eliteDown) return;
+    const fighters = this.targets().filter((t) => !t.dead && inEliteRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.elite = null;
+      return;
+    }
+    if (!this.elite) {
+      this.elite = createElite();
+      this.say('Un bruto reforzado se levanta. Cuando se agache, apártate o rueda');
+    }
+    const hit = stepElite(this.elite, fighters, dt);
+    if (hit) this.bite(hit.name, hit.dmg, this.elite);
   }
 
   /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */

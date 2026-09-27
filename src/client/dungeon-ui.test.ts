@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DUNGEON, leverPos } from '../shared/dungeon';
 import type { DungeonView } from '../shared/protocol';
-import { bossBarText, dungeonAction } from './dungeon-ui';
+import { bossBarText, dungeonAction, emptyDungeonView } from './dungeon-ui';
 
 const entrance = { x: 100, y: 2, z: 0 };
-const shut: DungeonView = { gate: false, levers: [false, false], purified: false, boss: null };
-const open: DungeonView = { ...shut, gate: true, levers: [true, true] };
+const shut: DungeonView = emptyDungeonView();
+const open: DungeonView = { ...shut, gate: true, gates: [true, false, false, false, false], levers: [true, true] };
 const at = (x: number, z: number, y: number = DUNGEON.floor) => ({ x, y, z });
 
 describe('dungeonAction', () => {

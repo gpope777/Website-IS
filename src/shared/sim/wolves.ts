@@ -33,10 +33,12 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   brute: { hp: 140, run: 4.2, damage: 22, reach: 2.2, biteCooldown: 2 },
   /** El Tragón de Papel, the dungeon boss (see sim/boss.ts). */
   boss: { hp: 300, run: 2.8, damage: 12, reach: 3.2, biteCooldown: 3.2 },
+  /** The bruto reforzado, the dungeon's mini-boss (see sim/elite.ts). */
+  elite: { hp: 420, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
   /** El Marchito in person (see sim/marchito.ts): hp is his voluntad (the 4-player cap; see marchitoWill), he never dies. */
   marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: 'el Tragón de Papel', marchito: 'El Marchito' };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: 'el Tragón de Papel', elite: 'el bruto reforzado', marchito: 'El Marchito' };
 
 export interface Wolf {
   id: number;

@@ -2,22 +2,35 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer. */ ride: boolean }
-export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'marchito';
+export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'marchito';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
 /** `parts` follow `Shrine.parts`: lever pulled / plate pressed. */
 export interface ShrineView { id: number; open: boolean; parts: boolean[] }
-/** Live dungeon state: root gate, levers pulled, whether the boss was purified, and its bar while it fights. */
-export interface DungeonView { gate: boolean; levers: boolean[]; purified: boolean; boss: { hp: number; max: number; weak: boolean } | null }
+/** Something you can carry in the Raíz-madre: where it is and who holds it. */
+export interface CarryView { x: number; z: number; held: string | null }
+/** Live dungeon state: gates (`gate` = gate 0, the levers'), levers pulled, the plate, the block and lantern, the brazier, whether the boss was purified, and the bars while they fight. */
+export interface DungeonView {
+  gate: boolean;
+  gates: boolean[];
+  levers: boolean[];
+  purified: boolean;
+  boss: { hp: number; max: number; weak: boolean } | null;
+  plate: boolean;
+  block: CarryView;
+  lantern: CarryView;
+  lit: boolean;
+  elite: { hp: number; max: number; charging: boolean } | null;
+}
 /** The purified boss guarding the Heart. */
 export interface AllyView { x: number; y: number; z: number; yaw: number; anim: WolfAnim }
 /** A deer standing in the world: the wild one (`owner` null) or a parked, tamed one. */
@@ -48,7 +61,7 @@ export type ClientMsg =
   | { t: 'power'; x: number; z: number }
   /** part 0 = take the orb, 1/2 = pull lever 1/2 */
   | { t: 'shrine'; id: number; part: number }
-  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar */
+  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier */
   | { t: 'dungeon'; act: number }
   /** 0 = start taming the wild deer, 1 = tap the ring at sim time `at`, 2 = get on your deer, 3 = get off */
   | { t: 'mount'; act: number; at?: number };
@@ -127,7 +140,7 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'shrine':
       return id(m.id) && id(m.part) && (m.part as number) <= 2 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
-      return id(m.act) && (m.act as number) <= 4 ? { t: 'dungeon', act: m.act as number } : null;
+      return id(m.act) && (m.act as number) <= 7 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':
       if (!id(m.act) || (m.act as number) > 3) return null;
       if (m.act === 1) return num(m.at) ? { t: 'mount', act: 1, at: m.at } : null;

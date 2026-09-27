@@ -4,7 +4,7 @@ import { createTerrain, type Terrain } from '../shared/terrain';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { bossBarText, dungeonAction, marchitoBarText } from './dungeon-ui';
+import { bossBarText, dungeonAction, emptyDungeonView, marchitoBarText } from './dungeon-ui';
 import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
@@ -117,7 +117,7 @@ export class Game {
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Last corrupt-ids key applied to the ground tint. */
   private corruptKey = '';
-  private dungeon: DungeonView = { gate: false, levers: [false, false], purified: false, boss: null };
+  private dungeon: DungeonView = emptyDungeonView();
   private vines: Crag[] = [];
   private vineKey = '';
   private readonly vineGroup = new THREE.Group();
@@ -721,7 +721,7 @@ export class Game {
     let mv = this.dead || this.hud.menuOpen || this.tame ? IDLE_INPUT : readMove(this.input);
     if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
-    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gate));
+    const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates));
     this.hud.setStamina(b.stamina / b.staminaMax, b.tired);
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';

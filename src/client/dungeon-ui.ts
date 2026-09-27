@@ -1,5 +1,13 @@
-import { DUNGEON, inDungeon, leverPos } from '../shared/dungeon';
+import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
 import type { DungeonView, MarchitoView } from '../shared/protocol';
+
+/** Before the first snapshot: everything shut, the block and lantern where they start. */
+export function emptyDungeonView(): DungeonView {
+  return {
+    gate: false, gates: [false, false, false, false, false], levers: [false, false], purified: false, boss: null, plate: false,
+    block: { ...inside(DUNGEON.blockStart), held: null }, lantern: { ...inside(DUNGEON.lantern), held: null }, lit: false, elite: null,
+  };
+}
 
 /** The contextual A / E action around the Raíz-madre, if any. The server re-checks everything. */
 export function dungeonAction(

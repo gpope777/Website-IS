@@ -5,7 +5,8 @@ import { BLOCK, BOW } from './combat';
 import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
 import { ENREDADERA } from '../enredadera';
-import { DUNGEON, inDungeon, leverPos } from '../dungeon';
+import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
+import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
 import { WATER_LEVEL } from '../terrain';
 import { BOSS } from './boss';
@@ -1701,5 +1702,149 @@ describe('corruption by zones', () => {
     const clean = count(true);
     expect(dirty.length).toBe(clean.length + CORRUPTION.extraWolves);
     expect(dirty.some((w) => w.kind === 'brute')).toBe(true);
+  });
+});
+
+describe('dungeon: four puzzles and the mini-boss (cierre S1)', () => {
+  type Priv = { elite: { hp: number; windup: number; charge: number; chargeReady: number; x: number; z: number } | null; boss: unknown };
+  const priv = (sim: WorldSim) => sim as unknown as Priv;
+  const act = (sim: WorldSim, name: string, a: number) => sim.handle(name, { t: 'dungeon', act: a });
+  const at = (p: { x: number; z: number }) => inside(p);
+  const view = (sim: WorldSim) => snap(sim, 'Ana').dungeon;
+  const tryCross = (sim: WorldSim, gz: number) => {
+    put(sim, 'Ana', DUNGEON.x, gz - 1);
+    for (let i = 0; i < 11; i++) sim.step(0.1); // let the move anchor catch up with the teleport
+    sim.handle('Ana', { t: 'move', x: DUNGEON.x, y: DUNGEON.floor, z: gz + 0.2, yaw: 0, anim: 'walk' });
+    return sim.getPlayer('Ana')!.z > gz;
+  };
+
+  it('all five gates start shut and block the way', () => {
+    const sim = setup('Ana');
+    expect(view(sim).gates).toEqual([false, false, false, false, false]);
+    for (const gz of DUNGEON.gatesZ) expect(tryCross(sim, gz)).toBe(false);
+  });
+
+  it('gate 1: Enredadera grown at the knot opens it', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const k = at(DUNGEON.knot);
+    put(sim, 'Ana', k.x, k.z - 4);
+    sim.handle('Ana', { t: 'power', x: k.x, z: k.z - 1.5 });
+    expect(view(sim).gates[1]).toBe(true);
+    expect(tryCross(sim, DUNGEON.gatesZ[1])).toBe(true);
+  });
+
+  it('gate 2: a friend on the plate holds it; it jams open once someone is through', () => {
+    const sim = setup('Ana', 'Leo');
+    const pl = at(DUNGEON.plate);
+    put(sim, 'Leo', pl.x, pl.z);
+    sim.step(0.1);
+    expect(view(sim).plate).toBe(true);
+    expect(view(sim).gates[2]).toBe(true);
+    expect(tryCross(sim, DUNGEON.gatesZ[2])).toBe(true);
+    sim.step(0.1);
+    put(sim, 'Leo', pl.x + 6, pl.z);
+    for (let i = 0; i < 30; i++) sim.step(0.1);
+    expect(view(sim).gates[2]).toBe(true); // jammed: nobody gets locked in
+  });
+
+  it('gate 2 solo: the plate alone closes too fast, the block holds it', () => {
+    const sim = setup('Ana');
+    const pl = at(DUNGEON.plate);
+    put(sim, 'Ana', pl.x, pl.z);
+    sim.step(0.1);
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.gatesZ[2] - 8);
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect(view(sim).gates[2]).toBe(false);
+    const b = at(DUNGEON.blockStart);
+    put(sim, 'Ana', b.x, b.z);
+    act(sim, 'Ana', 5);
+    expect(view(sim).block.held).toBe('Ana');
+    put(sim, 'Ana', pl.x, pl.z);
+    sim.step(0.1);
+    expect(view(sim).block).toMatchObject({ held: 'Ana' });
+    act(sim, 'Ana', 5); // drop it on the plate
+    expect(view(sim).block).toMatchObject({ held: null });
+    expect(tryCross(sim, DUNGEON.gatesZ[2])).toBe(true);
+  });
+
+  it('gate 3: carry the lantern to the brazier; one thing at a time', () => {
+    const sim = setup('Ana');
+    const b = at(DUNGEON.blockStart);
+    put(sim, 'Ana', b.x, b.z);
+    act(sim, 'Ana', 5);
+    const ln = at(DUNGEON.lantern);
+    put(sim, 'Ana', ln.x, ln.z);
+    sim.step(0.1);
+    act(sim, 'Ana', 6);
+    expect(view(sim).lantern.held).toBeNull(); // hands full
+    act(sim, 'Ana', 5);
+    act(sim, 'Ana', 6);
+    expect(view(sim).lantern.held).toBe('Ana');
+    act(sim, 'Ana', 7); // too far from the brazier
+    expect(view(sim).lit).toBe(false);
+    const br = at(DUNGEON.brazier);
+    put(sim, 'Ana', br.x + 1, br.z);
+    sim.step(0.1);
+    act(sim, 'Ana', 7);
+    expect(view(sim)).toMatchObject({ lit: true, lantern: { held: null } });
+    expect(view(sim).gates[3]).toBe(true);
+  });
+
+  it('a carrier who leaves the Raíz-madre gives the thing back to its place', () => {
+    const sim = setup('Ana');
+    const ln = at(DUNGEON.lantern);
+    put(sim, 'Ana', ln.x, ln.z);
+    act(sim, 'Ana', 6);
+    put(sim, 'Ana', 0, 0);
+    sim.step(0.1);
+    expect(view(sim).lantern).toEqual({ x: ln.x, z: ln.z, held: null });
+  });
+
+  it('gate 4: the bruto reforzado wakes in its room, charges with a warning, and its fall opens the way', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.eliteZ - 9);
+    sim.step(0.1);
+    const e = priv(sim).elite!;
+    expect(e).not.toBeNull();
+    expect(snap(sim, 'Ana').wolves.find((w) => w.kind === 'elite')).toMatchObject({ id: ELITE.id });
+    e.chargeReady = 0;
+    let warned = false;
+    for (let i = 0; i < 30; i++) {
+      put(sim, 'Ana', DUNGEON.x, DUNGEON.eliteZ - 9);
+      sim.step(0.1);
+      if (view(sim).elite?.charging) warned = true;
+    }
+    expect(warned).toBe(true);
+    expect(sim.getPlayer('Ana')!.vitals.health).toBeLessThan(100);
+    // an empty room resets it
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.eliteRoomZ - 5);
+    sim.step(0.1);
+    expect(priv(sim).elite).toBeNull();
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.eliteZ - 2);
+    sim.step(0.1);
+    priv(sim).elite!.hp = 1;
+    sim.step(PUNCH.cooldown);
+    const e2 = priv(sim).elite!;
+    put(sim, 'Ana', e2.x, e2.z - 1);
+    sim.handle('Ana', { t: 'attack', id: ELITE.id });
+    sim.step(0.1);
+    expect(view(sim).gates[4]).toBe(true);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('derrotó al bruto reforzado') });
+  });
+
+  it('rolling through the charge takes no damage', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', DUNGEON.x, DUNGEON.eliteZ - 9);
+    sim.step(0.1);
+    const e = priv(sim).elite!;
+    e.chargeReady = 0;
+    for (let i = 0; i < 40; i++) {
+      put(sim, 'Ana', DUNGEON.x, DUNGEON.eliteZ - 9);
+      if (e.charge > 0 && Math.abs(e.z - (DUNGEON.eliteZ - 9)) < 5) sim.handle('Ana', { t: 'roll' });
+      if (e.charge === 0 && e.windup === 0 && i > 15) break;
+      sim.step(0.1);
+    }
+    expect(sim.getPlayer('Ana')!.vitals.health).toBe(100);
   });
 });

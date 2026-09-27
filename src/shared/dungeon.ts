@@ -5,21 +5,40 @@ import type { Shrine } from './shrines';
 
 /**
  * La Raíz-madre (spec §7): an entrance in the world and a handmade interior far outside
- * the map ("instanced" = its own space in the same sim). The interior runs along +z:
- * hall with two root levers → root gate → Enredadera altar → boss room.
+ * the map ("instanced" = its own space in the same sim). The interior runs along +z, five gates:
+ * hall with two root levers → gate 0 → Enredadera altar → gate 1 (a knot: Enredadera opens it) →
+ * plate room (a friend or the root block holds it) → gate 2 → dark room (carry the lantern to the
+ * brazier) → gate 3 → mini-boss (bruto reforzado) → gate 4 → the Tragón's room.
  */
 export const DUNGEON = {
   /** Interior centre line, 150 m past the map edge. */
   x: HALF + 150,
   z0: 0,
-  z1: 96,
+  z1: 170,
   halfW: 12,
   floor: 30,
   /** Metres around the interior that still read as its floor (the camera can swing out). */
   pad: 10,
   entryZ: 5,
   exitReach: 2.5,
+  /** Gate 0 (the levers'); kept as its own name for the old code paths. */
   gateZ: 32,
+  gatesZ: [32, 56, 84, 110, 138],
+  /** Gate 1: a knot of roots; an Enredadera grown within `knotReach` of it opens it. */
+  knot: { x: 0, z: 56 },
+  knotReach: 4,
+  /** Gate 2: open while the plate is pressed (a player or the block on it) and `plateHold` s after; it jams open once someone is through. */
+  plate: { x: -7, z: 66 },
+  plateRadius: 1.4,
+  plateHold: 1.5,
+  blockStart: { x: 7, z: 62 },
+  carryReach: 2.5,
+  /** Gate 3: carry the lantern to the brazier. */
+  lantern: { x: 0, z: 90 },
+  brazier: { x: -8, z: 106 },
+  /** Gate 4: opens when the bruto reforzado falls. */
+  eliteRoomZ: 110,
+  eliteZ: 126,
   levers: [
     { x: -9, z: 22 },
     { x: 9, z: 22 },
@@ -28,8 +47,8 @@ export const DUNGEON = {
   leverWindow: 6,
   altarZ: 46,
   altarReach: 2.5,
-  bossRoomZ: 60,
-  bossZ: 80,
+  bossRoomZ: 138,
+  bossZ: 158,
   /** Entrance: reach from the trunk's side, distance from spawn, clearance from crags and shrines. */
   enterReach: 5,
   minDist: 90,
@@ -48,6 +67,15 @@ export function inBossRoom(x: number, z: number): boolean {
   return inDungeon(x, z) && z >= DUNGEON.bossRoomZ;
 }
 
+export function inEliteRoom(x: number, z: number): boolean {
+  return inDungeon(x, z) && z >= DUNGEON.eliteRoomZ && z < DUNGEON.bossRoomZ;
+}
+
+/** A point in interior-relative coordinates (x from the centre line) to world coordinates. */
+export function inside(p: { x: number; z: number }): { x: number; z: number } {
+  return { x: DUNGEON.x + p.x, z: p.z };
+}
+
 export function leverPos(i: number): { x: number; z: number } {
   const l = DUNGEON.levers[i]!;
   return { x: DUNGEON.x + l.x, z: l.z };
@@ -61,12 +89,16 @@ export function withDungeon(base: Terrain): Terrain {
   };
 }
 
-/** Where a step from (px,pz) toward (nx,nz) ends: the interior walls and the shut gate inside, the map edge outside. */
-export function clampStep(px: number, pz: number, nx: number, nz: number, gateOpen: boolean): { x: number; z: number } {
+/** Where a step from (px,pz) toward (nx,nz) ends: the interior walls and shut gates (either way) inside, the map edge outside. `gates[i]` = gate i open. */
+export function clampStep(px: number, pz: number, nx: number, nz: number, gates: readonly boolean[]): { x: number; z: number } {
   if (!inDungeon(px, pz, 2)) return { x: clamp(nx, -HALF + 3, HALF - 3), z: clamp(nz, -HALF + 3, HALF - 3) };
   const x = clamp(nx, DUNGEON.x - DUNGEON.halfW + 0.5, DUNGEON.x + DUNGEON.halfW - 0.5);
   let z = clamp(nz, DUNGEON.z0 + 0.5, DUNGEON.z1 - 0.5);
-  if (!gateOpen && pz < DUNGEON.gateZ && z > DUNGEON.gateZ - 0.5) z = DUNGEON.gateZ - 0.5;
+  DUNGEON.gatesZ.forEach((g, i) => {
+    if (gates[i]) return;
+    if (pz < g && z > g - 0.5) z = g - 0.5;
+    else if (pz > g && z < g + 0.5) z = g + 0.5;
+  });
   return { x, z };
 }
 

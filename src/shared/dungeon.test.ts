@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTerrain, HALF, WATER_LEVEL } from './terrain';
 import { generateCrags } from './crags';
 import { generateShrines } from './shrines';
-import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, leverPos, withDungeon } from './dungeon';
+import { clampStep, DUNGEON, generateEntrance, inBossRoom, inEliteRoom, inDungeon, leverPos, withDungeon } from './dungeon';
 
 describe('dungeon', () => {
   it('the interior lies outside the map and has a flat floor', () => {
@@ -21,13 +21,31 @@ describe('dungeon', () => {
 
   it('walls and the closed gate stop you; the open gate lets you through', () => {
     const X = DUNGEON.x;
-    expect(clampStep(X, 10, X + 50, 10, false).x).toBeCloseTo(X + DUNGEON.halfW - 0.5);
-    expect(clampStep(X, 10, X, -5, false).z).toBeCloseTo(DUNGEON.z0 + 0.5);
-    expect(clampStep(X, DUNGEON.gateZ - 1, X, DUNGEON.gateZ + 1, false).z).toBeCloseTo(DUNGEON.gateZ - 0.5);
-    expect(clampStep(X, DUNGEON.gateZ - 1, X, DUNGEON.gateZ + 1, true).z).toBe(DUNGEON.gateZ + 1);
-    expect(clampStep(X, DUNGEON.gateZ + 2, X, DUNGEON.gateZ + 1, false).z).toBe(DUNGEON.gateZ + 1);
-    expect(clampStep(0, 0, HALF + 5, 0, false).x).toBe(HALF - 3);
-    expect(clampStep(0, 0, 1, 2, false)).toEqual({ x: 1, z: 2 });
+    // Signature change (cierre S1): one flag per gate instead of a single boolean.
+    const shut = [false, false, false, false, false];
+    const open0 = [true, false, false, false, false];
+    expect(clampStep(X, 10, X + 50, 10, shut).x).toBeCloseTo(X + DUNGEON.halfW - 0.5);
+    expect(clampStep(X, 10, X, -5, shut).z).toBeCloseTo(DUNGEON.z0 + 0.5);
+    expect(clampStep(X, DUNGEON.gateZ - 1, X, DUNGEON.gateZ + 1, shut).z).toBeCloseTo(DUNGEON.gateZ - 0.5);
+    expect(clampStep(X, DUNGEON.gateZ - 1, X, DUNGEON.gateZ + 1, open0).z).toBe(DUNGEON.gateZ + 1);
+    expect(clampStep(X, DUNGEON.gateZ + 2, X, DUNGEON.gateZ + 1, shut).z).toBe(DUNGEON.gateZ + 1);
+    expect(clampStep(0, 0, HALF + 5, 0, shut).x).toBe(HALF - 3);
+    expect(clampStep(0, 0, 1, 2, shut)).toEqual({ x: 1, z: 2 });
+  });
+
+  it('every gate blocks both ways while shut', () => {
+    const X = DUNGEON.x;
+    DUNGEON.gatesZ.forEach((g, i) => {
+      const gates = DUNGEON.gatesZ.map((_, k) => k !== i);
+      expect(clampStep(X, g - 1, X, g + 1, gates).z).toBeCloseTo(g - 0.5);
+      expect(clampStep(X, g + 1, X, g - 1, gates).z).toBeCloseTo(g + 0.5);
+      expect(clampStep(X, g - 1, X, g + 1, DUNGEON.gatesZ.map(() => true)).z).toBe(g + 1);
+    });
+    expect([...DUNGEON.gatesZ].sort((a, b) => a - b)).toEqual([...DUNGEON.gatesZ]);
+    expect(DUNGEON.gatesZ[0]).toBe(DUNGEON.gateZ);
+    expect(DUNGEON.gatesZ[4]).toBe(DUNGEON.bossRoomZ);
+    expect(inEliteRoom(DUNGEON.x, DUNGEON.eliteZ)).toBe(true);
+    expect(inBossRoom(DUNGEON.x, DUNGEON.eliteZ)).toBe(false);
   });
 
   for (const seed of [1, 7, 42, 1234]) {
