@@ -8,7 +8,8 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
-import { WATER_LEVEL } from '../terrain';
+import { HALF, WATER_LEVEL } from '../terrain';
+import { CIENAGA } from '../coast';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
@@ -1846,5 +1847,61 @@ describe('dungeon: four puzzles and the mini-boss (cierre S1)', () => {
       sim.step(0.1);
     }
     expect(sim.getPlayer('Ana')!.vitals.health).toBe(100);
+  });
+});
+
+describe('la Ciénaga and the deep sea', () => {
+  const MUD_Z = HALF + 5;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+
+  it('the mud bites walkers (~8 PV/s) but not riders', () => {
+    const sim = setup('Ana', 'Leo', 'Eva');
+    put(sim, 'Ana', 0, MUD_Z);
+    put(sim, 'Leo', 5, 5);
+    put(sim, 'Eva', 10, MUD_Z);
+    sim.getPlayer('Eva')!.steed = { x: 10, z: MUD_Z };
+    sim.handle('Eva', { t: 'mount', act: 2 });
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    const hp = (n: string) => sim.getPlayer(n)!.vitals.health;
+    // ~40 lost; health regen claws a little back while hurt.
+    expect(hp('Leo') - hp('Ana')).toBeGreaterThan(CIENAGA.dps * 5 - 4);
+    expect(hp('Leo') - hp('Ana')).toBeLessThanOrEqual(CIENAGA.dps * 5);
+    expect(hp('Eva')).toBe(hp('Leo'));
+    expect(texts(sim).some((t) => t.includes('barro'))).toBe(true);
+  });
+
+  it('walkers wade through the mud slowly; the deer gallops', () => {
+    const tryMove = (riding: boolean, dist: number) => {
+      const sim = setup('Ana');
+      put(sim, 'Ana', 0, MUD_Z);
+      if (riding) {
+        sim.getPlayer('Ana')!.steed = { x: 0, z: MUD_Z };
+        sim.handle('Ana', { t: 'mount', act: 2 });
+      }
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      sim.handle('Ana', { t: 'move', x: dist, y: sim.terrain.heightAt(dist, MUD_Z), z: MUD_Z, yaw: 0, anim: 'walk' });
+      return sim.getPlayer('Ana')!.x === dist;
+    };
+    expect(tryMove(false, 2.5)).toBe(true);
+    expect(tryMove(false, 8)).toBe(false);
+    expect(tryMove(true, 8)).toBe(true);
+  });
+
+  it('the current turns deep-sea swimmers back, but lets them head for shore', () => {
+    const sim = setup('Ana');
+    const x = -HALF + 45;
+    const z = HALF + 100;
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x, z, y: WATER_LEVEL - 0.9 });
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x, y: WATER_LEVEL - 0.9, z: z + 1, yaw: 0, anim: 'walk' });
+    expect(p.z).toBe(z);
+    expect(texts(sim)).toContain('La corriente te devuelve');
+    sim.handle('Ana', { t: 'move', x, y: WATER_LEVEL - 0.9, z: z - 1, yaw: 0, anim: 'walk' });
+    expect(p.z).toBe(z - 1);
+    // Gliding over the sea is not swimming: heading out is fine in the air.
+    Object.assign(p, { y: WATER_LEVEL + 3 });
+    sim.handle('Ana', { t: 'move', x, y: WATER_LEVEL + 2.9, z: z, yaw: 0, anim: 'jump' });
+    expect(p.z).toBe(z);
   });
 });

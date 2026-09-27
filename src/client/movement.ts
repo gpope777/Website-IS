@@ -2,6 +2,7 @@ import { clampMap, WATER_LEVEL, type Terrain } from '../shared/terrain';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
+import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
 export interface MoveInput {
@@ -122,7 +123,8 @@ export function stepBody(
   const moving = mag > 0.01;
   const running = input.sprint && moving && !swimming;
   const swimFast = swimming && input.sprint && moving && !b.tired;
-  const speed = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : running ? SPEED.run : SPEED.walk;
+  const wading = !b.riding && b.onGround && inCienaga(b.x, b.z);
+  const speed = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
 
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
   const s = Math.sin(camYaw);
@@ -174,6 +176,11 @@ export function stepBody(
   const to = bounds(b.x, b.z, nx, nz);
   if (b.riding && terrain.heightAt(to.x, to.z) < SWIM_DEPTH) {
     // The deer will not swim: it stops at the shore.
+    to.x = b.x;
+    to.z = b.z;
+    b.vx = b.vz = 0;
+  } else if (swimming && !deepStepOk(terrain, b.x, b.z, to.x, to.z)) {
+    // Past 4 m of sea the current turns you back (the server checks the same).
     to.x = b.x;
     to.z = b.z;
     b.vx = b.vz = 0;

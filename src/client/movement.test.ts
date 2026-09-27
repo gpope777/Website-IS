@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
-import { HALF, WATER_LEVEL } from '../shared/terrain';
+import { createTerrain, HALF, WATER_LEVEL } from '../shared/terrain';
+import { CIENAGA, depthAt, SWIM_MAX_DEPTH } from '../shared/coast';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
 import { MOUNT } from '../shared/mount';
@@ -315,5 +316,26 @@ describe('riding', () => {
     air.onGround = false;
     stepBody(air, { ...fwd, jump: true }, 0, 1 / 60, flat, none);
     expect(air.gliding).toBe(false);
+  });
+});
+
+describe('the coast', () => {
+  const t = createTerrain(42);
+  const south: MoveInput = { x: 0, z: 1, sprint: true, jump: false }; // camera yaw 0: +z is "back"
+
+  it('wading through the Ciénaga is slow, even sprinting; the deer is not slowed', () => {
+    const { b } = run(south, 1, t, none, 0, [], createBody(0, HALF, t));
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(CIENAGA.speed, 1);
+    const deer = createBody(0, HALF, t);
+    deer.riding = true;
+    run(south, 1, t, none, 0, [], deer);
+    expect(Math.hypot(deer.vx, deer.vz)).toBeCloseTo(MOUNT.run, 0);
+  });
+
+  it('the current stops a swimmer heading out to the deep sea', () => {
+    const x = -HALF + 45;
+    const { b } = run(south, 20, t, none, 0, [], createBody(x, HALF + 80, t));
+    expect(depthAt(t, b.x, b.z)).toBeLessThanOrEqual(SWIM_MAX_DEPTH + 0.2);
+    expect(b.z).toBeGreaterThan(HALF + 85);
   });
 });

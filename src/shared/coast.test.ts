@@ -3,6 +3,7 @@ import { Noise2D } from './noise';
 import { clampMap, COAST_Z0, coastFeatures, createTerrain, HALF, inForest, inMap, SOUTH, WATER_LEVEL } from './terrain';
 import { generateCrags } from './crags';
 import { generateResources } from './resources';
+import { deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from './coast';
 
 /** Today's forest function (before the coast), kept verbatim to prove the forest did not move. */
 function oldHeight(seed: number) {
@@ -90,5 +91,24 @@ describe('coast terrain', () => {
     expect(inForest(0, COAST_Z0, 4)).toBe(false);
     expect(clampMap(0, SOUTH + 10, 3)).toEqual({ x: 0, z: SOUTH - 3 });
     expect(clampMap(-HALF - 1, -HALF - 1, 3)).toEqual({ x: -HALF + 3, z: -HALF + 3 });
+  });
+});
+
+describe('coast rules', () => {
+  const t = createTerrain(42);
+  it('the Ciénaga spans the blend and the mud band', () => {
+    expect(inCienaga(0, COAST_Z0 - 1)).toBe(false);
+    expect(inCienaga(0, COAST_Z0 + 1)).toBe(true);
+    expect(inCienaga(0, HALF + 19)).toBe(true);
+    expect(inCienaga(0, HALF + 25)).toBe(false);
+  });
+
+  it('deep sea: a swimmer may only go shallower', () => {
+    const x = -HALF + 45; // islets and island keep |x| < HALF - 40 of their centre, but check anyway
+    const z = HALF + 150;
+    expect(depthAt(t, x, z)).toBeGreaterThan(SWIM_MAX_DEPTH);
+    expect(deepStepOk(t, x, HALF + 70, x, HALF + 71)).toBe(true); // shallows
+    expect(deepStepOk(t, x, HALF + 100, x, HALF + 90)).toBe(true); // toward the beach
+    expect(deepStepOk(t, x, HALF + 92, x, HALF + 100)).toBe(false); // out to sea
   });
 });

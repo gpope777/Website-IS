@@ -1,4 +1,5 @@
 import { NAMES } from '../names';
+import { CIENAGA, deepStepOk, inCienaga } from '../coast';
 import { createRng } from '../rng';
 import { clampMap, createTerrain, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
@@ -22,6 +23,8 @@ export const DAY_LENGTH = 6 * 60;
 export const TICK_DT = 0.1;
 export const VIEW_RADIUS = 100;
 export const MAX_SPEED = 9;
+/** Seconds between repeated rule toasts (mud, current). */
+const HINT_EVERY = 4;
 /** Within this many metres of a crag's side, moves may be as high as its top + 3 m (climbing, jumping off the top). */
 export const CLIMB_PAD = 4;
 /** Cap on the re-anchor allowance window, so idling still bounds the accepted jump distance. */
@@ -121,6 +124,8 @@ interface Live {
   riding: boolean;
   /** Sim time the rider speed cap still applies after getting off (lag grace). */
   rodeUntil: number;
+  /** Next time a repeated rule toast may show. */
+  hintAt: number;
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
@@ -270,7 +275,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0 };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, hintAt: 0 };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -339,6 +344,10 @@ export class WorldSim {
       const p = this.players.get(name)!;
       if (p.dead || l.awayFor !== null) continue; // away players are frozen: the world sleeps for them
       p.vitals = tickVitals(p.vitals, { night, nearFire: this.nearFire(p.x, p.z) }, dt);
+      if (!l.riding && inCienaga(p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
+        p.vitals = damage(p.vitals, CIENAGA.dps * dt);
+        this.hint(p.name, l, 'El barro marchito muerde. A lomos del ciervo no');
+      }
       if (p.vitals.health <= 0) this.kill(p);
       else this.pickUpGraves(p);
     }
@@ -487,10 +496,17 @@ export class WorldSim {
     // Riders cannot climb (no crag allowance) nor swim.
     const yOk = m.y > ground - 1 && (m.y < ground + 4 || (!l.riding && m.y < cragCeiling) || m.y <= p.y);
     const dryOk = !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
+    // The sea past 4 m turns swimmers back (they may only head shallower); gliders fly over it.
+    const swimming = m.y < WATER_LEVEL - 0.5;
+    const seaOk = !swimming || deepStepOk(this.terrain, p.x, p.z, m.x, m.z);
+    if (!seaOk) this.hint(p.name, l, 'La corriente te devuelve');
     // The server knows who rides: only riders (and just-dismounted ones, for lag) get the deer's speed.
-    const cap = l.riding || this.time < l.rodeUntil ? MOUNT.maxSpeed : MAX_SPEED;
+    const mounted = l.riding || this.time < l.rodeUntil;
+    // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).
+    const wading = !mounted && inCienaga(l.anchorX, l.anchorZ) && inCienaga(m.x, m.z);
+    const cap = mounted ? MOUNT.maxSpeed : wading ? CIENAGA.speed : MAX_SPEED;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
-    if (!inBounds || !wallOk || !yOk || !dryOk || moved > cap * elapsed + 1) {
+    if (!inBounds || !wallOk || !yOk || !dryOk || !seaOk || moved > cap * elapsed + 1) {
       l.fix = true;
       return;
     }
@@ -501,6 +517,13 @@ export class WorldSim {
     l.anim = m.anim;
     l.lastAcceptedAt = this.time;
     if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
+  }
+
+  /** A toast at most every few seconds per player (for rules that fire every tick). */
+  private hint(name: string, l: Live, text: string): void {
+    if (this.time < l.hintAt) return;
+    l.hintAt = this.time + HINT_EVERY;
+    this.tell(name, text);
   }
 
   private onHarvest(p: SavedPlayer, l: Live, id: number): void {
