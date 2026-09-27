@@ -32,9 +32,9 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   wolf: { hp: WOLF.hp, run: WOLF.run, damage: WOLF.damage, reach: WOLF.reach, biteCooldown: WOLF.biteCooldown },
   brute: { hp: 140, run: 4.2, damage: 22, reach: 2.2, biteCooldown: 2 },
   /** El Tragón de Papel, the dungeon boss (see sim/boss.ts). */
-  boss: { hp: 300, run: 2.8, damage: 24, reach: 3.2, biteCooldown: 2.2 },
-  /** El Marchito in person (see sim/marchito.ts): hp is his voluntad, he never dies. */
-  marchito: { hp: 400, run: 2.6, damage: 18, reach: 3, biteCooldown: 2.5 },
+  boss: { hp: 300, run: 2.8, damage: 12, reach: 3.2, biteCooldown: 3.2 },
+  /** El Marchito in person (see sim/marchito.ts): hp is his voluntad (the 4-player cap; see marchitoWill), he never dies. */
+  marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
 };
 export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: 'el Tragón de Papel', marchito: 'El Marchito' };
 
@@ -54,6 +54,19 @@ export interface Wolf {
   kind: EnemyKind;
   /** Seconds left stunned (after a parry). */
   stun: number;
+  /** Seconds left slowed (standing on spikes): runs at SLOWED × speed. */
+  slow?: number;
+}
+
+/** Speed factor while slowed by spikes. */
+export const SLOWED = 0.3;
+
+/** Tick the slow timer; returns the speed factor for this tick. */
+function slowFactor(w: Wolf, dt: number): number {
+  const s = w.slow ?? 0;
+  if (s <= 0) return 1;
+  w.slow = Math.max(0, s - dt);
+  return SLOWED;
 }
 
 export interface WolfTarget {
@@ -83,6 +96,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     return null;
   }
   const def = ENEMY[w.kind];
+  const k = slowFactor(w, dt);
   w.cooldown = Math.max(0, w.cooldown - dt);
 
   const huntable = (t: WolfTarget) => !t.dead && !t.fires;
@@ -132,8 +146,8 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
   w.target = target?.name ?? null;
 
   if (speed > 0) {
-    const nx = Math.max(-HALF + 4, Math.min(HALF - 4, w.x + dirX * speed * dt));
-    const nz = Math.max(-HALF + 4, Math.min(HALF - 4, w.z + dirZ * speed * dt));
+    const nx = Math.max(-HALF + 4, Math.min(HALF - 4, w.x + dirX * speed * k * dt));
+    const nz = Math.max(-HALF + 4, Math.min(HALF - 4, w.z + dirZ * speed * k * dt));
     if (terrain.heightAt(nx, nz) < WATER_LEVEL) {
       w.wander += Math.PI; // turn around at the shore
     } else {
@@ -197,7 +211,7 @@ export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terra
     w.anim = 'idle';
     return null;
   }
-  const run = ENEMY[w.kind].run;
+  const run = ENEMY[w.kind].run * ((w.slow ?? 0) > 0 ? SLOWED : 1);
   const near = targets
     .filter((t) => !t.dead && Math.hypot(t.x - w.x, t.z - w.z) < RAID.aggro)
     .map((t) => ({ ...t, fires: false }));
@@ -206,6 +220,7 @@ export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terra
     return bit ? { player: bit } : null;
   }
   w.target = null;
+  slowFactor(w, dt);
   w.cooldown = Math.max(0, w.cooldown - dt);
   const dx = goal.x - w.x;
   const dz = goal.z - w.z;

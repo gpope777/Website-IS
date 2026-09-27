@@ -6,6 +6,15 @@ import { ENEMY } from './wolves';
 const t = (x: number, z: number, dead = false) => ({ name: 'Ana', x, z, dead, fires: false });
 
 describe('stepBoss', () => {
+  it('a player standing still survives at least 30 s (balance: was ~12 s)', () => {
+    const b = createBoss();
+    const near = [t(b.x, b.z - 2)];
+    let taken = 0;
+    for (let i = 0; i < 300; i++) if (stepBoss(b, near, 0.1)) taken += ENEMY.boss.damage;
+    expect(taken).toBeLessThan(100);
+    expect(BOSS.windup).toBeGreaterThanOrEqual(0.9); // a fair telegraph
+  });
+
   it('starts in the boss room with full HP', () => {
     const b = createBoss();
     expect(b).toMatchObject({ id: BOSS.id, kind: 'boss', hp: ENEMY.boss.hp, x: DUNGEON.x, z: DUNGEON.bossZ, y: DUNGEON.floor });

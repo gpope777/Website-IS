@@ -5,7 +5,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * El Tragón de Papel, the Raíz-madre's boss (spec §5: bosses are puzzles). Its folded paper
  * shrugs off blows: it can only be hurt while `weak` (after a parry or tangled by Enredadera).
  */
-export const BOSS = { id: 0, windup: 0.7, weakFor: 4, rootFor: 5, rootRadius: 4, corpseTime: 4 } as const;
+export const BOSS = { id: 0, windup: 0.9, weakFor: 4, rootFor: 5, rootRadius: 4, corpseTime: 4 } as const;
 
 export interface Boss extends Wolf {
   /** Seconds left it can be hurt. */

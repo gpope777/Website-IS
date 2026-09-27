@@ -11,7 +11,7 @@ import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, ty
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
-import { createMarchito, joinNames, MARCHITO, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
+import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -32,7 +32,8 @@ export const MAX_ONLINE = 8;
 export const PUNCH = { damage: 20, cooldown: 0.6, reach: 3 } as const;
 export const HARVEST_COOLDOWN = 0.4;
 export const HEART = { warmRadius: 8, tendReach: 4 } as const;
-export const SPIKES = { radius: 1.3, dps: 25, wear: 4 } as const;
+/** Spikes hurt and slow what stands on them (`slowFor` s after each touch, SLOWED × speed). */
+export const SPIKES = { radius: 1.8, dps: 40, wear: 4, slowFor: 0.5 } as const;
 /** Graves: owner-only pickup by standing on one; the world keeps at most `max`. */
 export const GRAVE = { pickup: 2, max: 50 } as const;
 /** Co-op revive: seconds a teammate has, reach, health on getting up, minimum hunger/warmth. */
@@ -366,7 +367,7 @@ export class WorldSim {
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
     const mm = this.marchito;
     if (mm && near(mm.x, mm.z)) wolves.push({ id: mm.id, kind: mm.kind, x: r2(mm.x), y: r2(mm.y), z: r2(mm.z), yaw: r2(mm.yaw), anim: mm.anim, raid: false });
-    const marchito = mm ? { will: Math.round(mm.hp), max: ENEMY.marchito.hp, laughing: mm.laugh > 0 } : null;
+    const marchito = mm ? { will: Math.round(mm.hp), max: mm.max, laughing: mm.laugh > 0 } : null;
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
@@ -1024,6 +1025,7 @@ export class WorldSim {
       for (const w of this.wolves) {
         if (w.hp <= 0 || Math.hypot(w.x - s.x, w.z - s.z) > SPIKES.radius) continue;
         hitWolf(w, SPIKES.dps * dt);
+        w.slow = SPIKES.slowFor;
         s.hp -= SPIKES.wear * dt;
       }
       if (s.hp <= 0) this.wreck(s);
@@ -1089,7 +1091,7 @@ export class WorldSim {
     const lim = HALF - 6;
     const x = Math.max(-lim, Math.min(lim, h.x + Math.sin(dir) * MARCHITO.spawnDist));
     const z = Math.max(-lim, Math.min(lim, h.z + Math.cos(dir) * MARCHITO.spawnDist));
-    this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, pickDefenses(this.structures, h));
+    this.marchito = createMarchito(x, this.terrain.heightAt(x, z), z, pickDefenses(this.structures, h), marchitoWill(this.activeCount()));
     this.vision(VISION.arrive);
   }
 

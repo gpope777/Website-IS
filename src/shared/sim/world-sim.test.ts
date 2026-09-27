@@ -413,12 +413,29 @@ describe('asedios', () => {
     put(sim, 'Ana', h.x + 150, h.z + 150);
     sim.step(0.1);
     expect(w.hp).toBeLessThan(hp0);
-    for (let i = 0; i < 5; i++) {
-      Object.assign(w, { x: sp.x, z: sp.z }); // raiders run faster than the spikes' radius; hold it there
-      sim.step(0.1);
-    }
+    expect(w.slow).toBeGreaterThan(0); // spikes slow what stands on them
+    for (let i = 0; i < 5; i++) sim.step(0.1); // no more holding the raider in place: the slow keeps it there
     expect(sim.save().structures.some((s) => s.id === 600)).toBe(false);
     expect(SPIKES.dps).toBeGreaterThan(0);
+  });
+
+  it('a raider marching over spikes is slowed and dies on them (no holding it in place)', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    stepTo(sim, 0.81);
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    const raiders = sim.wolfList.filter((x) => x.raid);
+    const w = raiders[0]!;
+    for (const o of raiders.slice(1)) o.hp = 0;
+    w.kind = 'wolf';
+    w.hp = ENEMY.wolf.hp;
+    // spikes on its straight line to the Heart, 6 m ahead
+    const d = Math.hypot(h.x - w.x, h.z - w.z);
+    const sx = w.x + ((h.x - w.x) / d) * 6;
+    const sz = w.z + ((h.z - w.z) / d) * 6;
+    (sim as unknown as { structures: unknown[] }).structures.push({ id: 601, kind: 'spikes', x: sx, y: 0, z: sz, rot: 0, owner: 'Ana', hp: 80 });
+    for (let i = 0; i < 40 && w.hp > 0; i++) sim.step(0.1);
+    expect(w.hp).toBe(0);
   });
 
   it('snap carries the heart for everyone, even far away', () => {
@@ -1053,7 +1070,7 @@ describe('boss', () => {
     let parried = false;
     for (let i = 0; i < 60 && !parried; i++) {
       if (bossOf(sim)!.anim === 'attack') {
-        for (let k = 0; k < 5; k++) sim.step(0.1);
+        for (let k = 0; k < Math.round(BOSS.windup / 0.1) - 2; k++) sim.step(0.1);
         sim.handle('Ana', { t: 'block', on: true });
         for (let k = 0; k < 3; k++) sim.step(0.1);
       } else sim.step(0.1);
@@ -1397,7 +1414,7 @@ describe('riding the deer', () => {
   });
 });
 
-import { MARCHITO, VISION } from './marchito';
+import { MARCHITO, marchitoWill, VISION } from './marchito';
 
 describe('El Marchito', () => {
   type Priv = { boss: { hp: number } | null; marchito: { x: number; z: number; hp: number; laugh: number } | null; structures: { id: number; kind: string; x: number; y: number; z: number; rot: number; owner: string; hp: number }[] };
@@ -1456,7 +1473,7 @@ describe('El Marchito', () => {
     const toRoot = Math.atan2(e.x - h.x, e.z - h.z);
     const toHim = Math.atan2(m.x - h.x, m.z - h.z);
     expect(Math.abs(Math.atan2(Math.sin(toRoot - toHim), Math.cos(toRoot - toHim)))).toBeLessThan(0.3);
-    expect(snap(sim, 'Ana').marchito).toEqual({ will: ENEMY.marchito.hp, max: ENEMY.marchito.hp, laughing: false });
+    expect(snap(sim, 'Ana').marchito).toEqual({ will: marchitoWill(2), max: marchitoWill(2), laughing: false });
     put(sim, 'Ana', m.x + 5, m.z);
     expect(snap(sim, 'Ana').wolves.find((w) => w.kind === 'marchito')).toMatchObject({ id: MARCHITO.id });
   });
@@ -1490,7 +1507,7 @@ describe('El Marchito', () => {
     put(sim, 'Ana', m.x + 1, m.z);
     sim.getPlayer('Ana')!.vitals.health = 100;
     sim.handle('Ana', { t: 'attack', id: MARCHITO.id });
-    expect(m.hp).toBe(ENEMY.marchito.hp - PUNCH.damage);
+    expect(m.hp).toBe(marchitoWill(2) - PUNCH.damage);
     sim.step(PUNCH.cooldown);
     sim.handle('Ana', { t: 'attack', id: MARCHITO.id });
     const taunts = msgs(sim).filter((x) => x.t === 'toast' && x.text === VISION.taunt('Ana'));

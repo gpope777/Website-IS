@@ -20,6 +20,13 @@ export interface Marchito extends Wolf {
   taunted: string[];
   /** He has left (driven off or done laughing): no more events. */
   left: boolean;
+  /** Voluntad he arrived with (scaled to the players present). */
+  max: number;
+}
+
+/** Voluntad for 1–4 active players: about 10–15 s of one player's blows each. */
+export function marchitoWill(players: number): number {
+  return 180 + 120 * Math.max(1, Math.min(4, Math.round(players)));
 }
 
 export type MarchitoEvent = { t: 'smash'; id: number } | { t: 'swipe'; name: string } | { t: 'laugh' } | { t: 'leave' } | null;
@@ -31,10 +38,10 @@ export function pickDefenses(structs: readonly { id: number; kind: string; x: nu
   return all.slice(0, Math.ceil(all.length / 2)).map((s) => s.id);
 }
 
-export function createMarchito(x: number, y: number, z: number, prey: number[]): Marchito {
+export function createMarchito(x: number, y: number, z: number, prey: number[], will: number = ENEMY.marchito.hp): Marchito {
   return {
-    id: MARCHITO.id, x, y, z, yaw: 0, hp: ENEMY.marchito.hp, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle', raid: false, kind: 'marchito', stun: 0,
-    prey: [...prey], smash: 0, laugh: 0, age: 0, taunted: [], left: false,
+    id: MARCHITO.id, x, y, z, yaw: 0, hp: will, target: null, cooldown: 0, deadFor: 0, wander: 0, anim: 'idle', raid: false, kind: 'marchito', stun: 0,
+    prey: [...prey], smash: 0, laugh: 0, age: 0, taunted: [], left: false, max: will,
   };
 }
 

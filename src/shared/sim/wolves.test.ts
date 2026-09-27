@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../terrain';
-import { createWolf, ENEMY, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type RaidGoal, type WolfTarget } from './wolves';
+import { createWolf, ENEMY, hitWolf, RAID, raiderDamage, SLOWED, stepRaider, stepWolf, WOLF, type RaidGoal, type WolfTarget } from './wolves';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const rng = () => 0.5;
@@ -70,6 +70,17 @@ const raider = (x: number, z = 0) => {
 };
 
 describe('raiders', () => {
+  it('slowed raiders (spikes) run at SLOWED × speed, and the slow wears off', () => {
+    const a = raider(30);
+    const b = raider(30);
+    b.slow = 0.25;
+    stepRaider(a, [], goal(), flat, 0.1, rng);
+    stepRaider(b, [], goal(), flat, 0.1, rng);
+    expect(30 - b.x).toBeCloseTo((30 - a.x) * SLOWED, 5);
+    for (let i = 0; i < 3; i++) stepRaider(b, [], goal(), flat, 0.1, rng);
+    expect(b.slow).toBe(0);
+  });
+
   it('march to the heart when no player is near', () => {
     const w = raider(30);
     stepRaider(w, [target(-50)], goal(), flat, 0.1, rng);

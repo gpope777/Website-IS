@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMarchito, joinNames, MARCHITO, pickDefenses, stepMarchito, VISION, type MarchitoEvent } from './marchito';
+import { createMarchito, joinNames, marchitoWill, MARCHITO, pickDefenses, stepMarchito, VISION, type MarchitoEvent } from './marchito';
 import { ENEMY } from './wolves';
 
 const heart = { x: 0, z: 0 };
@@ -77,5 +77,13 @@ describe('El Marchito', () => {
     expect(VISION.purified('Ana y Leo').join(' ')).toContain('Ana y Leo');
     expect(VISION.driven('Ana').join(' ')).toContain('Ana');
     expect(VISION.taunt('Leo')).toContain('Leo');
+  });
+  it('voluntad scales with 1–4 players and is what he arrives with', () => {
+    expect([1, 2, 3, 4].map(marchitoWill)).toEqual([300, 420, 540, 660]);
+    expect(marchitoWill(0)).toBe(300);
+    expect(marchitoWill(9)).toBe(660);
+    const m = createMarchito(0, 0, 0, [], marchitoWill(3));
+    expect(m.hp).toBe(540);
+    expect(m.max).toBe(540);
   });
 });
