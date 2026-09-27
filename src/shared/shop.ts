@@ -78,3 +78,41 @@ export function canPlaceStall(stalls: readonly Stall[], owner: string, x: number
   if (stalls.some((s) => Math.hypot(s.x - x, s.z - z) < STALL.apart)) return 'Hay otro puesto demasiado cerca.';
   return null;
 }
+
+/** T6-B: the last sales kept in the Puesto's log. */
+export const LOG_MAX = 10;
+
+/** T6-B: units in the Caja. */
+export function tillTotal(s: Stall): number {
+  return ITEMS.reduce((a, k) => a + count(s.till, k), 0);
+}
+
+/** T6-B: null if `inv` can buy one tanda from shelf `i` now; otherwise why not. */
+export function canBuy(s: Stall, i: number, inv: Inventory): string | null {
+  if (!shelfOk(s, i)) return 'Eso no vale.';
+  const sh = s.shelves[i]!;
+  if (sh.mode !== 'sell') return 'Eso no vale.';
+  if (sh.stock < sh.n) return 'No queda.';
+  if (count(inv, sh.want) < sh.m) return `No te llega: ${ITEM_LABELS[sh.want].toLowerCase()}.`;
+  if (tillTotal(s) + sh.m > STALL.tillMax) return 'Caja llena.';
+  return null;
+}
+
+/** T6-B: buy one tanda. `inv` is the buyer's mochila; the pay goes into the Caja. */
+export function buy(s: Stall, i: number, inv: Inventory, who: string, day: number): ShopResult {
+  const why = canBuy(s, i, inv);
+  if (why) return fail(why);
+  const sh = s.shelves[i]!;
+  const next = withShelf(s, i, { ...sh, stock: sh.stock - sh.n });
+  next.till = addItem(next.till, sh.want, sh.m);
+  next.log = [{ who, give: sh.give, n: sh.n, want: sh.want, m: sh.m, day }, ...next.log].slice(0, LOG_MAX);
+  return { ok: true, stall: next, inv: addItem(removeAll(inv, { [sh.want]: sh.m } as Inventory), sh.give, sh.n) };
+}
+
+/** T6-B: Vaciar caja — everything in it to the owner's mochila. */
+export function collectTill(s: Stall, inv: Inventory): ShopResult {
+  if (tillTotal(s) === 0) return fail('La caja está vacía.');
+  let out: Inventory = { ...inv };
+  for (const k of ITEMS) if (count(s.till, k) > 0) out = addItem(out, k, count(s.till, k));
+  return { ok: true, stall: { ...s, shelves: s.shelves.map((x) => ({ ...x })), till: {}, log: [...s.log] }, inv: out };
+}

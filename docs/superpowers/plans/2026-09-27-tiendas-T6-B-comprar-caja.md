@@ -42,9 +42,9 @@ export function buy(s: Stall, i: number, inv: Inventory, who: string, day: numbe
 export function collectTill(s: Stall, inv: Inventory): ShopResult;
 ```
 
-- [ ] **Step 1: failing tests.** `buy` moves `m` want from the buyer into the Caja and `n` give from the shelf to the buyer, logs the sale first; refuses: bad index, empty/short shelf ("No queda."), buyer short ("No te llega: bayas."), Caja would pass 200 ("Caja llena."), and changes nothing; log keeps 10; inputs not mutated. `collectTill` moves the whole Caja to the mochila, refuses when empty. **Property test:** 300 seeded runs × 60 ops over one stall and three mochilas (owner set/restock/take/collect; buyers buy) keep the sum constant, till ≤ 200, all counts non-negative integers.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(tiendas): comprar y Caja, reglas puras`.
+- [x] **Step 1: failing tests.** `buy` moves `m` want from the buyer into the Caja and `n` give from the shelf to the buyer, logs the sale first; refuses: bad index, empty/short shelf ("No queda."), buyer short ("No te llega: bayas."), Caja would pass 200 ("Caja llena."), and changes nothing; log keeps 10; inputs not mutated. `collectTill` moves the whole Caja to the mochila, refuses when empty. **Property test:** 300 seeded runs × 60 ops over one stall and three mochilas (owner set/restock/take/collect; buyers buy) keep the sum constant, till ≤ 200, all counts non-negative integers.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(tiendas): comprar y Caja, reglas puras`.
 
 ### Task 2: server — buy, Caja, log, notice, rate (protocolo v60)
 
