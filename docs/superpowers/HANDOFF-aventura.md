@@ -1298,3 +1298,41 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, teléfono): entrar con `?fps=1`; en un teléfono nuevo (sin gama guardada) mirar si a los 4 s sale "Bajé los gráficos."; jugar 1 min en el bosque y apuntar los fps de Baja; en el Menú probar Media.
 - Lo siguiente: V2-B (según el mapa del spec §12).
+
+## Visuales · V2-B — Recorte por cercanía, cielo, luz y niebla — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-visuales-V2-B-cielo-luz.md` (16a0634).
+- Commits: 3be3d67 (T1 rendimiento: `NearInstances`, árboles/arbustos fusionados, arnés `--stop`/`--top`, base nueva), edd17cb (T2 puro: `BiomeLook` en `scene/looks.ts`), 23d41e0 (T3 cúpula `scene/sky-dome.ts` + `DayLight` con el look, noches oscuras), e776f87 (T4 `scene/patches.ts`: niebla por altura y puntos de brillo), 216acd3 (T5 discos de sombra en baja), y el de cierre (base final + este texto).
+- Tests: npm test 1146 (antes 1126), test:workers 12, check + build verdes. **PROTOCOL_VERSION sigue en 62.** Nada nuevo en red ni guardado.
+- **El tragón de triángulos era `ResourceMeshes`** (`--top` en baja: árboles 147 k + 84 k + 84 k, arbustos 78 k + 39 k, rocas 17 k, hierba 15 k; todo `frustumCulled = false` por el mapa entero). Arreglo: cada `InstancedMesh` se rellena solo con lo que está a `drawDistance × 0,9` de la cámara y no más de 20 m detrás, y se rehace solo tras moverse 6 m o girar 0,3 rad. Más allá de `drawDistance × 0,8` la niebla ya es opaca: no se pierde nada visible (capturas: los árboles siguen hasta la niebla). Tronco + 2 copas y arbusto + bayas van fusionados con color por vértice (6 → 3 mallas, −3 llamadas). La hierba usa lo mismo con radio 70 m.
+- **Cifras antes → después** (llamadas / triángulos, de día; la noche da lo mismo):
+
+| Parada | Baja | Media | Alta |
+|---|---|---|---|
+| Bosque | 67 / 529 k → 66 / 113 k | 150 / 1 041 k → 145 / 314 k | 189 / 1 119 k → 184 / 568 k |
+| Costa | 67 / 533 k → 62 / 69 k | 109 / 1 043 k → 97 / 109 k | 109 / 1 123 k → 97 / 153 k |
+| Bajo el agua | 62 / 533 k → 57 / 69 k | 94 / 1 043 k → 82 / 109 k | 94 / 1 123 k → 82 / 153 k |
+| Pantano | 51 / 535 k → 47 / 71 k | 77 / 1 045 k → 71 / 135 k | 77 / 1 125 k → 71 / 258 k |
+| Montañas | 68 / 548 k → 63 / 84 k | 99 / 1 064 k → 87 / 131 k | 107 / 1 152 k → 95 / 182 k |
+| Tierras | 54 / 486 k → 49 / 22 k | 79 / 969 k → 67 / 35 k | 79 / 1 015 k → 67 / 45 k |
+| Mazmorra | 92 / 530 k → 87 / 67 k | 118 / 1 040 k → 110 / 108 k | 134 / 1 118 k → 128 / 193 k |
+| Presupuesto §3 | 120 / 250 k | 180 / 500 k | 260 / 1 200 k |
+
+  - **Todo dentro del presupuesto en las 3 gamas.** La cúpula suma 1 llamada y ~350 triángulos; las nubes 1 textura (media/alta). Programas 28–34 (baja) y 40–45 (media/alta): la variante de niebla/brillo de cada material Lambert.
+- Cómo funciona:
+  - **`BiomeLook`** (`scene/looks.ts`): por bioma (bosque, costa, pantano, montañas, tierras) 4 claves (noche 0, alba 0,25, día 0,5, ocaso 0,75) con cenit, horizonte, niebla, sol (color, fuerza), hemisférica (cielo, suelo, fuerza) y luna. Se mezcla con 5 muestras a 15 m (≈ 30 m de transición) y se suaviza en 1 s. Retocar colores = tocar la tabla.
+  - **Cúpula** (`scene/sky-dome.ts`): una esfera que sigue a la cámara, degradado cenit/horizonte, disco de sol con halo (más ancho y cálido al ocaso), luna, **nubes** (media: 1 capa 256², alta: 2 capas 512²; ruido FBM hecho una vez, se desplaza con el tiempo), **estrellas** titilantes en alta.
+  - **Noches oscuras:** cenit 0x05080f, hemisférica 0,08, luna 0,35. Asedio, tormenta y Pantano siguen tiñendo encima.
+  - **Niebla por altura** (media/alta): la lineal de siempre, más fina en alto y más cálida mirando al sol; más allá de `far` sigue siendo opaca (sin saltos al borde del recorte).
+  - **Puntos de brillo** (`scene/patches.ts`, único sitio con `onBeforeCompile`): las 4 (baja) u 8 fuentes más cercanas — fogatas encendidas, fogatas/hogueras construidas, el Corazón — iluminan en el shader de todo material Lambert (`(1 − d/r)²`), más fuerte de noche. Cero luces nuevas.
+  - **Discos de sombra** bajo jugadores, lobos y brutos en baja (una geometría y un material compartidos). Los de papel ya lo tenían.
+- Decidido por Claude — revisar:
+  - Recorte por cercanía en vez de las 4×4 regiones del spec §5.3: baja llamadas en vez de subirlas y quita ~80 % de triángulos (el umbral del spec era 30 %).
+  - Radio de la hierba 70 m (sus matas de 0,9 m son puntos más allá). La hierba de verdad (trozos, viento) sigue siendo V2-C.
+  - Biomas del look = los mismos que `biomeItem` (Costa = al sur del borde). Sin look Purificado (V2-C).
+  - El parche se aplica barriendo la escena cada 2 s a todo `MeshLambertMaterial` (opt-out con `userData.noWorld`); los `MeshBasic` (llamas, cuarzo) ya brillan solos.
+  - La cúpula no pasa por el tone mapping (así el cielo de día se parece al fondo de antes).
+  - El arnés ahora también apunta los errores de consola (shaders que no compilan). **Ojo:** en una pasada larga el jugador de pruebas puede morir de noche en la 2.ª/3.ª gama y cambian las texturas (tumba, dibujos); la base final se tomó con media y alta por separado (mismas llamadas/triángulos, 11 texturas).
+- Verificado en navegador: sí, capturas del arnés (SwiftShader): bosque de día igual que antes con los árboles hasta la niebla; Costa de día con nubes y degradado; Montañas con valles en niebla; Tierras moradas/granate; Pantano verde grisáceo con nubes; de noche el bosque es casi negro con estrellas en alta y un brillo cálido en el suelo junto a los fuegos de la mazmorra. **De noche el robot en la Costa se ve como silueta negra**: se lee, pero muy oscuro (el borde de luna para actores del spec §4 queda para V2-E).
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono, `?fps=1`): fps en Baja en el bosque (debería subir: ~5× menos triángulos); un ciclo día/noche entero; de noche ¿se ven bien los lobos y el Corazón?; encender una fogata de noche y ver el suelo iluminado; ir del bosque a la Costa y al Pantano mirando que el cielo cambie sin saltos.
+- Lo siguiente: V2-C (terreno, hierba y viento).

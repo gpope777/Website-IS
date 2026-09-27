@@ -47,10 +47,10 @@ export class NearInstances {
 }
 ```
 
-- [ ] **Step 1:** harness `--stop`, `--top`; `window.__perf.top(n)`; profile low bosque/tierras → hogs listed above.
-- [ ] **Step 2: failing tests** (`near-instances.test.ts`): radius filter; drops > 20 m behind but keeps just behind; hidden skipped and restored; no re-pack for a 3 m move, re-pack after 20 m; several meshes share one list.
-- [ ] **Step 3: implement**; `ResourceMeshes` merges geometries (vertex colours) and uses it; `buildGrass` returns `{ mesh, near }`; `game.ts` `packNear()` each frame after the camera rig.
-- [ ] **Step 4:** green; harness on low bosque + screenshot (trees still to the fog); full `npm run perf -- --update`; before/after in the HANDOFF. Commit `perf(visuales): árboles, rocas, arbustos y hierba solo cerca de la cámara`.
+- [x] **Step 1:** harness `--stop`, `--top`; `window.__perf.top(n)`; profile low bosque/tierras → hogs listed above.
+- [x] **Step 2: failing tests** (`near-instances.test.ts`): radius filter; drops > 20 m behind but keeps just behind; hidden skipped and restored; no re-pack for a 3 m move, re-pack after 20 m; several meshes share one list.
+- [x] **Step 3: implement**; `ResourceMeshes` merges geometries (vertex colours) and uses it; `buildGrass` returns `{ mesh, near }`; `game.ts` `packNear()` each frame after the camera rig.
+- [x] **Step 4:** green; harness on low bosque + screenshot (trees still to the fog); full `npm run perf -- --update`; before/after in the HANDOFF. Commit `perf(visuales): árboles, rocas, arbustos y hierba solo cerca de la cámara`.
 
 ### Task 2: `BiomeLook` table (pure)
 
@@ -64,14 +64,14 @@ export interface Look { zenith: THREE.Color; horizon: THREE.Color; fog: THREE.Co
 export function lookAt(w: Partial<Record<Biome, number>>, frac: number, out?: Look): Look;
 ```
 
-- [ ] **Step 1: failing tests** (`looks.test.ts`): every biome has 4 keys; night is dark (zenith luminance < 0.02, hemiI ≤ 0.1, moonI ≈ 0.35) and day is bright; `lookAt` at the key hours equals the key; midway is between; wraps 0.99 → 0.0 smoothly; `biomeOf` for the harness stops (bosque (0,60), costa (0,275), pantano (−340,160), montañas (20,−300), tierras (0,−560)); weights sum to 1 and blend near a border; pantano sun weaker than costa's.
-- [ ] **Step 2: implement** with the colours of spec §4. **Step 3:** green, commit `feat(visuales): tabla BiomeLook por bioma y hora (puro)`.
+- [x] **Step 1: failing tests** (`looks.test.ts`): every biome has 4 keys; night is dark (zenith luminance < 0.02, hemiI ≤ 0.1, moonI ≈ 0.35) and day is bright; `lookAt` at the key hours equals the key; midway is between; wraps 0.99 → 0.0 smoothly; `biomeOf` for the harness stops (bosque (0,60), costa (0,275), pantano (−340,160), montañas (20,−300), tierras (0,−560)); weights sum to 1 and blend near a border; pantano sun weaker than costa's.
+- [x] **Step 2: implement** with the colours of spec §4. **Step 3:** green, commit `feat(visuales): tabla BiomeLook por bioma y hora (puro)`.
 
 ### Task 3: sky dome and the look in `DayLight`
 
-- [ ] **Step 1:** `sky-dome.ts` (`SkyDome(tier)`, `update(camPos, look, sunDir, daylight, t)`), clouds canvas texture on medium/high, stars on high.
-- [ ] **Step 2:** `DayLight.update` takes the look: background/fog = horizon/fog colour, sun colour/intensity, hemi colours/intensity, moon; raid/storm/swamp tints on top; the dome is updated from it. `game.ts` computes weights + 1 s smoothing.
-- [ ] **Step 3:** green; harness low + medium on bosque (+1 call, dome tris) and screenshots day/night. Commit `feat(visuales): cúpula con sol, nubes y estrellas; luz por bioma y noches oscuras`.
+- [x] **Step 1:** `sky-dome.ts` (`SkyDome(tier)`, `update(camPos, look, sunDir, daylight, t)`), clouds canvas texture on medium/high, stars on high.
+- [x] **Step 2:** `DayLight.update` takes the look: background/fog = horizon/fog colour, sun colour/intensity, hemi colours/intensity, moon; raid/storm/swamp tints on top; the dome is updated from it. `game.ts` computes weights + 1 s smoothing.
+- [x] **Step 3:** green; harness low + medium on bosque (+1 call, dome tris) and screenshots day/night. Commit `feat(visuales): cúpula con sol, nubes y estrellas; luz por bioma y noches oscuras`.
 
 ### Task 4: height fog and glow points (shader patch)
 
@@ -80,15 +80,15 @@ export function pickGlows(sources: readonly GlowSource[], x: number, z: number, 
 export function patchWorld(mat: THREE.Material, opts: { heightFog: boolean; glow: number }): void;
 ```
 
-- [ ] **Step 1: failing tests** (`patches.test.ts`): `pickGlows` returns the n nearest, fewer if fewer exist, empty for n = 0; `patchWorld` sets `onBeforeCompile` and a distinct `customProgramCacheKey` per option set; the injected chunk replaces `#include <fog_fragment>` (checked on a fake shader object).
-- [ ] **Step 2: implement**; apply to terrain, resources, grass, crags, pines/thorns; uniforms updated once per frame from lit fogatas + the Corazón.
-- [ ] **Step 3:** green; harness bosque/montañas at night with shots. Commit `feat(visuales): niebla por altura y puntos de brillo sin luces`.
+- [x] **Step 1: failing tests** (`patches.test.ts`): `pickGlows` returns the n nearest, fewer if fewer exist, empty for n = 0; `patchWorld` sets `onBeforeCompile` and a distinct `customProgramCacheKey` per option set; the injected chunk replaces `#include <fog_fragment>` (checked on a fake shader object).
+- [x] **Step 2: implement**; apply to terrain, resources, grass, crags, pines/thorns; uniforms updated once per frame from lit fogatas + the Corazón.
+- [x] **Step 3:** green; harness bosque/montañas at night with shots. Commit `feat(visuales): niebla por altura y puntos de brillo sin luces`.
 
 ### Task 5: shadow discs on low
 
-- [ ] **Step 1:** `Actor` gets an optional disc (shared geometry/material, `depthWrite: false`, just above the ground); `game.ts` enables it when the tier has no shadows.
-- [ ] **Step 2:** green; low screenshot. Commit `feat(visuales): disco de sombra bajo los actores en gama baja`.
+- [x] **Step 1:** `Actor` gets an optional disc (shared geometry/material, `depthWrite: false`, just above the ground); `game.ts` enables it when the tier has no shadows.
+- [x] **Step 2:** green; low screenshot. Commit `feat(visuales): disco de sombra bajo los actores en gama baja`.
 
 ### Task 6: Ship
 
-- [ ] Full harness `npm run perf` (all within budget or not worse than the new base); `--update` if the dome/discs added their expected cost; HANDOFF "## Visuales · V2-B — …" with before/after table, decisions, what to test on a phone; push; one short comment on PR #3.
+- [x] Full harness `npm run perf` (all within budget or not worse than the new base); `--update` if the dome/discs added their expected cost; HANDOFF "## Visuales · V2-B — …" with before/after table, decisions, what to test on a phone; push; one short comment on PR #3.
