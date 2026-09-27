@@ -79,6 +79,7 @@ import { AmberMeshes } from './scene/amber';
 import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '../shared/progression';
 import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
+import { bookHtml } from './book-ui';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -388,6 +389,8 @@ export class Game {
   /** P4-C: worn colour/hat and the hats unlocked. */
   private look = { color: 0, hat: 0 };
   private hats: number[] = [];
+  /** P4-D: the last own snapshot (the Libro reads it). */
+  private lastSelf: Extract<ServerMsg, { t: 'snap' }>['self'] | null = null;
   private rank = 1;
 
   constructor(private readonly root: HTMLElement, join: JoinInfo, private readonly onLeave: () => void) {
@@ -947,6 +950,7 @@ export class Game {
     this.skills = self.skills ?? [];
     this.look = self.look ?? { color: 0, hat: 0 };
     this.hats = self.hats ?? [];
+    this.lastSelf = self;
     this.rank = self.rank ?? 1;
     if (this.body) this.body.skills = this.skills;
     this.regrowing = self.amber;
@@ -1050,6 +1054,7 @@ export class Game {
         raids: raidsMenu(this.ending, this.atHeart(), this.raidsOff),
         onSkills: () => this.showSkills(null),
         onLook: () => this.showLook(),
+        onBook: () => this.showBook(),
         tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,
         onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
@@ -1343,6 +1348,24 @@ export class Game {
     const b = this.body;
     if (!b || this.dead) return null;
     return fogataAction(b, this.fogataSpots, this.fogatasLit, this.torch);
+  }
+
+  /** P4-D: the Libro; its buttons open Oficios and Aspecto. */
+  private showBook(): void {
+    const s = this.lastSelf;
+    if (!s?.book) return;
+    const html = bookHtml({
+      xp: s.xp ?? 0,
+      rank: s.rank ?? 1,
+      weapon: s.weapon,
+      capa: s.capa,
+      shrines: s.shrines.length,
+      chests: s.chests.length,
+      powers: { enredadera: s.power, viento: s.viento, fuego: s.fuego, piedra: s.piedra },
+      mounts: { steed: s.steed, star: s.star ?? false, fish: s.fish, frog: s.frog, dragon: s.dragon },
+      book: s.book,
+    });
+    this.hud.showSkills(html, { back: () => this.hud.hideOverlay(), skills: () => this.showSkills(null), look: () => this.showLook() });
   }
 
   /** P4-C: the Aspecto panel. Taps apply at once (the server re-checks the hat) and the panel redraws. */

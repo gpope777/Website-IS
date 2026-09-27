@@ -320,3 +320,13 @@ canvas { display: block; }
 .panel .hats button.hat.on { background: #4a8a3c; color: #fff; }
 .panel .hats button.hat.locked { background: rgba(255,255,255,0.08); color: var(--muted); }
 .panel .hats button.hat small { display: block; font-size: 10px; }
+
+/* P4-D: el Libro */
+.panel .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; margin: 4px 0 10px; }
+.panel .bar i { display: block; height: 100%; background: #6fbf4a; }
+.panel .tags span { display: inline-block; margin: 2px 6px 2px 0; }
+.panel .tags span.off { opacity: 0.35; filter: grayscale(1); }
+.panel ul.feats { list-style: none; padding: 0; margin: 6px 0 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; }
+.panel ul.feats li.feat { padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.08); color: var(--muted); }
+.panel ul.feats li.feat.done { background: #4a8a3c; color: #fff; }
+.panel ul.feats li.feat.done::before { content: '✔ '; }

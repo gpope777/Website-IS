@@ -12,6 +12,10 @@ const BUILD: Record<number, () => { parts: Part[]; color: number; glow?: boolean
   4: () => ({ parts: [at(new THREE.ConeGeometry(0.05, 0.22, 5), 0.12, 0.1, 0, 0, -0.5), at(new THREE.ConeGeometry(0.05, 0.22, 5), -0.12, 0.1, 0, 0, 0.5)], color: 0xc9b8ff }),
   5: () => ({ parts: [at(new THREE.TorusGeometry(0.16, 0.025, 5, 16), 0, 0.2, 0, Math.PI / 2)], color: 0xffffff, glow: true }),
   6: () => ({ parts: [at(new THREE.OctahedronGeometry(0.13, 0).scale(1, 1, 0.4), 0, 0.16, 0)], color: 0xffd94a, glow: true }),
+  // P4-D, the Proeza hats: a folded paper boat, a snow cap with a pompom, a withered crown.
+  7: () => ({ parts: [at(new THREE.BoxGeometry(0.3, 0.14, 0.01), 0, 0.06, 0.03, -0.35), at(new THREE.BoxGeometry(0.3, 0.14, 0.01), 0, 0.06, -0.03, 0.35)], color: 0xf2eee2 }),
+  8: () => ({ parts: [at(new THREE.ConeGeometry(0.14, 0.24, 8), 0, 0.12, 0), at(new THREE.SphereGeometry(0.05, 6, 4), 0, 0.26, 0)], color: 0xeef4ff }),
+  9: () => ({ parts: [at(new THREE.CylinderGeometry(0.15, 0.15, 0.06, 10, 1, true), 0, 0.03, 0), at(new THREE.ConeGeometry(0.04, 0.14, 4), 0.1, 0.12, 0, 0, -0.4), at(new THREE.ConeGeometry(0.04, 0.14, 4), -0.1, 0.12, 0, 0, 0.4)], color: 0x5a3a5a }),
 };
 
 const cache = new Map<number, { geo: THREE.BufferGeometry; mat: THREE.Material }>();
