@@ -21,7 +21,7 @@ import { crash, createElite, createPeat, createRockBrute, createShielded, ELITE,
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
-import { DRAGON, dragonOut, dragonPos, leapOk, picoOf, type PicoCircle } from '../dragon';
+import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
@@ -881,6 +881,7 @@ export class WorldSim {
       p.fish = { x: r2(p.x), z: r2(p.z) };
       return;
     }
+    if (l.dragon) return this.onFly(p, l, m, moved, elapsed);
     const inBounds = inAnyDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
     const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
@@ -920,6 +921,31 @@ export class WorldSim {
     if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
     if (l.frog) p.frog = { x: r2(p.x), z: r2(p.z) };
     if (m.y <= ground + 0.5) l.boosted = false; // landed (or swimming): the next flight may lift again
+  }
+
+  /**
+   * On the dragon (S4-G): a height band over the ground, no slopes or water rules. Up to ground + 36 and y ≤ 121,
+   * or any move that only goes down (flying off a cliff leaves you above the band until you sink back into it).
+   * Never into the fog north of the rim nor into a dungeon; in a raid, never low near the Heart.
+   */
+  private onFly(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>, moved: number, elapsed: number): void {
+    const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL);
+    const fog = inFog(m.z);
+    if (fog) this.hint(p.name, l, FOG_TEXT);
+    const band = m.y >= ground - 1 && m.y <= DRAGON.maxY + 1 && (m.y <= ground + DRAGON.serverCeil || m.y <= p.y);
+    const low = this.noLanding(m.x, m.z) && m.y < ground + DRAGON.raidFloor && m.y < p.y;
+    if (!inMap(m.x, m.z, 2) || fog || inAnyDungeon(m.x, m.z) || !band || low || moved > DRAGON.maxSpeed * elapsed + 1) {
+      l.fix = true;
+      return;
+    }
+    this.accept(p, l, m);
+    p.dragon = { x: r2(p.x), z: r2(p.z) };
+  }
+
+  /** During a raid the dragon does not land near the Heart (keeps raids a ground fight). */
+  private noLanding(x: number, z: number): boolean {
+    const h = this.heart();
+    return !!this.raid && !!h && Math.hypot(h.x - x, h.z - z) <= DRAGON.heartNoLand;
   }
 
   /** Today's mountain weather wets the rock (rain or storm). */
@@ -2091,12 +2117,13 @@ export class WorldSim {
 
   /** Sit behind the nearest rider in reach whose seat is free. */
   private board(p: SavedPlayer, l: Live): void {
-    if (l.riding || l.frog || l.tame || inAnyDungeon(p.x, p.z)) return;
+    if (l.riding || l.frog || l.dragon || l.tame || inAnyDungeon(p.x, p.z)) return;
     const taken = new Set([...this.live.values()].flatMap((o) => (o.seat ? [o.seat] : [])));
     let best: SavedPlayer | null = null;
     for (const [n, ol] of this.live) {
       const o = this.players.get(n)!;
-      if (n === p.name || !ol.riding || o.dead || ol.awayFor !== null || taken.has(n)) continue;
+      if (n === p.name || !(ol.riding || ol.dragon) || o.dead || ol.awayFor !== null || taken.has(n)) continue;
+      if (ol.dragon && o.y > Math.max(this.terrain.heightAt(o.x, o.z), WATER_LEVEL) + 1.5) continue; // landed dragons only
       const d = Math.hypot(o.x - p.x, o.z - p.z);
       if (d <= MOUNT.reach && (!best || d < Math.hypot(best.x - p.x, best.z - p.z))) best = o;
     }
@@ -2113,7 +2140,7 @@ export class WorldSim {
       const p = this.players.get(name)!;
       const rl = this.live.get(l.seat);
       const r = this.players.get(l.seat);
-      if (!r || !rl || !rl.riding || r.dead || rl.awayFor !== null || l.awayFor !== null || p.dead) {
+      if (!r || !rl || !(rl.riding || rl.dragon) || r.dead || rl.awayFor !== null || l.awayFor !== null || p.dead) {
         this.dismount(p, l);
         continue;
       }
@@ -2134,6 +2161,14 @@ export class WorldSim {
       l.seat = null;
       l.rodeUntil = this.time + MOUNT.grace;
       l.graceCap = MOUNT.maxSpeed;
+      return;
+    }
+    if (l.dragon) {
+      for (const [n, ol] of this.live) if (ol.seat === p.name) this.dismount(this.players.get(n)!, ol);
+      l.dragon = false;
+      l.rodeUntil = this.time + DRAGON.grace;
+      l.graceCap = DRAGON.maxSpeed;
+      p.dragon = { x: r2(p.x), z: r2(p.z) };
       return;
     }
     if (l.frog) {
@@ -2278,7 +2313,12 @@ export class WorldSim {
 
   /** 15 = leap onto the wild dragon from the Pico, 16 = get on your dragon, 17 = get off. */
   private onDragonAct(p: SavedPlayer, l: Live, act: number): void {
-    if (act === 17) return l.dragon ? this.dismount(p, l) : undefined;
+    if (act === 17) {
+      if (!l.dragon) return;
+      if (p.y > Math.max(this.terrain.heightAt(p.x, p.z), WATER_LEVEL) + 1.5) return; // only once landed
+      if (this.noLanding(p.x, p.z)) return this.tell(p.name, 'Aquí no se aterriza en pleno asedio');
+      return this.dismount(p, l);
+    }
     const busy = l.dragon || l.frog || l.fish || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z);
     if (busy) return;
     if (act === 16) {

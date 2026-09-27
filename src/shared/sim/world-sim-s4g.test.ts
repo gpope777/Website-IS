@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerMsg } from '../protocol';
-import { DRAGON, dragonPos } from '../dragon';
+import { DRAGON, dragonPos, FOG_TEXT } from '../dragon';
+import { HALF } from '../terrain';
+import { mountainEntrance } from '../mountain-dungeon';
 import { weatherAt } from '../weather';
 import { DAY_LENGTH, newWorld, WorldSim } from './world-sim';
 
@@ -114,5 +116,100 @@ describe('el Dragón on the server (S4-G)', () => {
     sim.step(0.2);
     sim.handle('Ana', { t: 'move', x: p.x + 1, y: y0 - 0.5, z: p.z, yaw: 0, anim: 'glide' });
     expect(sim.getPlayer('Ana')!.y).toBeCloseTo(y0 - 0.5, 5);
+  });
+});
+
+describe('flying the dragon on the server (S4-G)', () => {
+  /** Ana owns a dragon, parked on flat ground at the spawn, and is on it. */
+  function flying(...names: string[]) {
+    const sim = setup(clearDay, true, 'Ana', ...names);
+    const a = sim.getPlayer('Ana')!;
+    a.dragon = { x: a.x, z: a.z };
+    sim.handle('Ana', { t: 'mount', act: 16 });
+    expect(snap(sim, 'Ana').self.onDragon).toBe(true);
+    return sim;
+  }
+  const fly = (sim: WorldSim, dx: number, y: number, dz = 0, dt = 0.5) => {
+    const a = sim.getPlayer('Ana')!;
+    const before = { x: a.x, y: a.y, z: a.z };
+    for (let i = 0; i < Math.round(dt / 0.1); i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x: a.x + dx, y, z: a.z + dz, yaw: 0, anim: 'idle' });
+    const b = sim.getPlayer('Ana')!;
+    return !(b.x === before.x && b.y === before.y && b.z === before.z);
+  };
+  const g = (sim: WorldSim) => {
+    const a = sim.getPlayer('Ana')!;
+    return (dx: number) => sim.terrain.heightAt(a.x + dx, a.z);
+  };
+
+  it('15 m/s and up to ground + 35 pass; too fast or too high does not', () => {
+    const sim = flying();
+    expect(fly(sim, 7.5, g(sim)(7.5) + 30)).toBe(true);
+    expect(fly(sim, 12.5, g(sim)(12.5) + 30)).toBe(false);
+    expect(fly(sim, 5, g(sim)(5) + 40)).toBe(false);
+    expect(fly(sim, 5, 125)).toBe(false);
+    expect(fly(sim, 5, g(sim)(5) + 20)).toBe(true); // going down is always fine
+  });
+
+  it('the fog north of the rim turns it back', () => {
+    const sim = flying();
+    const a = sim.getPlayer('Ana')!;
+    a.x = 0;
+    a.z = -HALF - 199;
+    a.y = sim.terrain.heightAt(0, a.z) + 10;
+    sim.drain();
+    expect(fly(sim, 0, a.y, -5)).toBe(false);
+    expect(toasts(sim)).toContain(FOG_TEXT);
+  });
+
+  it('A gets off only once landed; A beside it gets back on', () => {
+    const sim = flying();
+    fly(sim, 3, g(sim)(3) + 10);
+    sim.handle('Ana', { t: 'mount', act: 17 });
+    expect(snap(sim, 'Ana').self.onDragon).toBe(true);
+    fly(sim, 2, g(sim)(2));
+    sim.handle('Ana', { t: 'mount', act: 17 });
+    expect(snap(sim, 'Ana').self.onDragon).toBe(false);
+    const parked = { ...sim.getPlayer('Ana')!.dragon! };
+    expect(snap(sim, 'Ana').dragons.some((d) => d.owner === 'Ana')).toBe(true);
+    const a = sim.getPlayer('Ana')!;
+    a.x += 20;
+    sim.handle('Ana', { t: 'mount', act: 16 });
+    expect(snap(sim, 'Ana').self.onDragon).toBe(false);
+    a.x = parked.x + 2;
+    sim.handle('Ana', { t: 'mount', act: 16 });
+    expect(snap(sim, 'Ana').self.onDragon).toBe(true);
+  });
+
+  it('carries one passenger; a second cannot get on', () => {
+    const sim = flying('Leo', 'Eva');
+    const a = sim.getPlayer('Ana')!;
+    for (const n of ['Leo', 'Eva']) {
+      const o = sim.getPlayer(n)!;
+      Object.assign(o, { x: a.x + 1, z: a.z, y: a.y });
+    }
+    sim.handle('Leo', { t: 'mount', act: 4 });
+    sim.handle('Eva', { t: 'mount', act: 4 });
+    expect(snap(sim, 'Leo').self.seat).toBe('Ana');
+    expect(snap(sim, 'Eva').self.seat).toBeNull();
+    fly(sim, 5, g(sim)(5) + 20);
+    sim.step(0.1);
+    expect(sim.getPlayer('Leo')!.y).toBeCloseTo(sim.getPlayer('Ana')!.y, 5);
+  });
+
+  it('in a raid it does not land near the Heart; a dungeon drops you off', () => {
+    const sim = flying();
+    const a = sim.getPlayer('Ana')!;
+    const pv = sim as unknown as { raid: unknown; heart: () => { x: number; z: number } };
+    pv.raid = { phase: 'active', dir: 0 };
+    pv.heart = () => ({ x: a.x, z: a.z });
+    a.y = sim.terrain.heightAt(a.x, a.z) + 10;
+    expect(fly(sim, 2, g(sim)(2) + 1)).toBe(false);
+    expect(fly(sim, 2, g(sim)(2) + 6)).toBe(true);
+    pv.raid = null;
+    const e = mountainEntrance();
+    Object.assign(a, { x: e.x, z: e.z + 2, y: sim.terrain.heightAt(e.x, e.z + 2) });
+    sim.handle('Ana', { t: 'dungeon', act: 18 });
+    expect(snap(sim, 'Ana').self.onDragon).toBe(false);
   });
 });
