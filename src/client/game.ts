@@ -32,7 +32,7 @@ import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type FogState, type 
 import { DAY_LENGTH, dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
-import type { StructureKind } from '../shared/items';
+import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
 import { PaperActor, type Puppet } from './actors/paper';
@@ -80,6 +80,9 @@ import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '..
 import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
 import { bookHtml } from './book-ui';
+import { nextItem, stallAction, stallHtml } from './stall-ui';
+import { StallMeshes } from './scene/stalls';
+import { STALL, type Stall } from '../shared/shop';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -189,6 +192,11 @@ export class Game {
   private readonly timer = new THREE.Timer();
   private readonly colliders = new ColliderGrid();
   private readonly structures = new StructureMeshes();
+  /** T6-A: the Puestos, as the server last told us. */
+  private readonly stallMeshes = new StallMeshes();
+  private stalls = new Map<number, Stall>();
+  /** T6-A: the owner's panel is open on this Puesto id. */
+  private stallOpen: number | null = null;
   private readonly graves = new GraveMeshes();
   private readonly others = new Map<string, Remote>();
   private readonly wolves = new Map<number, Remote>();
@@ -404,7 +412,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
     this.weatherFx = new WeatherFx(this.scene);
-    this.scene.add(this.structures.group, this.graves.group, this.vineGroup);
+    this.scene.add(this.structures.group, this.stallMeshes.group, this.graves.group, this.vineGroup);
     this.marker.rotation.x = Math.PI; // point down at the target
     this.marker.visible = false;
     this.scene.add(this.marker);
@@ -475,6 +483,8 @@ export class Game {
         return this.setGone(m.id, m.gone);
       case 'built':
         return this.addStructure(m.s);
+      case 'stall':
+        return this.setStall(m.s, !!m.gone);
       case 'toast':
         return this.hud.toast(m.text);
       case 'vision':
@@ -510,6 +520,7 @@ export class Game {
     const gone = new Set(m.gone);
     for (const s of this.spawns) this.setGone(s.id, gone.has(s.id));
     for (const s of m.structures) this.addStructure(s);
+    for (const s of m.stalls ?? []) this.setStall(s, false);
     this.body = createBody(m.self.x, m.self.z, this.terrain!);
     this.body.y = m.self.y;
     this.serverTime = m.time;
@@ -635,6 +646,56 @@ export class Game {
     if (s.kind === 'bush') return;
     if (gone) this.colliders.remove(`r${id}`);
     else this.colliders.add(`r${id}`, { x: s.x, z: s.z, r: s.radius });
+  }
+
+  /** T6-A: a Puesto appeared, changed or was picked up. */
+  private setStall(s: Stall, gone: boolean): void {
+    if (gone) {
+      this.stalls.delete(s.id);
+      this.stallMeshes.remove(s.id);
+      this.colliders.remove(`st${s.id}`);
+      if (this.stallOpen === s.id) {
+        this.stallOpen = null;
+        this.hud.hideOverlay();
+      }
+      return;
+    }
+    this.stalls.set(s.id, s);
+    this.colliders.add(`st${s.id}`, this.stallMeshes.set(s));
+    if (this.stallOpen === s.id && this.hud.menuOpen) this.showStall(s.id);
+  }
+
+  /** T6-A: the owner's panel; each tap sends one message and waits for the `stall` event to redraw. */
+  private showStall(id: number): void {
+    const s = this.stalls.get(id);
+    if (!s) return;
+    this.stallOpen = id;
+    const inv = this.lastSelf?.inv ?? {};
+    const actions: Record<string, () => void> = {
+      back: () => {
+        this.stallOpen = null;
+        this.hud.hideOverlay();
+      },
+      pick: () => this.conn.send({ t: 'stallPick' }),
+    };
+    s.shelves.forEach((sh, i) => {
+      const set = (o: Partial<{ give: ItemId; n: number; want: ItemId; m: number }>) => {
+        const give = o.give ?? sh.give;
+        let want = o.want ?? sh.want;
+        if (want === give) want = nextItem(want); // skip the same material
+        this.conn.send({ t: 'stallSet', shelf: i, give, n: o.n ?? sh.n, want, m: o.m ?? sh.m });
+      };
+      const clamp = (v: number) => Math.max(1, Math.min(STALL.nMax, v));
+      actions[`give-${i}`] = () => set({ give: nextItem(sh.give) });
+      actions[`want-${i}`] = () => set({ want: nextItem(sh.want) });
+      actions[`n-${i}-dec`] = () => set({ n: clamp(sh.n - 1) });
+      actions[`n-${i}-inc`] = () => set({ n: clamp(sh.n + 1) });
+      actions[`m-${i}-dec`] = () => set({ m: clamp(sh.m - 1) });
+      actions[`m-${i}-inc`] = () => set({ m: clamp(sh.m + 1) });
+      actions[`stock-${i}`] = () => this.conn.send({ t: 'stallStock', shelf: i });
+      actions[`take-${i}`] = () => this.conn.send({ t: 'stallTake', shelf: i });
+    });
+    this.hud.showSkills(stallHtml(s, inv), actions);
   }
 
   private addStructure(s: Structure): void {
@@ -1055,6 +1116,8 @@ export class Game {
         onSkills: () => this.showSkills(null),
         onLook: () => this.showLook(),
         onBook: () => this.showBook(),
+        stall: [...this.stalls.values()].some((s) => s.owner === this.myName) ? undefined : `Poner ${NAMES.stall.toLowerCase()} (8 madera, 4 piedra)`,
+        onStall: () => this.placeStall(),
         tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,
         onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
@@ -1242,6 +1305,13 @@ export class Game {
     if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
     if (ca?.t === 'upgrade') return this.conn.send({ t: 'upgrade' });
     if (sa?.t === 'capa') return this.conn.send({ t: 'capa' });
+    const st = stallAction(b, [...this.stalls.values()], this.myName);
+    if (st?.own) {
+      this.releaseInputs();
+      if (document.pointerLockElement) document.exitPointerLock();
+      return this.showStall(st.s.id);
+    }
+    if (st) return this.hud.toast(`${NAMES.stall} de ${st.s.owner}.`);
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
   }
@@ -1511,6 +1581,13 @@ export class Game {
       }
     }
     return best;
+  }
+
+  /** T6-A: the Puesto goes 2,5 m in front, like a structure. */
+  private placeStall(): void {
+    const b = this.body;
+    if (!b || this.dead) return;
+    this.conn.send({ t: 'stallPlace', x: r2(b.x + Math.sin(b.facing) * 2.5), z: r2(b.z + Math.cos(b.facing) * 2.5), rot: r2(b.facing) });
   }
 
   private place(kind: StructureKind): void {
