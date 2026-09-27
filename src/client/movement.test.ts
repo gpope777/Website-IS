@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
 import { coastFeatures, createTerrain, HALF, RIVER, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk, inBravas, wildFish } from '../shared/fish';
+import { FROG, frogStepOk } from '../shared/frog';
 import { seatOffset, WHALE, whaleStepOk, wildWhale } from '../shared/whale';
 import { CIENAGA, depthAt, SWIM_MAX_DEPTH } from '../shared/coast';
 import { BOG, inBog, ZARZAL } from '../shared/swamp';
@@ -469,5 +470,68 @@ describe('Viento lift (S2-F)', () => {
     expect(boost(b)).toBe(false);
     for (let i = 0; i < 100 && !b.onGround; i++) stepBody(b, still, 0, 0.1, flat, () => []);
     expect(b.boosted).toBe(false);
+  });
+});
+
+describe('riding la Rana', () => {
+  const frogBody = (terrain: Terrain = flat, x = 0, z = 0) => {
+    const b = createBody(x, z, terrain);
+    b.frog = true;
+    return b;
+  };
+
+  it('runs 8 m/s, 11 sprinting, without spending stamina', () => {
+    const { b } = run(fwd, 2, flat, none, 0, [], frogBody());
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(FROG.walk, 1);
+    const s = run({ ...fwd, sprint: true }, 2, flat, none, 0, [], frogBody());
+    expect(Math.hypot(s.b.vx, s.b.vz)).toBeCloseTo(FROG.run, 1);
+    expect(s.b.stamina).toBe(STAMINA.max);
+  });
+
+  it('the bog does not slow it', () => {
+    const t = createTerrain(42);
+    let spot: { x: number; z: number } | null = null;
+    for (let z = 80; z < HALF && !spot; z += 3) for (let x = -HALF - 80; x > -HALF - 160 && !spot; x -= 3) if ([0, 4, 8, 12, 16].every((k) => inBog(t, x, z - k))) spot = { x, z };
+    const { b } = run(fwd, 1, t, none, 0, [], frogBody(t, spot!.x, spot!.z));
+    expect(Math.hypot(b.vx, b.vz)).toBeGreaterThan(FROG.walk * 0.9);
+    expect(b.y).toBeGreaterThanOrEqual(WATER_LEVEL - 1e-6);
+  });
+
+  it('stops before water deeper than 2 m', () => {
+    const deepAhead: Terrain = { heightAt: (_x, z) => (z < -5 ? WATER_LEVEL - 4 : 0), density: () => 0.5 };
+    const { b } = run(fwd, 3, deepAhead, none, 0, [], frogBody(deepAhead));
+    expect(b.z).toBeGreaterThan(-5);
+    expect(frogStepOk(deepAhead, b.x, b.z)).toBe(true);
+  });
+
+  it('B jumps about 7 m up and 9 m forward, then waits out the cooldown', () => {
+    const b = frogBody();
+    let top = 0;
+    stepBody(b, { x: 0, z: 0, sprint: false, jump: true }, 0, 1 / 60, flat, none);
+    expect(b.onGround).toBe(false);
+    for (let i = 0; i < 400 && !b.onGround; i++) {
+      stepBody(b, { x: 0, z: 0, sprint: false, jump: false }, 0, 1 / 60, flat, none);
+      top = Math.max(top, b.y);
+    }
+    expect(top).toBeGreaterThan(FROG.hop.up - 0.5);
+    expect(top).toBeLessThan(FROG.hop.up + 0.5);
+    expect(Math.hypot(b.x, b.z)).toBeGreaterThan(FROG.hop.fwd - 1);
+    expect(Math.hypot(b.x, b.z)).toBeLessThan(FROG.hop.fwd + 1);
+    // Landed: a fresh press right away does nothing until the cooldown is over.
+    const c = frogBody();
+    stepBody(c, { x: 0, z: 0, sprint: false, jump: true }, 0, 1 / 60, flat, none);
+    c.onGround = true;
+    c.y = 0;
+    c.vy = 0;
+    stepBody(c, { x: 0, z: 0, sprint: false, jump: false }, 0, 1 / 60, flat, none);
+    stepBody(c, { x: 0, z: 0, sprint: false, jump: true }, 0, 1 / 60, flat, none);
+    expect(c.onGround).toBe(true);
+  });
+
+  it('floats on shallow water', () => {
+    const shallow: Terrain = { heightAt: () => WATER_LEVEL - 1.5, density: () => 0.5 };
+    const { b, r } = run(fwd, 1, shallow, none, 0, [], frogBody(shallow));
+    expect(b.y).toBeCloseTo(WATER_LEVEL, 5);
+    expect(r.swimming).toBe(false);
   });
 });

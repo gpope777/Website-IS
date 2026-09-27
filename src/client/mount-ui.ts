@@ -1,5 +1,6 @@
 import { MOUNT, ringAngle } from '../shared/mount';
 import { FISH } from '../shared/fish';
+import { FROG } from '../shared/frog';
 import { WHALE } from '../shared/whale';
 import type { SteedView, TameView, WhaleView } from '../shared/protocol';
 
@@ -22,6 +23,10 @@ export interface MountCtx {
   racing?: boolean;
   shallow?: boolean;
   fishes?: readonly SteedView[];
+  /** La Rana: owns one, rides it, and frogs in view (wild: owner null). */
+  hasFrog?: boolean;
+  onFrog?: boolean;
+  frogs?: readonly SteedView[];
   /** La Ballena (always in the snapshot) and our seat on it. */
   whale?: WhaleView | null;
   whaleSeat?: number | null;
@@ -34,6 +39,7 @@ export function mountAction(c: MountCtx): { act: number; label: string } | null 
   if (c.whaleSeat != null) return { act: 11, label: 'Bajar de la ballena' };
   const w = c.whale;
   const dw = w ? Math.hypot(w.x - c.pos.x, w.z - c.pos.z) : Infinity;
+  if (c.onFrog) return { act: 14, label: 'Bajar de la rana' };
   if (w && !c.riding && !c.racing) {
     if (w.tamed && dw <= WHALE.reach && w.seats.includes(null)) return { act: 10, label: 'Subir a la ballena' };
     if (!w.tamed && !w.diving && dw <= WHALE.tameReach) return { act: 9, label: 'Domar la ballena' };
@@ -45,6 +51,10 @@ export function mountAction(c: MountCtx): { act: number; label: string } | null 
   const fishes = c.fishes ?? [];
   if (c.hasFish && fishes.some((s) => s.owner === c.me && nearFish(s))) return { act: 7, label: 'Montar el pez' };
   if (!c.hasFish && fishes.some((s) => s.owner === null && nearFish(s))) return { act: 6, label: 'Domar al pez' };
+  const nearFrog = (s: { x: number; z: number }) => Math.hypot(s.x - c.pos.x, s.z - c.pos.z) <= FROG.reach;
+  const frogs = c.frogs ?? [];
+  if (c.hasFrog && frogs.some((s) => s.owner === c.me && nearFrog(s))) return { act: 13, label: 'Montar la rana' };
+  if (!c.hasFrog && frogs.some((s) => s.owner === null && nearFrog(s))) return { act: 12, label: 'Domar a la rana' };
   const near = (s: { x: number; z: number }) => Math.hypot(s.x - c.pos.x, s.z - c.pos.z) <= MOUNT.reach;
   if (c.hasSteed && c.steeds.some((s) => s.owner === c.me && near(s))) return { act: 2, label: 'Montar' };
   const ride = c.riders.find((r) => !r.full && near(r));

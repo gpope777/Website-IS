@@ -72,3 +72,18 @@ describe('the whale', () => {
     expect(mountAction({ ...base, onFish: true, whale: t })).toEqual({ act: 10, label: 'Subir a la ballena' });
   });
 });
+
+describe('la Rana', () => {
+  const wildFrog = { owner: null, x: 2, y: 0, z: 0, yaw: 0 };
+  const myFrog = { owner: 'Ana', x: 3, y: 0, z: 0, yaw: 0 };
+  it('tames the wild frog only without one, not while chasing', () => {
+    expect(mountAction({ ...base, frogs: [wildFrog] })).toEqual({ act: 12, label: 'Domar a la rana' });
+    expect(mountAction({ ...base, hasFrog: true, frogs: [wildFrog] })).toBeNull();
+    expect(mountAction({ ...base, racing: true, frogs: [wildFrog] })).toBeNull();
+  });
+  it('gets on your frog and off anywhere', () => {
+    expect(mountAction({ ...base, hasFrog: true, frogs: [myFrog] })).toEqual({ act: 13, label: 'Montar la rana' });
+    expect(mountAction({ ...base, hasFrog: true, frogs: [{ ...myFrog, x: 9 }] })).toBeNull();
+    expect(mountAction({ ...base, hasFrog: true, onFrog: true })).toEqual({ act: 14, label: 'Bajar de la rana' });
+  });
+});

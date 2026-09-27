@@ -1,5 +1,6 @@
 import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
+import { FROG, frogHop, frogStepOk } from '../shared/frog';
 import { seatOffset, WHALE, whaleStepOk } from '../shared/whale';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
@@ -43,6 +44,10 @@ export interface Body {
   fish: Islet | null;
   /** Piloting the whale (from the server): the body is the pilot seat; surface only, 3 m of water. */
   whale: boolean;
+  /** On the frog (from the server): land and water ≤ 2 m, B = high jump. */
+  frog: boolean;
+  /** Seconds until the frog can jump again. */
+  hopCd: number;
   /** Metres of Viento lift still to rise, and whether this flight already used its lift. */
   lift: number;
   boosted: boolean;
@@ -87,7 +92,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, lift: 0, boosted: false,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, frog: false, hopCd: 0, lift: 0, boosted: false,
   };
 }
 
@@ -128,6 +133,7 @@ export function stepBody(
   if (b.climb) return stepClimb(b, input, dt, terrain, jumpEdge);
   if (b.fish) return stepFish(b, b.fish, input, camYaw, dt, terrain, bounds);
   if (b.whale) return stepWhale(b, input, camYaw, dt, terrain, bounds);
+  if (b.frog) return stepFrog(b, input, camYaw, dt, terrain, nearby, crags, bounds, jumpEdge);
 
   const hereH = terrain.heightAt(b.x, b.z);
   const swimming = hereH < SWIM_DEPTH;
@@ -295,6 +301,70 @@ function stepFish(b: Body, island: Islet, input: MoveInput, camYaw: number, dt: 
   Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null });
   regen(b, dt);
   return { ...RESULT_IDLE, moving, swimming: true };
+}
+
+/** On the frog: 8 m/s (11 sprinting, no stamina), the bog does not slow it, water up to 2 m; B = high jump. */
+function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, nearby: (x: number, z: number) => Circle[], crags: readonly Crag[], bounds: Bounds, jumpEdge: boolean): StepResult {
+  b.hopCd = Math.max(0, b.hopCd - dt);
+  let ix = input.x;
+  let iz = input.z;
+  const mag = Math.hypot(ix, iz);
+  if (mag > 1) {
+    ix /= mag;
+    iz /= mag;
+  }
+  const moving = mag > 0.01;
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = ix * c + iz * s;
+  const wz = -ix * s + iz * c;
+  if (b.onGround) {
+    // El Zarzal still holds it to a crawl (the server checks the same).
+    const speed = zarzalAt(terrain, b.x, b.z) ? ZARZAL.speed : input.sprint ? FROG.run : FROG.walk;
+    const k = Math.min(1, 12 * dt);
+    b.vx += (wx * speed - b.vx) * k;
+    b.vz += (wz * speed - b.vz) * k;
+    if (moving) b.facing = Math.atan2(wx, wz);
+    if (jumpEdge && b.hopCd === 0) {
+      const hop = frogHop(GRAVITY);
+      b.vy = hop.vy;
+      b.vx = Math.sin(b.facing) * hop.fwd;
+      b.vz = Math.cos(b.facing) * hop.fwd;
+      b.onGround = false;
+      b.hopCd = FROG.hop.cd;
+    }
+  }
+  let nx = b.x + b.vx * dt;
+  let nz = b.z + b.vz * dt;
+  for (const o of [...nearby(nx, nz), ...crags.filter((cr) => b.y < cr.top - 0.6)]) {
+    const dx = nx - o.x;
+    const dz = nz - o.z;
+    const d = Math.hypot(dx, dz);
+    const min = PLAYER_RADIUS + o.r;
+    if (d < min && d > 1e-4) {
+      nx = o.x + (dx / d) * min;
+      nz = o.z + (dz / d) * min;
+    }
+  }
+  const to = bounds(b.x, b.z, nx, nz);
+  if (frogStepOk(terrain, to.x, to.z)) {
+    b.x = to.x;
+    b.z = to.z;
+  } else b.vx = b.vz = 0; // too deep for the frog
+  const ground = Math.max(terrain.heightAt(b.x, b.z), WATER_LEVEL, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
+  if (b.onGround) b.y = ground;
+  else {
+    b.vy -= GRAVITY * dt;
+    const ny = b.y + b.vy * dt;
+    if (ny <= ground) {
+      b.y = ground;
+      b.vy = 0;
+      b.onGround = true;
+    } else b.y = ny;
+  }
+  Object.assign(b, { gliding: false, climb: null });
+  regen(b, dt);
+  return { ...RESULT_IDLE, moving, running: input.sprint && moving };
 }
 
 /** Piloting the whale: 5 m/s (7 sprinting), on the surface, never where the sea is under 3 m (aguas bravas are fine). */
