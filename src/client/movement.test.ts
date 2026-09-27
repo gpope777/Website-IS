@@ -9,7 +9,7 @@ import { BOG, inBog, ZARZAL } from '../shared/swamp';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
 import { MOUNT } from '../shared/mount';
-import { animFor, createBody, GLIDE, PLAYER_RADIUS, rollInput, SPEED, STAMINA, staminaFor, stepBody, type Body, type MoveInput } from './movement';
+import { animFor, CLIMB_SPEED, createBody, GLIDE, PLAYER_RADIUS, rollInput, SPEED, STAMINA, staminaFor, stepBody, type Body, type MoveInput } from './movement';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const none = () => [];
@@ -593,4 +593,68 @@ describe('las Montañas', () => {
     run(fwd, 0.9, t, none, 0, [], b);
     expect(b.z).toBeLessThan(-HALF - 0.3);
   });
+
+  describe('climbing mountain rock (S4-B)', () => {
+    const p = mountainFeatures(42).paredes[0]!;
+    const foot = () => createBody(p.x + p.rt + p.w + 2, p.z, t);
+    const west = Math.PI / 2; // camera looking −x, toward the pared
+
+    it('pushing into a dry pared grabs it and climbs it with stamina, then stands on top', () => {
+      const b = foot();
+      const start = b.y;
+      let r = run(fwd, 1.5, t, none, west, [], b).r;
+      expect(r.climbing).toBe(true);
+      expect(b.wall).toBe(true);
+      expect(b.y).toBeGreaterThan(start + 1);
+      expect(b.stamina).toBeLessThan(STAMINA.max);
+      b.staminaMax = b.stamina = 1000;
+      for (let i = 0; i < 60 * 20 && b.wall; i++) r = stepBody(b, fwd, west, 1 / 60, t, none);
+      expect(b.wall).toBe(false);
+      expect(b.onGround).toBe(true);
+      expect(b.y).toBeGreaterThan(t.heightAt(p.x, p.z) - 1.5);
+    });
+
+    it('climbs no faster than CLIMB_SPEED', () => {
+      const b = foot();
+      run(fwd, 1, t, none, west, [], b);
+      const y0 = b.y;
+      run(fwd, 1, t, none, west, [], b);
+      expect(b.y - y0).toBeLessThanOrEqual(CLIMB_SPEED + 0.05);
+    });
+
+    it('out of stamina you let go and slide down', () => {
+      const b = foot();
+      run(fwd, 1.5, t, none, west, [], b);
+      expect(b.wall).toBe(true);
+      b.stamina = 0.01;
+      run({ x: 0, z: 0, sprint: false, jump: false }, 0.1, t, none, west, [], b);
+      expect(b.wall).toBe(false);
+      const hi = b.y;
+      run({ x: 0, z: 0, sprint: false, jump: false }, 2, t, none, west, [], b);
+      expect(b.y).toBeLessThan(hi - 1);
+    });
+
+    it('B jumps off backwards and costs stamina', () => {
+      const b = foot();
+      run(fwd, 1.5, t, none, west, [], b);
+      const s0 = b.stamina;
+      const x0 = b.x;
+      stepBody(b, { x: 0, z: 0, sprint: false, jump: true }, west, 1 / 60, t, none);
+      expect(b.wall).toBe(false);
+      expect(b.stamina).toBeLessThan(s0 - STAMINA.leap + 1);
+      run({ x: 0, z: 0, sprint: false, jump: false }, 0.3, t, none, west, [], b);
+      expect(b.x).toBeGreaterThan(x0); // away from the pared (it is to the west)
+    });
+
+    it('wet rock cannot be grabbed; smooth Peldaños still say so', () => {
+      const b = foot();
+      b.wet = true;
+      const { r } = run(fwd, 1.5, t, none, west, [], b);
+      expect(b.wall).toBe(false);
+      expect(r.steep).toBe('wet');
+      const c = createBody(0, -HALF + 3, t);
+      expect(run(fwd, 2, t, none, 0, [], c).r.steep).toBe('smooth');
+    });
+  });
 });
+

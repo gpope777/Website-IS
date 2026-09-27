@@ -7,7 +7,8 @@ import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
 import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
 import { BOG, inBog, ZARZAL, zarzalAt } from '../shared/swamp';
-import { smoothAt, steepBlocked } from '../shared/mountains';
+import { climbableAt, slopeAt, smoothAt, STEEP, steepBlocked } from '../shared/mountains';
+import { inMountains } from '../shared/terrain';
 import { VIENTO } from '../shared/viento';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
@@ -38,6 +39,10 @@ export interface Body {
   tired: boolean;
   /** The crag being climbed, if any. */
   climb: Crag | null;
+  /** Climbing the mountain's own steep rock (S4-B), not a crag. */
+  wall: boolean;
+  /** Today's mountain weather wets the rock (set by the game from the seed): no grabbing. */
+  wet?: boolean;
   gliding: boolean;
   /** Jump was held last step (glider/leap need a fresh press). */
   jumpHeld: boolean;
@@ -69,7 +74,7 @@ export interface StepResult {
   climbing: boolean;
   gliding: boolean;
   /** Las Montañas refused an uphill step (for a toast): smooth rock, the deer, or just too steep. */
-  steep?: 'smooth' | 'deer' | 'steep';
+  steep?: 'smooth' | 'deer' | 'steep' | 'wet';
 }
 
 export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2, swimFast: 4 } as const;
@@ -79,6 +84,8 @@ export const STAMINA = { max: 100, regen: 30, climbMove: 10, climbHold: 3, leap:
 export const GLIDE = { speed: 7, sink: 1.6, minHeight: 1.5 } as const;
 /** Metres per second up/down (and around) a crag. */
 export const CLIMB_SPEED = 2.2;
+/** Mountain rock (S4-B): off the wall you slide down slopes over 45° at `speed`; climbing, you stand up below `stand`°. */
+export const SLIDE = { speed: 4, stand: 35 } as const;
 const SWIM_DEPTH = WATER_LEVEL - 0.6;
 const GRAVITY = 14;
 const JUMP_SPEED = 5.2;
@@ -97,7 +104,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, frog: false, hopCd: 0, lift: 0, boosted: false,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, wall: false, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, frog: false, hopCd: 0, lift: 0, boosted: false,
   };
 }
 
@@ -136,6 +143,7 @@ export function stepBody(
   const jumpEdge = input.jump && !b.jumpHeld;
   b.jumpHeld = input.jump;
   if (b.climb) return stepClimb(b, input, dt, terrain, jumpEdge);
+  if (b.wall) return stepWall(b, input, dt, terrain, jumpEdge, bounds);
   if (b.fish) return stepFish(b, b.fish, input, camYaw, dt, terrain, bounds);
   if (b.whale) return stepWhale(b, input, camYaw, dt, terrain, bounds);
   if (b.frog) return stepFrog(b, input, camYaw, dt, terrain, nearby, crags, bounds, jumpEdge);
@@ -223,10 +231,12 @@ export function stepBody(
     to.z = b.z;
     b.vx = b.vz = 0;
   }
-  const steep = steepStop(terrain, b, to);
+  const steep = steepStop(terrain, b, to, !b.riding && !swimming && !b.tired && moving);
+  if (b.wall) return { ...RESULT_IDLE, moving: true, climbing: true };
   b.x = to.x;
   b.z = to.z;
   if (moving) b.facing = Math.atan2(wx, wz);
+  if (b.onGround && !swimming) slide(terrain, b, dt, bounds);
 
   const terrainH = terrain.heightAt(b.x, b.z);
   if (terrainH < SWIM_DEPTH) {
@@ -280,13 +290,78 @@ export function stepBody(
  * Las Montañas: an uphill step onto a cell over 45° whose ground is above your feet is refused (the server allows 50°).
  * Mid-air too, so a jump that hits a riser falls back instead of snapping onto it. Stops the body in place.
  */
-function steepStop(terrain: Terrain, b: Body, to: { x: number; z: number }): StepResult['steep'] {
+function steepStop(terrain: Terrain, b: Body, to: { x: number; z: number }, grab = false): StepResult['steep'] {
   if (terrain.heightAt(to.x, to.z) <= b.y || !steepBlocked(terrain, b.x, b.z, to.x, to.z)) return undefined;
-  const kind = smoothAt(to.x, to.z) ? 'smooth' : b.riding ? 'deer' : 'steep';
+  const wet = !!b.wet;
+  const kind = smoothAt(to.x, to.z) ? 'smooth' : b.riding ? 'deer' : wet ? 'wet' : 'steep';
   to.x = b.x;
   to.z = b.z;
   b.vx = b.vz = 0;
+  if (grab && b.onGround && climbableAt(to.x, to.z, wet)) {
+    // S4-B: pushing into dry mountain rock grabs it.
+    Object.assign(b, { wall: true, gliding: false, onGround: false, vy: 0 });
+    return undefined;
+  }
   return kind;
+}
+
+/** Uphill unit vector and slope tangent at (x, z). */
+function uphill(terrain: Terrain, x: number, z: number): { ux: number; uz: number; tan: number } {
+  const gx = terrain.heightAt(x + 0.5, z) - terrain.heightAt(x - 0.5, z);
+  const gz = terrain.heightAt(x, z + 0.5) - terrain.heightAt(x, z - 0.5);
+  const tan = Math.hypot(gx, gz);
+  return tan < 1e-6 ? { ux: 0, uz: 0, tan: 0 } : { ux: gx / tan, uz: gz / tan, tan };
+}
+
+/** Standing on mountain rock over 45° without holding on: slide down it (no damage). */
+function slide(terrain: Terrain, b: Body, dt: number, bounds: Bounds): void {
+  if (!inMountains(b.x, b.z) || slopeAt(terrain, b.x, b.z) <= STEEP.deg) return;
+  const u = uphill(terrain, b.x, b.z);
+  // Only when the rock falls away under your feet (not at the foot of a riser, where only the probe touches it).
+  if (terrain.heightAt(b.x, b.z) - terrain.heightAt(b.x - u.ux * 0.5, b.z - u.uz * 0.5) < 0.5) return;
+  const to = bounds(b.x, b.z, b.x - u.ux * SLIDE.speed * dt, b.z - u.uz * SLIDE.speed * dt);
+  b.x = to.x;
+  b.z = to.z;
+}
+
+/** On mountain rock: stick forward/back = up/down the slope, strafe = along it. B lets go backwards. */
+function stepWall(b: Body, input: MoveInput, dt: number, terrain: Terrain, jumpEdge: boolean, bounds: Bounds): StepResult {
+  const u = uphill(terrain, b.x, b.z);
+  const moving = Math.hypot(input.x, input.z) > 0.01;
+  spend(b, (moving ? STAMINA.climbMove : STAMINA.climbHold) * dt);
+  if (jumpEdge || b.tired || b.wet) {
+    b.wall = false;
+    b.onGround = false;
+    b.vx = b.vz = b.vy = 0;
+    if (jumpEdge && !b.tired && !b.wet) {
+      spend(b, STAMINA.leap);
+      b.vx = -u.ux * LEAP.out;
+      b.vz = -u.uz * LEAP.out;
+      b.vy = LEAP.up;
+    }
+    return RESULT_IDLE;
+  }
+  const up = -Math.max(-1, Math.min(1, input.z));
+  const side = Math.max(-1, Math.min(1, input.x));
+  // Facing uphill (ux, uz), "right" is (−uz, ux). Horizontal step so the speed along the surface is CLIMB_SPEED.
+  const k = (CLIMB_SPEED * dt) / Math.sqrt(1 + u.tan * u.tan);
+  const to = bounds(b.x, b.z, b.x + (u.ux * up - u.uz * side) * k, b.z + (u.uz * up + u.ux * side) * k);
+  if (inMountains(to.x, to.z) && !smoothAt(to.x, to.z)) {
+    b.x = to.x;
+    b.z = to.z;
+  }
+  b.vx = b.vz = b.vy = 0;
+  if (u.tan > 1e-6) b.facing = Math.atan2(u.ux, u.uz);
+  const h = Math.max(terrain.heightAt(b.x, b.z), SWIM_DEPTH);
+  const slope = slopeAt(terrain, b.x, b.z);
+  const ahead = slopeAt(terrain, b.x + u.ux, b.z + u.uz);
+  if ((slope < SLIDE.stand && ahead < STEEP.deg) || (up <= 0 && slope < STEEP.deg) || !inMountains(b.x, b.z)) {
+    // Over the top (or back on gentle ground): stand up.
+    Object.assign(b, { wall: false, y: h, onGround: true });
+    return { ...RESULT_IDLE, moving };
+  }
+  b.y = h + 0.4;
+  return { ...RESULT_IDLE, moving, climbing: true };
 }
 
 /** On the fish: water only, 9 m/s (14 sprinting, no stamina); B held dives to the seabed, release floats up. */
@@ -317,7 +392,7 @@ function stepFish(b: Body, island: Islet, input: MoveInput, camYaw: number, dt: 
   const floor = Math.min(surface, fishFloor(terrain, b.x, b.z));
   b.y = input.jump ? Math.max(floor, b.y - FISH.sink * dt) : Math.min(surface, b.y + FISH.rise * dt);
   b.y = Math.max(floor, b.y);
-  Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null });
+  Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null, wall: false });
   regen(b, dt);
   return { ...RESULT_IDLE, moving, swimming: true };
 }
@@ -382,7 +457,7 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
       b.onGround = true;
     } else b.y = ny;
   }
-  Object.assign(b, { gliding: false, climb: null });
+  Object.assign(b, { gliding: false, climb: null, wall: false });
   regen(b, dt);
   return { ...RESULT_IDLE, moving, running: input.sprint && moving, steep };
 }
@@ -413,7 +488,7 @@ function stepWhale(b: Body, input: MoveInput, camYaw: number, dt: number, terrai
     b.z = to.z;
     b.facing = facing;
   } else b.vx = b.vz = 0; // "La ballena no cabe"
-  Object.assign(b, { y: WATER_LEVEL, vy: 0, onGround: true, gliding: false, climb: null });
+  Object.assign(b, { y: WATER_LEVEL, vy: 0, onGround: true, gliding: false, climb: null, wall: false });
   regen(b, dt);
   return { ...RESULT_IDLE, moving };
 }

@@ -1,3 +1,4 @@
+import { weatherAt, wetAt } from '../shared/weather';
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
@@ -18,7 +19,7 @@ import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
 import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
-import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
+import { DAY_LENGTH, dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { StructureKind } from '../shared/items';
@@ -701,7 +702,7 @@ export class Game {
     if (this.body) this.body.frog = self.onFrog;
     if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
     if (self.fix && this.body) {
-      Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, gliding: false });
+      Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, wall: false, gliding: false });
     }
     if (self.dead && !this.dead) this.showDeath();
     if (!self.dead && this.dead) this.hud.hideOverlay(); // revived by a teammate: close the death panel
@@ -1084,17 +1085,18 @@ export class Game {
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
     const driver = this.seat ? this.others.get(this.seat) : undefined;
     const wd = this.whaleDraw;
+    b.wet = this.seed !== null && wetAt(weatherAt(this.seed, Math.floor(this.serverTime / DAY_LENGTH))); // mountain rock (S4-B)
     let res: ReturnType<typeof stepBody>;
     if (this.whaleSeat !== null && this.whaleSeat > 0 && wd) {
       // A whale passenger: the server seats us; follow the whale we draw.
       const off = seatOffset(this.whaleSeat, wd.yaw);
-      Object.assign(b, { x: wd.x + off.x, y: WATER_LEVEL, z: wd.z + off.z, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, gliding: false });
+      Object.assign(b, { x: wd.x + off.x, y: WATER_LEVEL, z: wd.z + off.z, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, wall: false, gliding: false });
       res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
     } else if (driver) {
       // Sitting behind a rider: follow their deer (the server does the same), no walking of our own.
       const d = driver.actor.root;
       const yaw = d.rotation.y;
-      Object.assign(b, { x: d.position.x - Math.sin(yaw) * MOUNT.seatBack, y: d.position.y - MOUNT.height, z: d.position.z - Math.cos(yaw) * MOUNT.seatBack, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, gliding: false, facing: yaw });
+      Object.assign(b, { x: d.position.x - Math.sin(yaw) * MOUNT.seatBack, y: d.position.y - MOUNT.height, z: d.position.z - Math.cos(yaw) * MOUNT.seatBack, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, wall: false, gliding: false, facing: yaw });
       res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
     } else res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates, this.dungeon.coast.gates, this.dungeon.swamp.gates));
     if (res.steep && now >= this.steepToastAt) {
@@ -1301,7 +1303,7 @@ export class Game {
     if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 || ma.act === 11 || ma.act === 14 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
     const b = this.body;
     if (this.onFish) return this.hud.setPrompt('Espacio (mantener) · Bucear');
-    if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
+    if (b?.climb || b?.wall) return this.hud.setPrompt('Espacio · Saltar');
     if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
     const res = this.nearestResource();
     if (res) return this.hud.setPrompt(`E · ${HARVEST[res.kind].label}`);
