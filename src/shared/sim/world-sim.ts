@@ -7,7 +7,7 @@ import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
 import { createRng } from '../rng';
-import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, rockTarget, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
@@ -22,7 +22,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
-import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight } from '../corrupt-lands';
+import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, towerHeight, ASH, thornDrop } from '../corrupt-lands';
 import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -41,6 +41,7 @@ import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
+import { RAYO, rayoLow, stepRayo } from './rayo';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
@@ -425,6 +426,8 @@ export class WorldSim {
   private mountainsSeen: boolean;
   /** S5-A: the fog north of the rim is open (flying into las Tierras Corruptas). */
   fogOpen: boolean;
+  /** Game day the Espinar last got its day beasts (live only: a restart may spawn them again). */
+  private ashDay = -1;
   /** S5-A: the tower's first day. */
   readonly towerDay0: number;
   /** La Gata Araña's wolf id while she leads a raid. */
@@ -653,6 +656,7 @@ export class WorldSim {
     if (night && !this.wasNight) this.spawnWolves();
     if (!night && this.wasNight) this.wolves = [];
     this.wasNight = night;
+    if (!night) this.spawnAsh();
 
     const targets = this.targets();
     const goal = this.raidGoal();
@@ -692,7 +696,7 @@ export class WorldSim {
         else if (hit) this.damageStructure(hit.structure, raiderDamage(w));
         continue;
       }
-      const bit = stepWolf(w, targets, this.terrain, dt, this.rng);
+      const bit = w.kind === 'rayo' ? stepRayo(w, targets, this.terrain, dt, this.rng) : stepWolf(w, targets, this.terrain, dt, this.rng);
       if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
     this.stepBurning(dt);
@@ -1047,6 +1051,7 @@ export class WorldSim {
     const w = this.enemy(id);
     if (!w || w.hp <= 0 || p.dead || this.time + EPS < l.punchReadyAt) return;
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
+    if (w.kind === 'rayo' && !rayoLow(w, this.terrain.heightAt(w.x, w.z))) return this.hint(p.name, l, 'Vuela alto. Flechas, o viento');
     l.punchReadyAt = this.time + PUNCH.cooldown;
     l.anim = 'attack';
     this.strike(p.name, w, PUNCH.damage * weaponMult(p.weaponLvl ?? 0));
@@ -1412,7 +1417,11 @@ export class WorldSim {
         this.strike(p.name, w, VIENTO.damage, true); // in the air: the gust only scratches it
         continue;
       }
-      const heavy = w.kind !== 'wolf' && w.kind !== 'brute';
+      if (w.kind === 'rayo') {
+        w.grounded = RAYO.grounded; // knocked out of the air
+        w.dive = undefined;
+      }
+      const heavy = w.kind !== 'wolf' && w.kind !== 'brute' && w.kind !== 'rayo';
       const was = this.terrain.heightAt(w.x, w.z);
       let to = slide(w.x, w.z, dir, heavy ? VIENTO.heavyPush : VIENTO.push);
       if (!inAnyDungeon(w.x, w.z)) to = clampMap(to.x, to.z, 3);
@@ -1763,7 +1772,13 @@ export class WorldSim {
       const bl = this.live.get(name);
       if (bl) this.hint(name, bl, 'El gorro para casi todo. Un pilar en su embestida, o párale');
     }
-    if (hitWolf(w, dmg)) this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
+    if (!hitWolf(w, dmg)) return;
+    this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
+    const thorns = w.raid ? 0 : thornDrop(w.kind, w.x, w.z, w.kind === 'rayo' ? this.rng() : 0);
+    if (thorns > 0 && by) {
+      by.inv = addItem(by.inv, 'thorn', thorns);
+      this.tell(name, `+${thorns} ${NAMES.thorn}`);
+    }
   }
 
   /** The boss lives while someone alive is in its room; an empty room resets it. Beaten once, it is purified for good. */
@@ -3128,6 +3143,35 @@ export class WorldSim {
       out.push({ name, x: p.x, z: p.z, dead: p.dead, fires: this.nearFire(p.x, p.z, WOLF.fearRadius) });
     }
     return out;
+  }
+
+  /** Day beasts of the Espinar (S5 §7.2–7.3): once a game day, while the fog is open and someone alive is up here. */
+  private spawnAsh(): void {
+    const day = Math.floor(this.time / DAY_LENGTH);
+    if (!this.fogOpen || day === this.ashDay) return;
+    const up = this.activeNames().some((n) => {
+      const p = this.players.get(n);
+      return !!p && !p.dead && inCorrupt(p.x, p.z) && !inAnyDungeon(p.x, p.z);
+    });
+    if (!up) return;
+    this.ashDay = day;
+    const spot = (): { x: number; z: number } => {
+      const x = -HALF + 20 + this.rng() * (2 * HALF - 40);
+      const d = ASH.dMin + this.rng() * (ASH.dMax - ASH.dMin);
+      return { x, z: CORRUPT_LANDS.z1 - d };
+    };
+    for (let i = 0; i < ASH.beasts; i++) {
+      const s = spot();
+      this.wolves.push(createWolf(this.nextWolfId++, s.x, s.z, this.terrain, this.rng, i < ASH.brutes ? 'brute' : 'wolf'));
+    }
+    const alive = this.wolves.filter((w) => w.kind === 'rayo' && w.hp > 0).length;
+    const n = Math.min(ASH.rayosMin + Math.floor(this.rng() * (ASH.rayosMax - ASH.rayosMin + 1)), Math.max(0, ASH.rayoCap - alive));
+    for (let i = 0; i < n; i++) {
+      const s = spot();
+      const w = createWolf(this.nextWolfId++, s.x, s.z, this.terrain, this.rng, 'rayo');
+      w.y += RAYO.fly;
+      this.wolves.push(w);
+    }
   }
 
   private spawnWolves(): void {
