@@ -70,7 +70,7 @@ import { ChestMeshes } from './scene/chests';
 import { coastAction, rescueAction, shrinePartAt } from './coast-ui';
 import { RescueMeshes } from './scene/rescue';
 import { rescueSite, type RescueSite } from '../shared/rescue';
-import type { CageView, FinalView } from '../shared/protocol';
+import type { CageView, FinalView, TradeView } from '../shared/protocol';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
 import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
@@ -81,8 +81,9 @@ import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
 import { bookHtml } from './book-ui';
 import { buyHtml, nextItem, stallAction, stallHtml, stallListHtml } from './stall-ui';
+import { addLine, bumpLine, cycleLine, tradeHtml, tradeTarget } from './trade-ui';
 import { StallMeshes } from './scene/stalls';
-import { STALL, type Stall } from '../shared/shop';
+import { STALL, type Stall, type TradeLine } from '../shared/shop';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -197,6 +198,8 @@ export class Game {
   private stalls = new Map<number, Stall>();
   /** T6-A: the owner's panel is open on this Puesto id. */
   private stallOpen: number | null = null;
+  /** T6-C: my open trade, as the server last told it. */
+  private trade: TradeView | null = null;
   private readonly graves = new GraveMeshes();
   private readonly others = new Map<string, Remote>();
   private readonly wolves = new Map<number, Remote>();
@@ -485,6 +488,8 @@ export class Game {
         return this.addStructure(m.s);
       case 'stall':
         return this.setStall(m.s, !!m.gone);
+      case 'trade':
+        return this.setTrade(m.tr);
       case 'toast':
         return this.hud.toast(m.text);
       case 'vision':
@@ -1319,7 +1324,39 @@ export class Game {
       return this.showStall(st.s.id);
     }
     const res = this.nearestResource();
-    if (res) this.conn.send({ t: 'harvest', id: res.id });
+    if (res) return this.conn.send({ t: 'harvest', id: res.id });
+    // T6-C: nothing else under A: Cambiar with the nearest player.
+    const to = tradeTarget(b, [...this.others].map(([name, r]) => ({ name, x: r.actor.root.position.x, z: r.actor.root.position.z, down: r.anim === 'dead' })));
+    if (to && !this.trade) this.conn.send({ t: 'tradeAsk', to });
+  }
+
+  /** T6-C: the trade window follows the server; null closes it. */
+  private setTrade(tr: TradeView | null): void {
+    const was = this.trade;
+    this.trade = tr;
+    if (!tr) {
+      if (was && this.stallOpen === null && this.hud.menuOpen) this.hud.hideOverlay();
+      return;
+    }
+    this.stallOpen = null;
+    this.releaseInputs();
+    if (document.pointerLockElement) document.exitPointerLock();
+    const inv = this.lastSelf?.inv ?? {};
+    const offer = (lines: TradeLine[] | null) => lines && this.conn.send({ t: 'tradeOffer', lines });
+    const actions: Record<string, () => void> = {
+      yes: () => this.conn.send({ t: 'tradeAnswer', yes: true }),
+      no: () => this.conn.send({ t: 'tradeAnswer', yes: false }),
+      cancel: () => this.conn.send({ t: 'tradeCancel' }),
+      ok: () => this.conn.send({ t: 'tradeOk' }),
+      add: () => offer(addLine(tr.mine, inv)),
+    };
+    tr.mine.forEach((_, i) => {
+      actions[`dec-${i}`] = () => offer(bumpLine(tr.mine, i, -1, inv));
+      actions[`inc-${i}`] = () => offer(bumpLine(tr.mine, i, 1, inv));
+      actions[`item-${i}`] = () => offer(cycleLine(tr.mine, i, inv));
+      actions[`del-${i}`] = () => offer(tr.mine.filter((__, j) => j !== i));
+    });
+    this.hud.showSkills(tradeHtml(tr, inv), actions);
   }
 
   private mountAct(): { act: number; label: string } | null {

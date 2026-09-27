@@ -113,4 +113,6 @@ export const NAMES = {
   /** T6-A: the player shop and its till. */
   stall: 'Puesto',
   till: 'Caja',
+  /** T6-C: trueque directo. */
+  trade: 'Cambiar',
 } as const;

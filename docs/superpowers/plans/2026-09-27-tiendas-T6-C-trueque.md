@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Spanish, dry voice. `NAMES.trade = 'Cambiar'` already exists.
+- Spanish, dry voice. `NAMES.trade = 'Cambiar'` added to `names.ts` (the spec listed it; T6-A had not added it).
 - **No new pills.** Cambiar is the last choice of the contextual A (after everything else, including harvesting); the window is an HTML overlay like the Puesto panel.
 - **Protocol:** Task 2 bumps `PROTOCOL_VERSION` 60 → 61. New client messages via `decodeClient`: `tradeAsk {to}` (NAME_RE), `tradeAnswer {yes: boolean}`, `tradeOffer {lines: TradeLine[]}` (≤3, distinct materials from `ITEMS`, integer 1–99), `tradeOk {}`, `tradeCancel {}`. New server message `trade {tr: TradeView | null}` to each side. No new saved fields; old saves load unchanged.
 - **Conservation is the core rule.** Only the 7 materials can be offered (the decoder only accepts `ItemId`); `trade` checks both mochilas then applies both; failure changes nothing. Property test over `handle()` with 2–3 players doing random ask/answer/offer/ok/cancel/move/away/connect/die: per-material totals (mochilas + tumbas + Puestos) constant after every step; every player's mochila changes only by a whole accepted trade (never a part); counts never negative.
@@ -53,9 +53,9 @@ export function trade(a: Inventory, b: Inventory, la: readonly TradeLine[], lb: 
 
 ### Task 3: client — Cambiar and the two-column window
 
-- [ ] **Step 1: failing tests** (`trade-ui.test.ts`). `tradeTarget(pos, others)` → nearest living, non-away player ≤4 m or null; `tradeHtml(tr, inv)`: asked → "Ana quiere cambiar." + `yes`/`no`; waiting → "Esperando a Bea…" + `cancel`; open → two columns "Tú das" / "Bea da", my lines with `dec-i`/`item-i`/`inc-i`/`del-i`, `add` (hidden at 3 lines or when nothing left to add), their lines as text ("3 perlas"), "Nada." when empty, `ok` ("Vale", disabled after my Vale), status "Bea: Vale." and `cancel`. `nextLine` helpers: add the first material I have that isn't already a line; cycle a line's material through the ones I have.
-- [ ] **Step 2: implement.** A: after harvest, `tradeTarget` → `tradeAsk`; `trade` message → store, show/redraw the window (or close it when null); each tap sends a full `tradeOffer`.
-- [ ] **Step 3:** green, self-review, commit `feat(tiendas): ventana de trueque en el cliente`.
+- [x] **Step 1: failing tests** (`trade-ui.test.ts`). `tradeTarget(pos, others)` → nearest living, non-away player ≤4 m or null; `tradeHtml(tr, inv)`: asked → "Ana quiere cambiar." + `yes`/`no`; waiting → "Esperando a Bea…" + `cancel`; open → two columns "Tú das" / "Bea da", my lines with `dec-i`/`item-i`/`inc-i`/`del-i`, `add` (hidden at 3 lines or when nothing left to add), their lines as text ("3 perlas"), "Nada." when empty, `ok` ("Vale", disabled after my Vale), status "Bea: Vale." and `cancel`. `nextLine` helpers: add the first material I have that isn't already a line; cycle a line's material through the ones I have.
+- [x] **Step 2: implement.** A: after harvest, `tradeTarget` → `tradeAsk`; `trade` message → store, show/redraw the window (or close it when null); each tap sends a full `tradeOffer`.
+- [x] **Step 3:** green, self-review, commit `feat(tiendas): ventana de trueque en el cliente`.
 
 ### Task 4: Ship
 
