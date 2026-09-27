@@ -17,7 +17,7 @@ import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
 import { FROG } from '../frog';
-import { SWAMP_SHRINE } from '../swamp-shrines';
+import { AMBER, SWAMP_SHRINE } from '../swamp-shrines';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
@@ -3785,5 +3785,98 @@ describe('swamp shrines (S3-C)', () => {
     const back = { x: deep.x + (shore.x - deep.x) * 0.3, z: deep.z + (shore.z - deep.z) * 0.3 };
     expect(depthAt(sim.terrain, back.x, back.z)).toBeLessThan(depthAt(sim.terrain, deep.x, deep.z));
     expect(go(back.x, WATER_LEVEL, back.z)).toBe(true); // back toward the shore: yes
+  });
+});
+
+describe('amber trees and the Capa de corteza (S3-C)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const low = (sim: WorldSim) => sim.amberTrees.find((t) => !t.stump)!;
+  const high = (sim: WorldSim) => sim.amberTrees.find((t) => t.stump)!;
+
+  it('harvests 2 ámbar per player, then waits 2 days to regrow', () => {
+    const sim = setup('Ana', 'Leo');
+    const t = low(sim);
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield);
+    expect(snap(sim, 'Ana').self.amber).toEqual([t.id]);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield);
+    expect(texts(sim)).toContain('Aún no ha vuelto a brotar');
+    put(sim, 'Leo', t.x - 1, t.z);
+    sim.handle('Leo', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Leo')!.inv.amber).toBe(AMBER.yield);
+    put(sim, 'Ana', t.x + 8, t.z);
+    sim.handle('Ana', { t: 'amber', id: low(sim).id + 99 });
+    (sim as unknown as { time: number }).time += AMBER.regrowDays * DAY_LENGTH;
+    expect(snap(sim, 'Ana').self.amber).toEqual([]);
+    sim.handle('Ana', { t: 'amber', id: t.id }); // too far
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield * 2);
+    expect(sim.save().players.find((p) => p.name === 'Ana')!.amber).toBeDefined();
+  });
+
+  it('a tree on a stump needs you on top of it; stumps are solid', () => {
+    const sim = setup('Ana');
+    const t = high(sim);
+    expect(sim.climbables().some((c) => c.id === t.stump!.id)).toBe(true);
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBeUndefined();
+    sim.getPlayer('Ana')!.y = t.stump!.top;
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield);
+  });
+
+  it('buys Capa levels at the Heart, up to 3, and bites hurt less (not the thorns)', () => {
+    const sim = setup('Ana', 'Leo');
+    plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { amber: 2, wood: 50, berries: 50 };
+    sim.handle('Ana', { t: 'capa' });
+    expect(snap(sim, 'Ana').self.capa).toBe(0);
+    expect(texts(sim)).toContain('Faltan materiales');
+    p.inv = { amber: 12, wood: 50, berries: 50 };
+    sim.handle('Ana', { t: 'capa' });
+    expect(snap(sim, 'Ana').self.capa).toBe(1);
+    expect(p.inv).toEqual({ amber: 9, wood: 40, berries: 45 });
+    sim.handle('Ana', { t: 'capa' });
+    sim.handle('Ana', { t: 'capa' });
+    sim.handle('Ana', { t: 'capa' });
+    expect(snap(sim, 'Ana').self.capa).toBe(3);
+    expect(texts(sim)).toContain('La capa ya no admite más corteza');
+    expect(sim.save().players[0]!.capaLvl).toBe(3);
+    expect(snap(sim, 'Leo').players.find((v) => v.name === 'Ana')!.capa).toBe(3);
+    const w = wolfAt(sim, 1);
+    const hp = p.vitals.health;
+    (sim as unknown as { bite(n: string, d: number, w: Wolf): void }).bite('Ana', 10, w);
+    expect(p.vitals.health).toBeCloseTo(hp - 7, 5);
+    put(sim, 'Ana', p.x + 40, p.z);
+    sim.handle('Ana', { t: 'capa' }); // far: nothing
+    expect(p.inv.amber).toBe(3);
+  });
+
+  it('the Zarzal bites the same with a Capa', () => {
+    const sim = setup('Ana');
+    let spot: { x: number; z: number } | null = null;
+    for (let x = -HALF - 5; x > -HALF - 55 && !spot; x -= 1) if (zarzalAt(sim.terrain, x, 100)) spot = { x, z: 100 };
+    put(sim, 'Ana', spot!.x, spot!.z);
+    const p = sim.getPlayer('Ana')!;
+    p.capaLvl = 3;
+    const hp = p.vitals.health;
+    sim.step(0.5);
+    expect(hp - p.vitals.health).toBeGreaterThan(ZARZAL.dps * 0.5 * 0.95);
+  });
+
+  it('old saves without amber or capa load', () => {
+    const sim = setup('Ana');
+    const saved = sim.save();
+    delete saved.players[0]!.amber;
+    delete saved.players[0]!.capaLvl;
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self.amber).toEqual([]);
+    expect(snap(again, 'Ana').self.capa).toBe(0);
   });
 });

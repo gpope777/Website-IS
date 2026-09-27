@@ -14,11 +14,11 @@ import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
-import { AMBER, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE } from '../swamp-shrines';
+import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
-import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, weaponMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
@@ -86,6 +86,10 @@ export interface SavedPlayer {
   chests?: number[];
   /** Weapon upgrade level 0–3. Optional: older saves have none. */
   weaponLvl?: number;
+  /** Amber tree id → sim time you last harvested it. Optional: older saves have none. */
+  amber?: Record<number, number>;
+  /** Capa de corteza level 0–3. Optional: older saves have none. */
+  capaLvl?: number;
   /** Has Viento (coast dungeon altar). Optional: older saves have none. */
   viento?: boolean;
 }
@@ -197,6 +201,8 @@ export class WorldSim {
   readonly shrines: readonly Shrine[];
   /** Sunken chests on the deep seabed (seeded; one each per player). */
   readonly chests: readonly Chest[];
+  /** Amber trees on the swamp's montículos (seeded; per player). */
+  readonly amberTrees: readonly AmberTree[];
   /** The Raíz-madre's trunk in the world (the dungeon entrance). */
   readonly entrance: { x: number; y: number; z: number };
   /** The coast Raíz-madre's trunk, on the dungeon island. */
@@ -317,6 +323,7 @@ export class WorldSim {
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
     this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed), ...generateSwampShrines(this.terrain, saved.seed)];
     this.chests = generateChests(this.terrain, saved.seed);
+    this.amberTrees = generateAmberTrees(this.terrain, saved.seed);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...forest, this.entrance]);
     this.island = coastFeatures(saved.seed).island;
@@ -449,6 +456,10 @@ export class WorldSim {
         return this.onUpgrade(p);
       case 'rescue':
         return this.onRescue(p);
+      case 'amber':
+        return this.onAmber(p, msg.id);
+      case 'capa':
+        return this.onCapa(p);
       case 'hello':
         return; // the room handles hello
     }
@@ -540,7 +551,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0 });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -596,7 +607,7 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines, ...this.padCrags()];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []))];
   }
 
   /** Nenúfares' pads still afloat. */
@@ -791,6 +802,29 @@ export class WorldSim {
     p.inv = removeAll(p.inv, UPGRADE.cost);
     p.weaponLvl = lvl + 1;
     this.tell(p.name, `El ${NAMES.heart} templa tu arma: +${Math.round(UPGRADE.step * 100 * p.weaponLvl)} % de daño`);
+  }
+
+  /** Amber (S3 §6.2): 2 per tree, per player, back after 2 days. The high ones need you on the stump. */
+  private onAmber(p: SavedPlayer, id: number): void {
+    const t = this.amberTrees[id];
+    if (!t || p.dead || Math.hypot(t.x - p.x, t.z - p.z) > AMBER.reach || p.y < t.y - 1) return;
+    const at = p.amber?.[id];
+    if (at !== undefined && this.time - at < AMBER.regrowDays * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brotar');
+    p.amber = { ...p.amber, [id]: r2(this.time) };
+    p.inv = addItem(p.inv, 'amber', AMBER.yield);
+    this.tell(p.name, `${ITEM_LABELS.amber}: ${AMBER.yield}`);
+  }
+
+  /** Capa de corteza at the Heart: −10 % damage taken per level, up to 3. */
+  private onCapa(p: SavedPlayer): void {
+    const h = this.heart();
+    if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
+    const lvl = p.capaLvl ?? 0;
+    if (lvl >= CAPA.max) return this.tell(p.name, 'La capa ya no admite más corteza');
+    if (!hasAll(p.inv, CAPA.cost)) return this.tell(p.name, 'Faltan materiales');
+    p.inv = removeAll(p.inv, CAPA.cost);
+    p.capaLvl = lvl + 1;
+    this.tell(p.name, `${NAMES.capa} ${p.capaLvl}: −${Math.round(CAPA.step * 100 * p.capaLvl)} % de daño`);
   }
 
   private onEat(p: SavedPlayer): void {
@@ -1268,7 +1302,7 @@ export class WorldSim {
       const p = this.players.get(name)!;
       if (p.dead || l.awayFor !== null || !inChasm(p.x, p.z) || p.y > C.floor - C.fallBelow) continue;
       this.teleport(p, l, p.x, C.fallBack);
-      p.vitals = damage(p.vitals, C.fallDamage);
+      p.vitals = damage(p.vitals, C.fallDamage * capaMult(p.capaLvl ?? 0));
       this.tell(name, 'El hueco te escupe arriba. Sin viento no se cruza');
       if (p.vitals.health <= 0) this.kill(p);
     }
@@ -1982,6 +2016,8 @@ export class WorldSim {
       frog: !!p.frog,
       onFrog: l.frog,
       torch: !!l.torch,
+      amber: this.amberTrees.filter((t) => p.amber?.[t.id] !== undefined && this.time - p.amber[t.id]! < AMBER.regrowDays * DAY_LENGTH).map((t) => t.id),
+      capa: p.capaLvl ?? 0,
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
       whaleSeat: this.seatOf(p.name),
@@ -2172,7 +2208,7 @@ export class WorldSim {
       this.strike(name, w, BLOCK.parryDamage);
       return this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : 'Parada');
     }
-    p.vitals = damage(p.vitals, out.dmg);
+    p.vitals = damage(p.vitals, out.dmg * capaMult(p.capaLvl ?? 0));
     if (p.vitals.health <= 0) this.kill(p);
   }
 
