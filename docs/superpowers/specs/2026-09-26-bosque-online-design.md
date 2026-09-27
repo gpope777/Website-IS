@@ -52,6 +52,8 @@ at lower density, draw distance and resolution.
 | 6 | Shops and economy | Player shops (work while the owner is offline), trading, merchants |
 | 7 | Polish | Game feel, combat impact, sound, UI, onboarding |
 
+**Order decision (2026-09-26, after #1 shipped):** content first. Build order is #3 → #4 → #5 → #6, then #2 (visuals), then #7. Gabriel's playtest verdict on #1: "feels great, but not much to do yet".
+
 The old Bosque stays live at `gpope777.github.io/Website-IS/` until the new version replaces it. Its relics, creatures, boss
 and lore return in #5, redesigned rather than ported one to one.
 
