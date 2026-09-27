@@ -1,9 +1,9 @@
 import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
-import { addItem, BUILD_COST, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type ClientMsg, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
+import { r2, type Anim, type ClientMsg, type GraveView, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -23,6 +23,10 @@ export const PUNCH = { damage: 20, cooldown: 0.6, reach: 3 } as const;
 export const HARVEST_COOLDOWN = 0.4;
 export const HEART = { warmRadius: 8, tendReach: 4 } as const;
 export const SPIKES = { radius: 1.3, dps: 25, wear: 4 } as const;
+/** Graves: owner-only pickup by standing on one; the world keeps at most `max`. */
+export const GRAVE = { pickup: 2, max: 50 } as const;
+/** Co-op revive: seconds a teammate has, reach, health on getting up, minimum hunger/warmth. */
+export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const;
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
@@ -51,6 +55,11 @@ export interface SavedWorld {
   resources: Record<string, { uses: number; regrow: number }>;
   players: SavedPlayer[];
   raidLevel?: number;
+  graves?: Grave[];
+}
+
+export interface Grave extends GraveView {
+  inv: Inventory;
 }
 
 export interface Outgoing {
@@ -72,6 +81,8 @@ interface Live {
   fix: boolean;
   /** Live-only combat state (roll i-frames, guard, bow cooldown). Never saved. */
   guard: Guard;
+  /** Sim time of death; null when alive or after a reconnect (no revive then). Never saved. */
+  deadAt: number | null;
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
@@ -93,6 +104,8 @@ export class WorldSim {
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
   private readonly structures: Structure[];
   private nextStructureId: number;
+  private readonly graves: Grave[];
+  private nextGraveId: number;
   raidLevel: number;
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
@@ -112,6 +125,8 @@ export class WorldSim {
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.raidLevel = saved.raidLevel ?? 0;
     this.nextStructureId = saved.nextStructureId;
+    this.graves = (saved.graves ?? []).map((g) => ({ ...g, inv: { ...g.inv } }));
+    this.nextGraveId = 1 + Math.max(0, ...this.graves.map((g) => g.id));
     this.rng = createRng(saved.seed ^ 0x51f15e);
   }
 
@@ -157,7 +172,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard() };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -197,6 +212,8 @@ export class WorldSim {
         return this.onBlock(p, l, msg.on);
       case 'shoot':
         return this.onShoot(p, l, msg.id);
+      case 'revive':
+        return;
       case 'hello':
         return; // the room handles hello
     }
@@ -217,6 +234,7 @@ export class WorldSim {
       if (p.dead || l.awayFor !== null) continue; // away players are frozen: the world sleeps for them
       p.vitals = tickVitals(p.vitals, { night, nearFire: this.nearFire(p.x, p.z) }, dt);
       if (p.vitals.health <= 0) this.kill(p);
+      else this.pickUpGraves(p);
     }
 
     for (const [id, st] of this.resState) {
@@ -268,7 +286,8 @@ export class WorldSim {
     const h = this.heart();
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart };
+    const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves };
   }
 
   drain(): Outgoing[] {
@@ -288,6 +307,7 @@ export class WorldSim {
       resources: Object.fromEntries([...this.resState].map(([id, s]) => [String(id), { ...s }])),
       players: [...this.players.values()].map((p) => structuredClone(p)),
       raidLevel: this.raidLevel,
+      graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
     };
   }
 
@@ -431,6 +451,8 @@ export class WorldSim {
 
   private onRespawn(p: SavedPlayer, l: Live): void {
     if (!p.dead) return;
+    this.dropGrave(p);
+    l.deadAt = null;
     const sp = this.spawnFor(p.name);
     p.x = sp.x;
     p.z = sp.z;
@@ -459,6 +481,7 @@ export class WorldSim {
       inv: { ...p.inv },
       dead: p.dead,
       fix,
+      reviveLeft: p.dead && l.deadAt !== null ? Math.max(0, Math.ceil(REVIVE.window - (this.time - l.deadAt) - EPS)) : 0,
     };
   }
 
@@ -590,6 +613,22 @@ export class WorldSim {
     if (p.vitals.health <= 0) this.kill(p);
   }
 
+  private dropGrave(p: SavedPlayer): void {
+    if (!Object.values(p.inv).some((n) => (n ?? 0) > 0)) return;
+    this.graves.push({ id: this.nextGraveId++, owner: p.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), inv: p.inv });
+    if (this.graves.length > GRAVE.max) this.graves.shift();
+    p.inv = {};
+    this.tell(p.name, 'Tus cosas quedaron en una tumba donde caíste');
+  }
+
+  private pickUpGraves(p: SavedPlayer): void {
+    for (const g of this.graves.filter((x) => x.owner === p.name && Math.hypot(x.x - p.x, x.z - p.z) <= GRAVE.pickup)) {
+      for (const [item, n] of Object.entries(g.inv) as [ItemId, number][]) p.inv = addItem(p.inv, item, n);
+      this.graves.splice(this.graves.indexOf(g), 1);
+      this.tell(p.name, 'Recuperaste tus cosas');
+    }
+  }
+
   private say(text: string): void {
     this.outbox.push({ to: null, msg: { t: 'toast', text } });
   }
@@ -602,6 +641,8 @@ export class WorldSim {
     if (p.dead) return;
     p.dead = true;
     p.vitals = { ...p.vitals, health: 0 };
+    const l = this.live.get(p.name);
+    if (l) l.deadAt = this.time;
     this.outbox.push({ to: null, msg: { t: 'toast', text: `${p.name} ha caído` } });
   }
 }

@@ -1,7 +1,7 @@
 import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -12,9 +12,10 @@ export type EnemyKind = 'wolf' | 'brute';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
+export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
 export interface HeartView { id: number; hp: number; max: number }
-/** `fix` = the server rejected your last move; snap to x/y/z. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean }
+/** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number }
 
 export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
 
@@ -29,12 +30,13 @@ export type ClientMsg =
   | { t: 'tend'; id: number }
   | { t: 'roll' }
   | { t: 'block'; on: boolean }
-  | { t: 'shoot'; id: number };
+  | { t: 'shoot'; id: number }
+  | { t: 'revive'; name: string };
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[] }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
@@ -96,6 +98,8 @@ export function decodeClient(raw: string): ClientMsg | null {
       return typeof m.on === 'boolean' ? { t: 'block', on: m.on } : null;
     case 'shoot':
       return id(m.id) ? { t: 'shoot', id: m.id } : null;
+    case 'revive':
+      return typeof m.name === 'string' && NAME_RE.test(m.name) ? { t: 'revive', name: m.name } : null;
     default:
       return null;
   }

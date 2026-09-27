@@ -4,7 +4,7 @@ import { STRUCTURE_HP } from '../items';
 import { BLOCK, BOW } from './combat';
 import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
-import { AWAY_TIMEOUT, DAY_LENGTH, newWorld, WorldSim } from './world-sim';
+import { AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
   const sim = new WorldSim(newWorld(42, 'salt'));
@@ -184,7 +184,7 @@ describe('WorldSim', () => {
     expect(sim.wolfList.length).toBe(0);
   });
 
-  it('wolves hurt and kill; respawn restores and keeps inventory', () => {
+  it('wolves hurt and kill; respawn restores and leaves the backpack in a grave', () => {
     const sim = setup('Ana');
     sim.getPlayer('Ana')!.inv = { wood: 2 };
     sim.time = DAY_LENGTH * 0.85;
@@ -201,7 +201,8 @@ describe('WorldSim', () => {
     sim.handle('Ana', { t: 'respawn' });
     expect(p.dead).toBe(false);
     expect(p.vitals.health).toBe(100);
-    expect(p.inv).toEqual({ wood: 2 });
+    expect(p.inv).toEqual({});
+    expect(sim.save().graves).toEqual([expect.objectContaining({ owner: 'Ana', inv: { wood: 2 } })]);
   });
 
   it('punches wolves to death with a cooldown', () => {
@@ -506,5 +507,86 @@ describe('combat', () => {
     sim.getPlayer('Ana')!.dead = true;
     sim.handle('Ana', { t: 'shoot', id: w.id });
     expect(w.hp).toBe(ENEMY.wolf.hp);
+  });
+});
+
+function down(sim: WorldSim, name: string) {
+  const p = sim.getPlayer(name)!;
+  p.vitals = { health: 0.01, hunger: 0, warmth: 0 }; // starving and frozen: gone within a tick
+  for (let i = 0; i < 20 && !p.dead; i++) sim.step(0.1);
+  return p;
+}
+
+describe('graves', () => {
+  it('respawning drops the backpack in a grave where you fell', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 20, 20);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { wood: 3, berries: 1 };
+    down(sim, 'Ana');
+    expect(p.dead).toBe(true);
+    sim.handle('Ana', { t: 'respawn' });
+    expect(p.inv).toEqual({});
+    const g = snap(sim, 'Ana').graves;
+    expect(g).toHaveLength(1);
+    expect(g[0]).toMatchObject({ owner: 'Ana', x: 20, z: 20 });
+    expect(g[0]).not.toHaveProperty('inv');
+    expect(sim.save().graves![0]!.inv).toEqual({ wood: 3, berries: 1 });
+  });
+
+  it('an empty backpack leaves no grave', () => {
+    const sim = setup('Ana');
+    down(sim, 'Ana');
+    sim.handle('Ana', { t: 'respawn' });
+    expect(snap(sim, 'Ana').graves).toEqual([]);
+  });
+
+  it('the owner picks it up by walking onto it; others cannot', () => {
+    const sim = setup('Ana', 'Leo');
+    put(sim, 'Ana', 20, 20);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { wood: 3 };
+    down(sim, 'Ana');
+    sim.handle('Ana', { t: 'respawn' });
+    put(sim, 'Leo', 20, 20);
+    sim.step(0.1);
+    expect(snap(sim, 'Leo').graves).toHaveLength(1);
+    expect(sim.getPlayer('Leo')!.inv).toEqual({});
+    p.inv = { wood: 1 };
+    put(sim, 'Ana', 21, 20);
+    sim.drain();
+    sim.step(0.1);
+    expect(p.inv).toEqual({ wood: 4 });
+    expect(snap(sim, 'Ana').graves).toEqual([]);
+    expect(sim.drain().some((o) => o.to === 'Ana' && o.msg.t === 'toast' && o.msg.text === 'Recuperaste tus cosas')).toBe(true);
+  });
+
+  it('graves survive save/load and old saves without graves load', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 20, 20);
+    sim.getPlayer('Ana')!.inv = { stone: 2 };
+    down(sim, 'Ana');
+    sim.handle('Ana', { t: 'respawn' });
+    const saved = sim.save();
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').graves).toHaveLength(1);
+    delete saved.graves;
+    const old = new WorldSim(saved);
+    old.connect('Ana');
+    expect(snap(old, 'Ana').graves).toEqual([]);
+  });
+
+  it('keeps at most GRAVE.max graves, dropping the oldest', () => {
+    const sim = setup('Ana');
+    for (let i = 0; i <= GRAVE.max; i++) {
+      put(sim, 'Ana', 20 + (i % 5) * 3, 20 + Math.floor(i / 5) * 3);
+      sim.getPlayer('Ana')!.inv = { wood: 1 };
+      down(sim, 'Ana');
+      sim.handle('Ana', { t: 'respawn' });
+    }
+    const g = sim.save().graves!;
+    expect(g).toHaveLength(GRAVE.max);
+    expect(g[0]!.id).toBe(2);
   });
 });

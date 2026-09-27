@@ -44,7 +44,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it('is version 2', () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+    expect(PROTOCOL_VERSION).toBe(4);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -69,5 +69,13 @@ describe('combat protocol', () => {
     for (const anim of ['roll', 'block', 'bow']) {
       expect(decodeClient(JSON.stringify({ t: 'move', x: 0, y: 0, z: 0, yaw: 0, anim }))).not.toBeNull();
     }
+  });
+});
+
+describe('revive protocol', () => {
+  it('decodes revive with a valid name only', () => {
+    expect(decodeClient('{"t":"revive","name":"Ana"}')).toEqual({ t: 'revive', name: 'Ana' });
+    expect(decodeClient('{"t":"revive","name":""}')).toBeNull();
+    expect(decodeClient('{"t":"revive","name":5}')).toBeNull();
   });
 });
