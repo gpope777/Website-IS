@@ -212,3 +212,25 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - **Invasión 2** incluida (El Marchito se lleva algo → misión de rescate).
 - Nombres: placeholders en un solo archivo; los sobrinos los cambian después.
 - Orden: cierre S1 → spec S2 → planes S2 → implementar. Sin merge ni deploy.
+
+---
+
+## Cierre Slice 1 — balance, red de raíces, corrupción por zonas, mazmorra ampliada — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S1-cierre.md` (8d977ee).
+- Commits: 844ddb3 (T1 balance), 740eaff (T2 red de raíces, protocolo v10), 514176f (T3 corrupción por zonas, v11), d0de36b (T4 mazmorra: 4 acertijos + mini-jefe, v12), ab367f2 (T5 cliente de la mazmorra).
+- Tests: npm test 285 (antes 250), test:workers 12, check + build verdes. PROTOCOL_VERSION = 12; las partidas viejas cargan (`SavedWorld.cleansed` opcional).
+- Cómo funciona:
+  - **Balance.** Estacas: radio 1,8 m, 40 PV/s y **frenan al 30 %** (0,5 s tras cada toque): un lobo que las cruza muere encima, un bruto sale muy tocado. Tragón: 12 de daño, 3,2 s entre mordiscos, aviso de 0,9 s → quieto aguantas ~37 s (antes ~12). Marchito: voluntad **300 / 420 / 540 / 660** según jugadores activos al llegar (1–4), 14 de daño cada 3 s.
+  - **Red de raíces** (4 madera + 2 bayas, 60 PV): la primera bestia que la pisa queda atrapada 3 s; se rearma en 5 s; cada captura le quita 15 PV (4 capturas). Tecla **Y**. En táctil, la pastilla 🗡️ ahora es **"trampa"** y pone la elegida; se cambia en el Menú ("Trampa: estacas / red de raíces"). T sigue poniendo estacas. La rejilla sigue en 10.
+  - **Corrupción por zonas** (`src/shared/corruption.ts`): 6 zonas sembradas; la 0 es la Raíz-madre, las demás se inclinan hacia ella (60–190 m del spawn). Suelo teñido de morado y una raíz marchita con brillo violeta en el centro. De noche, cada jugador dentro de una zona corrupta trae 2 bestias más (una, bruto). Se limpian con un **orbe de santuario** (la zona corrupta más cercana a ese santuario, nunca la 0), con la **Enredadera** a ≤5 m de la raíz marchita, o **venciendo al Tragón** (zona 0). Los **asedios vienen de la zona corrupta más cercana al Corazón**; sin ninguna, de la Raíz-madre.
+  - **Mazmorra** (ahora 170 m, 5 verjas): palancas (como antes) → altar → **nudo** (Enredadera junto a él lo abre) → **losa** (un compañero encima, o el **bloque de raíz**, que se coge y suelta con A; sola, la losa cierra en 1,5 s y no da tiempo a correr) → sala oscura: **linterna** al **brasero** → **bruto reforzado** (420 PV; se agacha 1,1 s y carga en línea recta a 13 m/s: 30 de daño; rodar o apartarse lo esquiva; muerde 18) → Tragón.
+- Decisiones/desvíos:
+  - **Cambios de regla con tests adaptados (ninguno borrado):** el test viejo de estacas ya no reteletransporta al lobo; el de parada del Tragón espera según `BOSS.windup`; el de dirección de asedio limpia primero las otras zonas (ahora manda la más cercana); `clampStep` recibe una bandera por verja; `decodeClient` acepta `dungeon` 5–7.
+  - La verja de la losa **se atasca abierta** en cuanto alguien la cruza: así nadie queda encerrado detrás.
+  - Todo el estado de la mazmorra sigue siendo solo en vivo (se reinicia con la sala). Quien sale de la mazmorra con el bloque o la linterna los devuelve a su sitio; si muere, los suelta donde cayó.
+  - Mundos viejos con `purified: true` y sin `cleansed` cargan con la zona 0 ya limpia.
+  - El bruto reforzado es el zorro a escala 2,4 (sin modelo ni tinte propio). El aviso de la carga es la barra "· ¡carga!" más la anim de ataque; no hay marca en el suelo.
+  - Cada orbe de cada jugador limpia una zona: con 2–3 jugadores el bosque se limpia rápido. Revisar si molesta.
+- Verificado en navegador local (Chromium headless, 1000×600, mundo nuevo): entra sin errores de consola; Y sin materiales → "Faltan materiales"; el Menú muestra "Trampa: estacas"; el snap trae `corrupt [0..5]` y las 5 verjas cerradas. NO verificado en navegador: el tinte morado (las zonas están a ≥60 m del spawn), la mazmorra nueva por dentro, el bruto cargando, la red atrapando (todo tiene tests de servidor), ni móvil.
+- Bloqueos: ninguno.
+- Qué probar: de noche, estacas en el camino del asedio (¿se nota el frenazo?); una red delante de un muro; quedarse quieto junto al Tragón (~37 s); echar al Marchito solo (300) y con 3–4. Buscar una mancha morada, pasar la noche dentro (más bestias), lanzar la Enredadera junto a la raíz violeta. En la mazmorra: el nudo con 🌿, la losa con un compañero y luego sola con el bloque, la linterna en la sala oscura, rodar la carga del bruto. Constantes: `SPIKES`/`NET` en `world-sim.ts`, `SLOWED` y `ENEMY` en `wolves.ts`, `BOSS`, `marchitoWill`, `CORRUPTION` en `corruption.ts`, `DUNGEON` en `dungeon.ts`, `ELITE` en `elite.ts`.
