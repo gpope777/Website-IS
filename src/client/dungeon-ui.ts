@@ -5,7 +5,8 @@ import { inSwampDungeon, insideSwamp, SWAMP_DUNGEON } from '../shared/swamp-dung
 import { dungeonBlockCell, inMountainDungeon, insideMountain, MOUNTAIN_DUNGEON } from '../shared/mountain-dungeon';
 import { AIR } from '../shared/dragon';
 import { inTowerDungeon, TOWER_DUNGEON } from '../shared/tower-dungeon';
-import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, MountainDungeonView, SwampDungeonView, TowerDungeonView } from '../shared/protocol';
+import { FINAL } from '../shared/sim/marchito-final';
+import type { CarryView, CoastDungeonView, DungeonView, FinalView, MarchitoView, MountainDungeonView, SwampDungeonView, TowerDungeonView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
 export function emptyDungeonView(): DungeonView {
@@ -187,13 +188,29 @@ export function rockBarText(view: MountainDungeonView): string | null {
 }
 
 /** The contextual A / E at the tower (acts 26–27): the door (the server says if it is shut) and the way out. Every floor is solved with a power. */
-export function towerDungeonAction(pos: { x: number; z: number }, door: { x: number; z: number }, open: boolean): { act: number; label: string } | null {
+export function towerDungeonAction(pos: { x: number; z: number }, door: { x: number; z: number }, open: boolean, final: FinalView | null = null): { act: number; label: string } | null {
   const T = TOWER_DUNGEON;
   const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
   const name = NAMES.villainTower;
   if (!inTowerDungeon(pos.x, pos.z)) return near(door.x, door.z, T.doorReach) ? { act: 26, label: open ? `Entrar en ${name}` : 'La puerta' } : null;
   if (near(T.x, T.entryZ, T.exitReach)) return { act: 27, label: `Salir de ${name}` };
+  // S5-F: a brote within reach (act 28; a closed one: the server says what it wants).
+  const br = final?.phase === 2 ? final.brotes.find((b) => !b.broken && near(b.x, b.z, FINAL.pullReach)) : undefined;
+  if (br) return { act: 28, label: br.open ? 'Arrancar el brote' : 'El brote' };
   return null;
+}
+
+/** El Marchito's bar in the Copa (S5-F): the roots, the brotes left, el Corazón Negro. */
+export function finalBarText(view: TowerDungeonView): string | null {
+  const f = view.final;
+  if (!f) return null;
+  if (f.phase === 2) return `${NAMES.villain} se hunde · brotes ${f.brotes.filter((b) => b.broken).length}/${f.brotes.length}${f.pull !== null ? ` · tirando ${Math.round(f.pull * 100)} %` : ''}`;
+  if (f.phase === 3 && f.core) {
+    const name = NAMES.blackHeart.charAt(0).toUpperCase() + NAMES.blackHeart.slice(1);
+    return `${name} ${f.core.hp}/${f.core.max}${f.core.stopped ? ' · ¡parado!' : f.core.healing ? ' · ¡se cura!' : ''}`;
+  }
+  const state = f.stagger ? ' · ¡se tambalea!' : f.bare ? ' · sin raíces' : f.catching ? ' · ¡arde!' : f.green ? ' · raíces verdes' : ' · raíces';
+  return `${NAMES.villain} ${f.hp}/${f.max}${state}`;
 }
 
 /** La Flecha's bar in the tower: her red line, stuck in a column. */

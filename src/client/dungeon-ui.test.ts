@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { NAMES } from '../shared/names';
 import { DUNGEON, inside, leverPos } from '../shared/dungeon';
-import type { DungeonView } from '../shared/protocol';
-import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText, cucuruchoBarText, flechaBarText, towerDungeonAction } from './dungeon-ui';
+import type { DungeonView, FinalView } from '../shared/protocol';
+import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText, cucuruchoBarText, flechaBarText, finalBarText, towerDungeonAction } from './dungeon-ui';
 import { towerEntrance, TOWER_DUNGEON as TD } from '../shared/tower-dungeon';
 import { dungeonBlockCell, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON as M } from '../shared/mountain-dungeon';
 
@@ -204,5 +204,30 @@ describe('towerDungeonAction and flechaBarText (S5-E)', () => {
     expect(flechaBarText(v)).toBeNull();
     expect(flechaBarText({ ...v, flecha: { hp: 300, max: 470, aiming: true, stuck: false } })).toBe(`${NAMES.lieutenant3} 300/470 · ¡raya!`);
     expect(flechaBarText({ ...v, flecha: { hp: 300, max: 470, aiming: false, stuck: true } })).toBe(`${NAMES.lieutenant3} 300/470 · ¡clavada!`);
+  });
+});
+
+describe('finalBarText and the brote action (S5-F)', () => {
+  const base: FinalView = { phase: 1, hp: 900, max: 1200, catching: false, bare: false, green: false, stagger: false, swipe: false, lines: [], brotes: [], pull: null, core: null, trail: [] };
+  const view = (f: Partial<FinalView> | null) => ({ ...emptyDungeonView().tower, final: f ? { ...base, ...f } : null });
+  it('says the roots, the brotes left and el Corazón Negro', () => {
+    expect(finalBarText(view(null))).toBeNull();
+    expect(finalBarText(view({}))).toBe(`${NAMES.villain} 900/1200 · raíces`);
+    expect(finalBarText(view({ catching: true }))).toBe(`${NAMES.villain} 900/1200 · ¡arde!`);
+    expect(finalBarText(view({ bare: true }))).toBe(`${NAMES.villain} 900/1200 · sin raíces`);
+    expect(finalBarText(view({ green: true }))).toBe(`${NAMES.villain} 900/1200 · raíces verdes`);
+    expect(finalBarText(view({ stagger: true }))).toBe(`${NAMES.villain} 900/1200 · ¡se tambalea!`);
+    const brotes = (['vine', 'wind', 'fire', 'stone'] as const).map((power, i) => ({ power, x: 0, z: 0, open: false, broken: i === 0, steps: 0, need: 2 }));
+    expect(finalBarText(view({ phase: 2, brotes }))).toBe(`${NAMES.villain} se hunde · brotes 1/4`);
+    expect(finalBarText(view({ phase: 3, core: { hp: 200, max: 300, stopped: true, healing: false } }))).toBe('El Corazón Negro 200/300 · ¡parado!');
+    expect(finalBarText(view({ phase: 3, core: { hp: 200, max: 300, stopped: false, healing: true } }))).toBe('El Corazón Negro 200/300 · ¡se cura!');
+  });
+  it('offers A at a brote within 3 m in phase 2', () => {
+    const at = { x: TD.x + 5, z: TD.copa.z };
+    const f = { ...base, phase: 2 as const, brotes: [{ power: 'fire' as const, x: at.x + 2, z: at.z, open: true, broken: false, steps: 3, need: 3 }] };
+    expect(towerDungeonAction(at, { x: 0, z: 0 }, true, f)).toEqual({ act: 28, label: 'Arrancar el brote' });
+    expect(towerDungeonAction(at, { x: 0, z: 0 }, true, { ...f, brotes: [{ ...f.brotes[0]!, open: false }] })).toEqual({ act: 28, label: 'El brote' });
+    expect(towerDungeonAction({ x: at.x + 10, z: at.z }, { x: 0, z: 0 }, true, f)).toBeNull();
+    expect(towerDungeonAction(at, { x: 0, z: 0 }, true, { ...f, phase: 1 })).toBeNull();
   });
 });

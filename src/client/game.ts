@@ -16,10 +16,11 @@ import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { antenonBarText, bossBarText, clawPick, cucuruchoBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction, flechaBarText, towerDungeonAction } from './dungeon-ui';
+import { antenonBarText, bossBarText, clawPick, cucuruchoBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction, flechaBarText, finalBarText, towerDungeonAction } from './dungeon-ui';
 import { MountainDungeonMeshes } from './scene/mountain-dungeon';
 import { TowerDungeonMeshes } from './scene/tower-dungeon';
-import { columnCrags, towerEntrance, towerShelfCrag } from '../shared/tower-dungeon';
+import { columnCrags, towerEntrance, towerShelfCrag, TOWER_DUNGEON } from '../shared/tower-dungeon';
+import { FINAL } from '../shared/sim/marchito-final';
 import { mountainEntrance, shelfCrag } from '../shared/mountain-dungeon';
 import { PIEDRA, structureCrags } from '../shared/piedra';
 import { MARCHITO } from '../shared/sim/marchito';
@@ -64,7 +65,7 @@ import { ChestMeshes } from './scene/chests';
 import { coastAction, rescueAction, shrinePartAt } from './coast-ui';
 import { RescueMeshes } from './scene/rescue';
 import { rescueSite, type RescueSite } from '../shared/rescue';
-import type { CageView } from '../shared/protocol';
+import type { CageView, FinalView } from '../shared/protocol';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
 import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
@@ -113,6 +114,11 @@ const FLECHA_ASPECT = 463 / 437;
 const ZANCUDO_ASPECT = 358 / 291;
 const CUCURUCHO_IMG = '/enemies/enemy13.png';
 const CUCURUCHO_ASPECT = 556 / 601;
+/** El Corazón Negro (enemy8.png, RGBA 638 × 536, 61 % transparent): El Marchito's core in the Copa's phase 3, 2.5 m (spec S5 §11.3). */
+const CORE_IMG = '/enemies/enemy8.png';
+const CORE_ASPECT = 638 / 536;
+/** The four brotes' tints (Enredadera, Viento, Fuego, Piedra). */
+const BROTE_TINT = [0x7ad07a, 0xbfe6ff, 0xff9a5a, 0xc8b89a];
 
 interface Remote {
   actor: Puppet;
@@ -309,6 +315,9 @@ export class Game {
   private pillarView: PillarView | null = null;
   /** La Flecha's red line on the ground while she aims (one shared mesh). */
   private readonly flechaLine = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0xff2a2a, fog: false }));
+  /** S5-F: El Marchito's three root lines while told, and a pool of violet discs for el Corazón Negro's trail. */
+  private readonly rootLines = [0, 1, 2].map(() => new THREE.Mesh(new THREE.BoxGeometry(2, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0xb03cff, fog: false })));
+  private readonly trailDiscs = Array.from({ length: 16 }, () => new THREE.Mesh(new THREE.CircleGeometry(1, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x6a2a8a, transparent: true, opacity: 0.7, fog: false })));
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
   private rescueMeshes: RescueMeshes | null = null;
@@ -548,6 +557,10 @@ export class Game {
     this.corruptGroup.add(this.pillarMeshes.group);
     this.flechaLine.visible = false;
     this.scene.add(this.flechaLine);
+    for (const mesh of [...this.rootLines, ...this.trailDiscs]) {
+      mesh.visible = false;
+      this.scene.add(mesh);
+    }
     this.villainTower = new VillainTower(this.terrain);
     this.scene.add(this.villainTower.group);
     this.zarzalKnot = new ZarzalKnot(this.terrain);
@@ -636,7 +649,7 @@ export class Game {
     if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
-    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? rockBarText(m.dungeon.mountain) ?? cucuruchoBarText(m.dungeon.mountain) ?? (m.dungeon.tower ? flechaBarText(m.dungeon.tower) : null) ?? marchitoBarText(m.marchito));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? rockBarText(m.dungeon.mountain) ?? cucuruchoBarText(m.dungeon.mountain) ?? (m.dungeon.tower ? (finalBarText(m.dungeon.tower) ?? flechaBarText(m.dungeon.tower)) : null) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     this.fishViews = m.fish;
@@ -669,13 +682,22 @@ export class Game {
     this.rescueMeshes?.sync(this.cage);
     this.anchorTargets = m.wolves.filter((w) => w.kind === 'anchor').map((w) => ({ id: w.id, x: w.x, z: w.z }));
     this.syncFlechaLine(m.wolves.find((w) => w.kind === 'lieut3' && w.aim));
+    this.syncFinal(m.dungeon.tower.final);
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : w.kind === 'lieut3' ? new PaperActor(FLECHA_IMG, 3, this.camera, FLECHA_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : w.kind === 'lieut3' ? new PaperActor(FLECHA_IMG, 3, this.camera, FLECHA_ASPECT) : w.kind === 'boss5' ? new PaperActor(MARCHITO_IMG, 9, this.camera, 589 / 662) : w.kind === 'brote' ? new PaperActor(MARCHITO_IMG, 2, this.camera, 589 / 662) : w.kind === 'core' ? new PaperActor(CORE_IMG, 2.5, this.camera, CORE_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       // The rayo flashes white during its 0.8 s tell and goes pale when a gust grounds it (anim idle).
       if (w.kind === 'rayo' && r.actor instanceof PaperActor) r.actor.setTint(w.anim === 'attack' ? 0xffffff : w.anim === 'idle' ? 0xe8dca0 : 0xb48ad8);
+      else if (w.kind === 'boss5' && r.actor instanceof PaperActor) {
+        const f = m.dungeon.tower.final;
+        r.actor.setTint(!f || f.phase === 3 ? 0x8a7a90 : f.phase === 2 ? 0x4a3a5a : f.stagger || f.bare ? 0xe0c8f0 : f.catching ? 0xff9a5a : f.swipe ? 0xff7a8a : f.green ? 0x6a9a5a : 0x6a4a7c);
+      } else if (w.kind === 'brote' && r.actor instanceof PaperActor) {
+        const i = (FINAL.broteIds as readonly number[]).indexOf(w.id);
+        const open = m.dungeon.tower.final?.brotes[i]?.open;
+        r.actor.setTint(open ? 0xffffff : (BROTE_TINT[i] ?? 0xffffff));
+      } else if (w.kind === 'core' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.tower.final?.core?.stopped ? 0xffe9a0 : m.dungeon.tower.final?.core?.healing ? 0xff6a6a : 0xffffff);
       else if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if ((w.kind === 'lieut1' || w.kind === 'lieut2') && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
       else if (w.kind === 'lieut3' && r.actor instanceof PaperActor) r.actor.setTint(w.stuck ? 0xffe9a0 : w.aim ? 0xffb0a0 : 0xffffff);
@@ -1120,7 +1142,7 @@ export class Game {
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     const sp = this.shrinePart();
     if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
-    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen);
+    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final);
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
     const ca = this.coastAct();
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
@@ -1193,6 +1215,27 @@ export class Game {
   }
 
   /** The root cage within reach while the Tragón is taken. */
+  /** S5-F: El Marchito's root lines (violet strips while told) and el Corazón Negro's trail. */
+  private syncFinal(f: FinalView | null): void {
+    const y = TOWER_DUNGEON.floor + 0.12;
+    this.rootLines.forEach((mesh, i) => {
+      const l = f?.lines[i];
+      mesh.visible = !!l;
+      if (!l) return;
+      const dx = l.x1 - l.x0;
+      const dz = l.z1 - l.z0;
+      mesh.scale.set(1, 1, Math.max(0.5, Math.hypot(dx, dz)));
+      mesh.rotation.y = Math.atan2(dx, dz);
+      mesh.position.set((l.x0 + l.x1) / 2, y, (l.z0 + l.z1) / 2);
+    });
+    const trail = f?.trail ?? [];
+    this.trailDiscs.forEach((mesh, i) => {
+      const t = trail[trail.length - 1 - i];
+      mesh.visible = !!t;
+      if (t) mesh.position.set(t.x, y - 0.02, t.z);
+    });
+  }
+
   /** La Flecha's clavada: a red strip on the ground from her to where the dash ends. */
   private syncFlechaLine(w: { x: number; z: number; aim?: { x: number; z: number } } | undefined): void {
     const line = this.flechaLine;
@@ -1629,7 +1672,7 @@ export class Game {
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
     const pa = this.pillarAct();
     if (pa) return this.hud.setPrompt(`E · ${pa.label}`);
-    const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(this.body, this.towerDoor, this.towerOpen));
+    const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(this.body, this.towerDoor, this.towerOpen, this.dungeon.tower.final));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma?.act === 17) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio (mantener) · Subir`);
     if (ma?.act === 14) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio · Salto alto`);
