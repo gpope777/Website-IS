@@ -1,7 +1,7 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
 ## Aventura completa — estado (LEER PRIMERO)
-La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 979, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 54**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia). Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G) y el balance de El Marchito (S5-F).
+La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 1043, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 58**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F) y la curva de Savia (P4-A). **Lo siguiente:** #6 Tiendas y economía → #2 Mundo y visuales → #7 Pulido (con el tutorial).
 
 **Branch:** `aventura/slice-1` (pushed to origin).
 
@@ -1061,6 +1061,20 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Bloqueos: ninguno.
 - Qué probar: con `ending: true`, A en la puerta de la torre → cima; saltar y planear hacia el sur; volver con A en la fogata. Poner la hora en la noche del día 8 (o 16…) y buscar la Estrella en la Ceniza; domarla con y sin un amigo al lado; correr con ella. ¿Se ve bien el papel girando? Constantes: `ESTRELLA` en `src/shared/estrella.ts`, `LOOKOUT` en `src/shared/ending.ts`.
 
+## Progresión — resumen (LEER PRIMERO)
+Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progresion-design.md`). Protocolo 54 → 58, un plan por versión; tests 979 → 1043. Todo va por el Menú: **cero pastillas nuevas**.
+- **P4-A — Savia y Rango** (v55): Rango 1–8 por hitos (casi todo primeras veces) + un poco por matar (tope 40/día). Los rangos no dan combate. Las partidas viejas calculan su Savia al cargar.
+- **P4-B — Oficios** (v56): 7 puntos para 12 pasivas de utilidad en 3 ramas; olvidar en el Corazón por 5 bayas.
+- **P4-C — Aspecto** (v57): 8 colores (copia de `Main` por jugador) y sombreros en la cabeza; se ven para todos.
+- **P4-D — Libro y Proezas** (v58): página Libro en el Menú; contadores; 6 Proezas que solo dan sombrero o sello.
+- **Decidido por Claude — revisar (lo más gordo):**
+  - Los niveles no dan daño, vida ni defensa: arma y Capa siguen siendo lo único de combate (así no se re-afina ningún jefe).
+  - Varios oficios cambiaron de efecto porque la mecánica del spec no existe (Pies ligeros, Pulmón, Mano amiga, Mochila honda; ver P4-B).
+  - Las Proezas de peleas únicas del mundo (Tragón, El Marchito) solo se pueden ganar en esa pelea.
+  - Zonas limpias y días del Libro son del mundo, no de cada jugador.
+- **Balance a comprobar — la curva de Savia:** umbrales 0 / 80 / 220 / 420 / 680 / 980 / 1300 / 1650 (`PROGRESS.ranks`). Toda la historia sin contar lo vivo da ~1270 (Rango 6); tenientes, zonas, pilares, asedios y el tope de caza deberían llevar a Rango 8 cerca de El Marchito, no antes. Si llega antes, subir los últimos umbrales; si no llega, bajar el 8.
+- **Orden de prueba:** (1) partida vieja avanzada → Rango correcto en la mochila y en el Libro; (2) matar lobos hasta el tope; (3) subir a Rango 2 → tarjeta, destello, Hoja en Aspecto, un oficio; (4) planear con Planeo largo y galopar con Pastor (que el servidor no te devuelva); (5) color y sombrero con otro jugador delante; (6) Libro: contadores tras un jefe y un asedio; (7) Proezas: carrera del pez rápida, Nenúfares sin mojarse, noche en la Cumbre sin fuego, asedio con el Corazón sobre la mitad.
+
 ## Progresión · P4-A — Savia y Rango — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-progresion-P4-A-savia-rango.md` (a1c3f2f).
 - Commits: 45d0c5f (T1 reglas puras: `src/shared/progression.ts`, `NAMES.xp`/`NAMES.rank`), 117c315 (T2 servidor, protocolo v55), 081f5b0 (T3 cliente).
@@ -1122,3 +1136,24 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador (Chromium headless, `npm run dev:server`): Ana azul con Hoja y Bea roja con Cuernos de cuarzo, una junto a la otra; los colores y sombreros se ven sobre la cabeza y siguen al robot. El panel Aspecto se ve bien a 900 px. No probado en móvil real.
 - Bloqueos: ninguno.
 - Qué probar: elegir color con otro jugador delante; ganar Rango 2 y ponerse la Hoja; tocar un sombrero bloqueado (sale la pista). Constantes: `COLORS`, `HAT_IDS` en `progression.ts`; formas en `src/client/actors/hats.ts`.
+
+## Progresión · P4-D — Libro y Proezas — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-progresion-P4-D-libro-proezas.md` (fc81afe).
+- Commits: bdf1b83 (T1 reglas puras: `FEATS`, `FEAT_HAT`, `BOSS_KINDS`, `bossesOf`, sombreros 7–9 en `src/shared/progression.ts`; nombres en `names.ts`), b8cfe10 (T2 servidor, protocolo v58), d931d60 (T3 cliente: Libro y formas de los 3 sombreros).
+- Tests: npm test 1043 (antes 1029 tras T1; 1026 al empezar), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 58**. Campos guardados nuevos, opcionales: `SavedPlayer.bosses`, `kills`, `raidsHeld`, `feats`. Las partidas viejas cargan con ceros; los jefes y élites de mazmorra se deducen de los poderes.
+- Cómo funciona:
+  - **Menú → Libro:** "Rango 5 · 712 / 980 Savia" con barra; "Arma +4 (×1,6) · Capa 2 (−20 %) · Aliento N"; poderes y monturas (grises los que faltan); santuarios x/12 · cofres x/6 · jefes x/11 · zonas limpias x/22 · día N; lobos, brutos, rayos, asedios aguantados; las 6 Proezas (hechas en verde con ✔). Abajo: Oficios, Aspecto, Volver.
+  - **Proezas** (las vigila el servidor donde ya pasa lo que miden): **Sin un rasguño** (vencer al Tragón sin recibir daño → sombrero *Papel doblado*) · **Pez veloz** (carrera de anillos en ≤ 80 % del tiempo) · **Pies secos** (Nenúfares del primero al último sin tocar el agua ni ir en rana) · **Solo contra el frío** (llegar a la Cumbre de noche sin haber estado junto a fuego desde que anocheció → *Gorro de nieve*) · **Noche entera** (asedio sin que el Corazón baje de la mitad) · **Corazón quieto** (estar en la caída de El Marchito con arma ≤ +4 → *Corona marchita*). Toast "Proeza: X." (+ "Nuevo sombrero: …").
+  - **Jefes (11):** Tragón, Antenón, Zancudo, Cucurucho, sus 4 élites y los 3 tenientes (Gata, Triángulo, La Flecha); cuentan con el golpe final, para todos los vivos a ≤ 40 m.
+- Decidido por Claude — revisar:
+  - No se añade `SavedPlayer.hats`: todos los sombreros salen de flags que ya se guardan (hitos y `feats`).
+  - Zonas y días son del mundo (`cleansed`, tiempo), no contadores por jugador.
+  - Solo las muertes por golpe o flecha cuentan en el Libro (como la Savia); un jefe muerto por otra vía no suma.
+  - Tragón y El Marchito se vencen una vez por mundo: su Proeza solo sale en esa pelea. Pez veloz solo en la doma del pez (luego ya no hay carrera).
+  - "Cumbre" = más de 120 m montaña adentro (`MOUNTAINS.cumbre`); cualquier fogata, refugio, hoguera o el Corazón cuentan como calentarse. "Mojarse" = estar a altura de nado.
+  - Formas: Papel doblado (dos hojas en V), Gorro de nieve (cono + pompón), Corona marchita (aro morado + 2 puntas torcidas); cada uno 1 malla, 1 draw call.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión 57 → 58 en los tests de versión; el sombrero fuera de rango pasa de 7 a 10 (`protocol`/`world-sim-p4c`, `progression-look`), 6 → 9 sombreros (`progression-look`, `hats`), 7 → 10 botones de sombrero (`look-ui`).
+- Rendimiento móvil: el Libro es HTML del Menú; contadores enteros en el guardado; `self.book` son ~12 números por snapshot. Cero luces, cero pastillas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: abrir el Libro con una partida avanzada; ganar cada Proeza (la del frío: anochecer en las Faldas y subir sin fuego); ponerse los 3 sombreros nuevos. Constantes: `FEAT_FAST`, `FEAT_HEART` en `progression.ts`; formas en `src/client/actors/hats.ts`.

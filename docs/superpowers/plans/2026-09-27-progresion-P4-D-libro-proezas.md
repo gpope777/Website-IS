@@ -46,22 +46,22 @@ export function bossesOf(p: ProgressSource & { bosses?: string[] }): string[]; /
 export const HAT_IDS = [...6, 'papel', 'nieve', 'marchita'];
 ```
 
-- [ ] **Step 1: failing tests.** 6 feats with names; 11 boss kinds; `bossesOf({ viento: true })` has `boss2` and `elite2`; saved + inferred don't repeat; junk ids dropped; `isLook(0, 9)` true, `isLook(0, 10)` false; hats 7–9 locked without the feat and open with `feats: [1]`/`[4]`/`[6]`; each has a hint ("Se gana con la Proeza Sin un rasguño").
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): reglas puras de Proezas y Libro`.
+- [x] **Step 1: failing tests.** 6 feats with names; 11 boss kinds; `bossesOf({ viento: true })` has `boss2` and `elite2`; saved + inferred don't repeat; junk ids dropped; `isLook(0, 9)` true, `isLook(0, 10)` false; hats 7–9 locked without the feat and open with `feats: [1]`/`[4]`/`[6]`; each has a hint ("Se gana con la Proeza Sin un rasguño").
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(progresion): reglas puras de Proezas y Libro`.
 
 ### Task 2: server — counters, the 6 checks, `self.book` (protocolo v58)
 
-- [ ] **Step 1: failing tests** (`world-sim-p4d.test.ts`). Protocol 58; `self.book` for a new player is zeros, `feats: []`; a wolf killed by a strike adds `kills.wolf`; a lieutenant killed with Bea at 30 m adds it to both `bosses`; a held raid adds `raidsHeld` and, with the Heart ≥ 50 %, Proeza 5 to all; a raid where the Heart dipped below half gives no Proeza 5; the Tragón beaten by an unhurt Ana gives Proeza 1 (and hat 7 in `self.hats`), a hurt Bea none; the fish race fast → 2, slow → none; lily pads 0 → last dry → 3, after a splash → none; night climb to the Cumbre cold → 4, warmed by a fire → none; `winFinal` with weapon 4 → 6, weapon 5 → none; an old save without the fields loads.
-- [ ] **Step 2: implement** (`gainFeat(p, id)`; live flags `l.clean`, `l.lily`, `l.cold`, `l.raceAt`; `this.raidLow`, `this.bossHurt`).
-- [ ] **Step 3:** green (adapt 57 → 58 in the version tests and hat 7 → 10 as the out-of-range hat in `world-sim-p4c.test.ts`, noted), self-review, commit `feat(progresion): Proezas y contadores en el servidor (protocolo v58)`.
+- [x] **Step 1: failing tests** (`world-sim-p4d.test.ts`). Protocol 58; `self.book` for a new player is zeros, `feats: []`; a wolf killed by a strike adds `kills.wolf`; a lieutenant killed with Bea at 30 m adds it to both `bosses`; a held raid adds `raidsHeld` and, with the Heart ≥ 50 %, Proeza 5 to all; a raid where the Heart dipped below half gives no Proeza 5; the Tragón beaten by an unhurt Ana gives Proeza 1 (and hat 7 in `self.hats`), a hurt Bea none; the fish race fast → 2, slow → none; lily pads 0 → last dry → 3, after a splash → none; night climb to the Cumbre cold → 4, warmed by a fire → none; `winFinal` with weapon 4 → 6, weapon 5 → none; an old save without the fields loads.
+- [x] **Step 2: implement** (`gainFeat(p, id)`; live flags `l.clean`, `l.lily`, `l.cold`, `l.raceAt`; `this.raidLow`, `this.bossHurt`).
+- [x] **Step 3:** green (adapt 57 → 58 in the version tests and hat 7 → 10 as the out-of-range hat in `world-sim-p4c.test.ts`, noted), self-review, commit `feat(progresion): Proezas y contadores en el servidor (protocolo v58)`.
 
 ### Task 3: client — the Libro and the 3 hat shapes
 
-- [ ] **Step 1: failing tests.** `book-ui.ts`: `bookHtml(data)` shows "Rango 5 · 712 / 980 Savia" and a bar, "Arma +4 (×1,6) · Capa 2 (−20 %) · Aliento N", the 4 powers (missing ones `off`), the mounts, "Santuarios 8/12 · Cofres 3/6 · Jefes 4/11 · Zonas 9/22 · Día N", kills and raids, the 6 Proezas (done ones `done`), buttons `skills`, `look`, `back`. `makeHat(7..9)` one mesh each.
-- [ ] **Step 2: implement.** Menú "Libro" button (`onBook`) → panel; from it "Oficios" and "Aspecto" open their panels.
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): el Libro en el Menú`.
+- [x] **Step 1: failing tests.** `book-ui.ts`: `bookHtml(data)` shows "Rango 5 · 712 / 980 Savia" and a bar, "Arma +4 (×1,6) · Capa 2 (−20 %) · Aliento N", the 4 powers (missing ones `off`), the mounts, "Santuarios 8/12 · Cofres 3/6 · Jefes 4/11 · Zonas 9/22 · Día N", kills and raids, the 6 Proezas (done ones `done`), buttons `skills`, `look`, `back`. `makeHat(7..9)` one mesh each.
+- [x] **Step 2: implement.** Menú "Libro" button (`onBook`) → panel; from it "Oficios" and "Aspecto" open their panels.
+- [x] **Step 3:** green, self-review, commit `feat(progresion): el Libro en el Menú`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF: "Progresión — resumen" at the top of the Progresión area, "## Progresión · P4-D — …", the "Aventura completa — estado" paragraph (#4 done; next #6 Tiendas, #2 Visuales, #7 Pulido); one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF: "Progresión — resumen" at the top of the Progresión area, "## Progresión · P4-D — …", the "Aventura completa — estado" paragraph (#4 done; next #6 Tiendas, #2 Visuales, #7 Pulido); one short comment on PR #3.
