@@ -57,34 +57,34 @@ export function endingWave(n: number): number;                  // ceil(n × 0.6
 export function rimCrossBlocked(pz: number, nz: number, nx?: number, grieta?: boolean): boolean;
 ```
 
-- [ ] **Step 1: failing tests.** 4 cards, the names in the 3rd, the Guardián named in the 4th; credits start "Bosque", include the names, `NAMES.credits`, "Hecho por Gabriel"; late cards start "Mientras dormías, Ana y Bea vencieron a El Marchito". 6 distinct Guardián lines. `guardianSpot` 8 m east. `inGrieta` at `(0, RIM_LINE − 5)` true, `(10, …)` false. `withGrieta` closed = base; open: in the band never above base, at the rim's foot equal to base, and the band's slope ≤ 31° everywhere a walker would climb (probe north→south); outside the band = base. `rimCrossBlocked(pz, nz)` unchanged; with `nx = 0, grieta = true` false; with `nx = 10, grieta = true` true. `endingWave(10) = 6`, `endingWave(1) = 1`. Names test: no hand-written "Guardián"/"Grieta".
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): reglas puras del final y la Grieta`.
+- [x] **Step 1: failing tests.** 4 cards, the names in the 3rd, the Guardián named in the 4th; credits start "Bosque", include the names, `NAMES.credits`, "Hecho por Gabriel"; late cards start "Mientras dormías, Ana y Bea vencieron a El Marchito". 6 distinct Guardián lines. `guardianSpot` 8 m east. `inGrieta` at `(0, RIM_LINE − 5)` true, `(10, …)` false. `withGrieta` closed = base; open: in the band never above base, at the rim's foot equal to base, and the band's slope ≤ 31° everywhere a walker would climb (probe north→south); outside the band = base. `rimCrossBlocked(pz, nz)` unchanged; with `nx = 0, grieta = true` false; with `nx = 10, grieta = true` true. `endingWave(10) = 6`, `endingWave(1) = 1`. Names test: no hand-written "Guardián"/"Grieta".
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(aventura): reglas puras del final y la Grieta`.
 
 ### Task 2: the ending on the server (protocolo v53)
 
 **Files:** Modify `src/shared/protocol.ts` (+ test), `src/shared/sim/world-sim.ts` (+ version test); Test `src/shared/sim/world-sim-s5g.test.ts`.
 
-- [ ] **Step 1: failing tests.** Kill the core (the S5-F helper): every online player gets `{ t: 'ending' }` with 4 cards (names of those in the Copa) and credits; `save().endingNames` = those names; their `credits` flag set; players in the Torre are at the Heart (≤ 6 m); `corrupt` in the snapshot is `[]` and `save().cleansed` has every zone id; `snap.ending` true. A saved player who was offline connects later → after `connect` the outbox has an `ending` for them whose first card starts "Mientras dormías"; connecting again → nothing. Old save with `ending: true` and no `endingNames` loads. La Grieta: before the ending a ground move across the rim at x 0 is refused ("…Solo volando"); after, it's accepted at x 0 and refused at x 20. No invasion 2 starts after the ending even if pending. `decodeClient` accepts `{t:'raids',on:true}`, refuses `on:'x'`. Protocol 53.
-- [ ] **Step 2: implement** (`winFinal`: cards + credits msg to online, `endingNames`, `credits`, cleanse all, move Torre players home, `// S5-G` gone; `connect` late credits; `withGrieta` in the constructor's terrain; `rimCrossBlocked(p.z, m.z, m.x, this.ending)`; guards on invasions; snapshot `ending`, `raidsOff`; `decodeClient` `raids`).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): el final — visión larga, créditos, zonas limpias y la Grieta (protocolo v53)`.
+- [x] **Step 1: failing tests.** Kill the core (the S5-F helper): every online player gets `{ t: 'ending' }` with 4 cards (names of those in the Copa) and credits; `save().endingNames` = those names; their `credits` flag set; players in the Torre are at the Heart (≤ 6 m); `corrupt` in the snapshot is `[]` and `save().cleansed` has every zone id; `snap.ending` true. A saved player who was offline connects later → after `connect` the outbox has an `ending` for them whose first card starts "Mientras dormías"; connecting again → nothing. Old save with `ending: true` and no `endingNames` loads. La Grieta: before the ending a ground move across the rim at x 0 is refused ("…Solo volando"); after, it's accepted at x 0 and refused at x 20. No invasion 2 starts after the ending even if pending. `decodeClient` accepts `{t:'raids',on:true}`, refuses `on:'x'`. Protocol 53.
+- [x] **Step 2: implement** (`winFinal`: cards + credits msg to online, `endingNames`, `credits`, cleanse all, move Torre players home, `// S5-G` gone; `connect` late credits; `withGrieta` in the constructor's terrain; `rimCrossBlocked(p.z, m.z, m.x, this.ending)`; guards on invasions; snapshot `ending`, `raidsOff`; `decodeClient` `raids`).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): el final — visión larga, créditos, zonas limpias y la Grieta (protocolo v53)`.
 
 ### Task 3: raids after the ending and the Menú toggle
 
 **Files:** Modify `src/shared/sim/world-sim.ts`; Test `world-sim-s5g.test.ts`.
 
-- [ ] **Step 1: failing tests.** After the ending at dusk: warning "Quedan bestias sueltas por el norte…", at night the wave is `endingWave(normal)` and has no `lieut*`. `{t:'raids',on:false}` at the Heart → `raidsOff`, toast to all "Noches de asedio: apagadas", saved; next dusk no warning and no wolves; `on:true` brings them back. Refused (with a toast, no change) before the ending, away from the Heart, or dead. Old saves: `raidsOff` absent → on.
-- [ ] **Step 2: implement** (`raidsOff` field + save/load, `onRaids`, `stepRaid` gate + text, `spawnRaiders` multiplier and no lead).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): asedios tras el final, más suaves, y el interruptor del Corazón`.
+- [x] **Step 1: failing tests.** After the ending at dusk: warning "Quedan bestias sueltas por el norte…", at night the wave is `endingWave(normal)` and has no `lieut*`. `{t:'raids',on:false}` at the Heart → `raidsOff`, toast to all "Noches de asedio: apagadas", saved; next dusk no warning and no wolves; `on:true` brings them back. Refused (with a toast, no change) before the ending, away from the Heart, or dead. Old saves: `raidsOff` absent → on.
+- [x] **Step 2: implement** (`raidsOff` field + save/load, `onRaids`, `stepRaid` gate + text, `spawnRaiders` multiplier and no lead).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): asedios tras el final, más suaves, y el interruptor del Corazón`.
 
 ### Task 4: client — cards, credits, white tower, el Guardián, la Grieta, the toggle
 
 **Files:** Create `src/client/ending-ui.ts` (+ test); Modify `src/client/hud.ts`, `src/client/game.ts`, `src/client/movement.ts`, `src/client/scene/villain-tower.ts`, `src/client/style.css`.
 
-- [ ] **Step 1: failing tests** (`ending-ui.test.ts`): `guardianAction(pos, heart, ending)` → "Hablar con el Guardián" within 3 m of the spot after the ending, else null; `nextGuardianLine(i)` cycles the 6; `raidsMenu(ending, atHeart, off)` → null before the ending / away, else `{ label: 'Noches de asedio: encendidas', on: false }` (the click flips); movement: a walker body crossing the rim at x 0 with the Grieta open is not stopped.
-- [ ] **Step 2: implement** (HUD `showEnding(cards, credits)`: one card at a time, 5 s each, `dismiss` skips; then a scrolling credits card 25 s; `game.ts` handles `ending`, keeps `ending`/`raidsOff` from the snapshot, rebuilds the terrain once with `withGrieta`, passes the flag to `stepBody`; `VillainTower.setWhite()`; the Guardián `PaperActor` (enemy6, 3 m) by the Heart; the contextual A line; the Menú button sends `{t:'raids', on}`).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): cliente del final — tarjetas, créditos, torre blanca y el Guardián`.
+- [x] **Step 1: failing tests** (`ending-ui.test.ts`): `guardianAction(pos, heart, ending)` → "Hablar con el Guardián" within 3 m of the spot after the ending, else null; `nextGuardianLine(i)` cycles the 6; `raidsMenu(ending, atHeart, off)` → null before the ending / away, else `{ label: 'Noches de asedio: encendidas', on: false }` (the click flips); movement: a walker body crossing the rim at x 0 with the Grieta open is not stopped.
+- [x] **Step 2: implement** (HUD `showEnding(cards, credits)`: one card at a time, 5 s each, `dismiss` skips; then a scrolling credits card 25 s; `game.ts` handles `ending`, keeps `ending`/`raidsOff` from the snapshot, rebuilds the terrain once with `withGrieta`, passes the flag to `stepBody`; `VillainTower.setWhite()`; the Guardián `PaperActor` (enemy6, 3 m) by the Heart; the contextual A line; the Menú button sends `{t:'raids', on}`).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): cliente del final — tarjetas, créditos, torre blanca y el Guardián`.
 
 ### Task 5: Ship
 
-- [ ] Full suite green; `git push origin aventura/resto`; append "## Slice 5 · S5-G — …" to the HANDOFF; one short comment on PR #3.
+- [x] Full suite green; `git push origin aventura/resto`; append "## Slice 5 · S5-G — …" to the HANDOFF; one short comment on PR #3.
