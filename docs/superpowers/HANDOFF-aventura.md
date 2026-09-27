@@ -446,6 +446,15 @@ Orden (roadmap "content first", #3+#5 = Aventura por biomas, #4 plegado en cada 
 
 Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción más simple que respete el spec; co-op que no bloquee al que juega solo salvo cuando es el gancho (ballena); no tocar balance del Corazón; nombres provisionales en `src/shared/names.ts`; dibujos de los sobrinos como papel espíritu; rejilla táctil ≤10; decisiones anotadas como "Decidido por Claude — revisar".
 
+## Slice 3 — resumen (LEER PRIMERO)
+- **S3-A a S3-G: todos hechos, ninguno bloqueado.** Rama `aventura/resto`, PR draft #3. Nada mergeado ni desplegado.
+- Tests finales: npm test 610, test:workers 12, check + build verdes. **PROTOCOL_VERSION = 31.** Todos los campos guardados nuevos son opcionales: las partidas viejas cargan (y simplemente reciben un Pantano).
+- **Qué hay:** S3-A el Pantano al oeste (ciénaga alta, 12 montículos, Laguna Negra), el Zarzal que muerde y la Boca del Río · S3-B la Rana (nenúfares + anillo, salto alto con B) · S3-C santuarios 6–8 (Candiles, Nenúfares, Turba), 6 árboles de ámbar y la Capa de corteza · S3-D zonas 10–13 y La Gata Araña (1 de cada 3 asedios) · S3-E mazmorra del Pantano, el Fuego (🌿→🌬️→🔥), bruto de turba y hoguera · S3-F El Zancudo (enemy9), el farol del Zancudo blanco y el nudo del Zarzal · S3-G fogatas (viaje rápido de día) y las visiones del Pantano. Arreglo suelto: el bruto de turba y El Antenón compartían id de enemigo (900_003); ahora el bruto es 900_004 y un test vigila que no se repitan.
+- **Decidido por Claude — revisar (lo gordo):** el Zarzal mide 64 m (si no, se planeaba por encima); la antorcha no frena y se gasta en cada brasero/fogata; la Gata en asedios múltiplo de 3 aunque nadie haya visto aún el Pantano; arena del Zancudo 24 × 30; nudo del Zarzal en un punto fijo (x = −HALF+8, z = 120); las fogatas solo viajan al/desde el Corazón (no entre fogatas) y no se puede viajar montado; visión de entrada al Pantano una vez por mundo (los mundos que ya lo habían visto no la reciben).
+- **Balance a revisar:** Zarzal 10 PV/s y ciénaga al 60 %; rana 8/11 m/s y salto 7 m; nenúfares 6 s (rana) y 1,5 s (santuario); Candiles 12 s; ámbar 2 por árbol cada 2 días y Capa −10 %/nivel; Gata 300 PV y aura +20 %; sala del gas 10 s; tablas 1,2 s; bruto de turba 480 PV y +10 PV/s en charco; El Zancudo 380 PV (~31 s quieto debajo); farol cada 10 s; hoguera 4 madera + 2 ámbar; fogatas 5 s de canal. Constantes: `ZARZAL`, `BOG`, `FROG`, `SWAMP_SHRINE`, `AMBER`, `CAPA`, `GATA`, `FUEGO`, `HOGUERA`, `SWAMP_DUNGEON`, `ENEMY.elite3`, `ZANCUDO`, `FAROL`, `FOGATA`.
+- **Nada del Slice 3 se probó a fondo en navegador real** (S3-A se miró en headless). Es lo primero.
+- **Qué probar (en orden de historia):** ir al oeste a pie (el Zarzal mata) → pez por la Boca del Río hasta la Laguna (visión «¿Te gusta mi niebla?») → antorcha de Candiles a una fogata (encenderla) → domar la rana → Candiles, Nenúfares, ámbar, Capa → de día, A en la fogata → Corazón en 5 s; Menú en el Corazón → fogata → noche con la Gata (3.er asedio) → mazmorra del Pantano, Fuego, bruto de turba → El Zancudo → farol de noche → quemar el nudo del Zarzal (visión) y entrar andando con un amigo → Turba con Fuego. En móvil: rejilla de 10, cambio de poder con pulsación larga, A contextual en fogatas.
+
 ## Slice 3 · S3-A — el Pantano, el Zarzal y la Boca del Río — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-A-pantano-zarzal.md` (2d2dc69).
 - Commits: 25c0d1e (T1 terreno del Pantano, límites en unión, nombres), 862b55d (T2 Zarzal, ciénaga alta y río en el servidor, protocolo v23), 9e148b9 (T3 movimiento en el cliente), 8ac1a4f (T4 malla, espinas y niebla).
@@ -600,3 +609,25 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: entrar a la sala con Fuego y arco; ¿se lee la sombra del picado en la penumbra?, ¿6 s entre respiraderos da para apuntar?, ¿el enganche se entiende? Vencerlo y ver el farol de noche. Quemar el nudo (junto al borde oeste, z ≈ 120) y cruzar a pie. Constantes: `ZANCUDO`/`FAROL` en `src/shared/sim/zancudo.ts`, `SWAMP_DUNGEON.vents`, `ZARZAL_KNOT` en `src/shared/swamp.ts`.
+
+## Slice 3 · S3-G — Fogatas del Pantano y visiones — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-G-fogatas-visiones.md` (9e30e11).
+- Commits: 74ed097 (arreglo: id propio del bruto de turba, 900_004, + test de ids únicos), f0281fa (T1 reglas: `src/shared/fogatas.ts`, `VISION.swamp`/`knot`), 65bde53 (T2 servidor, protocolo v31), 31b88b3 (T3 cliente).
+- Tests: npm test 610 (antes 593), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 31**. Campo guardado nuevo opcional `SavedWorld.fogatas`: las partidas viejas cargan con las cuatro apagadas.
+- Cómo funciona:
+  - **4 fogatas** (anillo de piedras) en montículos que no usan ni los santuarios ni la rana, repartidas de norte a sur; cada una al 60 % del radio del montículo, hacia el bosque (nunca encima de un árbol de ámbar).
+  - **Encender:** una Llamarada a ≤4 m, o E / A a ≤3 m **con la antorcha** del poste de Candiles (se gasta). Sin fuego: "Hace falta fuego". Encendidas **para todo el mundo**, para siempre; la llama se ve a través de la niebla.
+  - **Viajar:** E / A junto a una encendida → "Volver al Corazón del Bosque"; en el Corazón, el **Menú** muestra "Ir a la fogata N" por cada encendida. **5 s** mirando el fuego ("Viajando… N s"), **solo de día**. Lo cortan: un golpe (perder salud), moverse más de 1,5 m, la noche, morir o montar. Se llega 2 m al este del anillo, o al sitio de reaparecer del Corazón. Las monturas se quedan donde estaban.
+  - El servidor valida todo: fogata encendida, alcance, de día, vivo, fuera de mazmorras, sin montura/asiento/pez/rana/ballena, sin doma ni carrera, que exista el Corazón.
+  - **Visiones:** la primera vez que alguien entra en el Pantano («¿Te gusta mi niebla, Ana?», con su nombre) y al quemar el nudo del Zarzal («Quemar mi seto. Qué educados…», nombra a quien lo quemó). Las de la Gata y El Zancudo ya estaban. **Marcas `// S3-G`: resueltas todas.**
+- Decidido por Claude — revisar:
+  - Solo Corazón ↔ fogata (el spec no pide fogata ↔ fogata). Montado: "Baja de la montura primero".
+  - "Cancelado por daño" = la salud baja de la que tenías al empezar (también el hambre o el frío).
+  - La visión de entrada salta cuando `swampSeen` pasa a verdadero: una vez por mundo; los mundos que ya lo tenían no la ven.
+  - Mensajes nuevos `{ t: 'fogata', id }` y `{ t: 'travel', to: 'heart' | 0–3 }`; `snap.fogatas`, `SelfState.travel`.
+  - Mallas normales (4 anillos de 8 piedras + llama `fog: false`), sin instancias ni luces reales: son solo 4.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo en los tests → 31. `claimed` de `swamp-shrines.ts` ahora se exporta como `claimedMounds`.
+- Rendimiento móvil: 36 mallas pequeñas, 0 luces.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: coger antorcha en Candiles y encender la fogata más cercana; de día, E en ella y esperar 5 s; recibir un golpe a mitad; probar de noche. Menú en el Corazón → fogata. ¿Se ve la llama en la niebla? ¿5 s se hacen largos? Constantes: `FOGATA` en `src/shared/fogatas.ts`.
