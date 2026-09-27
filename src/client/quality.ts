@@ -133,6 +133,15 @@ function detectGpu(): string {
   }
 }
 
+/** True when a tier was chosen before (menu, probe or guard): no first-game probe then. */
+export function hasSavedTier(): boolean {
+  try {
+    return localStorage.getItem(KEY) !== null;
+  } catch {
+    return true; // storage blocked: can't remember a verdict, so don't probe every time
+  }
+}
+
 export function loadTier(): Tier {
   try {
     const saved = localStorage.getItem(KEY);

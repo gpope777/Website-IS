@@ -60,7 +60,14 @@ import { ATALAYA } from '../shared/sim/cucurucho';
 import { buildAtalaya, UmbralMeshes } from './scene/umbral';
 import { animFor, createBody, rollInput, staminaFor, stepBody, type Body } from './movement';
 import { Connection, wsUrl, type NetStatus } from './net';
-import { loadTier, saveTier, TIERS, type Tier } from './quality';
+import { FpsGuard, hasSavedTier, loadTier, lowerTier, PROBE, probeVerdict, saveTier, TIERS, type Tier } from './quality';
+import { FpsMeter } from './fps-meter';
+import type { PerfStop } from './perf-hook';
+
+/** V2-A: `?perf=1` exposes window.__perf for `npm run perf`. Only in dev and `--mode perf` builds; production strips it. */
+const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
+const OFFER_KEY = 'bosque.tierOffer';
+
 import { DayLight } from './scene/sky';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
@@ -190,7 +197,17 @@ export class Game {
   private readonly conn: Connection;
   private readonly keyboard: Keyboard;
   private readonly touch: TouchControls | null;
-  private readonly tier: Tier = loadTier();
+  private tier: Tier = loadTier();
+  /** V2-A: first game (no saved tier) → frame times of the first seconds in the world. */
+  private probe: number[] | null = hasSavedTier() ? null : [];
+  private probeT = 0;
+  private guard: FpsGuard | null = null;
+  /** Pixel ratio the guard lowered us to, as a fraction of the tier's (1 = untouched). */
+  private ratioScale = 1;
+  private fpsMeter: FpsMeter | null = null;
+  private readonly perfMode = PERF_BUILD && new URLSearchParams(location.search).has('perf');
+  private perfStop: PerfStop | null = null;
+  private perfOff: (() => void) | null = null;
   private readonly timer = new THREE.Timer();
   private readonly colliders = new ColliderGrid();
   private readonly structures = new StructureMeshes();
@@ -456,13 +473,78 @@ export class Game {
     loadModels()
       .then((k) => (this.kits = k))
       .catch(() => this.hud.toast('No se pudieron cargar los personajes'));
+    if (new URLSearchParams(location.search).has('fps')) this.fpsMeter = new FpsMeter(root);
+    if (PERF_BUILD && this.perfMode) {
+      this.probe = null;
+      void import('./perf-hook').then((m) => {
+        if (this.disposed) return;
+        this.perfOff = m.installPerfHook({
+          renderer: this.renderer,
+          ready: () => !!this.body && !!this.terrain && !!this.kits,
+          tier: () => this.tier,
+          stop: (p) => (this.perfStop = p),
+        });
+      });
+    } else this.guard = new FpsGuard(this.tier, this.renderer.getPixelRatio());
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  /** V2-A: lower the tier now (pixel ratio, far plane, shadows); grass and terrain detail follow on the next entry. */
+  private lowerTo(t: Tier): void {
+    this.tier = t;
+    saveTier(t);
+    const s = TIERS[t];
+    this.ratioScale = 1;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, s.pixelRatio));
+    if (this.renderer.shadowMap.enabled && !s.shadows) {
+      this.renderer.shadowMap.enabled = false;
+      this.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        for (const mat of Array.isArray(m) ? m : m ? [m] : []) mat.needsUpdate = true;
+      });
+    }
+    this.hud.toast('Bajé los gráficos.');
+  }
+
+  /** V2-A: the first-game probe, the in-game guard and the `?fps=1` counter. `raw` is the unclamped frame time (s). */
+  private watchFps(raw: number): void {
+    this.fpsMeter?.update(raw, this.tier, this.ratioScale);
+    if (this.probe) {
+      this.probe.push(raw * 1000);
+      this.probeT += raw;
+      if (this.probeT >= PROBE.secs) {
+        const v = probeVerdict(this.probe, this.tier, !!this.touch);
+        this.probe = null;
+        const down = v === 'down' ? lowerTier(this.tier) : null;
+        if (down) {
+          this.lowerTo(down);
+          this.guard = new FpsGuard(down, this.renderer.getPixelRatio());
+        } else saveTier(this.tier); // the guess held: don't probe again
+        if (v === 'offer') {
+          try {
+            if (!localStorage.getItem(OFFER_KEY)) {
+              localStorage.setItem(OFFER_KEY, '1');
+              this.hud.toast('Esto va sobrado: prueba gráficos Media en el Menú.');
+            }
+          } catch {
+            // storage blocked: no offer
+          }
+        }
+      }
+      return;
+    }
+    const a = this.guard?.feed(raw, performance.now() / 1000);
+    if (!a) return;
+    if (a.kind === 'tier') return this.lowerTo(a.tier);
+    this.ratioScale = a.ratio / Math.min(devicePixelRatio, TIERS[this.tier].pixelRatio);
+    this.renderer.setPixelRatio(a.ratio);
   }
 
   dispose(): void {
     this.disposed = true;
     this.conn.close();
     this.renderer.setAnimationLoop(null);
+    this.perfOff?.();
     this.keyboard.dispose();
     this.touch?.dispose();
     document.removeEventListener('mousemove', this.onMouse);
@@ -1687,14 +1769,18 @@ export class Game {
 
   private frame(): void {
     this.timer.update();
-    const dt = Math.min(this.timer.getDelta(), 0.1);
+    const raw = this.timer.getDelta();
+    const dt = Math.min(raw, 0.1);
     const b = this.body;
     const terrain = this.terrain;
     if (!b || !terrain) {
       this.renderer.render(this.scene, this.camera);
       return;
     }
+    this.watchFps(raw);
     this.serverTime += dt;
+    const stop = this.perfStop;
+    if (stop) this.serverTime = (Math.floor(this.serverTime / DAY_LENGTH) + stop.frac) * DAY_LENGTH;
 
     const now = performance.now();
     const rolling = now < this.rollUntil;
@@ -1746,9 +1832,16 @@ export class Game {
     if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.onDragon || this.whaleSeat !== null) anim = 'idle';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
+    if (stop) {
+      // perf harness: hold the player at the stop, camera fixed; nothing is sent
+      Object.assign(b, { x: stop.x, y: stop.y ?? terrain.heightAt(stop.x, stop.z), z: stop.z, vx: 0, vy: 0, vz: 0, climb: null, wall: false, gliding: false });
+      this.rig.yaw = stop.yaw;
+      this.rig.pitch = stop.pitch;
+      anim = 'idle';
+    }
 
     this.sendTimer -= dt;
-    if (this.sendTimer <= 0 && !this.dead) {
+    if (this.sendTimer <= 0 && !this.dead && !stop) {
       this.sendTimer = 0.1;
       const msg = { t: 'move' as const, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.facing), anim: anim as Anim };
       const key = JSON.stringify(msg);
