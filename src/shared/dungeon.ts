@@ -4,6 +4,7 @@ import type { Crag } from './crags';
 import type { Shrine } from './shrines';
 import { clampCoast, coastFloor, COAST_DUNGEON, inCoastDungeon } from './coast-dungeon';
 import { clampSwampDungeon, inSwampDungeon, SWAMP_DUNGEON, swampFloor } from './swamp-dungeon';
+import { clampMountainDungeon, inMountainDungeon, MOUNTAIN_DUNGEON } from './mountain-dungeon';
 
 /**
  * La Raíz-madre (spec §7): an entrance in the world and a handmade interior far outside
@@ -65,9 +66,9 @@ export function inDungeon(x: number, z: number, pad = 0): boolean {
   return Math.abs(x - DUNGEON.x) <= DUNGEON.halfW + pad && z >= DUNGEON.z0 - pad && z <= DUNGEON.z1 + pad;
 }
 
-/** Inside any interior (the forest's, the coast's or the swamp's): warm, no mounts, walls instead of the map edge. */
+/** Inside any interior (the forest's, the coast's, the swamp's or the mountain's): warm, no mounts, walls instead of the map edge. */
 export function inAnyDungeon(x: number, z: number, pad = 0): boolean {
-  return inDungeon(x, z, pad) || inCoastDungeon(x, z, pad) || inSwampDungeon(x, z, pad);
+  return inDungeon(x, z, pad) || inCoastDungeon(x, z, pad) || inSwampDungeon(x, z, pad) || inMountainDungeon(x, z, pad);
 }
 
 export function inBossRoom(x: number, z: number): boolean {
@@ -91,15 +92,16 @@ export function leverPos(i: number): { x: number; z: number } {
 /** The world's terrain plus the interior's flat floor. Client and server both use it. */
 export function withDungeon(base: Terrain): Terrain {
   return {
-    heightAt: (x, z) => (inDungeon(x, z, DUNGEON.pad) ? DUNGEON.floor : inCoastDungeon(x, z, COAST_DUNGEON.pad) ? coastFloor(x, z) : inSwampDungeon(x, z, SWAMP_DUNGEON.pad) ? swampFloor(x, z) : base.heightAt(x, z)),
+    heightAt: (x, z) => (inDungeon(x, z, DUNGEON.pad) ? DUNGEON.floor : inCoastDungeon(x, z, COAST_DUNGEON.pad) ? coastFloor(x, z) : inSwampDungeon(x, z, SWAMP_DUNGEON.pad) ? swampFloor(x, z) : inMountainDungeon(x, z, MOUNTAIN_DUNGEON.pad) ? MOUNTAIN_DUNGEON.floor : base.heightAt(x, z)),
     density: (x, z) => base.density(x, z),
   };
 }
 
-/** Where a step from (px,pz) toward (nx,nz) ends: the interior walls and shut gates (either way) inside, the map edge outside. `gates[i]` = gate i open; `coastGates` / `swampGates` the same for the other interiors. */
-export function clampStep(px: number, pz: number, nx: number, nz: number, gates: readonly boolean[], coastGates: readonly boolean[] = [], swampGates: readonly boolean[] = []): { x: number; z: number } {
+/** Where a step from (px,pz) toward (nx,nz) ends: the interior walls and shut gates (either way) inside, the map edge outside. `gates[i]` = gate i open; `coastGates` / `swampGates` / `mountainGates` the same for the other interiors. */
+export function clampStep(px: number, pz: number, nx: number, nz: number, gates: readonly boolean[], coastGates: readonly boolean[] = [], swampGates: readonly boolean[] = [], mountainGates: readonly boolean[] = []): { x: number; z: number } {
   if (inCoastDungeon(px, pz, 2)) return clampCoast(px, pz, nx, nz, coastGates);
   if (inSwampDungeon(px, pz, 2)) return clampSwampDungeon(px, pz, nx, nz, swampGates);
+  if (inMountainDungeon(px, pz, 2)) return clampMountainDungeon(px, pz, nx, nz, mountainGates);
   if (!inDungeon(px, pz, 2)) return clampMap(nx, nz, 3);
   const x = clamp(nx, DUNGEON.x - DUNGEON.halfW + 0.5, DUNGEON.x + DUNGEON.halfW - 0.5);
   let z = clamp(nz, DUNGEON.z0 + 0.5, DUNGEON.z1 - 0.5);

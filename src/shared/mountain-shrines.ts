@@ -42,19 +42,19 @@ export const BLOCKS_SOLUTION: readonly { i: number; dir: Cell }[] = [
   { i: 0, dir: [0, 1] },
 ];
 
-/** Push block i one cell along dir; null if it would leave the grid or hit another block. */
-export function pushBlock(blocks: readonly Cell[], i: number, dir: Cell): [number, number][] | null {
+/** Push block i one cell along dir; null if it would leave the n × n grid or hit another block. */
+export function pushBlock(blocks: readonly Cell[], i: number, dir: Cell, n: number = BLOCKS.n): [number, number][] | null {
   const b = blocks[i];
   if (!b) return null;
   const to: [number, number] = [b[0] + dir[0], b[1] + dir[1]];
-  if (to[0] < 0 || to[1] < 0 || to[0] >= BLOCKS.n || to[1] >= BLOCKS.n) return null;
+  if (to[0] < 0 || to[1] < 0 || to[0] >= n || to[1] >= n) return null;
   if (blocks.some((o, j) => j !== i && o[0] === to[0] && o[1] === to[1])) return null;
   return blocks.map((o, j) => (j === i ? to : [o[0], o[1]]));
 }
 
 /** Every marked cell holds a block. */
-export function blocksSolved(blocks: readonly Cell[]): boolean {
-  return BLOCKS.cells.every((c) => blocks.some((b) => b[0] === c[0] && b[1] === c[1]));
+export function blocksSolved(blocks: readonly Cell[], cells: readonly Cell[] = BLOCKS.cells): boolean {
+  return cells.every((c) => blocks.some((b) => b[0] === c[0] && b[1] === c[1]));
 }
 
 /** World centre of a grid cell (the grid is centred on the shrine). */
