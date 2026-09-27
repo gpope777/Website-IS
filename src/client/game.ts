@@ -34,7 +34,7 @@ import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
 import { buildCrags, buildVine } from './scene/crags';
 import { ShrineMeshes } from './scene/shrines';
-import { buildTerrainMesh, buildWater, tintTerrain } from './scene/terrain-mesh';
+import { buildTerrainMesh, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
 import { CorruptionMeshes } from './scene/corruption';
 import { generateZones, type Zone } from '../shared/corruption';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
@@ -280,7 +280,9 @@ export class Game {
     this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
     this.zones = generateZones(this.terrain, seed, this.entrance);
-    this.ground = buildTerrainMesh(this.terrain, t.terrainSegments);
+    const [nearPatch, farPatch] = terrainPatches(t.terrainSegments);
+    this.ground = buildTerrainMesh(this.terrain, nearPatch!);
+    this.scene.add(buildTerrainMesh(this.terrain, farPatch!)); // far sea: coarse, never tinted
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
     this.corruptKey = '';
     this.scene.add(this.corruptionMeshes.group);
