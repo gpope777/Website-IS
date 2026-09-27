@@ -1,6 +1,6 @@
 # Progresión · P4-A: Savia y Rango — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** the first plan of subproject #4 (spec §3, row P4-A of §11). Every player earns **Savia** (XP) and climbs **Rango 1–8**. Savia comes mostly from first times; most of it is **computed from what the save already knows** (`milestoneXp`), so old saves land on the right Rango. A small saved `xp` holds the sources the save can't reconstruct (kills with a daily cap of 40, lieutenants, cleaned zones, broken pillars, held raids, the whale). On a Rango up: a short HUD card **"Rango 4. Un punto de oficio."** and a green flash on the robot, seen by everyone. Ranks give **no** damage, health or defence.
 
@@ -41,22 +41,22 @@ export function killXp(kind: string): number;
 export function addKillXp(killDay, day, kind): { killDay; gain };
 ```
 
-- [ ] **Step 1: failing tests.** `rankOf(0)=1, 79→1, 80→2, 1650→8, 99999→8`; `pointsOf(8)=7`; `nextRankXp(8)=null`. `milestoneXp` of an empty player 0; of a full-story save (12 shrines, 6 chests, 4 powers, steed+fish+frog+dragon, weapon 6, Capa 4, ending) between 1200 and 1400 (Rango 6–7; the live sources — lieutenants, zones, pillars, raids, kills — carry it to 8 near the end). Kill cap: 45 wolves in one day give 40, the next day gives again. Names: `NAMES.xp`, `NAMES.rank`.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): reglas puras de Savia y Rango`.
+- [x] **Step 1: failing tests.** `rankOf(0)=1, 79→1, 80→2, 1650→8, 99999→8`; `pointsOf(8)=7`; `nextRankXp(8)=null`. `milestoneXp` of an empty player 0; of a full-story save (12 shrines, 6 chests, 4 powers, steed+fish+frog+dragon, weapon 6, Capa 4, ending) between 1200 and 1400 (Rango 6–7; the live sources — lieutenants, zones, pillars, raids, kills — carry it to 8 near the end). Kill cap: 45 wolves in one day give 40, the next day gives again. Names: `NAMES.xp`, `NAMES.rank`.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(progresion): reglas puras de Savia y Rango`.
 
 ### Task 2: server — awards, rank-up, snapshot (protocolo v55)
 
-- [ ] **Step 1: failing tests** (`world-sim-p4a.test.ts`). A fresh player: `self.rank` 1, `self.xp` 0. A loaded old save with 3 shrines + Enredadera: rank from `milestoneXp` with no rank-up message on connect. Striking a wolf dead gives 1 `xp` (saved); the day's cap holds. A raid dawn with the Heart alive gives 15 to each connected. Breaking a pillar gives 40 to those ≤ 40 m. Crossing 80 → a `rankUp` to all (`name`, `rank: 2`) and "Rango 2. Un punto de oficio." to the player, once. Protocol 55.
-- [ ] **Step 2: implement** (`gainXp`, calls in `strike`, whale win, `cleanse`, `breakPillar`, raid dawn; `Live.rank`; rank check at the end of `step`; `SelfState.xp/rank`).
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): Savia y Rango en el servidor (protocolo v55)`.
+- [x] **Step 1: failing tests** (`world-sim-p4a.test.ts`). A fresh player: `self.rank` 1, `self.xp` 0. A loaded old save with 3 shrines + Enredadera: rank from `milestoneXp` with no rank-up message on connect. Striking a wolf dead gives 1 `xp` (saved); the day's cap holds. A raid dawn with the Heart alive gives 15 to each connected. Breaking a pillar gives 40 to those ≤ 40 m. Crossing 80 → a `rankUp` to all (`name`, `rank: 2`) and "Rango 2. Un punto de oficio." to the player, once. Protocol 55.
+- [x] **Step 2: implement** (`gainXp`, calls in `strike`, whale win, `cleanse`, `breakPillar`, raid dawn; `Live.rank`; rank check at the end of `step`; `SelfState.xp/rank`).
+- [x] **Step 3:** green, self-review, commit `feat(progresion): Savia y Rango en el servidor (protocolo v55)`.
 
 ### Task 3: client — the card, the flash, the mochila line
 
-- [ ] **Step 1: failing tests** (`rank-ui.ts`): `rankLine(xp, rank)` → "Rango 3 · 300/420 Savia", at 8 "Rango 8 · 1700 Savia"; `rankUpText(4)` → "Rango 4. Un punto de oficio.".
-- [ ] **Step 2: implement** (on `rankUp`: if it is you, show the card; flash that player's actor green 1.2 s; mochila line).
-- [ ] **Step 3:** green, self-review, commit `feat(progresion): tarjeta de Rango y destello`.
+- [x] **Step 1: failing tests** (`rank-ui.ts`): `rankLine(xp, rank)` → "Rango 3 · 300/420 Savia", at 8 "Rango 8 · 1700 Savia"; `rankUpText(4)` → "Rango 4. Un punto de oficio.".
+- [x] **Step 2: implement** (on `rankUp`: if it is you, show the card; flash that player's actor green 1.2 s; mochila line).
+- [x] **Step 3:** green, self-review, commit `feat(progresion): tarjeta de Rango y destello`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF "## Progresión · P4-A — …"; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF "## Progresión · P4-A — …"; one short comment on PR #3.

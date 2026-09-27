@@ -1060,3 +1060,23 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: con `ending: true`, A en la puerta de la torre → cima; saltar y planear hacia el sur; volver con A en la fogata. Poner la hora en la noche del día 8 (o 16…) y buscar la Estrella en la Ceniza; domarla con y sin un amigo al lado; correr con ella. ¿Se ve bien el papel girando? Constantes: `ESTRELLA` en `src/shared/estrella.ts`, `LOOKOUT` en `src/shared/ending.ts`.
+
+## Progresión · P4-A — Savia y Rango — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-progresion-P4-A-savia-rango.md` (a1c3f2f).
+- Commits: 45d0c5f (T1 reglas puras: `src/shared/progression.ts`, `NAMES.xp`/`NAMES.rank`), 117c315 (T2 servidor, protocolo v55), 081f5b0 (T3 cliente).
+- Tests: npm test 991 (antes 979), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 55**. Campos guardados nuevos, opcionales: `SavedPlayer.xp`, `SavedPlayer.killDay`. Las partidas viejas cargan y salen con su Rango.
+- Cómo funciona:
+  - **Savia = hitos que el guardado ya sabe + `xp` guardado.** `milestoneXp` cuenta santuarios ×30, cofres ×10, monturas ×40 (ciervo, pez, rana, dragón, Estrella), poderes ×110 (60 del altar + 50 del jefe de su mazmorra), niveles de arma y Capa ×10, el final 150. Nadie empieza en Rango 1 con media historia hecha.
+  - **`xp` guardado:** matar con golpe o flecha (lobo 1, bruto 3, rayo 2; **tope 40 por día de juego**), tenientes y La Flecha de la Torre 50 a los vivos a ≤ 40 m, ballena 40 a cada tripulante, zona limpia 15 a quien está a ≤ radio + 10 m, Pilar-raíz roto 40 a ≤ 40 m, asedio aguantado 15 a cada conectado.
+  - **Rangos:** 0 / 80 / 220 / 420 / 680 / 980 / 1300 / 1650 (`PROGRESS.ranks`). Al subir, mensaje `rankUp` a todos: tarjeta **"Rango N. Un punto de oficio."** para ti y un **destello verde** (esfera translúcida 1,2 s) en tu robot para todos. En la mochila: "Rango 3 · 300/420 Savia · …". Los rangos no dan daño, vida ni defensa.
+- Decidido por Claude — revisar:
+  - Los 4 jefes de mazmorra (Tragón, Antenón, Zancudo, Cucurucho) no dan Savia en la pelea: van con el poder de su altar (así no se cuentan dos veces). Quien ayuda en la pelea pero no coge el poder los cobra al cogerlo.
+  - El final (150) se da a todos los jugadores del mundo, no solo a los que estaban en la pelea (el guardado no sabe quién estaba).
+  - Solo las muertes por golpe o flecha dan Savia; viento, fuego, trampas y los aliados del Corazón no. "Bestia de ceniza" = el rayo.
+  - Con toda la historia sin contar lo vivo salen ~1270 (Rango 6); tenientes, zonas, pilares y asedios lo llevan a 8 cerca del final. Calibrar en juego.
+  - No hay puntos de oficio que gastar todavía (P4-B).
+  - Cambios de regla con tests adaptados (ninguno borrado): versión 54 → 55 en `protocol.test.ts`, `world-sim.test.ts` y `world-sim-s5h.test.ts`.
+- Rendimiento móvil: 1 esfera por jugador creada la primera vez que sube, oculta el resto del tiempo.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: cargar una partida avanzada y mirar el Rango en la mochila; matar lobos hasta el tope; romper un pilar con un amigo al lado; ver la tarjeta y el destello (también desde el otro jugador). Constantes: `PROGRESS` en `src/shared/progression.ts`.
