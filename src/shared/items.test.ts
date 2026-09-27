@@ -34,3 +34,13 @@ describe('aventura structures', () => {
     expect(TEND_COST).toEqual({ berries: 5 });
   });
 });
+
+describe('weapon upgrade', () => {
+  it('adds 15 % per level, up to 3', async () => {
+    const { weaponMult, UPGRADE } = await import('./items');
+    expect(weaponMult(0)).toBe(1);
+    expect(weaponMult(3)).toBeCloseTo(1.45, 6);
+    expect(weaponMult(9)).toBeCloseTo(1.45, 6);
+    expect(UPGRADE.cost.pearl).toBe(3);
+  });
+});

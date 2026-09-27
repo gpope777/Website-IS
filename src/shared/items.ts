@@ -1,9 +1,10 @@
 import { NAMES } from './names';
-export type ItemId = 'wood' | 'stone' | 'berries';
+export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl';
 export type Inventory = Partial<Record<ItemId, number>>;
 
-export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries'];
-export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas' };
+export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl'];
+const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s` };
 
 export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots';
 export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots'];
@@ -20,6 +21,12 @@ export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall:
 /** Tending the Heart: berries in, HP back. */
 export const TEND_COST: Inventory = { berries: 5 };
 export const TEND_HEAL = 100;
+/** Weapon upgrade at the Heart (spec §6.2): pearls from the sunken chests plus a fixed cost; +15 % damage per level. */
+export const UPGRADE = { cost: { pearl: 3, stone: 10, wood: 5 }, step: 0.15, max: 3 } as const;
+
+export function weaponMult(lvl: number): number {
+  return 1 + UPGRADE.step * Math.max(0, Math.min(UPGRADE.max, Math.floor(lvl)));
+}
 
 export function count(inv: Inventory, item: ItemId): number {
   return inv[item] ?? 0;
