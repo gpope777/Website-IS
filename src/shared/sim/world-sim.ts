@@ -48,7 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
-import { buy, canPlaceStall, collectTill, newStall, offerInv, pickUp, restock, setShelf, STALL, takeShelf, trade, TRADE, type ShopResult, type Stall, type TradeLine } from '../shop';
+import { biomeRestock, buy, canPlaceStall, collectTill, deliver, MERCHANT, merchantDeal, newStall, offerInv, RARE, pickUp, restock, setShelf, STALL, takeShelf, trade, TRADE, type ShopResult, type Stall, type TradeLine } from '../shop';
 import { addKillXp, BOSS_KINDS, bossesOf, canLearn, FEAT_FAST, FEAT_HAT, FEAT_HEART, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -165,6 +165,10 @@ export interface SavedPlayer {
   raidsHeld?: number;
   /** P4-D: Proezas done (ids 1–6). Optional. */
   feats?: number[];
+  /** T6-D: rare materials this player has gathered (never bought). Optional: old saves infer it at load. */
+  found?: ItemId[];
+  /** T6-D: tratos with the Buhonero on game day `day`. Optional. */
+  merchant?: { day: number; used: number };
 }
 
 export interface SavedWorld {
@@ -176,6 +180,8 @@ export interface SavedWorld {
   structures: Structure[];
   /** T6-A: the Puestos (not structures: no hp, never a siege target). Optional: older saves have none. */
   stalls?: Stall[];
+  /** T6-D: the Buhonero stands by the Corazón (from the first dawn after the rescue). Optional. */
+  merchant?: true;
   /** Only resources that are partly or fully harvested. */
   resources: Record<string, { uses: number; regrow: number }>;
   players: SavedPlayer[];
@@ -454,6 +460,8 @@ export class WorldSim {
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
   private readonly structures: Structure[];
   private stalls: Stall[];
+  /** T6-D: the Buhonero is here (saved). */
+  private merchantOn = false;
   private nextStructureId: number;
   private readonly graves: Grave[];
   private nextGraveId: number;
@@ -614,6 +622,11 @@ export class WorldSim {
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
     this.stalls = structuredClone(saved.stalls ?? []);
+    this.merchantOn = !!saved.merchant;
+    for (const p of this.players.values()) {
+      const f = p.found === undefined ? inferFound(p) : [];
+      if (f.length) p.found = f;
+    }
     this.raidLevel = saved.raidLevel ?? 0;
     this.raidN = saved.raidN ?? 0;
     this.swampSeen = saved.swampSeen ?? false;
@@ -784,7 +797,11 @@ export class WorldSim {
       case 'stallPlace':
         return this.onStallPlace(p, msg.x, msg.z, msg.rot);
       case 'stallSet':
-        return this.onStall(p, (s, inv) => setShelf(s, msg.shelf, msg.give, msg.n, msg.want, msg.m, inv));
+        return this.onStall(p, (s, inv) => setShelf(s, msg.shelf, msg.give, msg.n, msg.want, msg.m, inv, msg.mode));
+      case 'deliver':
+        return this.onDeliver(p, msg.stall, msg.shelf);
+      case 'deal':
+        return this.onDeal(p, msg.id);
       case 'stallStock':
         return this.onStall(p, (s, inv) => restock(s, msg.shelf, inv));
       case 'stallTake':
@@ -858,6 +875,7 @@ export class WorldSim {
     this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
     if (!night && this.wasNight) this.wolves = this.wolves.filter((w) => inTowerDungeon(w.x, w.z)); // the tower's beasts stay
+    if (!night && this.wasNight) this.shopDawn();
     this.wasNight = night;
     if (!night) this.spawnAsh();
 
@@ -1016,7 +1034,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: this.ending ? LOOKOUT.h : towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, estrella: this.estrellaView(near), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: this.ending ? LOOKOUT.h : towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, estrella: this.estrellaView(near), merchant: this.merchantAt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -1034,6 +1052,7 @@ export class WorldSim {
       nextStructureId: this.nextStructureId,
       structures: this.structures.filter((s) => s.kind !== 'pillar').map((s) => ({ ...s })), // pillars are temporary
       ...(this.stalls.length ? { stalls: structuredClone(this.stalls) } : {}),
+      ...(this.merchantOn ? { merchant: true as const } : {}),
       resources: Object.fromEntries([...this.resState].map(([id, s]) => [String(id), { ...s }])),
       players: [...this.players.values()].map((p) => structuredClone(p)),
       raidLevel: this.raidLevel,
@@ -1270,7 +1289,7 @@ export class WorldSim {
     if (st.uses <= 0) return;
     st.uses -= 1;
     l.harvestReadyAt = this.time + HARVEST_COOLDOWN;
-    p.inv = addItem(p.inv, def.item, def.amount + (hasSkill(p, 'mano') ? SKILL_FX.harvest : 0));
+    this.gain(p, def.item, def.amount + (hasSkill(p, 'mano') ? SKILL_FX.harvest : 0));
     if (st.uses === 0) {
       st.regrow = def.regrow;
       this.outbox.push({ to: null, msg: { t: 'res', id, gone: true } });
@@ -1325,7 +1344,7 @@ export class WorldSim {
     if (!c || p.dead || opened.includes(id)) return;
     if (Math.hypot(c.x - p.x, c.z - p.z) > CHEST.reach || p.y > c.y + CHEST.above) return;
     p.chests = [...opened, id];
-    for (const [item, n] of Object.entries(c.loot) as [ItemId, number][]) p.inv = addItem(p.inv, item, n);
+    for (const [item, n] of Object.entries(c.loot) as [ItemId, number][]) this.gain(p, item, n);
     const mat = (Object.entries(c.loot) as [ItemId, number][]).find(([k]) => k !== 'pearl')!;
     this.tell(p.name, `Cofre hundido: ${mat[1]} de ${ITEM_LABELS[mat[0]].toLowerCase()} y una ${NAMES.pearl}`);
   }
@@ -1432,6 +1451,78 @@ export class WorldSim {
       const o = this.players.get(s.owner);
       if (o) o.soldSince = (o.soldSince ?? 0) + 1;
     }
+  }
+
+  /** T6-D: gathered from the world (never bought): counts, and marks a rare material as found. */
+  private gain(p: SavedPlayer, item: ItemId, n: number): void {
+    p.inv = addItem(p.inv, item, n);
+    if (RARE.includes(item) && !(p.found ?? []).includes(item)) p.found = [...(p.found ?? []), item];
+  }
+
+  /** T6-D: where the Buhonero stands, or null (not yet, or no Corazón). */
+  merchantAt(): { x: number; z: number } | null {
+    const h = this.heart();
+    return this.merchantOn && h ? { x: r2(h.x + MERCHANT.offset.x), z: r2(h.z + MERCHANT.offset.z) } : null;
+  }
+
+  private dealsUsed(p: SavedPlayer): number {
+    const day = Math.floor(this.time / DAY_LENGTH);
+    return p.merchant?.day === day ? p.merchant.used : 0;
+  }
+
+  /** T6-D: one trato with the Buhonero (fixed table, 20 per player per game day). */
+  private onDeal(p: SavedPlayer, id: number): void {
+    const l = this.live.get(p.name);
+    const at = this.merchantAt();
+    if (!l || p.dead || !at || (l.buyReadyAt ?? 0) > this.time) return;
+    l.buyReadyAt = this.time + 0.5;
+    if (Math.hypot(at.x - p.x, at.z - p.z) > MERCHANT.reach) return this.tell(p.name, `Acércate al ${NAMES.merchant}.`);
+    const used = this.dealsUsed(p);
+    const r = merchantDeal(p.inv, id, used);
+    if (!r.ok) return this.tell(p.name, r.why);
+    p.inv = r.inv;
+    p.merchant = { day: Math.floor(this.time / DAY_LENGTH), used: used + 1 };
+    const d = MERCHANT.deals[id]!;
+    this.tell(p.name, `Das ${d.n} ${ITEM_LABELS[d.give].toLowerCase()}, recibes ${d.m} ${ITEM_LABELS[d.get].toLowerCase()}.`);
+  }
+
+  /** T6-D: Entregar at someone else's Encargo: paid at once from the pay set aside; whole or nothing. */
+  private onDeliver(p: SavedPlayer, id: number, shelf: number): void {
+    const l = this.live.get(p.name);
+    if (!l || p.dead || (l.buyReadyAt ?? 0) > this.time) return;
+    const i = this.stalls.findIndex((s) => s.id === id);
+    if (i < 0) return;
+    l.buyReadyAt = this.time + 0.5;
+    const s = this.stalls[i]!;
+    if (s.owner === p.name) return this.tell(p.name, 'Es tu puesto.');
+    if (Math.hypot(s.x - p.x, s.z - p.z) > STALL.reach) return this.tell(p.name, 'Acércate al puesto.');
+    const r = deliver(s, shelf, p.inv, p.name, Math.floor(this.time / DAY_LENGTH) + 1);
+    if (!r.ok) return this.tell(p.name, r.why);
+    this.stalls[i] = r.stall;
+    p.inv = r.inv;
+    const sh = s.shelves[shelf]!;
+    this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(r.stall) } });
+    this.tell(p.name, `Entregas ${sh.m} ${ITEM_LABELS[sh.want].toLowerCase()}. Cobras ${sh.n} ${ITEM_LABELS[sh.give].toLowerCase()}.`);
+    const owner = this.live.get(s.owner);
+    if (owner && owner.awayFor === null) this.tell(s.owner, `${p.name} te trajo ${sh.m} ${ITEM_LABELS[sh.want].toLowerCase()}.`);
+    else {
+      const o = this.players.get(s.owner);
+      if (o) o.soldSince = (o.soldSince ?? 0) + 1;
+    }
+  }
+
+  /** T6-D: at dawn the Buhonero arrives (after the rescue) and each Puesto gets its biome's +1. */
+  private shopDawn(): void {
+    if (!this.merchantOn && this.invasion2 === 'rescued' && this.heart()) {
+      this.merchantOn = true;
+      this.say(`Con el ${NAMES.bossForestShort} volvió alguien. El ${NAMES.merchant} monta junto al ${NAMES.heart}`);
+    }
+    this.stalls = this.stalls.map((s) => {
+      const next = biomeRestock(s, this.players.get(s.owner)?.found ?? []);
+      if (!next) return s;
+      this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(next) } });
+      return next;
+    });
   }
 
   /** T6-C: true once after a trade closed; the room persists at once. */
@@ -1580,7 +1671,7 @@ export class WorldSim {
     const at = p.amber?.[id];
     if (at !== undefined && this.time - at < this.regrowDays(p, AMBER.regrowDays) * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brotar');
     p.amber = { ...p.amber, [id]: r2(this.time) };
-    p.inv = addItem(p.inv, 'amber', AMBER.yield);
+    this.gain(p, 'amber', AMBER.yield);
     this.tell(p.name, `${ITEM_LABELS.amber}: ${AMBER.yield}`);
   }
 
@@ -1591,7 +1682,7 @@ export class WorldSim {
     const at = p.quartz?.[id];
     if (at !== undefined && this.time - at < this.regrowDays(p, QUARTZ.regrowDays) * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brillar');
     p.quartz = { ...p.quartz, [id]: r2(this.time) };
-    p.inv = addItem(p.inv, 'quartz', QUARTZ.yield);
+    this.gain(p, 'quartz', QUARTZ.yield);
     this.tell(p.name, `${ITEM_LABELS.quartz}: ${QUARTZ.yield}`);
   }
 
@@ -1778,10 +1869,10 @@ export class WorldSim {
     const ids = this.corrupt().filter((i) => !roots.includes(i) && biome(i) === mine);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
     if (mine === 'mountain') {
-      p.inv = addItem(p.inv, 'quartz', QUARTZ.orb);
+      this.gain(p, 'quartz', QUARTZ.orb);
       this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${QUARTZ.orb} de ${NAMES.quartz}`);
     } else if (mine === 'swamp') {
-      p.inv = addItem(p.inv, 'amber', AMBER.orb);
+      this.gain(p, 'amber', AMBER.orb);
       this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${AMBER.orb} de ${NAMES.amber}`);
     } else this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
     const where = { forest: 'bosque', coast: 'costa', swamp: 'pantano', mountain: 'montaña' }[mine];
@@ -2321,7 +2412,7 @@ export class WorldSim {
     this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
     const thorns = w.raid ? 0 : thornDrop(w.kind, w.x, w.z, w.kind === 'rayo' ? this.rng() : 0);
     if (thorns > 0 && by) {
-      by.inv = addItem(by.inv, 'thorn', thorns);
+      this.gain(by, 'thorn', thorns);
       this.tell(name, `+${thorns} ${NAMES.thorn}`);
     }
   }
@@ -2949,7 +3040,7 @@ export class WorldSim {
       g.flechaDown = true;
       for (const t of fighters) {
         const p = this.players.get(t.name)!;
-        p.inv = addItem(p.inv, 'thorn', FLECHA.thorns);
+        this.gain(p, 'thorn', FLECHA.thorns);
         this.tell(t.name, `+${FLECHA.thorns} ${NAMES.thorn}`);
       }
       return this.sayTower(`${NAMES.lieutenant3} se parte contra el suelo. La escalera sube`);
@@ -4137,6 +4228,7 @@ export class WorldSim {
       capa: p.capaLvl ?? 0,
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
+      deals: MERCHANT.perDay - this.dealsUsed(p),
       whaleSeat: this.seatOf(p.name),
       travel: l.travel ? Math.max(0, Math.ceil(l.travel.at - this.time - EPS)) : null,
       xp: this.xpOf(p),
@@ -4548,7 +4640,7 @@ export class WorldSim {
     const [who, item, n, label] = gata ? [NAMES.lieutenant1, 'amber', GATA.amber, NAMES.amber] as const : flecha ? [NAMES.lieutenant3, 'thorn', FLECHA.thorns, NAMES.thorn] as const : [NAMES.lieutenant2, 'quartz', TRIANGULO.quartz, NAMES.quartz] as const;
     for (const name of present) {
       const p = this.players.get(name)!;
-      p.inv = addItem(p.inv, item, n);
+      this.gain(p, item, n);
       this.tell(name, `${who} deja ${n} de ${label}`);
     }
     this.say(`${who} cae. ${gata ? 'Su manada' : 'El asedio'} huye`);
@@ -5020,4 +5112,11 @@ export class WorldSim {
     }
     this.outbox.push({ to: null, msg: { t: 'toast', text: `${p.name} ha caído` } });
   }
+}
+
+/** T6-D: old saves have no `found`: the mochila and the weapon/Capa levels tell what was gathered. */
+export function inferFound(p: SavedPlayer): ItemId[] {
+  const w = p.weaponLvl ?? 0;
+  const c = p.capaLvl ?? 0;
+  return RARE.filter((k) => (p.inv[k] ?? 0) > 0 || (k === 'pearl' && w >= 1) || (k === 'quartz' && w >= 4) || (k === 'thorn' && (w >= 6 || c >= 4)) || (k === 'amber' && c >= 1));
 }

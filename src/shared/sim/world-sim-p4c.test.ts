@@ -18,7 +18,7 @@ const texts = (sim: WorldSim) => sim.drain().flatMap((o) => (o.msg.t === 'toast'
 
 describe('P4-C Aspecto (server)', () => {
   it('protocol 57 and look decoding', () => {
-    expect(PROTOCOL_VERSION).toBe(61);
+    expect(PROTOCOL_VERSION).toBe(62);
     expect(decodeClient(JSON.stringify({ t: 'look', color: 3, hat: 0 }))).toEqual({ t: 'look', color: 3, hat: 0 });
     expect(decodeClient(JSON.stringify({ t: 'look', color: 8, hat: 0 }))).toBeNull();
     expect(decodeClient(JSON.stringify({ t: 'look', color: 0, hat: 10 }))).toBeNull();

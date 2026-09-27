@@ -125,6 +125,6 @@ describe('la Estrella (S5-H)', () => {
   it('protocol: mount act 18, version 54', () => {
     expect(decodeClient(JSON.stringify({ t: 'mount', act: 18 }))).toEqual({ t: 'mount', act: 18 });
     expect(decodeClient(JSON.stringify({ t: 'mount', act: 19 }))).toBeNull();
-    expect(PROTOCOL_VERSION).toBe(61);
+    expect(PROTOCOL_VERSION).toBe(62);
   });
 });
