@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { insideSwamp, plankPos, SWAMP_DUNGEON as S } from '../../shared/swamp-dungeon';
 import type { SwampDungeonView } from '../../shared/protocol';
 import { FUEGO } from '../../shared/fuego';
-import { WATER_LEVEL } from '../../shared/terrain';
+import { WATER_LEVEL, type Terrain } from '../../shared/terrain';
+import { ZARZAL, ZARZAL_KNOT, zarzalAt } from '../../shared/swamp';
 
 const BARK = new THREE.MeshLambertMaterial({ color: 0x3b3a26, flatShading: true });
 const ROOT = new THREE.MeshLambertMaterial({ color: 0x2e2a1c, flatShading: true });
@@ -27,6 +28,9 @@ export class SwampDungeonMeshes {
   private readonly planks: THREE.Mesh[] = [];
   private readonly altarOrb: THREE.Mesh;
   private readonly exit: THREE.Mesh;
+  private readonly ventFlares: THREE.Mesh[] = [];
+  /** El Zancudo's dive telegraph: a dark ring on the floor with a bright rim (unfogged). */
+  private readonly shadow: THREE.Group;
 
   constructor(entrance: { x: number; y: number; z: number }, shadows: boolean) {
     const r = S.trunkR;
@@ -128,6 +132,29 @@ export class SwampDungeonMeshes {
       this.handles.push(pivot);
       this.group.add(post, pivot);
     }
+    // El Zancudo's gas vents: stone rings with a flare when lit.
+    for (const v of S.vents) {
+      const p = insideSwamp(v);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(S.ventR, 0.25, 6, 16), LAMP);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(p.x, S.floor + 0.1, p.z);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(S.ventR, 16), MUD);
+      hole.rotation.x = -Math.PI / 2;
+      hole.position.set(p.x, S.floor + 0.04, p.z);
+      const flare = new THREE.Mesh(new THREE.ConeGeometry(S.ventR, 5, 10, 1, true), GLOW);
+      flare.position.set(p.x, S.floor + 2.5, p.z);
+      flare.visible = false;
+      this.ventFlares.push(flare);
+      this.group.add(ring, hole, flare);
+    }
+    this.shadow = new THREE.Group();
+    const dark = new THREE.Mesh(new THREE.CircleGeometry(1.8, 24), new THREE.MeshBasicMaterial({ color: 0x100818, transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
+    const rim = new THREE.Mesh(new THREE.RingGeometry(1.7, 1.9, 32), new THREE.MeshBasicMaterial({ color: 0xff4040, fog: false, side: THREE.DoubleSide }));
+    for (const m of [dark, rim]) m.rotation.x = -Math.PI / 2;
+    rim.position.y = 0.01;
+    this.shadow.add(dark, rim);
+    this.shadow.visible = false;
+    this.group.add(this.shadow);
     const altar = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.4, 1, 8), WALL);
     altar.position.set(X, S.floor + 0.5, S.altarZ);
     this.altarOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), new THREE.MeshBasicMaterial({ color: 0xffa040 }));
@@ -155,6 +182,13 @@ export class SwampDungeonMeshes {
       if (h) h.rotation.z = on ? -0.6 : 0.6;
     });
     this.altarOrb.visible = !fuego;
+    view.vents.forEach((on, i) => {
+      const f = this.ventFlares[i];
+      if (f) f.visible = on;
+    });
+    const sh = view.boss?.shadow;
+    this.shadow.visible = !!sh;
+    if (sh) this.shadow.position.set(sh.x, S.floor + 0.06, sh.z);
   }
 
   animate(t: number): void {
@@ -162,6 +196,8 @@ export class SwampDungeonMeshes {
     this.altarOrb.position.y = S.floor + 1.7 + Math.sin(t * 2) * 0.1;
     this.exit.rotation.y = t * 0.5;
     for (const f of this.lampFlames) f.scale.y = 1 + Math.sin(t * 9 + f.position.z) * 0.15;
+    for (const f of this.ventFlares) f.scale.y = 1 + Math.sin(t * 11 + f.position.x) * 0.2;
+    this.shadow.scale.setScalar(1 + Math.sin(t * 12) * 0.06);
   }
 }
 
@@ -188,5 +224,36 @@ export class FlameFx {
     this.left -= dt;
     (this.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, this.left) * 1.5;
     if (this.left <= 0) this.mesh.visible = false;
+  }
+}
+
+/** The Zarzal knot on the forest's west rim: a withered root and a hedge of thorns across its gap, gone once burnt. */
+export class ZarzalKnot {
+  readonly group = new THREE.Group();
+  constructor(terrain: Terrain) {
+    const K = ZARZAL_KNOT;
+    const y = terrain.heightAt(K.x, K.z);
+    const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.1, 0.35, 40, 6, 2, 3), ROOT);
+    knot.position.set(K.x, y + 1.4, K.z);
+    knot.rotation.set(0.4, 0.7, 0);
+    this.group.add(knot);
+    // The gap's own hedge (the seeded thorn field leaves it bare): one row of spikes per 2 m.
+    const spikes = new THREE.InstancedMesh(new THREE.ConeGeometry(0.25, 1.5, 4), THORN, 120);
+    const m = new THREE.Matrix4();
+    let n = 0;
+    for (let x = ZARZAL.x1; x > ZARZAL.x0 && n < 120; x -= 2) {
+      for (let dz = -K.gap + 1; dz < K.gap; dz += 3) {
+        const z = K.z + dz + ((x | 0) % 2);
+        if (!zarzalAt(terrain, x, z) || n >= 120) continue;
+        m.makeTranslation(x, Math.max(terrain.heightAt(x, z), WATER_LEVEL) + 0.7, z);
+        spikes.setMatrixAt(n++, m);
+      }
+    }
+    spikes.count = n;
+    spikes.instanceMatrix.needsUpdate = true;
+    this.group.add(spikes);
+  }
+  sync(burnt: boolean): void {
+    this.group.visible = !burnt;
   }
 }

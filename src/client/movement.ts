@@ -18,6 +18,8 @@ export interface MoveInput {
 }
 
 export interface Body {
+  /** The Zarzal knot burnt (from the snapshot): its gap no longer slows. */
+  thornsOpen?: boolean;
   x: number;
   y: number;
   z: number;
@@ -157,7 +159,7 @@ export function stepBody(
   const base = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
   // El Zarzal holds walkers and deer to a crawl; the swamp's bog slows walkers (the server checks both).
   const grounded = b.onGround && !swimming;
-  const speed = grounded && zarzalAt(terrain, b.x, b.z) ? Math.min(base, ZARZAL.speed) : grounded && !b.riding && inBog(terrain, b.x, b.z) ? base * BOG.k : base;
+  const speed = grounded && zarzalAt(terrain, b.x, b.z, b.thornsOpen) ? Math.min(base, ZARZAL.speed) : grounded && !b.riding && inBog(terrain, b.x, b.z) ? base * BOG.k : base;
 
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
   const s = Math.sin(camYaw);
@@ -320,7 +322,7 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
   const wz = -ix * s + iz * c;
   if (b.onGround) {
     // El Zarzal still holds it to a crawl (the server checks the same).
-    const speed = zarzalAt(terrain, b.x, b.z) ? ZARZAL.speed : input.sprint ? FROG.run : FROG.walk;
+    const speed = zarzalAt(terrain, b.x, b.z, b.thornsOpen) ? ZARZAL.speed : input.sprint ? FROG.run : FROG.walk;
     const k = Math.min(1, 12 * dt);
     b.vx += (wx * speed - b.vx) * k;
     b.vz += (wz * speed - b.vz) * k;

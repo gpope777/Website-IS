@@ -119,7 +119,7 @@ export function buildThorns(terrain: Terrain, seed: number, count = 220): THREE.
     const z = SWAMP.z0 + rng() * (SWAMP.z1 - SWAMP.z0);
     const a = rng();
     const b = rng();
-    if (!zarzalAt(terrain, x, z)) continue;
+    if (!zarzalAt(terrain, x, z, true)) continue; // the knot's gap has its own hedge (ZarzalKnot)
     const s = 0.7 + a * 0.9;
     q.setFromEuler(e.set((b - 0.5) * 0.8, a * 6.28, (a - 0.5) * 0.8));
     m.compose(v.set(x, Math.max(terrain.heightAt(x, z), WATER_LEVEL) + 0.5 * s, z), q, sc.set(s, s, s));

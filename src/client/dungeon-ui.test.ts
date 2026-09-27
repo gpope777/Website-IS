@@ -123,3 +123,16 @@ describe('swamp dungeon UI (S3-E)', () => {
     expect(peatBarText({ ...v, elite: { hp: 200, max: 480, charging: false, burning: true } })).toBe('Bruto de turba 200/480 · ardiendo');
   });
 });
+
+describe('El Zancudo UI (S3-F)', () => {
+  it('names its state: in the air, diving, on the floor, clinging', async () => {
+    const { zancudoBarText } = await import('./dungeon-ui');
+    const v = emptyDungeonView().swamp;
+    expect(zancudoBarText(v)).toBeNull();
+    const boss = { hp: 380, max: 380, grounded: false, diving: false, shadow: null, latch: null };
+    expect(zancudoBarText({ ...v, boss })).toBe(`${NAMES.bossSwamp} 380/380 · en el aire`);
+    expect(zancudoBarText({ ...v, boss: { ...boss, diving: true, shadow: { x: 0, z: 0 } } })).toBe(`${NAMES.bossSwamp} 380/380 · ¡picado!`);
+    expect(zancudoBarText({ ...v, boss: { ...boss, hp: 200, grounded: true } })).toBe(`${NAMES.bossSwamp} 200/380 · ¡en el suelo!`);
+    expect(zancudoBarText({ ...v, boss: { ...boss, latch: 'Ana' } })).toBe(`${NAMES.bossSwamp} 380/380 · chupando a Ana: ¡rueda!`);
+  });
+});

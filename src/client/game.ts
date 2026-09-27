@@ -12,7 +12,7 @@ import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { antenonBarText, bossBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, peatBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
+import { antenonBarText, bossBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, peatBarText, shieldBarText, swampDungeonAction } from './dungeon-ui';
 import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
@@ -27,7 +27,7 @@ import { loadModels, type ModelKit } from './actors/models';
 import { PaperActor, type Puppet } from './actors/paper';
 import { DungeonMeshes } from './scene/dungeon';
 import { CoastDungeonMeshes, GustFx } from './scene/coast-dungeon';
-import { FlameFx, SwampDungeonMeshes } from './scene/swamp-dungeon';
+import { FlameFx, SwampDungeonMeshes, ZarzalKnot } from './scene/swamp-dungeon';
 import { plankCrags, swampEntrance } from '../shared/swamp-dungeon';
 import { FUEGO } from '../shared/fuego';
 import { coastEntrance } from '../shared/coast-dungeon';
@@ -78,6 +78,9 @@ const MARCHITO_IMG = '/enemies/enemy12.png';
 /** La Gata Araña, the swamp's lieutenant (enemy2.png has real transparency). */
 const GATA_IMG = '/enemies/enemy2.png';
 const GATA_ASPECT = 408 / 512;
+/** El Zancudo (enemy9.png has real transparency); thin lines, so drawn 6 m wide (spec S3 §14.4). */
+const ZANCUDO_IMG = '/enemies/enemy9.png';
+const ZANCUDO_ASPECT = 358 / 291;
 
 interface Remote {
   actor: Puppet;
@@ -139,6 +142,9 @@ export class Game {
   private coastMeshes: CoastDungeonMeshes | null = null;
   private readonly gustFx = new GustFx();
   private swampMeshes: SwampDungeonMeshes | null = null;
+  private zarzalKnot: ZarzalKnot | null = null;
+  /** The white Zancudo's lantern (a small unfogged glow under it). */
+  private farolGlow: THREE.Mesh | null = null;
   private readonly flameFx = new FlameFx();
   private hasFire = false;
   private fireLeft = 0;
@@ -404,6 +410,8 @@ export class Game {
     this.scene.add(this.farGround);
     this.swampGround = buildTerrainMesh(this.terrain, swampPatch!); // el Pantano: coarse, fogged
     this.scene.add(this.swampGround, buildThorns(this.terrain, seed));
+    this.zarzalKnot = new ZarzalKnot(this.terrain);
+    this.scene.add(this.zarzalKnot.group);
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
     this.rescueSpot = rescueSite(this.terrain, seed);
     this.rescueMeshes = new RescueMeshes(this.rescueSpot, this.terrain);
@@ -459,9 +467,11 @@ export class Game {
       this.rebuildClimbables();
     }
     this.swampMeshes?.sync(m.dungeon.swamp, this.hasFire);
+    this.zarzalKnot?.sync(m.zarzalBurnt);
+    if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
-    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? marchitoBarText(m.marchito));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? shieldBarText(m.dungeon.coast) ?? antenonBarText(m.dungeon.coast) ?? peatBarText(m.dungeon.swamp) ?? zancudoBarText(m.dungeon.swamp) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     this.fishViews = m.fish;
@@ -494,10 +504,11 @@ export class Game {
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if (w.kind === 'lieut1' && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
+      else if (w.kind === 'boss3' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.swamp.boss?.grounded ? 0xffe9a0 : 0xffffff);
       else if (w.kind === 'boss2' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.coast.boss?.exposed ? 0xffe9a0 : 0xffffff);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
       else if (w.kind === 'elite2' && !r.actor.root.getObjectByName('shield')) {
@@ -544,6 +555,24 @@ export class Game {
       r.anim = a.anim;
       r.seen = m.time;
     }
+    if (m.ally3) {
+      const a = m.ally3;
+      const r = this.remote(this.allies, 2, () => {
+        const paper = new PaperActor(ZANCUDO_IMG, 1.6, this.camera, ZANCUDO_ASPECT);
+        paper.setTint(0xf2fff0); // purified: pale paper
+        return paper;
+      });
+      if (!this.farolGlow) {
+        this.farolGlow = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd070, fog: false }));
+        this.scene.add(this.farolGlow);
+      }
+      this.farolGlow.visible = true;
+      this.farolGlow.position.set(a.x, a.y + 2.1, a.z);
+      this.farolGlow.scale.setScalar(a.anim === 'attack' ? 2.2 : 1);
+      r.buf.push({ t: m.time, x: a.x, y: a.y, z: a.z, yaw: a.yaw });
+      r.anim = a.anim;
+      r.seen = m.time;
+    } else if (this.farolGlow) this.farolGlow.visible = false;
     const b2 = m.wolves.find((w) => w.kind === 'boss2');
     this.coastMeshes?.telegraph(m.dungeon.coast.boss?.tell ?? null, b2 ? { x: b2.x, z: b2.z, yaw: b2.yaw } : null);
     for (const map of [this.others, this.wolves, this.allies] as Map<unknown, Remote>[]) {
