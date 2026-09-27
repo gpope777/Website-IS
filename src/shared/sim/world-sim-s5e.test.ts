@@ -80,6 +80,11 @@ describe('the tower door (S5-E)', () => {
     expect(sim.getPlayer('Ana')!.y).toBe(T.floor);
     act(sim, 'Ana', 27);
     expect(sim.getPlayer('Ana')!).toMatchObject({ x: d.x, z: d.z + 4 });
+    (sim as unknown as { live: Map<string, { dragon: boolean }> }).live.get('Ana')!.dragon = true;
+    put(sim, 'Ana', d.x, d.z + 3);
+    act(sim, 'Ana', 26);
+    expect(toasts(sim)).toContain('Bájate antes de entrar');
+    expect(sim.getPlayer('Ana')!.x).toBe(d.x);
   });
 });
 

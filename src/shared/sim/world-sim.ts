@@ -2176,6 +2176,7 @@ export class WorldSim {
     if (act === 26) {
       if (!near(d.x, d.z, T.doorReach)) return;
       if (!this.towerOpen) return this.tell(p.name, this.pillarsBroken.every(Boolean) ? 'Una raíz cierra la puerta. Él vendrá antes' : 'Una raíz cierra la puerta. Rompan los Pilares');
+      if (l.dragon || l.riding || l.frog || l.fish || l.tame) return this.tell(p.name, 'Bájate antes de entrar');
       this.teleport(p, l, T.x, T.entryZ + 1.5);
       return this.tell(p.name, `Dentro de ${NAMES.villainTower}. Huele a ceniza vieja. Hacia arriba`);
     }
