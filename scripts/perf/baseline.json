@@ -1,0 +1,398 @@
+{
+  "seed": 42,
+  "frames": 30,
+  "budget": {
+    "low": {
+      "calls": 120,
+      "triangles": 250000
+    },
+    "medium": {
+      "calls": 180,
+      "triangles": 500000
+    },
+    "high": {
+      "calls": 260,
+      "triangles": 1200000
+    }
+  },
+  "readings": {
+    "low/bosque/dia": {
+      "calls": 67,
+      "triangles": 529487,
+      "points": 0,
+      "lines": 0,
+      "geometries": 112,
+      "textures": 8,
+      "programs": 24
+    },
+    "low/bosque/noche": {
+      "calls": 67,
+      "triangles": 529487,
+      "points": 0,
+      "lines": 0,
+      "geometries": 112,
+      "textures": 8,
+      "programs": 24
+    },
+    "low/costa/dia": {
+      "calls": 67,
+      "triangles": 533111,
+      "points": 0,
+      "lines": 0,
+      "geometries": 148,
+      "textures": 8,
+      "programs": 25
+    },
+    "low/costa/noche": {
+      "calls": 67,
+      "triangles": 533111,
+      "points": 0,
+      "lines": 0,
+      "geometries": 148,
+      "textures": 8,
+      "programs": 25
+    },
+    "low/bajo-agua/dia": {
+      "calls": 62,
+      "triangles": 532991,
+      "points": 0,
+      "lines": 0,
+      "geometries": 156,
+      "textures": 8,
+      "programs": 25
+    },
+    "low/bajo-agua/noche": {
+      "calls": 62,
+      "triangles": 532991,
+      "points": 0,
+      "lines": 0,
+      "geometries": 156,
+      "textures": 8,
+      "programs": 25
+    },
+    "low/pantano/dia": {
+      "calls": 51,
+      "triangles": 534799,
+      "points": 0,
+      "lines": 0,
+      "geometries": 171,
+      "textures": 8,
+      "programs": 26
+    },
+    "low/pantano/noche": {
+      "calls": 51,
+      "triangles": 534799,
+      "points": 0,
+      "lines": 0,
+      "geometries": 171,
+      "textures": 8,
+      "programs": 26
+    },
+    "low/montanas/dia": {
+      "calls": 68,
+      "triangles": 547515,
+      "points": 600,
+      "lines": 0,
+      "geometries": 195,
+      "textures": 8,
+      "programs": 29
+    },
+    "low/montanas/noche": {
+      "calls": 68,
+      "triangles": 547515,
+      "points": 600,
+      "lines": 0,
+      "geometries": 195,
+      "textures": 8,
+      "programs": 29
+    },
+    "low/tierras/dia": {
+      "calls": 54,
+      "triangles": 485691,
+      "points": 0,
+      "lines": 0,
+      "geometries": 218,
+      "textures": 8,
+      "programs": 30
+    },
+    "low/tierras/noche": {
+      "calls": 54,
+      "triangles": 485691,
+      "points": 0,
+      "lines": 0,
+      "geometries": 218,
+      "textures": 8,
+      "programs": 30
+    },
+    "low/mazmorra/dia": {
+      "calls": 92,
+      "triangles": 530243,
+      "points": 0,
+      "lines": 0,
+      "geometries": 280,
+      "textures": 8,
+      "programs": 30
+    },
+    "low/mazmorra/noche": {
+      "calls": 92,
+      "triangles": 530243,
+      "points": 0,
+      "lines": 0,
+      "geometries": 280,
+      "textures": 8,
+      "programs": 30
+    },
+    "medium/bosque/dia": {
+      "calls": 150,
+      "triangles": 1040792,
+      "points": 0,
+      "lines": 0,
+      "geometries": 159,
+      "textures": 10,
+      "programs": 36
+    },
+    "medium/bosque/noche": {
+      "calls": 150,
+      "triangles": 1040792,
+      "points": 0,
+      "lines": 0,
+      "geometries": 159,
+      "textures": 10,
+      "programs": 36
+    },
+    "medium/costa/dia": {
+      "calls": 109,
+      "triangles": 1043160,
+      "points": 0,
+      "lines": 0,
+      "geometries": 211,
+      "textures": 10,
+      "programs": 37
+    },
+    "medium/costa/noche": {
+      "calls": 109,
+      "triangles": 1043160,
+      "points": 0,
+      "lines": 0,
+      "geometries": 211,
+      "textures": 10,
+      "programs": 37
+    },
+    "medium/bajo-agua/dia": {
+      "calls": 94,
+      "triangles": 1042668,
+      "points": 0,
+      "lines": 0,
+      "geometries": 211,
+      "textures": 10,
+      "programs": 37
+    },
+    "medium/bajo-agua/noche": {
+      "calls": 94,
+      "triangles": 1042668,
+      "points": 0,
+      "lines": 0,
+      "geometries": 211,
+      "textures": 10,
+      "programs": 37
+    },
+    "medium/pantano/dia": {
+      "calls": 77,
+      "triangles": 1044652,
+      "points": 0,
+      "lines": 0,
+      "geometries": 227,
+      "textures": 10,
+      "programs": 38
+    },
+    "medium/pantano/noche": {
+      "calls": 77,
+      "triangles": 1044652,
+      "points": 0,
+      "lines": 0,
+      "geometries": 227,
+      "textures": 10,
+      "programs": 38
+    },
+    "medium/montanas/dia": {
+      "calls": 99,
+      "triangles": 1064348,
+      "points": 600,
+      "lines": 0,
+      "geometries": 256,
+      "textures": 10,
+      "programs": 39
+    },
+    "medium/montanas/noche": {
+      "calls": 99,
+      "triangles": 1064348,
+      "points": 600,
+      "lines": 0,
+      "geometries": 256,
+      "textures": 10,
+      "programs": 39
+    },
+    "medium/tierras/dia": {
+      "calls": 79,
+      "triangles": 968844,
+      "points": 0,
+      "lines": 0,
+      "geometries": 279,
+      "textures": 10,
+      "programs": 40
+    },
+    "medium/tierras/noche": {
+      "calls": 79,
+      "triangles": 968844,
+      "points": 0,
+      "lines": 0,
+      "geometries": 279,
+      "textures": 10,
+      "programs": 40
+    },
+    "medium/mazmorra/dia": {
+      "calls": 118,
+      "triangles": 1039756,
+      "points": 0,
+      "lines": 0,
+      "geometries": 341,
+      "textures": 10,
+      "programs": 40
+    },
+    "medium/mazmorra/noche": {
+      "calls": 118,
+      "triangles": 1039756,
+      "points": 0,
+      "lines": 0,
+      "geometries": 341,
+      "textures": 10,
+      "programs": 40
+    },
+    "high/bosque/dia": {
+      "calls": 189,
+      "triangles": 1119316,
+      "points": 0,
+      "lines": 0,
+      "geometries": 168,
+      "textures": 10,
+      "programs": 37
+    },
+    "high/bosque/noche": {
+      "calls": 189,
+      "triangles": 1119316,
+      "points": 0,
+      "lines": 0,
+      "geometries": 168,
+      "textures": 10,
+      "programs": 37
+    },
+    "high/costa/dia": {
+      "calls": 109,
+      "triangles": 1123280,
+      "points": 0,
+      "lines": 0,
+      "geometries": 220,
+      "textures": 10,
+      "programs": 38
+    },
+    "high/costa/noche": {
+      "calls": 109,
+      "triangles": 1123280,
+      "points": 0,
+      "lines": 0,
+      "geometries": 220,
+      "textures": 10,
+      "programs": 38
+    },
+    "high/bajo-agua/dia": {
+      "calls": 94,
+      "triangles": 1122788,
+      "points": 0,
+      "lines": 0,
+      "geometries": 220,
+      "textures": 10,
+      "programs": 38
+    },
+    "high/bajo-agua/noche": {
+      "calls": 94,
+      "triangles": 1122788,
+      "points": 0,
+      "lines": 0,
+      "geometries": 220,
+      "textures": 10,
+      "programs": 38
+    },
+    "high/pantano/dia": {
+      "calls": 77,
+      "triangles": 1124624,
+      "points": 0,
+      "lines": 0,
+      "geometries": 236,
+      "textures": 10,
+      "programs": 39
+    },
+    "high/pantano/noche": {
+      "calls": 77,
+      "triangles": 1124624,
+      "points": 0,
+      "lines": 0,
+      "geometries": 236,
+      "textures": 10,
+      "programs": 39
+    },
+    "high/montanas/dia": {
+      "calls": 107,
+      "triangles": 1152076,
+      "points": 600,
+      "lines": 0,
+      "geometries": 263,
+      "textures": 10,
+      "programs": 40
+    },
+    "high/montanas/noche": {
+      "calls": 107,
+      "triangles": 1152076,
+      "points": 600,
+      "lines": 0,
+      "geometries": 263,
+      "textures": 10,
+      "programs": 40
+    },
+    "high/tierras/dia": {
+      "calls": 79,
+      "triangles": 1015004,
+      "points": 0,
+      "lines": 0,
+      "geometries": 286,
+      "textures": 10,
+      "programs": 41
+    },
+    "high/tierras/noche": {
+      "calls": 79,
+      "triangles": 1015004,
+      "points": 0,
+      "lines": 0,
+      "geometries": 286,
+      "textures": 10,
+      "programs": 41
+    },
+    "high/mazmorra/dia": {
+      "calls": 134,
+      "triangles": 1117664,
+      "points": 0,
+      "lines": 0,
+      "geometries": 353,
+      "textures": 10,
+      "programs": 41
+    },
+    "high/mazmorra/noche": {
+      "calls": 134,
+      "triangles": 1117664,
+      "points": 0,
+      "lines": 0,
+      "geometries": 353,
+      "textures": 10,
+      "programs": 41
+    }
+  }
+}
