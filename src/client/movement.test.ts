@@ -278,4 +278,11 @@ describe('Enredadera and orbs', () => {
     expect(b.stamina).toBe(staminaFor(2));
     expect(b.tired).toBe(false);
   });
+
+  it('a custom bounds function clamps the step (dungeon walls)', () => {
+    const b = createBody(0, 0, flat);
+    const wall = (_px: number, _pz: number, nx: number, nz: number) => ({ x: nx, z: Math.max(-1, nz) });
+    for (let t = 0; t < 2; t += 1 / 60) stepBody(b, fwd, 0, 1 / 60, flat, none, [], wall);
+    expect(b.z).toBe(-1);
+  });
 });

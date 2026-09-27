@@ -83,6 +83,10 @@ function spend(b: Body, amount: number): void {
   if (b.stamina === 0) b.tired = true;
 }
 
+/** Where a step from (px,pz) toward (nx,nz) may end: the map edge by default, the dungeon walls inside it. */
+export type Bounds = (px: number, pz: number, nx: number, nz: number) => { x: number; z: number };
+const mapBounds: Bounds = (_px, _pz, nx, nz) => ({ x: Math.max(-HALF + 3, Math.min(HALF - 3, nx)), z: Math.max(-HALF + 3, Math.min(HALF - 3, nz)) });
+
 export function stepBody(
   b: Body,
   input: MoveInput,
@@ -91,6 +95,7 @@ export function stepBody(
   terrain: Terrain,
   nearby: (x: number, z: number) => Circle[],
   crags: readonly Crag[] = [],
+  bounds: Bounds = mapBounds,
 ): StepResult {
   const jumpEdge = input.jump && !b.jumpHeld;
   b.jumpHeld = input.jump;
@@ -163,8 +168,9 @@ export function stepBody(
     nx = cr.x + (dx / d) * min;
     nz = cr.z + (dz / d) * min;
   }
-  b.x = Math.max(-HALF + 3, Math.min(HALF - 3, nx));
-  b.z = Math.max(-HALF + 3, Math.min(HALF - 3, nz));
+  const to = bounds(b.x, b.z, nx, nz);
+  b.x = to.x;
+  b.z = to.z;
   if (moving) b.facing = Math.atan2(wx, wz);
 
   const terrainH = terrain.heightAt(b.x, b.z);
