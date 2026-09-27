@@ -946,8 +946,12 @@ export class WorldSim {
     const heart = this.heart();
     const f = dayFraction(this.time);
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
-      this.raid = { phase: 'warn', dir: this.rng() * Math.PI * 2 };
-      this.say('El cielo se tiñe de morado. El Marchito envía a sus bestias: vuelvan al Corazón');
+      this.raid = { phase: 'warn', dir: this.rootDir(heart) + (this.rng() - 0.5) * RAID.jitter };
+      this.say(
+        this.purified
+          ? 'Restos de corrupción desde la Raíz-madre. Vienen menos: vuelvan al Corazón'
+          : 'El cielo se tiñe de morado hacia la Raíz-madre. El Marchito envía a sus bestias: vuelvan al Corazón',
+      );
     }
     if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {
       this.raid.phase = 'active';
@@ -964,7 +968,8 @@ export class WorldSim {
 
   private spawnRaiders(heart: Structure, dir: number): void {
     const extra = Math.max(0, this.activeCount() - 1);
-    const n = Math.min(RAID.maxWave, RAID.base + RAID.perLevel * this.raidLevel + RAID.perPlayer * extra);
+    const full = Math.min(RAID.maxWave, RAID.base + RAID.perLevel * this.raidLevel + RAID.perPlayer * extra);
+    const n = this.purified ? Math.max(1, Math.ceil(full * RAID.cleansed)) : full;
     for (let i = 0; i < n; i++) {
       for (let tries = 0; tries < 10; tries++) {
         const ang = dir + (this.rng() - 0.5) * 0.8;
@@ -972,7 +977,7 @@ export class WorldSim {
         const x = heart.x + Math.sin(ang) * d;
         const z = heart.z + Math.cos(ang) * d;
         if (Math.abs(x) < HALF - 5 && Math.abs(z) < HALF - 5 && this.terrain.heightAt(x, z) > WATER_LEVEL) {
-          const kind: EnemyKind = this.raidLevel >= 1 && i % 3 === 2 ? 'brute' : 'wolf';
+          const kind: EnemyKind = !this.purified && this.raidLevel >= 1 && i % 3 === 2 ? 'brute' : 'wolf';
           const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, kind);
           w.raid = true;
           this.wolves.push(w);
@@ -980,6 +985,11 @@ export class WorldSim {
         }
       }
     }
+  }
+
+  /** The corruption's source: the angle from the Heart to the Raíz-madre (x = sin, z = cos). */
+  private rootDir(h: { x: number; z: number }): number {
+    return Math.atan2(this.entrance.x - h.x, this.entrance.z - h.z);
   }
 
   private raidGoal(): RaidGoal | null {
@@ -1075,8 +1085,7 @@ export class WorldSim {
   }
 
   private startInvasion(h: Structure): void {
-    const e = this.entrance;
-    const dir = Math.atan2(e.x - h.x, e.z - h.z);
+    const dir = this.rootDir(h);
     const lim = HALF - 6;
     const x = Math.max(-lim, Math.min(lim, h.x + Math.sin(dir) * MARCHITO.spawnDist));
     const z = Math.max(-lim, Math.min(lim, h.z + Math.cos(dir) * MARCHITO.spawnDist));

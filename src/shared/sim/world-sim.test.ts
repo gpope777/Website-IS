@@ -1537,3 +1537,32 @@ describe('El Marchito', () => {
     expect(priv(sim).marchito).not.toBeNull();
   });
 });
+
+describe('corruption from the Raíz-madre', () => {
+  it('raids are warned from the Raíz-madre side of the Heart', () => {
+    for (const seed of [1, 42, 777]) {
+      const sim = new WorldSim(newWorld(seed, 's'));
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      const h = plantHeart(sim);
+      stepTo(sim, RAID.warnAt + 0.01);
+      const toRoot = Math.atan2(sim.entrance.x - h.x, sim.entrance.z - h.z);
+      const d = sim.raidState()!.dir - toRoot;
+      expect(Math.abs(Math.atan2(Math.sin(d), Math.cos(d)))).toBeLessThanOrEqual(RAID.jitter / 2 + 1e-9);
+      expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('hacia la Raíz-madre') });
+    }
+  });
+
+  it('once purified, waves are smaller and bring no brutes', () => {
+    const sim = setup('Ana', 'Leo');
+    plantHeart(sim);
+    sim.raidLevel = 2;
+    sim.purified = true;
+    stepTo(sim, 0.81);
+    const raiders = sim.wolfList.filter((w) => w.raid);
+    const full = RAID.base + RAID.perLevel * 2 + RAID.perPlayer;
+    expect(raiders.length).toBe(Math.ceil(full * RAID.cleansed));
+    expect(raiders.some((w) => w.kind === 'brute')).toBe(false);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('Vienen menos') });
+  });
+});

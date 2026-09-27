@@ -170,6 +170,10 @@ export const RAID = {
   heartReach: 2.6,
   damage: 12,
   cooldown: 1.2,
+  /** Raids come from the Raíz-madre's side of the Heart, ± half this (radians). */
+  jitter: 0.8,
+  /** Wave size after the Raíz-madre is purified (spec §3: purifying weakens raids from there). */
+  cleansed: 0.6,
 } as const;
 
 export interface RaidGoal {
