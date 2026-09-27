@@ -14,6 +14,7 @@ export function emptyDungeonView(): DungeonView {
     coast: { gates: [false, false, false, false], levers: [false, false], block: insideCoast(COAST_DUNGEON.blockStart), plate: false, elite: null, boss: null },
     swamp: { gates: [false, false, false, false], levers: [false, false], thorn: 0, lamps: [false, false, false], planks: Array.from({ length: SWAMP_DUNGEON.planks }, () => true), elite: null, boss: null, vents: [false, false, false, false] },
     mountain: { gates: [false, false, false, false], levers: [false, false], plate: false, blocks: MOUNTAIN_DUNGEON.blocks.starts.map((c) => dungeonBlockCell(c)), elite: null, boss: null },
+    tower: { gates: [false, false, false, false, false], bridges: [false, false], vents: [false, false, false], braziers: [false, false, false, false], plate: false, flecha: null, allies: [] },
   };
 }
 

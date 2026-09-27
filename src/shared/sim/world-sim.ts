@@ -16,6 +16,7 @@ import { ENREDADERA, planVine } from '../enredadera';
 import { pillarZone, allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isCorruptLandZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
+import { clampTowerDungeon, columnCrags, inArena, inCopa, inTowerDungeon, insideTower, towerEntrance, towerFloor, towerShelfCrag, TOWER_DUNGEON, TOWER_ROCKFALL } from '../tower-dungeon';
 import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
 import { crash, createElite, createPeat, createRockBrute, createShielded, ELITE, rockFront, shieldBlocks, stepElite, type Elite } from './elite';
@@ -32,7 +33,7 @@ import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaCost, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
+import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type TowerDungeonView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
@@ -280,6 +281,8 @@ export class WorldSim {
   readonly swampEntrance: { x: number; z: number } = swampEntrance();
   /** The mountain cave's mouth, beside the Raíz-madre de la Montaña (zone 14). */
   readonly mountainEntrance: { x: number; z: number } = mountainEntrance();
+  /** S5-E: the tower's door, on its south face. */
+  readonly towerDoor: { x: number; z: number } = towerEntrance();
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
   readonly wild: { x: number; y: number; z: number };
   /** Where the wild giant fish waits, and its race rings (seeded). */
@@ -361,6 +364,19 @@ export class WorldSim {
     cells: MOUNTAIN_DUNGEON.blocks.starts.map((c) => [c[0], c[1]] as const) as Cell[],
     blocksDone: false,
     eliteDown: false,
+    hitAt: new Map<string, number>(),
+  };
+  /** La Torre (S5-E, live-only): root bridges, vent clear times, braziers, the plate (and its jam), La Flecha down, floors woken, rockfall hit graces. */
+  private readonly towerLive = {
+    bridges: [false, false],
+    ventAt: [null, null, null] as (number | null)[],
+    ventsDone: false,
+    braziers: [false, false, false, false],
+    plate: false,
+    jammed: false,
+    flechaDown: false,
+    woke: [false, false, false, false],
+    copaSeen: false,
     hitAt: new Map<string, number>(),
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
@@ -768,6 +784,7 @@ export class WorldSim {
     this.stepCoastDungeon();
     this.stepSwampDungeon();
     this.stepMountainDungeon();
+    this.stepTowerDungeon();
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepPeatFight(dt);
@@ -885,7 +902,7 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges, shelfCrag(), ...structureCrags(this.structures)];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges, shelfCrag(), towerShelfCrag(), ...columnCrags(), ...structureCrags(this.structures)];
   }
 
   /** Nenúfares' pads still afloat. */
@@ -975,7 +992,7 @@ export class WorldSim {
     }
     if (l.dragon) return this.onFly(p, l, m, moved, elapsed);
     const inBounds = inAnyDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
-    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
+    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates(), this.towerGates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
     const wallOk = !inAnyDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), waterLevel(this.terrain, m.x, m.z) - 0.9);
@@ -1444,7 +1461,7 @@ export class WorldSim {
     if (p.dead) return;
     if (!p.enredadera) return this.tell(p.name, 'Aún no tienes ese poder');
     if (this.time + EPS < l.powerReadyAt) return this.tell(p.name, `La enredadera aún no brota (${Math.ceil(l.powerReadyAt - this.time - EPS)} s)`);
-    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : inCoastDungeon(p.x, p.z) ? !inCoastDungeon(x, z, -1) : !inMap(x, z, 4);
+    const offMap = inDungeon(p.x, p.z) ? !inDungeon(x, z, -1) : inCoastDungeon(p.x, p.z) ? !inCoastDungeon(x, z, -1) : inTowerDungeon(p.x, p.z) ? !inTowerDungeon(x, z, -1) : !inMap(x, z, 4);
     if (Math.hypot(x - p.x, z - p.z) > ENREDADERA.reach || offMap) return this.tell(p.name, 'Demasiado lejos');
     const others = this.vines.filter((v) => v.owner !== p.name);
     const wrapped = new Set(others.map((v) => v.id));
@@ -1463,6 +1480,7 @@ export class WorldSim {
     const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !isMountainZone(z.id) && !isCorruptLandZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     // Swamp roots (11–13) burn to Fuego (see flameThings); zone 10 is cleansed by beating El Zancudo (stepZancudoFight).
+    if (inTowerDungeon(p.x, p.z)) this.growTowerBridge(plan);
     const knot = inside(DUNGEON.knot);
     if (!this.dungeonLive.knot && inDungeon(p.x, p.z) && Math.hypot(knot.x - plan.x, knot.z - plan.z) <= DUNGEON.knotReach + plan.r) {
       this.dungeonLive.knot = true;
@@ -1492,6 +1510,7 @@ export class WorldSim {
     }
     this.gustEnemies(p, dir, hits);
     this.gustThings(p, dir, hits);
+    this.gustTowerVents(p, hits);
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
@@ -1617,6 +1636,7 @@ export class WorldSim {
     this.fogataSpots.forEach((f, i) => {
       if (!this.fogatas[i] && hits(f.x, f.z, FOGATA.light)) this.lightFogata(p, i);
     });
+    this.flameTowerBraziers(p, hits);
     if (!inSwampDungeon(p.x, p.z)) return;
     const S = SWAMP_DUNGEON;
     const g = this.swampLive;
@@ -1665,7 +1685,7 @@ export class WorldSim {
     if (!this.escalera && Math.hypot(p.x - UMBRAL.x, p.z - UMBRAL.z) <= UMBRAL.reach) return this.crackUmbral(p, l);
     const at = pillarSpot(p.x, p.z, x, z);
     const inside = inAnyDungeon(p.x, p.z);
-    const through = clampStep(p.x, p.z, at.x, at.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
+    const through = clampStep(p.x, p.z, at.x, at.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates(), this.towerGates());
     if (inside ? !inAnyDungeon(at.x, at.z, -1) || Math.hypot(through.x - at.x, through.z - at.z) > 0.01 : !inMap(at.x, at.z, 2)) return this.tell(p.name, 'Aquí no sale roca');
     const y = this.terrain.heightAt(at.x, at.z);
     if (y < WATER_LEVEL - 0.5) return this.tell(p.name, 'Aquí no sale roca');
@@ -1930,6 +1950,7 @@ export class WorldSim {
       this.teleport(p, l, DUNGEON.x, DUNGEON.entryZ + 1.5);
       return this.tell(p.name, `Dentro de la ${NAMES.forestRoot}. Huele a papel viejo`);
     }
+    if (act >= 26) return this.onTowerDungeon(p, l, act, near);
     if (act >= 18) return this.onMountainDungeon(p, l, act, near);
     if (act >= 13) return this.onSwampDungeon(p, l, act, near);
     if (act >= 8) return this.onCoastDungeon(p, l, act, near);
@@ -2108,6 +2129,132 @@ export class WorldSim {
       if (!near(lever.x, lever.z, M.leverReach) || g.blocksDone) return;
       g.cells = M.blocks.starts.map((c) => [c[0], c[1]] as const);
       return this.tell(p.name, 'Los bloques vuelven a su sitio');
+    }
+  }
+
+  /** La Torre: 26 enter by the door (only once it is open), 27 leave. Every floor is solved with a power. */
+  private onTowerDungeon(p: SavedPlayer, l: Live, act: number, near: (x: number, z: number, r: number) => boolean): void {
+    const T = TOWER_DUNGEON;
+    const d = this.towerDoor;
+    if (act === 26) {
+      if (!near(d.x, d.z, T.doorReach)) return;
+      if (!this.towerOpen) return this.tell(p.name, this.pillarsBroken.every(Boolean) ? 'Una raíz cierra la puerta. Él vendrá antes' : 'Una raíz cierra la puerta. Rompan los Pilares');
+      this.teleport(p, l, T.x, T.entryZ + 1.5);
+      return this.tell(p.name, `Dentro de ${NAMES.villainTower}. Huele a ceniza vieja. Hacia arriba`);
+    }
+    if (act === 27) {
+      if (!inTowerDungeon(p.x, p.z) || !near(T.x, T.entryZ, T.exitReach)) return;
+      return this.teleport(p, l, d.x, d.z + 4);
+    }
+  }
+
+  /** The tower's gates: the pit (both bridges), the vents (all clear once), the braziers, the plate (weighted or jammed), La Flecha. */
+  private towerGates(): boolean[] {
+    const g = this.towerLive;
+    return [g.bridges.every(Boolean), g.ventsDone, g.braziers.every(Boolean), g.plate || g.jammed, g.flechaDown];
+  }
+
+  /** Floor 1: an Enredadera grown by a bare root at the pit's edge makes a root bridge. */
+  private growTowerBridge(plan: { x: number; z: number; r: number }): void {
+    const T = TOWER_DUNGEON;
+    const g = this.towerLive;
+    T.roots.forEach((r, i) => {
+      const at = insideTower(r);
+      if (g.bridges[i] || Math.hypot(at.x - plan.x, at.z - plan.z) > T.rootReach + plan.r) return;
+      g.bridges[i] = true;
+      const n = g.bridges.filter(Boolean).length;
+      this.sayTower(n < 2 ? `Una raíz cruza el foso (${n}/2)` : 'Dos puentes de raíz cruzan el foso. Se puede pasar');
+    });
+  }
+
+  /** Floor 2: a gust clears a vent for a while; all three clear at once opens gate 1 for good. */
+  private gustTowerVents(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
+    const T = TOWER_DUNGEON;
+    const g = this.towerLive;
+    if (g.ventsDone || !inTowerDungeon(p.x, p.z)) return;
+    let any = false;
+    T.vents.forEach((v, i) => {
+      const at = insideTower(v);
+      if (!hits(at.x, at.z)) return;
+      g.ventAt[i] = this.time;
+      any = true;
+    });
+    if (!any) return;
+    const clear = g.ventAt.filter((t) => t != null && this.time - t <= T.ventClear + EPS).length;
+    if (clear === T.vents.length) {
+      g.ventsDone = true;
+      return this.sayTower('Las tres bocas se quedan limpias. La verja se abre');
+    }
+    this.tell(p.name, `La boca de miasma se despeja (${clear}/3). No dura`);
+  }
+
+  /** Floor 3: a Llamarada lights a brazier for good; all four open gate 2. */
+  private flameTowerBraziers(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
+    const T = TOWER_DUNGEON;
+    const g = this.towerLive;
+    if (!inTowerDungeon(p.x, p.z) || g.braziers.every(Boolean)) return;
+    let lit = false;
+    T.braziers.forEach((b, i) => {
+      const at = insideTower(b);
+      if (g.braziers[i] || !hits(at.x, at.z)) return;
+      g.braziers[i] = true;
+      lit = true;
+    });
+    if (!lit) return;
+    const n = g.braziers.filter(Boolean).length;
+    if (n === T.braziers.length) this.sayTower('Los cuatro braseros arden. La verja se abre');
+    else this.tell(p.name, `El brasero prende (${n}/4)`);
+  }
+
+  /** A toast to everyone inside the tower. */
+  private sayTower(text: string): void {
+    for (const n of this.live.keys()) {
+      const q = this.players.get(n)!;
+      if (inTowerDungeon(q.x, q.z)) this.tell(n, text);
+    }
+  }
+
+  /** Floor 4: the plate on the shelf (a pillar or someone on top; it jams once someone is through) and the rockfall. */
+  private stepTowerDungeon(): void {
+    const T = TOWER_DUNGEON;
+    const M = MOUNTAIN_DUNGEON;
+    const g = this.towerLive;
+    const plate = insideTower(T.shelf);
+    const top = T.floor + T.shelf.h;
+    const inside = [...this.live].filter(([name, l]) => {
+      const p = this.players.get(name)!;
+      return !p.dead && l.awayFor === null && inTowerDungeon(p.x, p.z);
+    });
+    if (!inside.length) return;
+    const onShelf = inside.some(([name]) => {
+      const p = this.players.get(name)!;
+      return Math.hypot(p.x - plate.x, p.z - plate.z) <= T.plateR && p.y >= top - 0.5;
+    });
+    const was = g.plate;
+    g.plate = onShelf || this.pillarOn(plate.x, plate.z);
+    if (g.plate && !was && !g.jammed) this.sayTower('La losa de arriba cede. La verja se abre mientras pese');
+    if (g.plate && !g.jammed && inside.some(([name]) => this.players.get(name)!.z > T.gatesZ[3] + 0.5)) {
+      g.jammed = true;
+      this.sayTower('La verja se atasca abierta');
+    }
+    const blockers = this.structures.filter((s) => s.kind === 'pillar');
+    const [z0, z1] = TOWER_ROCKFALL.span;
+    for (const [name, l] of inside) {
+      const p = this.players.get(name)!;
+      if (p.z < z0 || p.z > z1 || p.y > T.floor + 1.5) continue;
+      if (this.time < (g.hitAt.get(name) ?? -Infinity)) continue;
+      const lane = rockfallLane(p.x, TOWER_ROCKFALL.x);
+      if (lane < 0 || !boulders(this.time, lane, blockers, TOWER_ROCKFALL).some((bz) => Math.abs(bz - p.z) <= M.hitZ)) continue;
+      const out = resolveHit(l.guard, this.time, M.damage);
+      if (out.kind === 'dodged') continue;
+      g.hitAt.set(name, this.time + M.grace);
+      if (out.kind === 'parried') {
+        this.tell(name, 'Paras la roca. Duele en los brazos');
+        continue;
+      }
+      this.teleport(p, l, p.x, Math.max(z0 - 1, p.z - M.knock));
+      this.hurt(p, out.dmg);
+      this.tell(name, 'Una roca te arrolla. Un pilar la pararía');
     }
   }
 
@@ -2733,6 +2880,12 @@ export class WorldSim {
     l.lastAcceptedAt = this.time;
   }
 
+  private towerView(): TowerDungeonView {
+    const g = this.towerLive;
+    const T = TOWER_DUNGEON;
+    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: null, allies: [] };
+  }
+
   private dungeonView(): DungeonView {
     const g = this.dungeonLive;
     const pulled = g.pulled.map((t) => t != null && (g.gate || this.time - t <= DUNGEON.leverWindow + EPS));
@@ -2771,7 +2924,7 @@ export class WorldSim {
       elite: this.rock && this.rock.hp > 0 ? { hp: Math.round(this.rock.hp), max: ENEMY.elite4.hp, charging: this.rock.windup > 0 || this.rock.charge > 0, exposed: this.rock.exposed > 0 } : null,
       boss: this.boss4 && this.boss4.hp > 0 ? { hp: Math.round(this.boss4.hp), max: ENEMY.boss4.hp, windup: this.boss4.windup > 0, charging: this.boss4.charge > 0, stuck: this.boss4.exposed > 0, alud: this.boss4.alud.map((c) => ({ x: r2(c.x), z: r2(c.z) })) } : null,
     };
-    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp, mountain };
+    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp, mountain, tower: this.towerView() };
   }
 
   /** Which of the five dungeon gates are open. */
