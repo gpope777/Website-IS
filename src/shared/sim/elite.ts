@@ -8,7 +8,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * brute, and from mid range it crouches (a long, readable wind-up) and charges in a straight line.
  * Roll through the charge, or step aside.
  */
-export const ELITE = { id: 900_001, shieldId: 900_002, peatId: 900_003, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
+export const ELITE = { id: 900_001, shieldId: 900_002, peatId: 900_004, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
 
 export interface Elite extends Wolf {
   /** Seconds left crouching before the charge (the telegraph). */

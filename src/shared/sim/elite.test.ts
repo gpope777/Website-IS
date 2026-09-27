@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { DUNGEON } from '../dungeon';
 import { createElite, ELITE, stepElite } from './elite';
 import { ENEMY } from './wolves';
+import { MARCHITO } from './marchito';
+import { ANTENON } from './antenon';
+import { ZANCUDO } from './zancudo';
+import { BOSS } from './boss';
+import { RESCUE } from '../rescue';
 
 const t = (x: number, z: number, dead = false) => ({ name: 'Ana', x, z, dead, fires: false });
 
@@ -89,5 +94,13 @@ describe('the bruto escudado (S2-F)', () => {
     stepElite(e, [], ELITE.exposedFor + 0.1);
     expect(e.exposed).toBe(0);
     expect(shieldBlocks(createElite(), 0, 0)).toBe(false);
+  });
+});
+
+describe('special enemy ids', () => {
+  it('are all distinct (and above any wolf id a world will reach)', () => {
+    const ids = [BOSS.id, MARCHITO.id, ELITE.id, ELITE.shieldId, ELITE.peatId, ANTENON.id, ZANCUDO.id, RESCUE.anchorIdBase, RESCUE.anchorIdBase + 1, RESCUE.anchorIdBase + 2];
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids.slice(1)) expect(id).toBeGreaterThanOrEqual(900_000);
   });
 });
