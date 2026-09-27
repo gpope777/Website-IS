@@ -26,6 +26,9 @@ export class Hud {
   private readonly raidLine = el('div', 'raid-line');
   private readonly bossLine = el('div', 'raid-line boss-line');
   private readonly stamina = el('div', 'stamina');
+  /** Taming ring: tap it (or A / E / Espacio). Outside `.hud` so it can take taps above the touch layer. */
+  private readonly ring = el('div', 'tame-ring');
+  onRingTap: () => void = () => {};
   menuOpen = false;
 
   /** True while any overlay panel (menu, death, fatal error) covers the screen. */
@@ -52,7 +55,14 @@ export class Hud {
     this.overlay.hidden = true;
     this.stamina.hidden = true;
     this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.bossLine, this.stamina);
-    parent.append(this.root, this.overlay);
+    this.ring.hidden = true;
+    this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
+    this.ring.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onRingTap();
+    });
+    parent.append(this.root, this.ring, this.overlay);
   }
 
   setVitals(v: Vitals): void {
@@ -103,6 +113,18 @@ export class Hud {
     if (text) this.bossLine.textContent = text;
   }
 
+  /** Show the ring (angles in radians, 0 = top, clockwise), or hide it with null. */
+  setRing(r: { needle: number; zone: number; width: number; round: number; rounds: number } | null): void {
+    this.ring.hidden = !r;
+    if (!r) return;
+    const pt = (a: number) => `${(Math.sin(a) * 60).toFixed(1)} ${(-Math.cos(a) * 60).toFixed(1)}`;
+    const a0 = r.zone - r.width / 2;
+    const a1 = r.zone + r.width / 2;
+    this.ring.querySelector('.zone')!.setAttribute('d', `M ${pt(a0)} A 60 60 0 ${r.width > Math.PI ? 1 : 0} 1 ${pt(a1)}`);
+    this.ring.querySelector('.needle')!.setAttribute('transform', `rotate(${((r.needle * 180) / Math.PI).toFixed(1)})`);
+    this.ring.querySelector('span')!.textContent = `Doma ${r.round + 1}/${r.rounds}`;
+  }
+
   setPrompt(text: string | null): void {
     this.prompt.hidden = !text;
     this.prompt.textContent = text ?? '';
@@ -142,6 +164,7 @@ export class Hud {
        <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
        <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
        <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 Enredadera (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
+       <p>El ciervo salvaje (un halo dorado en el bosque): E / A junto a él para domarlo; pulsa cuando la aguja cruce la zona, tres veces · E / M montar y bajar · Shift: galope</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>

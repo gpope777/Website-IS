@@ -5,7 +5,10 @@ import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
 import { bossBarText, dungeonAction } from './dungeon-ui';
-import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type Structure } from '../shared/protocol';
+import { mountAction, ringNeedle } from './mount-ui';
+import { MOUNT } from '../shared/mount';
+import { SteedMeshes, type SteedPose } from './scene/steeds';
+import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView } from '../shared/protocol';
 import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
@@ -41,6 +44,10 @@ interface Remote {
   buf: InterpBuffer;
   anim: string;
   seen: number;
+  /** A player riding a deer. */
+  ride: boolean;
+  /** Metres per second last frame (the deer's legs). */
+  speed: number;
 }
 
 const IDLE_INPUT = { x: 0, z: 0, sprint: false, jump: false };
@@ -79,6 +86,12 @@ export class Game {
   private readonly allies = new Map<number, Remote>();
   private dungeonMeshes: DungeonMeshes | null = null;
   private readonly gone = new Set<number>();
+  private steedMeshes: SteedMeshes | null = null;
+  private steeds: SteedView[] = [];
+  private tame: TameView | null = null;
+  private riding = false;
+  private hasSteed = false;
+  private jumpWasHeld = false;
   private light: DayLight;
   private kits: { robot: ModelKit; fox: ModelKit } | null = null;
   private seed: number | null = null;
@@ -140,6 +153,7 @@ export class Game {
     this.scene.add(this.marker);
 
     this.hud = new Hud(root);
+    this.hud.onRingTap = () => this.tapRing();
     this.keyboard = new Keyboard(this.input, (a) => this.onAction(a));
     this.touch = isTouchDevice()
       ? new TouchControls(root, this.input, {
@@ -241,6 +255,8 @@ export class Game {
     this.shrines = generateShrines(this.terrain, seed, this.crags);
     this.entrance = generateEntrance(this.terrain, seed, this.crags, this.shrines);
     this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
+    this.steedMeshes = new SteedMeshes(t.shadows);
+    this.scene.add(this.steedMeshes.group);
     this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
     this.scene.add(buildTerrainMesh(this.terrain, t.terrainSegments), buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
@@ -284,11 +300,13 @@ export class Game {
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.hud.setBoss(bossBarText(m.dungeon));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
+    this.steeds = m.steeds;
     if (!this.kits) return;
     for (const p of m.players) {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
-      r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.anim;
+      r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride ? 'idle' : p.anim;
+      r.ride = p.ride && !p.dead;
       r.seen = m.time;
     }
     for (const w of m.wolves) {
@@ -345,7 +363,7 @@ export class Game {
   private remote<K>(map: Map<K, Remote>, key: K, make: () => Puppet): Remote {
     let r = map.get(key);
     if (!r) {
-      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0 };
+      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, speed: 0 };
       this.scene.add(r.actor.root);
       map.set(key, r);
     }
@@ -357,6 +375,10 @@ export class Game {
     this.hud.setInventory(self.inv);
     this.cleared = self.shrines;
     this.hasPower = self.power;
+    this.tame = self.tame;
+    this.riding = self.riding;
+    this.hasSteed = self.steed;
+    if (this.body) this.body.riding = self.riding;
     if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
     if (self.fix && this.body) {
       Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, gliding: false });
@@ -411,6 +433,12 @@ export class Game {
     if (a === 'lock') return this.toggleLock();
     if (a === 'bow') return this.shoot();
     if (a === 'power') return this.power();
+    if (a === 'mount') {
+      const ma = this.mountAct();
+      if (ma?.act === 1) return this.tapRing();
+      if (ma) return this.conn.send({ t: 'mount', act: ma.act });
+      return this.hud.toast(this.hasSteed ? 'Tu ciervo no está cerca' : 'Aún no tienes montura');
+    }
     this.act();
   }
 
@@ -522,6 +550,8 @@ export class Game {
   /** One button does everything: punch the nearest wolf, else gather the nearest resource. */
   private act(): void {
     const b = this.body!;
+    const ma = this.mountAct();
+    if (ma?.act === 1) return this.tapRing();
     const fallen = this.fallenMate();
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     const sp = this.shrinePart();
@@ -542,9 +572,23 @@ export class Game {
       if (d <= PUNCH.reach && (!best || d < best.d)) best = { id, d };
     }
     if (best) return this.conn.send({ t: 'attack', id: best.id });
+    if (ma) return this.conn.send({ t: 'mount', act: ma.act });
     if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
+  }
+
+  private mountAct(): { act: number; label: string } | null {
+    const b = this.body;
+    if (!b || this.dead) return null;
+    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName });
+  }
+
+  /** One tap on the taming ring: the server judges the needle at our estimate of its clock. */
+  private tapRing(): void {
+    if (!this.tame || this.dead) return;
+    this.conn.send({ t: 'mount', act: 1, at: r2(this.serverTime) });
+    this.tame = null; // one tap per round: the next snap brings the next round (or nothing)
   }
 
   /** Nearest teammate lying dead within revive reach (the server re-checks everything). */
@@ -634,7 +678,10 @@ export class Game {
     const now = performance.now();
     const rolling = now < this.rollUntil;
     const blocking = this.input.block && !rolling;
-    let mv = this.dead || this.hud.menuOpen ? IDLE_INPUT : readMove(this.input);
+    const jumpEdge = this.input.jump && !this.jumpWasHeld;
+    this.jumpWasHeld = this.input.jump;
+    if (this.tame && jumpEdge && !this.hud.menuOpen) this.tapRing();
+    let mv = this.dead || this.hud.menuOpen || this.tame ? IDLE_INPUT : readMove(this.input);
     if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
     const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gate));
@@ -644,6 +691,7 @@ export class Game {
     if (now < this.attackUntil) anim = 'attack';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
+    if (this.riding || this.tame) anim = 'idle';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
 
@@ -663,8 +711,10 @@ export class Game {
       this.me = new Actor(this.kits.robot, PLAYER_CLIPS);
       this.scene.add(this.me.root);
     }
+    const wild = this.steeds.find((s) => s.owner === null);
     if (this.me) {
-      this.me.setPose(b.x, b.y, b.z, b.facing);
+      if (this.tame && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
+      else this.me.setPose(b.x, b.y + (this.riding ? MOUNT.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third';
@@ -677,6 +727,7 @@ export class Game {
       if (!(r.actor instanceof PaperActor)) r.actor.root.rotation.z = r.anim === 'dead' ? Math.PI / 2 : 0; // fox has no death clip: tip it over
     }
     for (const r of this.allies.values()) this.animateRemote(r, rt, dt);
+    this.syncSteeds(dt, wild);
 
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
@@ -685,13 +736,38 @@ export class Game {
     this.shrineMeshes?.animate(performance.now() / 1000);
     this.dungeonMeshes?.animate(performance.now() / 1000);
     this.rig.apply(this.camera, b, terrain);
+    if (this.tame) {
+      // The deer bucks: shake the camera a little.
+      const k = 0.06 + this.tame.round * 0.03;
+      this.camera.position.x += (Math.random() - 0.5) * k;
+      this.camera.position.y += (Math.random() - 0.5) * k;
+    }
+    this.hud.setRing(this.tame ? { needle: ringNeedle(this.tame, this.serverTime), zone: this.tame.zone, width: this.tame.width, round: this.tame.round, rounds: this.tame.rounds } : null);
     this.updatePrompt();
     this.renderer.render(this.scene, this.camera);
   }
 
+  /** Parked and wild deer from the snapshot, plus one under every rider (us included). */
+  private syncSteeds(dt: number, wild: SteedView | undefined): void {
+    const b = this.body!;
+    const poses: SteedPose[] = [];
+    for (const s of this.steeds) poses.push({ key: s.owner ?? '~wild', x: s.x, y: s.y, z: s.z, yaw: s.yaw, speed: 0, wild: s.owner === null, bucking: s.owner === null && !!this.tame && s === wild });
+    if (this.riding) poses.push({ key: `ride:${this.myName}`, x: b.x, y: b.y, z: b.z, yaw: b.facing, speed: Math.hypot(b.vx, b.vz), wild: false, bucking: false });
+    for (const [name, r] of this.others) {
+      if (!r.ride) continue;
+      const p = r.actor.root.position;
+      poses.push({ key: `ride:${name}`, x: p.x, y: p.y - MOUNT.height, z: p.z, yaw: r.actor.root.rotation.y, speed: r.speed, wild: false, bucking: false });
+    }
+    this.steedMeshes?.sync(poses, dt, performance.now() / 1000);
+  }
+
   private animateRemote(r: Remote, rt: number, dt: number): void {
     const s = r.buf.at(rt);
-    if (s) r.actor.setPose(s.x, s.y, s.z, s.yaw);
+    if (s) {
+      const before = r.actor.root.position.clone();
+      r.actor.setPose(s.x, s.y + (r.ride ? MOUNT.height : 0), s.z, s.yaw);
+      r.speed = dt > 0 ? Math.hypot(r.actor.root.position.x - before.x, r.actor.root.position.z - before.z) / dt : 0;
+    }
     r.actor.play(r.anim);
     r.actor.update(dt);
   }
@@ -700,12 +776,15 @@ export class Game {
     if (this.touch || this.dead) return this.hud.setPrompt(null);
     const fallen = this.body && this.fallenMate();
     if (fallen) return this.hud.setPrompt(`E · Levantar a ${fallen}`);
+    const ma = this.mountAct();
+    if (ma?.act === 1) return this.hud.setPrompt('E · ¡Ahora! (cuando la aguja cruce la zona)');
     if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const sp = this.body && this.shrinePart();
     if (sp) return this.hud.setPrompt(sp.part > 0 ? 'E · Tirar de la palanca' : sp.open ? 'E · Tomar el orbe' : 'La verja está cerrada');
     const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower);
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
+    if (ma) return this.hud.setPrompt(ma.act === 3 ? 'E / M · Bajar del ciervo' : `E · ${ma.label}`);
     const b = this.body;
     if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');
     if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
