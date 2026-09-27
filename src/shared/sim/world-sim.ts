@@ -34,6 +34,8 @@ export const HARVEST_COOLDOWN = 0.4;
 export const HEART = { warmRadius: 8, tendReach: 4 } as const;
 /** Spikes hurt and slow what stands on them (`slowFor` s after each touch, SLOWED × speed). */
 export const SPIKES = { radius: 1.8, dps: 40, wear: 4, slowFor: 0.5 } as const;
+/** Red de raíces: catches a raider within `radius`, holds it `hold` s, then needs `rearm` s; each catch costs `wear` HP. */
+export const NET = { radius: 1.6, hold: 3, rearm: 5, wear: 15 } as const;
 /** Graves: owner-only pickup by standing on one; the world keeps at most `max`. */
 export const GRAVE = { pickup: 2, max: 50 } as const;
 /** Co-op revive: seconds a teammate has, reach, health on getting up, minimum hunger/warmth. */
@@ -41,7 +43,7 @@ export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
-const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: 'El Corazón del Bosque echó raíces', spikes: 'Estacas clavadas' };
+const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: 'El Corazón del Bosque echó raíces', spikes: 'Estacas clavadas', roots: 'Red de raíces tendida' };
 
 export interface SavedPlayer {
   name: string;
@@ -163,6 +165,8 @@ export class WorldSim {
   private vines: (Crag & { owner: string; until: number })[] = [];
   private nextVineId: number = ENREDADERA.idBase;
   private regenClock = 0;
+  /** Live-only: sim time each net can catch again. */
+  private readonly netReady = new Map<number, number>();
   private wolves: Wolf[] = [];
   private nextWolfId = 1;
   private raid: { phase: 'warn' | 'active'; dir: number } | null = null;
@@ -341,6 +345,7 @@ export class WorldSim {
       if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
     this.stepSpikes(dt);
+    this.stepNets();
     this.stepBossFight(dt);
     this.stepAlly(dt);
     this.stepTaming();
@@ -1030,6 +1035,20 @@ export class WorldSim {
       }
       if (s.hp <= 0) this.wreck(s);
     }
+  }
+
+  /** A net holds the first beast that steps in (stunned: no moving, no biting), then rearms. */
+  private stepNets(): void {
+    for (const s of this.structures.filter((x) => x.kind === 'roots')) {
+      if (this.time + EPS < (this.netReady.get(s.id) ?? 0)) continue;
+      const w = this.wolves.find((x) => x.hp > 0 && x.stun <= 0 && Math.hypot(x.x - s.x, x.z - s.z) <= NET.radius);
+      if (!w) continue;
+      w.stun = NET.hold;
+      w.anim = 'idle';
+      this.netReady.set(s.id, this.time + NET.rearm);
+      this.damageStructure(s.id, NET.wear);
+    }
+    for (const id of this.netReady.keys()) if (!this.structures.some((s) => s.id === id)) this.netReady.delete(id);
   }
 
   private bite(name: string, dmg: number, w: Wolf): void {

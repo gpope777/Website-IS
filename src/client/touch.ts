@@ -43,7 +43,8 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'KeyB', label: '🔥', sub: 'fogata', cls: 'pill' },
   { code: 'KeyV', label: '🧱', sub: 'muro', cls: 'pill' },
   { code: 'KeyG', label: '🌳', sub: 'corazón', cls: 'pill' },
-  { code: 'KeyT', label: '🗡️', sub: 'estacas', cls: 'pill' },
+  // Places the trap chosen in the Menú (estacas / red de raíces); T and Y place each directly.
+  { code: 'TouchTrap', label: '🗡️', sub: 'trampa', cls: 'pill' },
   { code: 'KeyQ', label: '🌀', sub: 'rodar', cls: 'pill' },
   { code: 'KeyZ', label: '🛡️', sub: 'bloquear', cls: 'pill', hold: 'block' },
   { code: 'KeyR', label: '🏹', sub: 'arco', cls: 'pill' },

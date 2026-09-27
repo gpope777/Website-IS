@@ -2,7 +2,7 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];

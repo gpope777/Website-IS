@@ -29,6 +29,8 @@ describe('aventura structures', () => {
     }
     expect(STRUCTURE_KINDS).toContain('heart');
     expect(STRUCTURE_KINDS).toContain('spikes');
+    expect(STRUCTURE_KINDS).toContain('roots');
+    expect(BUILD_COST.roots).toEqual({ wood: 4, berries: 2 });
     expect(TEND_COST).toEqual({ berries: 5 });
   });
 });

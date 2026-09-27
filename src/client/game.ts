@@ -36,6 +36,7 @@ import { ShrineMeshes } from './scene/shrines';
 import { buildTerrainMesh, buildWater } from './scene/terrain-mesh';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
+import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
 /** The nephew's drawing used for el Tragón de Papel (and, purified, the Heart's defender). */
 const TRAGON_IMG = '/enemies/enemy1.png';
@@ -125,6 +126,8 @@ export class Game {
   private dead = false;
   private heart: HeartView | null = null;
   private raid: RaidView | null = null;
+  /** Trap the touch pill places (Menú toggle). */
+  private trap: TrapKind = 'spikes';
   private attackUntil = 0;
   private lockId: number | null = null;
   private rollUntil = 0;
@@ -432,12 +435,19 @@ export class Game {
         },
         onCamera: () => this.rig.toggle(),
         onLeave: () => this.onLeave(),
+        trap: TRAP_LABEL[this.trap],
+        onTrap: () => {
+          this.trap = nextTrap(this.trap);
+          this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
+        },
       });
     }
     if (this.dead || !this.body || this.hud.menuOpen) return;
     if (a === 'camera') return this.rig.toggle();
     if (a === 'eat') return this.conn.send({ t: 'eat' });
     if (a === 'campfire' || a === 'wall' || a === 'heart' || a === 'spikes') return this.place(a);
+    if (a === 'net') return this.place('roots');
+    if (a === 'trap') return this.place(this.trap);
     if (a === 'roll') return this.roll();
     if (a === 'lock') return this.toggleLock();
     if (a === 'bow') return this.shoot();

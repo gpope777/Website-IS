@@ -18,7 +18,7 @@ export function readMove(i: InputState): MoveInput {
   return { x: (i.right ? 1 : 0) - (i.left ? 1 : 0), z: (i.back ? 1 : 0) - (i.forward ? 1 : 0), sprint: i.sprint, jump: i.jump };
 }
 
-export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock' | 'power' | 'mount' | 'dismiss';
+export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'net' | 'trap' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock' | 'power' | 'mount' | 'dismiss';
 
 /** Also used by touch buttons, which fire these KeyboardEvent codes. */
 export const KEY_ACTIONS: Record<string, Action> = {
@@ -29,6 +29,9 @@ export const KEY_ACTIONS: Record<string, Action> = {
   KeyV: 'wall',
   KeyG: 'heart',
   KeyT: 'spikes',
+  KeyY: 'net',
+  /** Touch pill only: places the trap chosen in the Menú. */
+  TouchTrap: 'trap',
   KeyC: 'camera',
   KeyQ: 'roll',
   KeyR: 'bow',

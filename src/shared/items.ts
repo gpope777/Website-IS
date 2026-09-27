@@ -4,16 +4,18 @@ export type Inventory = Partial<Record<ItemId, number>>;
 export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries'];
 export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas' };
 
-export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes';
-export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes'];
-export const STRUCTURE_LABELS: Record<StructureKind, string> = { campfire: 'Fogata', wall: 'Muro', heart: 'Corazón del Bosque', spikes: 'Estacas' };
+export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots';
+export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots'];
+export const STRUCTURE_LABELS: Record<StructureKind, string> = { campfire: 'Fogata', wall: 'Muro', heart: 'Corazón del Bosque', spikes: 'Estacas', roots: 'Red de raíces' };
 export const BUILD_COST: Record<StructureKind, Inventory> = {
   campfire: { wood: 5, stone: 3 },
   wall: { wood: 4 },
   heart: { wood: 20, stone: 10 },
   spikes: { wood: 3, stone: 1 },
+  /** Red de raíces: holds a raider in place for a few seconds. */
+  roots: { wood: 4, berries: 2 },
 };
-export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall: 150, heart: 500, spikes: 80 };
+export const STRUCTURE_HP: Record<StructureKind, number> = { campfire: 60, wall: 150, heart: 500, spikes: 80, roots: 60 };
 /** Tending the Heart: berries in, HP back. */
 export const TEND_COST: Inventory = { berries: 5 };
 export const TEND_HEAL = 100;

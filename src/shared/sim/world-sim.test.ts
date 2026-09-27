@@ -10,7 +10,7 @@ import { WATER_LEVEL } from '../terrain';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
-import { PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
+import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
   const sim = new WorldSim(newWorld(42, 'salt'));
@@ -436,6 +436,40 @@ describe('asedios', () => {
     (sim as unknown as { structures: unknown[] }).structures.push({ id: 601, kind: 'spikes', x: sx, y: 0, z: sz, rot: 0, owner: 'Ana', hp: 80 });
     for (let i = 0; i < 40 && w.hp > 0; i++) sim.step(0.1);
     expect(w.hp).toBe(0);
+  });
+
+  it('a red de raíces holds a raider, rearms, wears and breaks', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    sim.getPlayer('Ana')!.inv = { wood: 4, berries: 2 };
+    const p = sim.getPlayer('Ana')!;
+    sim.handle('Ana', { t: 'place', kind: 'roots', x: p.x - 2, z: p.z, rot: 0 });
+    const net = sim.save().structures.find((s) => s.kind === 'roots')!;
+    expect(net.hp).toBe(STRUCTURE_HP.roots);
+    expect(sim.getPlayer('Ana')!.inv).toEqual({});
+    stepTo(sim, 0.81);
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    const [a, b] = sim.wolfList.filter((x) => x.raid);
+    Object.assign(a!, { x: net.x, z: net.z, stun: 0 });
+    sim.step(0.1);
+    expect(a!.stun).toBeGreaterThan(NET.hold - 0.3);
+    const held = { x: a!.x, z: a!.z };
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect({ x: a!.x, z: a!.z }).toEqual(held);
+    const live = () => sim.save().structures.find((s) => s.id === net.id);
+    expect(live()!.hp).toBe(STRUCTURE_HP.roots - NET.wear);
+    // still rearming: a second raider walks through
+    Object.assign(b!, { x: net.x, z: net.z, stun: 0 });
+    sim.step(0.1);
+    expect(b!.stun).toBe(0);
+    for (let i = 0; i < NET.rearm * 10; i++) sim.step(0.1);
+    for (let n = 0; n < 5 && live(); n++) {
+      const c = sim.wolfList.find((x) => x.raid && x.hp > 0)!;
+      Object.assign(c, { x: net.x, z: net.z, stun: 0 });
+      sim.step(0.1);
+      for (let i = 0; i < NET.rearm * 10 + 1; i++) sim.step(0.1);
+    }
+    expect(live()).toBeUndefined(); // 60 HP / 15 per catch
   });
 
   it('snap carries the heart for everyone, even far away', () => {

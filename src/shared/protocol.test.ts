@@ -53,7 +53,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(9);
+    expect(PROTOCOL_VERSION).toBe(10);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -63,6 +63,7 @@ describe('aventura protocol', () => {
   it('accepts placing the new kinds', () => {
     expect(decodeClient('{"t":"place","kind":"heart","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'heart' });
     expect(decodeClient('{"t":"place","kind":"spikes","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'spikes' });
+    expect(decodeClient('{"t":"place","kind":"roots","x":1,"z":2,"rot":0}')).toMatchObject({ kind: 'roots' });
   });
 });
 
@@ -106,7 +107,7 @@ describe('power and shrine protocol', () => {
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(9);
+    expect(PROTOCOL_VERSION).toBe(10);
   });
 });
 
@@ -120,6 +121,6 @@ describe('mount protocol', () => {
     bad('{"t":"mount","act":1,"at":"5"}');
     bad('{"t":"mount","act":4}');
     bad('{"t":"mount","act":-1}');
-    expect(PROTOCOL_VERSION).toBe(9);
+    expect(PROTOCOL_VERSION).toBe(10);
   });
 });

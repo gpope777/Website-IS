@@ -186,7 +186,7 @@ export class Hud {
     if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
   }
 
-  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void }): void {
+  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void }): void {
     const options = (Object.keys(TIER_LABELS) as Tier[])
       .map((t) => `<option value="${t}" ${t === tier ? 'selected' : ''}>${TIER_LABELS[t]}</option>`)
       .join('');
@@ -199,9 +199,11 @@ export class Hud {
        <p>El Marchito: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
+       <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · 🗡️ pone la elegida</p>
+       <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
        <button class="secondary" data-a="leave">Salir</button>`,
-      { resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, leave: h.onLeave },
+      { resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
     );
     this.menuOpen = true;
     this.overlay.querySelector('select')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));
