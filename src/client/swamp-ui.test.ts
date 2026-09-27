@@ -73,4 +73,8 @@ describe('fogataCalls (S5-B)', () => {
     expect(fogataCalls({ x: 1, z: 0 }, spots, lit, all)).toEqual([]);
     expect(fogataCalls({ x: 101, z: 0 }, spots, [true], all)).toEqual([]);
   });
+  it('P4-B Silbido: at any lit fogata', () => {
+    expect(fogataCalls({ x: 1, z: 0 }, spots, lit, all, true)).toEqual(['deer', 'frog', 'fish']);
+    expect(fogataCalls({ x: 1, z: 0 }, spots, [false], all, true)).toEqual([]);
+  });
 });

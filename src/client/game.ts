@@ -76,6 +76,7 @@ import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
+import { hasSkill, SKILL_FX, type SkillId } from '../shared/progression';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
@@ -380,6 +381,9 @@ export class Game {
   private lastSent = '';
   private disposed = false;
   private lockMenuOpenedAt = 0;
+  /** P4-B: my oficios and Rango (from the snapshot). */
+  private skills: SkillId[] = [];
+  private rank = 1;
 
   constructor(private readonly root: HTMLElement, join: JoinInfo, private readonly onLeave: () => void) {
     const t = TIERS[this.tier];
@@ -932,6 +936,9 @@ export class Game {
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
     this.hud.setVitals(self.vitals);
     this.hud.setInventory(self.inv, self.weapon, self.capa, rankLine(self.xp ?? 0, self.rank ?? 1));
+    this.skills = self.skills ?? [];
+    this.rank = self.rank ?? 1;
+    if (this.body) this.body.skills = this.skills;
     this.regrowing = self.amber;
     this.amber = self.inv.amber ?? 0;
     this.capa = self.capa;
@@ -1026,7 +1033,7 @@ export class Game {
         trap: TRAP_LABEL[this.trap],
         fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
         onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
-        calls: this.body ? fogataCalls(this.body, this.fogataSpots, this.fogatasLit, { deer: this.hasSteed, frog: this.hasFrog, fish: this.hasFish }).map((beast) => ({ beast, label: CALL_LABEL[beast] })) : [],
+        calls: this.body ? fogataCalls(this.body, this.fogataSpots, this.fogatasLit, { deer: this.hasSteed, frog: this.hasFrog, fish: this.hasFish }, hasSkill(this.body, 'silbido')).map((beast) => ({ beast, label: CALL_LABEL[beast] })) : [],
         onCall: (beast: string) => {
           if (beast === 'deer' || beast === 'frog' || beast === 'fish') this.conn.send({ t: 'call', beast });
         },
@@ -1248,7 +1255,7 @@ export class Game {
       if (r.anim !== 'dead') continue;
       const p = r.actor.root.position;
       const d = Math.hypot(p.x - b.x, p.z - b.z);
-      if (d <= REVIVE.reach && (!best || d < best.d)) best = { name, d };
+      if (d <= REVIVE.reach * (hasSkill(b, 'amiga') ? SKILL_FX.reviveReach : 1) && (!best || d < best.d)) best = { name, d };
     }
     return best?.name ?? null;
   }

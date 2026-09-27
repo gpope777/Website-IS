@@ -52,9 +52,9 @@ export function fogataTargets(lit: readonly boolean[], atHeart: boolean): number
   return atHeart ? lit.flatMap((on, i) => (on ? [i] : [])) : [];
 }
 
-/** Mounts you can call from the Menú: only beside the lit Ceniza fogata, only the ones you own (S5-B). The server re-checks. */
-export function fogataCalls(pos: { x: number; z: number }, spots: readonly { id: number; x: number; z: number }[], lit: readonly boolean[], owned: { deer: boolean; frog: boolean; fish: boolean }): CallBeast[] {
-  const f = spots.find((s) => s.id === FOGATA.ceniza);
+/** Mounts you can call from the Menú: only beside the lit Ceniza fogata (any lit one with Silbido, P4-B), only the ones you own (S5-B). The server re-checks. */
+export function fogataCalls(pos: { x: number; z: number }, spots: readonly { id: number; x: number; z: number }[], lit: readonly boolean[], owned: { deer: boolean; frog: boolean; fish: boolean }, silbido = false): CallBeast[] {
+  const f = spots.find((s) => (silbido ? lit[s.id] && Math.hypot(s.x - pos.x, s.z - pos.z) <= FOGATA.reach : s.id === FOGATA.ceniza));
   if (!f || !lit[f.id] || Math.hypot(f.x - pos.x, f.z - pos.z) > FOGATA.reach) return [];
   return (['deer', 'frog', 'fish'] as const).filter((b) => owned[b]);
 }

@@ -11,6 +11,7 @@ import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
 import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
 import { BOG, inBog, ZARZAL, zarzalAt } from '../shared/swamp';
+import { hasSkill, SKILL_FX } from '../shared/progression';
 import { climbableAt, slopeAt, smoothAt, STEEP, steepBlocked } from '../shared/mountains';
 import { inMountains } from '../shared/terrain';
 import { VIENTO } from '../shared/viento';
@@ -82,6 +83,8 @@ export interface Body {
   /** Metres of Viento lift still to rise, and whether this flight already used its lift. */
   lift: number;
   boosted: boolean;
+  /** P4-B: this player's oficios (from the snapshot). */
+  skills?: readonly string[];
 }
 
 export interface Circle {
@@ -200,7 +203,7 @@ export function stepBody(
   }
   const swimFast = swimming && input.sprint && moving && !b.tired;
   const wading = !b.riding && b.onGround && inCienaga(b.x, b.z);
-  const base = b.riding ? (b.star ? (input.sprint ? ESTRELLA.run : ESTRELLA.walk) : input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
+  const base = b.riding ? (b.star ? (input.sprint ? ESTRELLA.run : ESTRELLA.walk) : input.sprint ? MOUNT.run : MOUNT.walk) * herd(b) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
   // El Zarzal holds walkers and deer to a crawl; the swamp's bog slows walkers (the server checks both).
   const grounded = b.onGround && !swimming;
   const speed = grounded && zarzalAt(terrain, b.x, b.z, b.thornsOpen) ? Math.min(base, ZARZAL.speed) : grounded && !b.riding && inBog(terrain, b.x, b.z) ? base * BOG.k : base;
@@ -278,7 +281,7 @@ export function stepBody(
     b.onGround = true;
     b.boosted = false;
     b.lift = 0;
-    if (swimFast) spend(b, STAMINA.swimFast * dt);
+    if (swimFast) spend(b, STAMINA.swimFast * (hasSkill(b, 'pulmon') ? SKILL_FX.swimFast : 1) * dt);
     else regen(b, dt);
     return { ...RESULT_IDLE, moving, swimming: true };
   }
@@ -292,7 +295,7 @@ export function stepBody(
     spend(b, STAMINA.glide * dt);
     if (b.tired) b.gliding = false;
   }
-  if (b.gliding) b.vy = -GLIDE.sink;
+  if (b.gliding) b.vy = -GLIDE.sink * (hasSkill(b, 'planeo') ? SKILL_FX.sink : 1);
   else b.vy -= GRAVITY * dt;
   if (b.lift > 0) {
     const up = Math.min(b.lift, LIFT_SPEED * dt);
@@ -331,7 +334,7 @@ function steepStop(terrain: Terrain, b: Body, to: { x: number; z: number }, grab
     return 'rim';
   }
   if (terrain.heightAt(to.x, to.z) <= b.y || !steepBlocked(terrain, b.x, b.z, to.x, to.z)) return undefined;
-  const wet = !!b.wet;
+  const wet = !!b.wet && !hasSkill(b, 'trepador');
   const kind = smoothAt(to.x, to.z) ? 'smooth' : b.riding ? 'deer' : wet ? 'wet' : 'steep';
   to.x = b.x;
   to.z = b.z;
@@ -367,13 +370,14 @@ function slide(terrain: Terrain, b: Body, dt: number, bounds: Bounds): void {
 function stepWall(b: Body, input: MoveInput, dt: number, terrain: Terrain, jumpEdge: boolean, bounds: Bounds): StepResult {
   const u = uphill(terrain, b.x, b.z);
   const moving = Math.hypot(input.x, input.z) > 0.01;
-  spend(b, (moving ? STAMINA.climbMove : STAMINA.climbHold) * dt);
-  if (jumpEdge || b.tired || b.wet) {
+  spend(b, (moving ? STAMINA.climbMove : STAMINA.climbHold) * climbCost(b) * dt);
+  const slick = !!b.wet && !hasSkill(b, 'trepador');
+  if (jumpEdge || b.tired || slick) {
     b.wall = false;
     b.onGround = false;
     b.vx = b.vz = b.vy = 0;
-    if (jumpEdge && !b.tired && !b.wet) {
-      spend(b, STAMINA.leap);
+    if (jumpEdge && !b.tired && !slick) {
+      spend(b, STAMINA.leap * climbCost(b));
       b.vx = -u.ux * LEAP.out;
       b.vz = -u.uz * LEAP.out;
       b.vy = LEAP.up;
@@ -383,7 +387,7 @@ function stepWall(b: Body, input: MoveInput, dt: number, terrain: Terrain, jumpE
   const up = -Math.max(-1, Math.min(1, input.z));
   const side = Math.max(-1, Math.min(1, input.x));
   // Facing uphill (ux, uz), "right" is (−uz, ux). Horizontal step so the speed along the surface is CLIMB_SPEED.
-  const k = (CLIMB_SPEED * dt) / Math.sqrt(1 + u.tan * u.tan);
+  const k = (CLIMB_SPEED * (b.wet ? SKILL_FX.wetClimb : 1) * dt) / Math.sqrt(1 + u.tan * u.tan);
   const to = bounds(b.x, b.z, b.x + (u.ux * up - u.uz * side) * k, b.z + (u.uz * up + u.ux * side) * k);
   if (inMountains(to.x, to.z) && !smoothAt(to.x, to.z)) {
     b.x = to.x;
@@ -453,7 +457,7 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
   const wz = -ix * s + iz * c;
   if (b.onGround) {
     // El Zarzal still holds it to a crawl (the server checks the same).
-    const speed = zarzalAt(terrain, b.x, b.z, b.thornsOpen) ? ZARZAL.speed : input.sprint ? FROG.run : FROG.walk;
+    const speed = zarzalAt(terrain, b.x, b.z, b.thornsOpen) ? ZARZAL.speed : (input.sprint ? FROG.run : FROG.walk) * herd(b);
     const k = Math.min(1, 12 * dt);
     b.vx += (wx * speed - b.vx) * k;
     b.vz += (wz * speed - b.vz) * k;
@@ -607,8 +611,13 @@ function stepWhale(b: Body, input: MoveInput, camYaw: number, dt: number, terrai
   return { ...RESULT_IDLE, moving };
 }
 
+/** P4-B Trepador: climbing spends less. */
+const climbCost = (b: Body): number => (hasSkill(b, 'trepador') ? SKILL_FX.climb : 1);
+/** P4-B Pastor: land mounts (deer, Estrella, frog) run faster. */
+const herd = (b: Body): number => (hasSkill(b, 'pastor') ? SKILL_FX.mount : 1);
+
 function regen(b: Body, dt: number): void {
-  b.stamina = Math.min(b.staminaMax, b.stamina + STAMINA.regen * dt);
+  b.stamina = Math.min(b.staminaMax, b.stamina + STAMINA.regen * (hasSkill(b, 'pies') ? SKILL_FX.regen : 1) * dt);
   if (b.stamina === b.staminaMax) b.tired = false;
 }
 
@@ -619,13 +628,13 @@ function stepClimb(b: Body, input: MoveInput, dt: number, terrain: Terrain, jump
   let ang = Math.atan2(b.x - c.x, b.z - c.z);
   const out = { x: Math.sin(ang), z: Math.cos(ang) };
   const moving = Math.hypot(input.x, input.z) > 0.01;
-  spend(b, (moving ? STAMINA.climbMove : STAMINA.climbHold) * dt);
+  spend(b, (moving ? STAMINA.climbMove : STAMINA.climbHold) * climbCost(b) * dt);
 
   if (jumpEdge || b.tired) {
     b.climb = null;
     b.onGround = false;
     if (jumpEdge && !b.tired) {
-      spend(b, STAMINA.leap);
+      spend(b, STAMINA.leap * climbCost(b));
       b.vx = out.x * LEAP.out;
       b.vz = out.z * LEAP.out;
       b.vy = LEAP.up;
