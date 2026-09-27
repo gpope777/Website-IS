@@ -430,6 +430,8 @@ export class WorldSim {
   /** El Cucurucho beaten (saved); the boss itself is live-only. */
   purified4: boolean;
   private boss4: Cucurucho | null = null;
+  /** S5-E: La Flecha as the tower's mini-boss (live-only; beaten stays beaten until a restart). */
+  private towerFlecha: Wolf | null = null;
   /** The white Cucurucho's atalaya by the Heart; live-only, rebuilt from `purified4`. */
   private ally4: Atalaya | null = null;
   /** La Escalera del Umbral raised (saved); the Umbral's cracks so far are live-only. */
@@ -815,6 +817,7 @@ export class WorldSim {
     this.stepSwampDungeon();
     this.stepMountainDungeon();
     this.stepTowerDungeon(dt);
+    this.stepTowerFlecha(dt);
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepPeatFight(dt);
@@ -867,6 +870,8 @@ export class WorldSim {
     const b4 = this.boss4;
     if (b4 && near(b4.x, b4.z)) wolves.push({ id: b4.id, kind: b4.kind, x: r2(b4.x), y: r2(b4.y), z: r2(b4.z), yaw: r2(b4.yaw), anim: b4.anim, raid: false });
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
+    const tf = this.towerFlecha;
+    if (tf && near(tf.x, tf.z)) wolves.push({ id: tf.id, kind: tf.kind, x: r2(tf.x), y: r2(tf.y), z: r2(tf.z), yaw: r2(tf.yaw), anim: tf.anim, raid: false, ...(tf.aim && tf.hp > 0 ? { aim: { x: r2(tf.aim.x), z: r2(tf.aim.z) } } : {}), ...((tf.stuck ?? 0) > 0 && tf.hp > 0 ? { stuck: true as const } : {}), ...(tf.burn && tf.hp > 0 ? { burning: true as const } : {}) });
     const pe = this.peat;
     if (pe && near(pe.x, pe.z)) wolves.push({ id: pe.id, kind: pe.kind, x: r2(pe.x), y: r2(pe.y), z: r2(pe.z), yaw: r2(pe.yaw), anim: pe.anim, raid: false, ...(pe.burn && pe.hp > 0 ? { burning: true as const } : {}) });
     const rk = this.rock;
@@ -1544,7 +1549,7 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : [])];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.towerFlecha ? [this.towerFlecha] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : [])];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
@@ -1606,12 +1611,12 @@ export class WorldSim {
   }
 
   private flameEnemies(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.towerFlecha ? [this.towerFlecha] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
       this.strike(p.name, w, FUEGO.damage, w === this.boss3);
       // Bosses, El Marchito and the cage's anchors take the scorch but do not catch fire.
-      if (w === this.boss || w === this.boss2 || w === this.boss3 || w === this.boss4 || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
+      if (w === this.boss || w === this.boss2 || w === this.boss3 || w === this.boss4 || w === this.towerFlecha || w === this.marchito || w.kind === 'anchor' || w.hp <= 0) continue;
       w.burn = FUEGO.burnFor;
       if (w.kind === 'wolf') this.scare(w, p.x, p.z);
     }
@@ -1704,7 +1709,7 @@ export class WorldSim {
 
   /** Every enemy that can be hit (beasts, elites, bosses, El Marchito, the cage's anchors). */
   private allFoes(): Wolf[] {
-    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : [])];
+    return [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.rock ? [this.rock] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.boss3 ? [this.boss3] : []), ...(this.boss4 ? [this.boss4] : []), ...(this.towerFlecha ? [this.towerFlecha] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : [])];
   }
 
   /** Piedra: Alzar a stone pillar 4 m toward the aim (2 m grid). Max 3 per player (the oldest crumbles), 120 s each. */
@@ -1900,6 +1905,7 @@ export class WorldSim {
     if (this.boss2 && this.boss2.id === id) return this.boss2;
     if (this.boss3 && this.boss3.id === id) return this.boss3;
     if (this.boss4 && this.boss4.id === id) return this.boss4;
+    if (this.towerFlecha && this.towerFlecha.id === id) return this.towerFlecha;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
@@ -2257,6 +2263,10 @@ export class WorldSim {
       return !p.dead && l.awayFor === null && inTowerDungeon(p.x, p.z);
     });
     if (!inside.length) return;
+    if (!g.copaSeen && inside.some(([n]) => inCopa(this.players.get(n)!.x, this.players.get(n)!.z))) {
+      g.copaSeen = true;
+      this.sayTower('La Copa está vacía. Arriba solo hay cielo'); // S5-F: El Marchito waits here
+    }
     this.stepTowerFloors(inside.map(([n]) => this.players.get(n)!), dt);
     const onShelf = inside.some(([name]) => {
       const p = this.players.get(name)!;
@@ -2323,6 +2333,47 @@ export class WorldSim {
       hitWolf(hit.foe, hit.damage);
       if (a.kind === 'antenon') this.sayTower(`${upFirst(names[f]!)} blanco sopla y una bestia cae por la cornisa`);
     }
+  }
+
+  /** La Flecha in the arena: wakes when someone alive walks in, resets if it empties; beaten = gate 4 and 2 espinas to each fighter. */
+  private stepTowerFlecha(dt: number): void {
+    const T = TOWER_DUNGEON;
+    const g = this.towerLive;
+    const f = this.towerFlecha;
+    if (g.flechaDown) {
+      if (f && f.hp <= 0 && f.deadFor < ELITE.corpseTime) f.deadFor += dt;
+      else this.towerFlecha = null;
+      return;
+    }
+    const fighters = this.targets().filter((t) => !t.dead && inArena(t.x, t.z)).map((t) => ({ ...t, fires: false }));
+    if (f && f.hp <= 0) {
+      g.flechaDown = true;
+      for (const t of fighters) {
+        const p = this.players.get(t.name)!;
+        p.inv = addItem(p.inv, 'thorn', FLECHA.thorns);
+        this.tell(t.name, `+${FLECHA.thorns} ${NAMES.thorn}`);
+      }
+      return this.sayTower(`${NAMES.lieutenant3} se parte contra el suelo. La escalera sube`);
+    }
+    if (!fighters.length) {
+      this.towerFlecha = null;
+      return;
+    }
+    if (!f) {
+      const at = insideTower({ x: 0, z: T.arena.z + 8 });
+      this.towerFlecha = { ...createWolf(T.flechaId, at.x, at.z, this.terrain, this.rng, 'lieut3'), hp: T.flechaHp };
+      this.sayTower(`${NAMES.lieutenant3} baja del techo. Que se clave en una columna`);
+    }
+    const w = this.towerFlecha!;
+    const cols = T.columns.map((c) => ({ kind: 'column', x: c.x, z: c.z })); // already in the tower's frame (x from the centre line)
+    const goal = { heartId: -1, x: 0, z: T.arena.z, blockers: [] };
+    const ev = towerFrame(w, fighters, (ts) => stepFlecha(w, ts, cols, goal, TOWER_FLAT, dt, this.rng));
+    const box = (p: { x: number; z: number }) => ({ x: Math.min(Math.max(p.x, T.x - T.halfW + 1), T.x + T.halfW - 1), z: Math.min(Math.max(p.z, T.arena.z - T.arena.half + 1), T.arena.z + T.arena.half - 1) });
+    Object.assign(w, box(w));
+    if (w.aim) w.aim = box(w.aim);
+    if (w.clav) w.clav = { ...w.clav, ...box(w.clav) };
+    if (ev.bite) this.bite(ev.bite, ENEMY.lieut3.damage, w);
+    for (const n of ev.hits) this.bite(n, FLECHA.dashDamage, w);
   }
 
   /** Which of the four mountain gates are open: levers, high plate (only while weighted), blocks, the bruto de roca. */
@@ -2950,7 +3001,7 @@ export class WorldSim {
   private towerView(): TowerDungeonView {
     const g = this.towerLive;
     const T = TOWER_DUNGEON;
-    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: null, allies: g.allies.flatMap((a) => (a ? [{ kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: r2(a.yaw), anim: a.anim }] : [])) };
+    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: this.towerFlecha && this.towerFlecha.hp > 0 ? { hp: Math.round(this.towerFlecha.hp), max: T.flechaHp, aiming: !!this.towerFlecha.aim, stuck: (this.towerFlecha.stuck ?? 0) > 0 } : null, allies: g.allies.flatMap((a) => (a ? [{ kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: r2(a.yaw), anim: a.anim }] : [])) };
   }
 
   private dungeonView(): DungeonView {
@@ -3395,7 +3446,8 @@ export class WorldSim {
     if (!p.dead) return;
     this.dropGrave(p);
     l.deadAt = null;
-    const sp = this.spawnFor(p.name);
+    // S5-E: the tower's stair is the game's only checkpoint (the body's spot says where you fell).
+    const sp = inTowerDungeon(p.x, p.z) && p.z >= TOWER_DUNGEON.stairZ ? insideTower(TOWER_DUNGEON.stair) : this.spawnFor(p.name);
     p.x = sp.x;
     p.z = sp.z;
     p.y = this.terrain.heightAt(sp.x, sp.z);

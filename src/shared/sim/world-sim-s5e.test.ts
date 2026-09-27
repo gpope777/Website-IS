@@ -216,3 +216,83 @@ describe('beasts and white allies on the floors (S5-E)', () => {
     expect(tview(sim).allies.map((a) => a.kind)).toEqual(['antenon', 'zancudo', 'cucurucho']);
   });
 });
+
+type PrivF = { towerFlecha: Wolf | null; towerLive: { flechaDown: boolean; woke: boolean[] } };
+const pf = (sim: WorldSim) => sim as unknown as PrivF;
+
+describe('La Flecha, the stair and the Copa (S5-E)', () => {
+  it('wakes in the arena with 470 PV, never leaves it, and resets if the arena empties', () => {
+    const sim = calmTower('Ana');
+    put(sim, 'Ana', T.x, T.arena.z - 8);
+    sim.step(0.1);
+    const f = pf(sim).towerFlecha!;
+    expect(f).toMatchObject({ id: T.flechaId, kind: 'lieut3', hp: T.flechaHp });
+    expect(tview(sim).flecha).toMatchObject({ hp: T.flechaHp, max: T.flechaHp });
+    expect(snap(sim).wolves.some((w) => w.id === T.flechaId)).toBe(true);
+    const hp = sim.getPlayer('Ana')!.vitals.health;
+    run(sim, 10);
+    expect(sim.getPlayer('Ana')!.vitals.health).toBeLessThan(hp);
+    const w = pf(sim).towerFlecha!;
+    expect(Math.abs(w.x - T.x)).toBeLessThanOrEqual(T.halfW);
+    expect(Math.abs(w.z - T.arena.z)).toBeLessThanOrEqual(T.arena.half);
+    w.hp = 100;
+    put(sim, 'Ana', T.x, 150);
+    sim.step(0.1);
+    expect(pf(sim).towerFlecha).toBeNull();
+    put(sim, 'Ana', T.x, T.arena.z - 8);
+    sim.step(0.1);
+    expect(pf(sim).towerFlecha!.hp).toBe(T.flechaHp);
+  });
+
+  it('her clavada sticks in a column', () => {
+    const sim = calmTower('Ana');
+    const c = insideTower(T.columns[0]);
+    put(sim, 'Ana', c.x, c.z - 6);
+    sim.step(0.1);
+    const f = pf(sim).towerFlecha!;
+    Object.assign(f, { x: c.x, z: c.z + 6, clavIn: 0.05 });
+    let stuck = false;
+    for (let i = 0; i < 30 && !stuck; i++) {
+      put(sim, 'Ana', c.x, c.z - 6);
+      sim.step(0.1);
+      stuck = (pf(sim).towerFlecha!.stuck ?? 0) > 0;
+    }
+    expect(stuck).toBe(true);
+    expect(tview(sim).flecha!.stuck).toBe(true);
+  });
+
+  it('beaten: gate 4 opens, 2 espinas to each fighter, and she stays down', () => {
+    const sim = calmTower('Ana');
+    put(sim, 'Ana', T.x, T.arena.z - 8);
+    sim.step(0.1);
+    const f = pf(sim).towerFlecha!;
+    f.hp = 1;
+    Object.assign(f, { x: T.x, z: T.arena.z - 7, stun: 5 });
+    sim.handle('Ana', { t: 'attack', id: T.flechaId });
+    sim.step(0.1);
+    expect(tview(sim).gates[4]).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.thorn ?? 0).toBe(2);
+    run(sim, 6);
+    expect(pf(sim).towerFlecha).toBeNull();
+    expect(tview(sim).flecha).toBeNull();
+  });
+
+  it('dying on the stair or in the Copa respawns at the stair; lower down, at the Heart', () => {
+    const sim = calmTower('Ana');
+    pf(sim).towerLive.flechaDown = true;
+    put(sim, 'Ana', T.x + 3, T.copa.z);
+    sim.step(0.1);
+    expect(toasts(sim)).toContain('La Copa está vacía. Arriba solo hay cielo');
+    const p = sim.getPlayer('Ana')!;
+    const kill = () => (sim as unknown as { kill(p: unknown): void }).kill(p);
+    kill();
+    expect(p.dead).toBe(true);
+    sim.handle('Ana', { t: 'respawn' });
+    expect(p).toMatchObject({ dead: false, ...insideTower(T.stair) });
+    put(sim, 'Ana', T.x, 60);
+    kill();
+    sim.handle('Ana', { t: 'respawn' });
+    expect(p.dead).toBe(false);
+    expect(Math.abs(p.x - T.x)).toBeGreaterThan(50);
+  });
+});
