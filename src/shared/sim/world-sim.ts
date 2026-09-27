@@ -29,6 +29,7 @@ import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
+import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
 import { createMarchito, joinNames, MARCHITO, marchitoWill, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
@@ -134,6 +135,8 @@ export interface SavedWorld {
   raidN?: number;
   /** Someone has entered the swamp in this world. Optional. */
   swampSeen?: boolean;
+  /** Which swamp fogatas are lit (ids from the seed). Optional: older saves have them all dark. */
+  fogatas?: boolean[];
 }
 
 export interface Grave extends GraveView {
@@ -147,8 +150,10 @@ export interface Outgoing {
 }
 
 interface Live {
-  /** Carrying a torch from the Candiles post (spent on one brazier). */
+  /** Carrying a torch from the Candiles post (spent on one brazier or fogata). */
   torch?: boolean;
+  /** A fogata channel in progress: where to, when it lands, where it started and the health then. Live-only. */
+  travel?: { x: number; z: number; at: number; fromX: number; fromZ: number; hp: number } | null;
   anim: Anim;
   awayFor: number | null;
   anchorX: number;
@@ -323,6 +328,9 @@ export class WorldSim {
   /** The Zarzal knot burnt (saved), and the Llamaradas it has taken so far (live-only). */
   zarzalBurnt: boolean;
   private knotBurns = 0;
+  /** Swamp fogatas (from the seed) and which are lit (saved). */
+  readonly fogataSpots: readonly Fogata[];
+  private fogatas: boolean[];
   /** The purified Tragón by the Heart; live-only, rebuilt from `purified`. */
   private ally: Ally | null = null;
   /** Invasion 1 (spec §2): none yet, owed since the Tragón fell, or over. */
@@ -398,6 +406,8 @@ export class WorldSim {
     this.purified2 = saved.purified2 ?? false;
     this.purified3 = saved.purified3 ?? false;
     this.zarzalBurnt = saved.zarzalBurnt ?? false;
+    this.fogataSpots = generateFogatas(this.terrain, saved.seed);
+    this.fogatas = this.fogataSpots.map((_, i) => saved.fogatas?.[i] ?? false);
     this.invasion = saved.invasion ?? 'none';
     this.invasionAt = this.time + MARCHITO.delay;
     this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
@@ -512,6 +522,10 @@ export class WorldSim {
         return this.onAmber(p, msg.id);
       case 'capa':
         return this.onCapa(p);
+      case 'fogata':
+        return this.onFogata(p, l, msg.id);
+      case 'travel':
+        return this.onTravel(p, l, msg.to);
       case 'hello':
         return; // the room handles hello
     }
@@ -553,6 +567,7 @@ export class WorldSim {
     }
 
     this.stepShrines();
+    this.stepTravel(night);
     this.stepVines(dt);
     this.stepRaid(night);
     if (night && !this.wasNight) this.spawnWolves();
@@ -650,7 +665,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, zarzalBurnt: this.zarzalBurnt, steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -677,6 +692,7 @@ export class WorldSim {
       ...(this.purified2 ? { purified2: true } : {}),
       ...(this.purified3 ? { purified3: true } : {}),
       ...(this.zarzalBurnt ? { zarzalBurnt: true } : {}),
+      ...(this.fogatas.some(Boolean) ? { fogatas: [...this.fogatas] } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
       ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
@@ -896,6 +912,68 @@ export class WorldSim {
     p.amber = { ...p.amber, [id]: r2(this.time) };
     p.inv = addItem(p.inv, 'amber', AMBER.yield);
     this.tell(p.name, `${ITEM_LABELS.amber}: ${AMBER.yield}`);
+  }
+
+  // ---------------------------------------------------------------- fogatas (S3 §9)
+
+  private lightFogata(p: SavedPlayer, i: number): void {
+    this.fogatas[i] = true;
+    this.tell(p.name, `La ${NAMES.fogata} prende. Se verá desde lejos, y de día lleva al ${NAMES.heart}`);
+  }
+
+  /** A with the torch at a dark fogata. */
+  private onFogata(p: SavedPlayer, l: Live, id: number): void {
+    const f = this.fogataSpots[id];
+    if (!f || p.dead || this.fogatas[id] || Math.hypot(f.x - p.x, f.z - p.z) > FOGATA.reach) return;
+    if (!l.torch) return this.tell(p.name, 'Hace falta fuego');
+    l.torch = false;
+    this.lightFogata(p, id);
+  }
+
+  /** Start a fogata channel: from a lit fogata to the Heart, or from the Heart to lit fogata `to`. */
+  private onTravel(p: SavedPlayer, l: Live, to: 'heart' | number): void {
+    if (p.dead || l.travel || inAnyDungeon(p.x, p.z) || l.tame || l.race) return;
+    const h = this.heart();
+    let dest: { x: number; z: number };
+    if (to === 'heart') {
+      if (!h || h.hp <= 0) return this.tell(p.name, `No hay ${NAMES.heart} al que volver`);
+      if (!this.fogataSpots.some((f, i) => this.fogatas[i] && Math.hypot(f.x - p.x, f.z - p.z) <= FOGATA.reach)) return;
+      dest = { x: h.x + 2, z: h.z };
+    } else {
+      const f = this.fogataSpots[to];
+      if (!f || !h || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
+      if (!this.fogatas[to]) return this.tell(p.name, `Esa ${NAMES.fogata} sigue apagada`);
+      dest = { x: f.x + FOGATA.arrive, z: f.z };
+    }
+    if (l.riding || l.seat || l.fish || l.frog || this.seatOf(p.name) !== null) return this.tell(p.name, 'Baja de la montura primero');
+    if (isNight(dayFraction(this.time))) return this.tell(p.name, 'De noche el fuego no guía a nadie');
+    l.travel = { ...dest, at: this.time + FOGATA.channel, fromX: p.x, fromZ: p.z, hp: p.vitals.health };
+    this.tell(p.name, `Miras el fuego… (${FOGATA.channel} s)`);
+  }
+
+  /** Channels land after 5 s; damage, drifting, mounting, death or night stop them. */
+  private stepTravel(night: boolean): void {
+    for (const [name, l] of this.live) {
+      const t = l.travel;
+      if (!t) continue;
+      const p = this.players.get(name)!;
+      const broken = p.dead || night || p.vitals.health < t.hp - EPS || Math.hypot(p.x - t.fromX, p.z - t.fromZ) > FOGATA.drift || l.riding || !!l.seat || l.fish || l.frog || this.seatOf(name) !== null;
+      if (broken) {
+        l.travel = null;
+        if (!p.dead) this.tell(name, 'El viaje se interrumpe');
+        continue;
+      }
+      if (this.time + EPS < t.at) continue;
+      l.travel = null;
+      p.x = t.x;
+      p.z = t.z;
+      p.y = this.terrain.heightAt(t.x, t.z);
+      l.fix = true;
+      l.anchorX = p.x;
+      l.anchorZ = p.z;
+      l.anchorAt = this.time;
+      l.lastAcceptedAt = this.time;
+    }
   }
 
   /** Capa de corteza at the Heart: −10 % damage taken per level, up to 3. */
@@ -1212,10 +1290,13 @@ export class WorldSim {
       if (this.knotBurns < FUEGO.burns) this.tell(p.name, `El nudo del ${NAMES.swampGate.replace(/^el /, '')} humea (${this.knotBurns}/${FUEGO.burns})`);
       else {
         this.zarzalBurnt = true;
-        this.say(`El nudo arde y ${NAMES.swampGate} se abre. Hay un paso a pie hacia ${NAMES.biomeSwamp}`); // S3-G: the vision
+        this.say(`El nudo arde y ${NAMES.swampGate} se abre. Hay un paso a pie hacia ${NAMES.biomeSwamp}`);
+        this.vision(VISION.knot(joinNames([p.name])));
       }
     }
-    // S3-G: the fogatas.
+    this.fogataSpots.forEach((f, i) => {
+      if (!this.fogatas[i] && hits(f.x, f.z, FOGATA.light)) this.lightFogata(p, i);
+    });
     if (!inSwampDungeon(p.x, p.z)) return;
     const S = SWAMP_DUNGEON;
     const g = this.swampLive;
@@ -2397,6 +2478,7 @@ export class WorldSim {
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
       whaleSeat: this.seatOf(p.name),
+      travel: l.travel ? Math.max(0, Math.ceil(l.travel.at - this.time - EPS)) : null,
     };
   }
 
@@ -2463,10 +2545,14 @@ export class WorldSim {
   private stepRaid(night: boolean): void {
     const heart = this.heart();
     const f = dayFraction(this.time);
-    if (!this.swampSeen && this.activeNames().some((n) => {
+    const scout = this.swampSeen ? undefined : this.activeNames().find((n) => {
       const p = this.players.get(n);
       return !!p && !p.dead && inSwamp(p.x, p.z);
-    })) this.swampSeen = true;
+    });
+    if (scout) {
+      this.swampSeen = true;
+      this.vision(VISION.swamp(scout));
+    }
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
       const corrupt = this.corrupt();

@@ -1,8 +1,9 @@
 import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
+import { FOGATA } from './fogatas';
 
-export const PROTOCOL_VERSION = 30;
+export const PROTOCOL_VERSION = 31;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -53,7 +54,7 @@ export interface CageView { anchors: number[] }
 export interface MarchitoView { will: number; max: number; laughing: boolean; /** Invasion 2: how far he has wrapped the Tragón (0–1). */ grab?: number }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–3). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–3). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null }
 
 export const POWER_KINDS = ['enredadera', 'viento', 'fuego'] as const;
 export type PowerKind = (typeof POWER_KINDS)[number];
@@ -90,12 +91,16 @@ export type ClientMsg =
   /** Harvest an amber tree (beside it; on top of its stump for the high ones). */
   | { t: 'amber'; id: number }
   /** Buy a Capa de corteza level at the Heart. */
-  | { t: 'capa' };
+  | { t: 'capa' }
+  /** Light a swamp fogata with the torch you carry (beside it). */
+  | { t: 'fogata'; id: number }
+  /** Start the 5 s channel: from a lit fogata to the Heart, or from the Heart to lit fogata `to` (day only). */
+  | { t: 'travel'; to: 'heart' | number };
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
@@ -183,6 +188,10 @@ export function decodeClient(raw: string): ClientMsg | null {
       return id(m.id) ? { t: 'amber', id: m.id } : null;
     case 'capa':
       return { t: 'capa' };
+    case 'fogata':
+      return id(m.id) && m.id < FOGATA.count ? { t: 'fogata', id: m.id } : null;
+    case 'travel':
+      return m.to === 'heart' || (id(m.to) && m.to < FOGATA.count) ? { t: 'travel', to: m.to } : null;
     default:
       return null;
   }

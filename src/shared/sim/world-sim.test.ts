@@ -27,6 +27,7 @@ import { FUEGO, HOGUERA } from '../fuego';
 import { ANTENON, ANTENON_ALLY } from './antenon';
 import { FAROL, ZANCUDO, type Zancudo } from './zancudo';
 import { RESCUE } from '../rescue';
+import { FOGATA, generateFogatas } from '../fogatas';
 import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
@@ -4514,5 +4515,154 @@ describe('the white Zancudo and the Zarzal knot (S3-F)', () => {
     const sim = new WorldSim(newWorld(42, 'salt'));
     expect(sim.zarzalBurnt).toBe(false);
     expect('zarzalBurnt' in sim.save()).toBe(false);
+  });
+});
+
+describe('fogatas del Pantano and swamp visions (S3-G)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const live = (sim: WorldSim, name: string) => (sim as unknown as { live: Map<string, { torch?: boolean; riding: boolean }> }).live.get(name)!;
+  const lit = (sim: WorldSim) => (sim as unknown as { fogatas: boolean[] }).fogatas;
+  function atFogata(id: number, ...names: string[]) {
+    const sim = setup(...names);
+    const f = generateFogatas(sim.terrain, 42)[id]!;
+    put(sim, names[0]!, f.x + 1.5, f.z);
+    msgs(sim);
+    return { sim, f };
+  }
+
+  it('a Llamarada within 4 m lights one for the world; it glows in the snap and is saved', () => {
+    const { sim, f } = atFogata(1, 'Ana', 'Leo');
+    sim.getPlayer('Ana')!.fuego = true;
+    sim.handle('Ana', { t: 'power', x: f.x, z: f.z, kind: 'fuego' });
+    expect(texts(sim).some((t) => t.includes('fogata'))).toBe(true);
+    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false]);
+    expect(sim.save().fogatas).toEqual([false, true, false, false]);
+    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false]);
+  });
+
+  it('a torch lights one and is spent; without one, nothing', () => {
+    const { sim } = atFogata(0, 'Ana');
+    sim.handle('Ana', { t: 'fogata', id: 0 });
+    expect(texts(sim)).toContain('Hace falta fuego');
+    expect(lit(sim)[0]).toBe(false);
+    live(sim, 'Ana').torch = true;
+    sim.handle('Ana', { t: 'fogata', id: 0 });
+    expect(lit(sim)[0]).toBe(true);
+    expect(snap(sim, 'Ana').self.torch).toBe(false);
+  });
+
+  it('by day, 5 s at a lit fogata take you to the Heart', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    const f = generateFogatas(sim.terrain, 42)[2]!;
+    lit(sim)[2] = true;
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    sim.step(1);
+    expect(snap(sim, 'Ana').self.travel).toBe(FOGATA.channel - 1);
+    for (let i = 0; i < 45; i++) sim.step(0.1);
+    const p = sim.getPlayer('Ana')!;
+    expect(Math.hypot(p.x - h.x, p.z - h.z)).toBeLessThan(3);
+    const s = snap(sim, 'Ana').self;
+    expect(s.fix).toBe(true);
+    expect(s.travel).toBeNull();
+  });
+
+  it('from the Heart to a lit fogata; refused to a dark one', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const f = generateFogatas(sim.terrain, 42)[3]!;
+    msgs(sim);
+    sim.handle('Ana', { t: 'travel', to: 3 });
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    lit(sim)[3] = true;
+    sim.handle('Ana', { t: 'travel', to: 3 });
+    for (let i = 0; i < 55; i++) sim.step(0.1);
+    const p = sim.getPlayer('Ana')!;
+    expect(Math.hypot(p.x - f.x, p.z - f.z)).toBeLessThan(FOGATA.reach);
+  });
+
+  it('refused at night, when far, when dark, when mounted, or without a Heart', () => {
+    const sim = setup('Ana');
+    const f = generateFogatas(sim.terrain, 42)[0]!;
+    const home = { ...sim.getPlayer('Ana')! };
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    lit(sim)[0] = true;
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(snap(sim, 'Ana').self.travel).toBeNull(); // no Heart
+    put(sim, 'Ana', home.x, home.z);
+    plantHeart(sim);
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    msgs(sim);
+    live(sim, 'Ana').riding = true;
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(texts(sim)).toContain('Baja de la montura primero');
+    live(sim, 'Ana').riding = false;
+    put(sim, 'Ana', f.x + 8, f.z);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    sim.time = DAY_LENGTH * 0.85;
+    msgs(sim);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(texts(sim).some((t) => t.includes('noche'))).toBe(true);
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+  });
+
+  it('damage or walking away cancels the channel', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const f = generateFogatas(sim.terrain, 42)[1]!;
+    lit(sim)[1] = true;
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    msgs(sim);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    sim.step(1);
+    sim.getPlayer('Ana')!.vitals.health -= 5;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    expect(texts(sim).some((t) => t.includes('interrump'))).toBe(true);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    sim.step(1);
+    put(sim, 'Ana', f.x + 4, f.z);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    const p = sim.getPlayer('Ana')!;
+    expect(Math.hypot(p.x - f.x, p.z - f.z)).toBeLessThan(6);
+  });
+
+  it('old saves load with every fogata dark and save none', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(lit(sim)).toEqual([false, false, false, false]);
+    expect('fogatas' in sim.save()).toBe(false);
+  });
+
+  it('first steps into the swamp bring a vision, once per world', () => {
+    const sim = setup('Ana');
+    const f = generateFogatas(sim.terrain, 42)[0]!;
+    msgs(sim);
+    put(sim, 'Ana', f.x, f.z);
+    sim.step(0.1);
+    const v = msgs(sim).filter((m) => m.t === 'vision');
+    expect(v).toHaveLength(1);
+    expect(JSON.stringify(v[0])).toContain('Ana');
+    sim.step(0.1);
+    expect(msgs(sim).some((m) => m.t === 'vision')).toBe(false);
+  });
+
+  it('burning the Zarzal knot brings a vision', () => {
+    const sim = setup('Ana');
+    const K = ZARZAL_KNOT;
+    sim.getPlayer('Ana')!.fuego = true;
+    put(sim, 'Ana', K.x + 3, K.z);
+    msgs(sim);
+    let seen = false;
+    for (let i = 0; i < FUEGO.burns; i++) {
+      sim.handle('Ana', { t: 'power', x: K.x, z: K.z, kind: 'fuego' });
+      seen ||= msgs(sim).some((m) => m.t === 'vision' && m.lines.join(' ').includes('Ana'));
+      sim.step(FUEGO.cooldown + 0.05);
+    }
+    expect(seen).toBe(true);
   });
 });
