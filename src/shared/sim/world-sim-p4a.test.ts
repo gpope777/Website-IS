@@ -27,7 +27,7 @@ function kill(sim: WorldSim, id: number, kind: Wolf['kind'] = 'wolf') {
 }
 
 describe('Savia y Rango (P4-A)', () => {
-  it('is protocol 55', () => expect(PROTOCOL_VERSION).toBe(58));
+  it('is protocol 55', () => expect(PROTOCOL_VERSION).toBe(59));
 
   it('a fresh player is Rango 1 with no Savia', () => {
     const s = self(setup());

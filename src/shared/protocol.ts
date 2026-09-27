@@ -1,11 +1,12 @@
-import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
+import { ITEMS, STRUCTURE_KINDS, type Inventory, type ItemId, type StructureKind } from './items';
+import { STALL, type Stall } from './shop';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 import { isLook, isSkill, type Look, type SkillId } from './progression';
 
-export const PROTOCOL_VERSION = 58;
+export const PROTOCOL_VERSION = 59;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
@@ -141,13 +142,25 @@ export type ClientMsg =
   | { t: 'learn'; id: SkillId }
   /** P4-B: at the Heart, 5 bayas, every oficio point back. */
   | { t: 'forget' }
-  | { t: 'look'; color: number; hat: number };
+  | { t: 'look'; color: number; hat: number }
+  /** T6-A: build your Puesto at (x, z). */
+  | { t: 'stallPlace'; x: number; z: number; rot: number }
+  /** T6-A: set shelf `shelf` of your Puesto to "n give por m want". */
+  | { t: 'stallSet'; shelf: number; give: ItemId; n: number; want: ItemId; m: number }
+  /** T6-A: Reponer: one tanda from your mochila onto the shelf. */
+  | { t: 'stallStock'; shelf: number }
+  /** T6-A: Quitar: the whole shelf back to your mochila. */
+  | { t: 'stallTake'; shelf: number }
+  /** T6-A: Recoger puesto: everything and its cost back. */
+  | { t: 'stallPick' };
 
 export type CallBeast = 'deer' | 'frog' | 'fish';
 export const CALL_BEASTS: readonly CallBeast[] = ['deer', 'frog', 'fish'];
 
 export type ServerMsg =
-  | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
+  | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[]; /** T6-A: the Puestos. */ stalls?: Stall[] }
+  /** T6-A: a Puesto changed (or was picked up: `gone`). */
+  | { t: 'stall'; s: Stall; gone?: boolean }
   | { t: 'error'; code: ErrorCode }
   | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The white Cucurucho's atalaya by the Heart (anim 'attack' while it throws). */ ally4: AllyView | null; /** La Escalera del Umbral is up: a ramp in los Peldaños (see withEscalera). */ escalera: boolean; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; /** The wild dragon while it circles the Pico (owner null) and parked tamed ones. */ dragons: SteedView[]; /** S5-A: the fog north of the rim: closed, ready (the 4 Raíces-madre purified: a dragon rider opens it) or open. */ fog: FogState; /** S5-A: El Marchito's tower height (m). */ towerH: number; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** S5-C: los Pilares-raíz. */ pillars: PillarView; /** S5-D: the tower's door is open (the dawn after Invasion 3). */ towerOpen: boolean; /** S5-G: El Marchito fell (white tower, el Guardián, la Grieta). */ ending: boolean; /** S5-G: the post-ending raids are turned off at the Heart. */ raidsOff: boolean; /** S5-H: the wild Estrella (full-moon nights after the ending), in view. */ estrella: SteedView | null; /** The root cage while the Tragón is taken. */ cage: CageView | null }
   | { t: 'hit'; id: number; hp: number }
@@ -168,6 +181,9 @@ export const WORLD_RE = /^[a-z0-9-]{3,32}$/;
 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const id = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+const isShelf = (v: unknown): v is number => id(v) && v < STALL.shelves;
+const isAmount = (v: unknown): v is number => id(v) && v >= 1 && v <= STALL.nMax;
+const isItem = (v: unknown): v is ItemId => (ITEMS as readonly unknown[]).includes(v);
 
 function parse(raw: string): Record<string, unknown> | null {
   try {
@@ -257,6 +273,20 @@ export function decodeClient(raw: string): ClientMsg | null {
       return isSkill(m.id) ? { t: 'learn', id: m.id } : null;
     case 'forget':
       return { t: 'forget' };
+    case 'stallPlace': {
+      const { x, z, rot } = m;
+      return num(x) && num(z) && num(rot) ? { t: 'stallPlace', x, z, rot } : null;
+    }
+    case 'stallSet': {
+      const { shelf, give, n, want, m: mm } = m;
+      return isShelf(shelf) && isItem(give) && isItem(want) && isAmount(n) && isAmount(mm) ? { t: 'stallSet', shelf, give, n, want, m: mm } : null;
+    }
+    case 'stallStock':
+      return isShelf(m.shelf) ? { t: 'stallStock', shelf: m.shelf } : null;
+    case 'stallTake':
+      return isShelf(m.shelf) ? { t: 'stallTake', shelf: m.shelf } : null;
+    case 'stallPick':
+      return { t: 'stallPick' };
     case 'look':
       return isLook(m.color, m.hat) ? { t: 'look', color: m.color as number, hat: m.hat as number } : null;
     default:

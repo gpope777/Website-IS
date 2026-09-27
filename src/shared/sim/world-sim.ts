@@ -48,6 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
+import { canPlaceStall, newStall, pickUp, restock, setShelf, STALL, takeShelf, type ShopResult, type Stall } from '../shop';
 import { addKillXp, BOSS_KINDS, bossesOf, canLearn, FEAT_FAST, FEAT_HAT, FEAT_HEART, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -171,6 +172,8 @@ export interface SavedWorld {
   time: number;
   nextStructureId: number;
   structures: Structure[];
+  /** T6-A: the Puestos (not structures: no hp, never a siege target). Optional: older saves have none. */
+  stalls?: Stall[];
   /** Only resources that are partly or fully harvested. */
   resources: Record<string, { uses: number; regrow: number }>;
   players: SavedPlayer[];
@@ -440,6 +443,7 @@ export class WorldSim {
   private readonly live = new Map<string, Live>();
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
   private readonly structures: Structure[];
+  private stalls: Stall[];
   private nextStructureId: number;
   private readonly graves: Grave[];
   private nextGraveId: number;
@@ -595,6 +599,7 @@ export class WorldSim {
     for (const p of this.players.values()) if (p.enredadera === undefined && (p.shrines ?? []).length > 0) p.enredadera = true;
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
+    this.stalls = structuredClone(saved.stalls ?? []);
     this.raidLevel = saved.raidLevel ?? 0;
     this.raidN = saved.raidN ?? 0;
     this.swampSeen = saved.swampSeen ?? false;
@@ -683,7 +688,7 @@ export class WorldSim {
       p.credits = true;
       this.outbox.push({ to: name, msg: { t: 'ending', cards: lateCards(this.endingNames), credits: creditLines(this.endingNames.length ? joinNames(this.endingNames) : 'vosotros') } });
     }
-    return { t: 'welcome', you: name, seed: this.seed, time: this.time, self: this.selfState(p, l), structures: this.structures.map((s) => ({ ...s })), gone };
+    return { t: 'welcome', you: name, seed: this.seed, time: this.time, self: this.selfState(p, l), structures: this.structures.map((s) => ({ ...s })), gone, stalls: structuredClone(this.stalls) };
   }
 
   markAway(name: string): void {
@@ -757,6 +762,16 @@ export class WorldSim {
         return this.onForget(p);
       case 'look':
         return this.onLook(p, msg.color, msg.hat);
+      case 'stallPlace':
+        return this.onStallPlace(p, msg.x, msg.z, msg.rot);
+      case 'stallSet':
+        return this.onStall(p, (s, inv) => setShelf(s, msg.shelf, msg.give, msg.n, msg.want, msg.m, inv));
+      case 'stallStock':
+        return this.onStall(p, (s, inv) => restock(s, msg.shelf, inv));
+      case 'stallTake':
+        return this.onStall(p, (s, inv) => takeShelf(s, msg.shelf, inv));
+      case 'stallPick':
+        return this.onStallPick(p);
       case 'hello':
         return; // the room handles hello
     }
@@ -984,6 +999,7 @@ export class WorldSim {
       time: this.time,
       nextStructureId: this.nextStructureId,
       structures: this.structures.filter((s) => s.kind !== 'pillar').map((s) => ({ ...s })), // pillars are temporary
+      ...(this.stalls.length ? { stalls: structuredClone(this.stalls) } : {}),
       resources: Object.fromEntries([...this.resState].map(([id, s]) => [String(id), { ...s }])),
       players: [...this.players.values()].map((p) => structuredClone(p)),
       raidLevel: this.raidLevel,
@@ -1308,6 +1324,56 @@ export class WorldSim {
   }
 
   /** P4-C: wear a colour and a hat (the hat must be unlocked). */
+  /** T6-A: build your Puesto (one each, on dry land inside the map, 15 m from another). */
+  private onStallPlace(p: SavedPlayer, x: number, z: number, rot: number): void {
+    if (p.dead) return;
+    const why = canPlaceStall(this.stalls, p.name, x, z);
+    if (why) return this.tell(p.name, why);
+    if (!hasAll(p.inv, STALL.cost)) return this.tell(p.name, 'Faltan materiales');
+    if (Math.hypot(x - p.x, z - p.z) > BUILD_REACH) return this.tell(p.name, 'Demasiado lejos');
+    const y = this.terrain.heightAt(x, z);
+    if (!inMap(x, z, 2) || y < waterLevel(this.terrain, x, z)) return this.tell(p.name, 'No se puede poner aquí');
+    if (this.structures.some((s) => Math.hypot(s.x - x, s.z - z) < 1.5)) return this.tell(p.name, 'Hay algo en el camino');
+    p.inv = removeAll(p.inv, STALL.cost);
+    const s = newStall(this.nextStructureId++, p.name, r2(x), r2(y), r2(z), r2(rot));
+    this.stalls.push(s);
+    this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(s) } });
+    this.tell(p.name, `${NAMES.stall} montado`);
+  }
+
+  /** T6-A: your own Puesto, if you stand beside it (else a hint). */
+  private myStall(p: SavedPlayer): number {
+    const i = this.stalls.findIndex((s) => s.owner === p.name);
+    if (i < 0 || p.dead) return -1;
+    const s = this.stalls[i]!;
+    if (Math.hypot(s.x - p.x, s.z - p.z) > STALL.reach) {
+      this.tell(p.name, 'Acércate a tu puesto.');
+      return -1;
+    }
+    return i;
+  }
+
+  /** T6-A: an owner's shelf op; applied whole or not at all. */
+  private onStall(p: SavedPlayer, op: (s: Stall, inv: Inventory) => ShopResult): void {
+    const i = this.myStall(p);
+    if (i < 0) return;
+    const r = op(this.stalls[i]!, p.inv);
+    if (!r.ok) return this.tell(p.name, r.why);
+    this.stalls[i] = r.stall;
+    p.inv = r.inv;
+    this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(r.stall) } });
+  }
+
+  /** T6-A: Recoger puesto: everything and its cost back to the owner. */
+  private onStallPick(p: SavedPlayer): void {
+    const i = this.myStall(p);
+    if (i < 0) return;
+    const [s] = this.stalls.splice(i, 1);
+    p.inv = pickUp(s!, p.inv);
+    this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(s!), gone: true } });
+    this.tell(p.name, `${NAMES.stall} recogido`);
+  }
+
   private onLook(p: SavedPlayer, color: number, hat: number): void {
     if (!hatUnlocked({ ...p, ending: this.ending }, hat)) return this.tell(p.name, HAT_HINTS[HAT_IDS[hat - 1]!]);
     p.look = { color, hat };
