@@ -3762,7 +3762,7 @@ describe('swamp shrines (S3-C)', () => {
     sim.step(0.1);
     expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
     expect(sim.corrupt()).not.toContain(13); // zone 13 sits on the Nenúfares shore
-    expect(sim.corrupt()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].filter((i) => sim.zones.some((z) => z.id === i)));
+    expect(sim.corrupt()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17].filter((i) => sim.zones.some((z) => z.id === i)));
   });
 
   it('swamp orbs never cleanse the swamp root; with 11–13 clean they cleanse nothing', () => {
@@ -3793,7 +3793,7 @@ describe('swamp shrines (S3-C)', () => {
 
   it('new worlds have swamp zones 10–13 corrupt; old saves load with them corrupt', () => {
     const sim = setup('Ana');
-    expect(sim.corrupt().slice(-4)).toEqual([10, 11, 12, 13]);
+    expect(sim.corrupt().slice(-8, -4)).toEqual([10, 11, 12, 13]); // Rule change (S4-D): mountain zones follow.
     const w = newWorld(42, 'salt');
     w.cleansed = [0, 6];
     const old = new WorldSim(w);
@@ -4759,7 +4759,7 @@ describe('mountain shrines and refugios (S4-C)', () => {
   const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
   const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
 
-  it('there are 12 shrines; the Cornisa has no gate, only its height; the orb gives quartz and cleanses nothing', () => {
+  it('there are 12 shrines; the Cornisa has no gate, only its height; the orb gives quartz and cleanses a mountain zone (rule change S4-D)', () => {
     const sim = setup('Ana');
     expect(sim.shrines).toHaveLength(12);
     const s = kind(sim, 'cornice');
@@ -4775,7 +4775,10 @@ describe('mountain shrines and refugios (S4-C)', () => {
     use(sim, 'Ana', s.id, 0);
     expect(snap(sim, 'Ana').self.shrines).toContain(9);
     expect(sim.getPlayer('Ana')!.inv.quartz).toBe(QUARTZ.orb);
-    expect(snap(sim, 'Ana').corrupt).toEqual(before);
+    const after = snap(sim, 'Ana').corrupt;
+    expect(after).toHaveLength(before.length - 1);
+    expect(before.filter((i) => !after.includes(i))[0]).toBeGreaterThanOrEqual(15);
+    expect(after).toContain(14);
   });
 
   it('Losas gemelas: both plates at once open it 20 s; a gust rolls the boulder onto plate 2; it rolls home after 60 s', () => {
@@ -4845,7 +4848,7 @@ describe('mountain shrines and refugios (S4-C)', () => {
   });
 
   it('protocol version moved on', () => {
-    expect(PROTOCOL_VERSION).toBe(36);
+    expect(PROTOCOL_VERSION).toBe(37);
   });
 });
 
@@ -4903,5 +4906,81 @@ describe('quartz and weapon levels 4–5 (S4-C)', () => {
     const again = new WorldSim(save);
     again.connect('Ana');
     expect(snap(again, 'Ana').self.quartz).toEqual([]);
+  });
+});
+
+describe('mountain corruption (S4-D)', () => {
+  it('new worlds have 14–17 corrupt; old saves load with them corrupt', () => {
+    const sim = setup('Ana');
+    expect(snap(sim, 'Ana').corrupt.slice(-4)).toEqual([14, 15, 16, 17]);
+    const w = newWorld(42, 'salt');
+    w.cleansed = [0, 6, 10];
+    expect(new WorldSim(w).corrupt()).toEqual(expect.arrayContaining([14, 15, 16, 17]));
+  });
+
+  it('a mountain orb cleanses the nearest corrupt 15–17, never 14; a swamp orb never touches the mountains', () => {
+    const w = newWorld(42, 'salt');
+    w.cleansed = [11, 12, 13];
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    const s = sim.shrines.find((x) => x.kind === 'cornice')!;
+    const zs = sim.zones.filter((z) => [15, 16, 17].includes(z.id)).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z));
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.getPlayer('Ana')!.y = s.y;
+    msgs(sim);
+    sim.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    expect(sim.corrupt()).not.toContain(zs[0]!.id);
+    expect(sim.corrupt()).toContain(14);
+    expect(msgs(sim).some((m) => m.t === 'toast' && m.text.includes('limpia un trozo de montaña'))).toBe(true);
+    // With 15–17 clean, a mountain orb cleanses nothing (14 is El Cucurucho's).
+    const w2 = newWorld(42, 'salt');
+    w2.cleansed = [15, 16, 17];
+    const sim2 = new WorldSim(w2);
+    sim2.createPlayer('Ana', 'h');
+    sim2.connect('Ana');
+    const before = sim2.corrupt();
+    put(sim2, 'Ana', s.orb.x, s.orb.z);
+    sim2.getPlayer('Ana')!.y = s.y;
+    sim2.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    expect(sim2.getPlayer('Ana')!.shrines).toContain(s.id);
+    expect(sim2.corrupt()).toEqual(before);
+  });
+
+  it('Enredadera at a mountain root cleanses nothing', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const z = sim.zones.find((x) => x.id === 15)!;
+    put(sim, 'Ana', z.x - 3, z.z);
+    sim.handle('Ana', { t: 'power', x: z.x, z: z.z });
+    sim.step(3);
+    expect(sim.corrupt()).toContain(15);
+  });
+
+  it('a night in a mountain zone brings extra beasts, spawned at the Peldaños\' foot', () => {
+    const run = (clean: boolean) => {
+      const w = newWorld(42, 'salt');
+      if (clean) w.cleansed = [15];
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      const z = sim.zones.find((x) => x.id === 15)!;
+      put(sim, 'Ana', z.x, z.z);
+      const had = new Set(sim.wolfList.map((x) => x.id));
+      stepTo(sim, 0.81);
+      return sim.wolfList.filter((x) => !x.raid && !had.has(x.id));
+    };
+    const dirty = run(true).length;
+    const fresh = run(false);
+    expect(fresh.length).toBeGreaterThan(dirty);
+    expect(fresh.filter((x) => x.kind === 'brute').every((x) => x.z > -HALF)).toBe(true);
+  });
+
+  it('entering the mountains is remembered (saved); old saves have not seen them', () => {
+    const sim = setup('Ana');
+    expect(sim.save().mountainsSeen).toBeUndefined();
+    put(sim, 'Ana', 0, -HALF - 20);
+    sim.step(0.1);
+    expect(sim.save().mountainsSeen).toBe(true);
   });
 });

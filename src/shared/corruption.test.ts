@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { coastFeatures, createTerrain, HALF, WATER_LEVEL } from './terrain';
-import { allZones, coastRaidBrutes, CORRUPTION, generateCoastZones, generateSwampZones, generateZones, isCoastZone, isSwampZone, nearestZone, raidDirFrom, SWAMP_ZONES, taintAt, zoneAt, type Zone } from './corruption';
+import { allZones, coastRaidBrutes, CORRUPTION, generateCoastZones, generateSwampZones, generateMountainZones, generateZones, isCoastZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, nearestZone, raidDirFrom, SWAMP_ZONES, taintAt, zoneAt, type Zone } from './corruption';
 import { inBog } from './swamp';
 import { generateSwampShrines } from './swamp-shrines';
-import { inSwamp, LAGUNA, swampFeatures } from './terrain';
+import { inMountains, inSwamp, LAGUNA, mountainDepth, mountainFeatures, swampFeatures } from './terrain';
+import { slopeAt } from './mountains';
 
 describe('corruption zones', () => {
   for (const seed of [1, 42, 777, 2026]) {
@@ -89,7 +90,7 @@ describe('swamp corruption zones (S3-D)', () => {
       const all = allZones(t, seed, { x: 100, z: -60 });
       const sw = all.filter((z) => isSwampZone(z.id));
       expect(sw.map((z) => z.id)).toEqual([10, 11, 12, 13]);
-      expect(all.slice(-4)).toEqual(sw);
+      expect(all.slice(-8, -4)).toEqual(sw); // Rule change (S4-D): mountain zones follow.
       expect(generateSwampZones(t, seed)).toEqual(sw);
       const [z10, z11, z12, z13] = sw as [Zone, Zone, Zone, Zone];
       expect(Math.hypot(z10.x - LAGUNA.x, z10.z - LAGUNA.z)).toBeLessThan(1);
@@ -111,5 +112,39 @@ describe('swamp corruption zones (S3-D)', () => {
     expect(isSwampZone(10)).toBe(true);
     expect(isSwampZone(9)).toBe(false);
     expect(coastRaidBrutes([6, 7, 10, 11])).toBe(1);
+  });
+});
+
+describe('mountain corruption zones (S4-D)', () => {
+  for (const seed of [1, 42, 777, 2026]) {
+    it(`seed ${seed}: ids 14–17, root fixed, meadow, pared foot, snowfield; no overlap`, () => {
+      const t = createTerrain(seed);
+      const all = allZones(t, seed, { x: 100, z: -60 });
+      const mz = all.filter((z) => isMountainZone(z.id));
+      expect(mz.map((z) => z.id)).toEqual([14, 15, 16, 17]);
+      expect(all.slice(-4)).toEqual(mz);
+      expect(generateMountainZones(t, seed)).toEqual(mz);
+      const [z14, z15, z16, z17] = mz as [Zone, Zone, Zone, Zone];
+      expect(z14.x).toBe(MOUNTAIN_ZONES.rootX);
+      expect(mountainDepth(z14.z)).toBe(MOUNTAIN_ZONES.rootD);
+      expect(z14.r).toBe(MOUNTAIN_ZONES.rootR);
+      for (const z of mz) expect(inMountains(z.x, z.z)).toBe(true);
+      expect(mountainDepth(z15.z)).toBeGreaterThanOrEqual(45);
+      expect(mountainDepth(z15.z)).toBeLessThanOrEqual(100);
+      expect(slopeAt(t, z15.x, z15.z)).toBeLessThan(20);
+      expect(mountainDepth(z17.z)).toBeGreaterThanOrEqual(150);
+      expect(mountainDepth(z17.z)).toBeLessThanOrEqual(195);
+      expect(slopeAt(t, z17.x, z17.z)).toBeLessThan(20);
+      const p = mountainFeatures(seed).paredes[0]!;
+      expect(Math.abs(Math.hypot(z16.x - p.x, z16.z - p.z) - (p.rt + p.w))).toBeLessThan(4);
+      for (const a of mz) for (const b of mz) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(a.r + b.r);
+    });
+  }
+
+  it('mountain ids are not swamp ids', () => {
+    expect(isSwampZone(14)).toBe(false);
+    expect(isSwampZone(13)).toBe(true);
+    expect(isMountainZone(14)).toBe(true);
+    expect(isMountainZone(13)).toBe(false);
   });
 });

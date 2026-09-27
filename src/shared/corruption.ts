@@ -1,7 +1,8 @@
 import { createRng } from './rng';
 import { inBog } from './swamp';
 import { generateSwampShrines } from './swamp-shrines';
-import { coastFeatures, HALF, inForest, inSwamp, LAGUNA, SWAMP, swampFeatures, WATER_LEVEL, type Terrain } from './terrain';
+import { slopeAt } from './mountains';
+import { coastFeatures, HALF, inForest, inSwamp, LAGUNA, MOUNTAINS, mountainFeatures, SWAMP, swampFeatures, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * Corruption by zones (spec §3): purple patches of the forest, seeded like everything else.
@@ -65,7 +66,40 @@ export function isCoastZone(id: number): boolean {
 export const SWAMP_ZONES = { firstId: 10, root: 10, r: 16, rootR: 18 } as const;
 
 export function isSwampZone(id: number): boolean {
-  return id >= SWAMP_ZONES.firstId;
+  return id >= SWAMP_ZONES.firstId && id < MOUNTAIN_ZONES.firstId;
+}
+
+/**
+ * Mountain zones (Slice 4 §6): fixed ids 14–17. Zone 14 is the Raíz-madre de la Montaña at a fixed
+ * point (x −70, 140 m north of the rim) where S4-E opens the cave mouth; 15 on a gentle Faldas
+ * meadow, 16 at the foot of pared 0 (forest side), 17 on the high snowfield.
+ */
+export const MOUNTAIN_ZONES = { firstId: 14, root: 14, r: 16, rootR: 18, rootX: -70, rootD: 140, gentle: 20 } as const;
+
+export function isMountainZone(id: number): boolean {
+  return id >= MOUNTAIN_ZONES.firstId;
+}
+
+export function generateMountainZones(terrain: Terrain, seed: number): Zone[] {
+  const { r, rootR, rootX, rootD, gentle } = MOUNTAIN_ZONES;
+  const root: Zone = { id: 14, x: rootX, z: -HALF - rootD, r: rootR };
+  const p = mountainFeatures(seed).paredes[0]!;
+  const foot = p.rt + p.w;
+  // 16: pared 0's foot, the side facing the forest (+z).
+  const z16: Zone = { id: 16, x: p.x, z: Math.min(p.z + foot, -HALF - r - 2), r };
+  const clear = (x: number, z: number, others: Zone[]) => others.every((o) => Math.hypot(o.x - x, o.z - z) >= o.r + r);
+  const rng = createRng(seed ^ 0x40e7a);
+  const gentleSpot = (id: number, d0: number, d1: number, others: Zone[]): Zone => {
+    for (let tries = 0; tries < 1500; tries++) {
+      const x = MOUNTAINS.x0 + 30 + rng() * (MOUNTAINS.x1 - MOUNTAINS.x0 - 60);
+      const z = -HALF - (d0 + rng() * (d1 - d0));
+      if (slopeAt(terrain, x, z) < gentle && clear(x, z, others)) return { id, x, z, r };
+    }
+    return { id, x: -rootX, z: -HALF - (d0 + d1) / 2, r };
+  };
+  const z15 = gentleSpot(15, 45, 100, [root, z16]);
+  const z17 = gentleSpot(17, 150, 195, [root, z15, z16]);
+  return [root, z15, z16, z17];
 }
 
 export function generateSwampZones(terrain: Terrain, seed: number): Zone[] {
@@ -116,9 +150,9 @@ export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
   ];
 }
 
-/** Forest, coast and swamp zones: the one list client and server share. */
+/** Forest, coast, swamp and mountain zones: the one list client and server share. */
 export function allZones(terrain: Terrain, seed: number, entrance: { x: number; z: number }): Zone[] {
-  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed), ...generateSwampZones(terrain, seed)];
+  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed), ...generateSwampZones(terrain, seed), ...generateMountainZones(terrain, seed)];
 }
 
 /** Extra raid brutes: +1 per 2 corrupt coast zones while the coast Raíz-madre (zone 6) is corrupt. */

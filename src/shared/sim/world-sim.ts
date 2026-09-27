@@ -6,12 +6,12 @@ import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBloc
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
-import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
-import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isSwampZone, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
+import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
@@ -140,6 +140,8 @@ export interface SavedWorld {
   raidN?: number;
   /** Someone has entered the swamp in this world. Optional. */
   swampSeen?: boolean;
+  /** Someone has entered the mountains (S4-D): El Triángulo can lead raids. */
+  mountainsSeen?: boolean;
   /** Which swamp fogatas are lit (ids from the seed). Optional: older saves have them all dark. */
   fogatas?: boolean[];
 }
@@ -370,6 +372,7 @@ export class WorldSim {
   private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean } | null = null;
   private raidN: number;
   private swampSeen: boolean;
+  private mountainsSeen: boolean;
   /** La Gata Araña's wolf id while she leads a raid. */
   private gataId: number | null = null;
   /** Seconds left of a raid fleeing after she fell. */
@@ -413,6 +416,7 @@ export class WorldSim {
     this.raidLevel = saved.raidLevel ?? 0;
     this.raidN = saved.raidN ?? 0;
     this.swampSeen = saved.swampSeen ?? false;
+    this.mountainsSeen = saved.mountainsSeen ?? false;
     this.purified = saved.purified ?? false;
     this.purified2 = saved.purified2 ?? false;
     this.purified3 = saved.purified3 ?? false;
@@ -700,6 +704,7 @@ export class WorldSim {
       raidLevel: this.raidLevel,
       ...(this.raidN ? { raidN: this.raidN } : {}),
       ...(this.swampSeen ? { swampSeen: true } : {}),
+      ...(this.mountainsSeen ? { mountainsSeen: true } : {}),
       graves: this.graves.map((g) => ({ ...g, inv: { ...g.inv } })),
       purified: this.purified,
       ...(this.purified2 ? { purified2: true } : {}),
@@ -1108,11 +1113,12 @@ export class WorldSim {
     if (!this.shrineOpen(id)) return this.tell(p.name, 'Una verja de luz lo protege');
     p.shrines = [...cleared, id];
     // The shrine's light cleanses the corrupt zone of its own biome nearest it, never a Raíz-madre's
-    // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo).
-    const biome = (i: number) => (isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
+    // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo, mountain 14 El Cucurucho).
+    const biome = (i: number) => (isMountainZone(i) ? 'mountain' : isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
     const mine = s.id >= MOUNTAIN_SHRINE.firstId ? 'mountain' : s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
-    // S4-D: a mountain orb will cleanse the nearest zone 15–17; no mountain zones yet, so it cleanses nothing.
-    const ids = this.corrupt().filter((i) => i !== 0 && i !== COAST_ZONES.root && i !== SWAMP_ZONES.root && biome(i) === mine);
+    // S4-E: a Piedra pillar raised ≤2 m from a 15–17 root crushes it (cleanses). S4-F: El Cucurucho cleanses 14.
+    const roots: number[] = [0, COAST_ZONES.root, SWAMP_ZONES.root, MOUNTAIN_ZONES.root];
+    const ids = this.corrupt().filter((i) => !roots.includes(i) && biome(i) === mine);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
     if (mine === 'mountain') {
       p.inv = addItem(p.inv, 'quartz', QUARTZ.orb);
@@ -1208,7 +1214,7 @@ export class WorldSim {
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
     // Coast roots wither to Viento, not Enredadera (see onGust).
-    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
+    const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !isSwampZone(z.id) && !isMountainZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     // Swamp roots (11–13) burn to Fuego (see flameThings); zone 10 is cleansed by beating El Zancudo (stepZancudoFight).
     const knot = inside(DUNGEON.knot);
@@ -2633,8 +2639,9 @@ export class WorldSim {
         for (let tries = 0; tries < 10; tries++) {
           const ang = this.rng() * Math.PI * 2;
           const d = 20 + this.rng() * 15;
-          const x = a.x + Math.sin(ang) * d;
-          const z = a.z + Math.cos(ang) * d;
+          // Beasts don't path on cliffs: in the mountains they gather at the Peldaños' foot, on the forest side.
+          const x = inMountains(a.x, a.z) ? Math.max(-HALF + 10, Math.min(HALF - 10, a.x + Math.sin(ang) * d)) : a.x + Math.sin(ang) * d;
+          const z = inMountains(a.x, a.z) ? -HALF + 6 + this.rng() * 15 : a.z + Math.cos(ang) * d;
           if (inMap(x, z, 5) && this.terrain.heightAt(x, z) > WATER_LEVEL) {
             this.wolves.push(createWolf(this.nextWolfId++, x, z, this.terrain, this.rng, i === 0 ? 'brute' : 'wolf'));
             break;
@@ -2660,6 +2667,12 @@ export class WorldSim {
     if (scout) {
       this.swampSeen = true;
       this.vision(VISION.swamp(scout));
+    }
+    if (!this.mountainsSeen && this.activeNames().some((n) => {
+      const p = this.players.get(n);
+      return !!p && !p.dead && inMountains(p.x, p.z);
+    })) {
+      this.mountainsSeen = true; // S4-H: the first-entry vision («Qué alto…») goes here.
     }
     if (!this.raid && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
