@@ -9,11 +9,11 @@ import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
 import { HALF, WATER_LEVEL } from '../terrain';
-import { CIENAGA } from '../coast';
+import { CIENAGA, depthAt } from '../coast';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
-import { FISH } from '../fish';
+import { FISH, fishFloor, fishStepOk } from '../fish';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -2085,5 +2085,104 @@ describe('taming the giant fish', () => {
     sim.handle('Ana', { t: 'mount', act: 6 });
     expect(snap(sim, 'Ana').self.race).toBeNull();
     expect(texts(sim)).toContain('Ya tienes pez');
+  });
+});
+
+describe('riding the giant fish', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const SURF = WATER_LEVEL - 0.9;
+  /** Ana on her fish at (x, z). */
+  const rider = (x?: number, z?: number) => {
+    const sim = setup('Ana');
+    const at = { x: x ?? sim.fishHome.x, z: z ?? sim.fishHome.z };
+    put(sim, 'Ana', at.x, at.z);
+    sim.getPlayer('Ana')!.y = SURF;
+    sim.getPlayer('Ana')!.fish = { ...at };
+    sim.handle('Ana', { t: 'mount', act: 7 });
+    return sim;
+  };
+  const deepSpot = (sim: WorldSim) => {
+    for (let x = -200; x <= 200; x += 5) {
+      const z = HALF + 130;
+      if (fishStepOk(sim.terrain, sim.island, x, z) && depthAt(sim.terrain, x, z) > 8 && fishStepOk(sim.terrain, sim.island, x + 14, z)) return { x, z };
+    }
+    throw new Error('no deep sea');
+  };
+  const go = (sim: WorldSim, x: number, y: number, z: number) => {
+    const p = sim.getPlayer('Ana')!;
+    for (let i = 0; i < 11; i++) sim.step(0.1); // past 1 s: the move window re-anchors here
+    const before = { x: p.x, y: p.y, z: p.z };
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'swim' });
+    return p.x !== before.x || p.y !== before.y || p.z !== before.z;
+  };
+
+  it('gets on only beside your own fish', () => {
+    const sim = setup('Ana');
+    const h = sim.fishHome;
+    sim.getPlayer('Ana')!.fish = { x: h.x, z: h.z };
+    put(sim, 'Ana', h.x + FISH.reach + 3, h.z);
+    sim.handle('Ana', { t: 'mount', act: 7 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    put(sim, 'Ana', h.x + 1, h.z);
+    sim.handle('Ana', { t: 'mount', act: 7 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(true);
+    sim.handle('Ana', { t: 'mount', act: 2 }); // no deer while on the fish
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+  });
+
+  it('fast in water (cap 15), the deep-sea current does not apply', () => {
+    const probe = setup('X');
+    const d = deepSpot(probe);
+    let sim = rider(d.x, d.z);
+    expect(go(sim, d.x + 14, SURF, d.z)).toBe(true);
+    sim = rider(d.x, d.z);
+    expect(go(sim, d.x + 20, SURF, d.z)).toBe(false);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+  });
+
+  it('dives down to the seabed, not through it', () => {
+    const probe = setup('X');
+    const d = deepSpot(probe);
+    const floor = fishFloor(probe.terrain, d.x + 1, d.z);
+    let sim = rider(d.x, d.z);
+    expect(go(sim, d.x + 1, floor + 0.1, d.z)).toBe(true);
+    sim = rider(d.x, d.z);
+    expect(go(sim, d.x + 1, floor - 1, d.z)).toBe(false);
+  });
+
+  it('no beach and no aguas bravas on the fish', () => {
+    const probe = setup('X');
+    const h = probe.fishHome;
+    let z = h.z;
+    while (fishStepOk(probe.terrain, probe.island, h.x, z - 0.5)) z -= 0.5;
+    let sim = rider(h.x, z);
+    expect(go(sim, h.x, SURF, z - 2)).toBe(false);
+    const isl = probe.island;
+    const out = isl.r + FISH.bravas + 4;
+    sim = rider(isl.x, isl.z - out);
+    expect(go(sim, isl.x, SURF, isl.z - out + 6)).toBe(false);
+  });
+
+  it('A gets off only near the shore; the fish waits there', () => {
+    const probe = setup('X');
+    const d = deepSpot(probe);
+    let sim = rider(d.x, d.z);
+    sim.handle('Ana', { t: 'mount', act: 8 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(true);
+    expect(texts(sim)).toContain('Aquí es hondo. Acércate a la orilla');
+    const h = probe.fishHome;
+    let z = h.z;
+    while (depthAt(probe.terrain, h.x, z) >= FISH.shore) z -= 0.5;
+    sim = rider(h.x, z);
+    sim.handle('Ana', { t: 'mount', act: 8 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    expect(sim.getPlayer('Ana')!.fish).toEqual({ x: Math.round(h.x * 100) / 100, z: Math.round(z * 100) / 100 });
+  });
+
+  it('dying drops you off the fish', () => {
+    const sim = rider();
+    down(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    expect(sim.getPlayer('Ana')!.fish).toBeDefined();
   });
 });

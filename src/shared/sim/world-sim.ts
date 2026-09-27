@@ -1,7 +1,7 @@
 import { NAMES } from '../names';
-import { CIENAGA, deepStepOk, inCienaga } from '../coast';
+import { CIENAGA, deepStepOk, depthAt, inCienaga } from '../coast';
 import { createRng } from '../rng';
-import { clampMap, createTerrain, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
@@ -9,7 +9,7 @@ import { CORRUPTION, generateZones, nearestZone, raidDirFrom, zoneAt, type Zone 
 import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
-import { FISH, fishRings, wildFish } from '../fish';
+import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -127,6 +127,8 @@ interface Live {
   riding: boolean;
   /** Sim time the rider speed cap still applies after getting off (lag grace). */
   rodeUntil: number;
+  /** The speed cap during that grace (the deer's or the fish's). */
+  graceCap: number;
   /** Next time a repeated rule toast may show. */
   hintAt: number;
   /** Sitting behind this rider (live only: the deer carries two). */
@@ -163,6 +165,8 @@ export class WorldSim {
   /** Where the wild giant fish waits, and its race rings (seeded). */
   readonly fishHome: { x: number; z: number };
   readonly fishRings: readonly { x: number; z: number }[];
+  /** The dungeon island (its aguas bravas are whale-only). */
+  readonly island: Islet;
   /** Corruption zones (spec §3), seeded; zone 0 is on the Raíz-madre. */
   readonly zones: readonly Zone[];
   /** Zone ids cleansed (saved). */
@@ -231,6 +235,7 @@ export class WorldSim {
     this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, this.shrines);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...this.shrines, this.entrance]);
+    this.island = coastFeatures(saved.seed).island;
     this.fishHome = wildFish(this.terrain, saved.seed);
     this.fishRings = fishRings(this.terrain, saved.seed, this.fishHome);
     this.zones = generateZones(this.terrain, saved.seed, this.entrance);
@@ -293,7 +298,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -509,6 +514,18 @@ export class WorldSim {
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
+    if (l.fish) {
+      // The fish: water only (no Ciénaga, no aguas bravas), from the seabed + 0.5 up to the surface, cap 15.
+      const wet = fishStepOk(this.terrain, this.island, m.x, m.z);
+      const depthOk = m.y >= fishFloor(this.terrain, m.x, m.z) - 0.3 && m.y <= WATER_LEVEL + 0.5;
+      if (!wet || !depthOk || moved > FISH.maxSpeed * elapsed + 1) {
+        l.fix = true;
+        return;
+      }
+      this.accept(p, l, m);
+      p.fish = { x: r2(p.x), z: r2(p.z) };
+      return;
+    }
     const inBounds = inDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
     const through = clampStep(p.x, p.z, m.x, m.z, this.gates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
@@ -528,19 +545,23 @@ export class WorldSim {
     const mounted = l.riding || this.time < l.rodeUntil;
     // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).
     const wading = !mounted && inCienaga(l.anchorX, l.anchorZ) && inCienaga(m.x, m.z);
-    const cap = mounted ? MOUNT.maxSpeed : wading ? CIENAGA.speed : MAX_SPEED;
+    const cap = l.riding ? MOUNT.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : MAX_SPEED;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
     if (!inBounds || !wallOk || !yOk || !dryOk || !seaOk || moved > cap * elapsed + 1) {
       l.fix = true;
       return;
     }
+    this.accept(p, l, m);
+    if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
+  }
+
+  private accept(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
     p.x = m.x;
     p.y = m.y;
     p.z = m.z;
     p.yaw = m.yaw;
     l.anim = m.anim;
     l.lastAcceptedAt = this.time;
-    if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
   /** A toast at most every few seconds per player (for rules that fire every tick). */
@@ -922,12 +943,21 @@ export class WorldSim {
     if (l.seat) {
       l.seat = null;
       l.rodeUntil = this.time + MOUNT.grace;
+      l.graceCap = MOUNT.maxSpeed;
+      return;
+    }
+    if (l.fish) {
+      l.fish = false;
+      l.rodeUntil = this.time + FISH.grace;
+      l.graceCap = FISH.maxSpeed;
+      p.fish = { x: r2(p.x), z: r2(p.z) };
       return;
     }
     if (!l.riding) return;
     for (const [n, ol] of this.live) if (ol.seat === p.name) this.dismount(this.players.get(n)!, ol);
     l.riding = false;
     l.rodeUntil = this.time + MOUNT.grace;
+    l.graceCap = MOUNT.maxSpeed;
     p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
@@ -958,7 +988,17 @@ export class WorldSim {
 
   /** The giant fish's acts: 6 start the ring race, 7 get on, 8 get off. */
   private onFishAct(p: SavedPlayer, l: Live, act: number): void {
-    if (act !== 6) return; // 7 / 8: riding (Task 3)
+    if (act === 8) {
+      if (!l.fish) return;
+      if (depthAt(this.terrain, p.x, p.z) >= FISH.shore) return this.tell(p.name, 'Aquí es hondo. Acércate a la orilla');
+      return this.dismount(p, l);
+    }
+    if (act === 7) {
+      const f = p.fish;
+      if (!f || l.fish || l.riding || l.tame || l.race || inDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FISH.reach) return;
+      l.fish = true;
+      return;
+    }
     if (l.race || l.tame || l.riding || l.fish || Math.hypot(this.fishHome.x - p.x, this.fishHome.z - p.z) > FISH.reach) return;
     if (p.fish) return this.tell(p.name, 'Ya tienes pez');
     if (this.time + EPS < l.raceReadyAt) return this.tell(p.name, 'El pez aún recela');
