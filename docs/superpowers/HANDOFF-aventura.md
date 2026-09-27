@@ -679,3 +679,28 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador local (Chromium headless 1000×600, mundo `trepa`, semilla 42, partida importada en el día 4, despejado, a 16 m al este de la primera pared): manteniendo A hacia la pared, el personaje la agarra (pose de trepar, aviso "Espacio · Saltar", anillo de aliento bajando) y se desplaza por la cara; el calor bajó de 89 a 81 en ~10 s (frío de altura). Sin errores de consola salvo un aviso de textura de GLTF ya existente. NO verificado: subir hasta la cima con adelante, la lluvia/nieve en pantalla, el parte del alba, móvil.
 - Bloqueos: ninguno.
 - Qué probar: ir a una pared un día despejado y empujar (¿se entiende que se agarra?); subir hasta arriba con el aliento base (¿llega en paredes de 25 m?); saltar con B; un día de lluvia (¿se ve la lluvia? ¿se entiende "Roca mojada"?); quedarse en la cumbre de noche sin fuego. Constantes: `SLIDE`/`CLIMB_SPEED`/`STAMINA` en `src/client/movement.ts`, `COLD` en `src/shared/mountains.ts`, `WEATHER` en `src/shared/weather.ts`, `PRECIP` en `src/client/scene/weather.ts`.
+
+## Slice 4 · S4-C — santuarios de la Montaña, cuarzo, arma 4–5 y refugios — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-C-santuarios-cuarzo-refugios.md` (65bd739).
+- Commits: 04e0194 (T1 reglas: `src/shared/mountain-shrines.ts`, cuarzo, `upgradeCost`, refugios en la lista de fogatas, protocolo v34), 7d956c2 (T2 santuarios y refugios en el servidor, v35), bc9219a (T3 vetas de cuarzo y arma 4–5, v36), a636c6f (T4 cliente).
+- Tests: npm test 680 (antes 656), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 36**. Campo guardado nuevo opcional `SavedPlayer.quartz` (veta → momento): las partidas viejas cargan; `SavedWorld.fogatas` de 4 carga con los refugios apagados.
+- Cómo funciona:
+  - **Tres santuarios más** (ids 9–11, misma lista: orbe de +20 de aliento, uno por jugador). Los orbes de la Montaña dan además **1 cuarzo** y no limpian nada (aún no hay zonas).
+    - **Cornisa** (la pared más alta que la rana sube en 3 saltos, cara que mira al bosque): el orbe está en el borde de arriba. **Sin verja**: la altura es el candado. Se sube trepando la roca (día seco) con **2 repisas** para descansar a un tercio y dos tercios, o en rana saltando de repisa en repisa. Con lluvia, solo la rana.
+    - **Losas gemelas** (Faldas llanas): dos losas a 14 m. Las dos pisadas a la vez → verja abierta **20 s**. Un amigo, o una **ráfaga de Viento** a la roca suelta junto a la losa 2: rueda por el surco y se queda encima **60 s** (luego vuelve). Solo: ráfaga y pisar la losa 1.
+    - **Bloques** (arriba en las Faldas): rejilla 6 × 6 de 2 m, 3 bloques, 3 casillas pálidas y una palanca. Sin Piedra: "No se mueve". La palanca: "Los bloques vuelven a su sitio". Reglas puras (`pushBlock`, `blocksSolved`) y una solución de 8 empujes ya probadas.
+  - **Cuarzo:** 10 vetas blancas (sin niebla, se ven de lejos) en las caras de las paredes, a 8–20 m sobre el pie. E / A estando arriba junto a ella (≤ 2 m, no más de 1,5 m por debajo) → **2 cuarzo**; vuelve a brillar para ti a los **2 días** ("Aún no ha vuelto a brillar"). Gris mientras tanto.
+  - **Arma 4–5:** en el Corazón, del nivel 3 al 5 cuesta **3 cuarzo + 10 piedra + 5 madera** cada nivel (+15 %, máximo +75 %). Los niveles 1–3 siguen con perlas.
+  - **Refugios:** fogatas 4 y 5 (una en las Faldas bajas, otra alta hacia la Cumbre), con tres muros de piedra. Se encienden igual (Llamarada o antorcha), el Menú del Corazón dice "Ir al refugio N" y viajan igual. **Toda fogata encendida calienta** como una fogata construida.
+- Decidido por Claude — revisar:
+  - Cornisa sin verja (como la Roca Lisa). Las repisas están a ~2–3 m en horizontal una de otra: el salto de la rana (9 m adelante) puede pasarse; no se probó en juego.
+  - La roca de las Losas cae en la losa 2 con cualquier ráfaga que la toque (surco), no con un deslizamiento libre de 6 m que exigiría puntería.
+  - "Trepando junto a la veta" = alcance en 3D; el servidor no sabe si trepas.
+  - Todas las fogatas encendidas calientan (también las del Pantano) y asustan a los lobos como una fogata. Una regla.
+  - El cambio de `FOGATA.count` y de `UPGRADE.max` en T1 ya cambiaba lo que acepta el servidor, así que T1 subió el protocolo (v34) y cada tarea siguiente otra vez.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 36; "12 santuarios" (antes 9); fogatas 6 (antes 4) en `fogatas.test.ts` y en los tests del servidor; la mejora en el nivel 3 sin cuarzo dice "Faltan materiales" (antes "El arma ya no da más de sí"); `travel`/`fogata` aceptan hasta 5; partes de santuario hasta 7.
+- **Marcas pendientes:** `// S4-E` (Empujar mueve los bloques y una rejilla resuelta abre la verja; un pilar de Piedra pisa una losa), `// S4-D` (el orbe de la Montaña limpiará la zona 15–17 más cercana).
+- Rendimiento móvil: cuarzo en 2 mallas instanciadas (30 cristales), 2 losas, 1 roca, 3 bloques + 3 losetas + palanca, 2 repisas, 6 muros. Sin luces reales. Unos 20 draw calls nuevos, pequeños.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: subir la Cornisa trepando un día seco (¿llega el aliento con las repisas?) y en rana (¿se aterriza en las repisas?). Losas con un amigo y solo con Viento. Ver las vetas desde lejos, picar una colgado de la pared. Comprar el nivel 4. Encender un refugio, viajar desde el Corazón y pasar la noche al lado. Constantes: `MOUNTAIN_SHRINE`, `BLOCKS`, `QUARTZ` en `src/shared/mountain-shrines.ts`, `UPGRADE` en `src/shared/items.ts`, `FOGATA` en `src/shared/fogatas.ts`.
