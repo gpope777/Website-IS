@@ -21,6 +21,7 @@ import { crash, createElite, createPeat, createRockBrute, createShielded, ELITE,
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
+import { slideMoveOk, SNOWSLIDE } from '../snowslide';
 import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -911,13 +912,20 @@ export class WorldSim {
     // El Zarzal slows walkers and riders; the bog slows walkers (same whole-window rule).
     const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ, this.zarzalBurnt) && zarzalAt(this.terrain, m.x, m.z, this.zarzalBurnt);
     const bogged = !mounted && inBog(this.terrain, l.anchorX, l.anchorZ) && inBog(this.terrain, m.x, m.z);
-    const cap = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
+    const base = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
+    // El tobogán (S4-H): a belly slide on snow, downhill over the whole window, may go up to 16.
+    const sliding = m.anim === 'slide' && !l.riding && !l.frog && slideMoveOk(this.terrain, l.anchorX, l.anchorZ, m.x, m.z);
+    const cap = sliding ? Math.max(base, SNOWSLIDE.maxSpeed) : base;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
     if (!inBounds || !wallOk || !yOk || !dryOk || !seaOk || steep || moved > cap * elapsed + 1) {
       l.fix = true;
       return;
     }
     this.accept(p, l, m);
+    if (sliding) {
+      l.graceCap = this.time < l.rodeUntil ? Math.max(l.graceCap, SNOWSLIDE.maxSpeed) : SNOWSLIDE.maxSpeed;
+      l.rodeUntil = Math.max(l.rodeUntil, this.time + SNOWSLIDE.grace);
+    }
     if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
     if (l.frog) p.frog = { x: r2(p.x), z: r2(p.z) };
     if (m.y <= ground + 0.5) l.boosted = false; // landed (or swimming): the next flight may lift again
