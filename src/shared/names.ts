@@ -115,4 +115,7 @@ export const NAMES = {
   till: 'Caja',
   /** T6-C: trueque directo. */
   trade: 'Cambiar',
+  /** T6-D: the merchant NPC and a Busco shelf. */
+  merchant: 'Buhonero',
+  order: 'Encargo',
 } as const;
