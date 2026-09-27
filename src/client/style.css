@@ -274,3 +274,6 @@ canvas { display: block; }
 .panel input, .panel select { width: 100%; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: var(--fg); }
 .panel .err { color: var(--health); min-height: 1.2em; margin-top: 8px; }
 .inventory-line { position: absolute; top: 12px; right: 12px; background: var(--bg); padding: 6px 12px; border-radius: 8px; font-size: 14px; }
+
+.raid-line { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 999px; background: rgba(70, 20, 90, 0.85); color: #f3e6ff; font-weight: 700; pointer-events: none; white-space: nowrap; }
+.raid-line[hidden], .stat[hidden] { display: none; }

@@ -22,6 +22,8 @@ export class Hud {
   private readonly banner = el('div', 'banner');
   private readonly prompt = el('div', 'prompt-line');
   private readonly overlay = el('div', 'overlay');
+  private readonly heartRow = el('div', 'stat');
+  private readonly raidLine = el('div', 'raid-line');
   menuOpen = false;
 
   /** True while any overlay panel (menu, death, fatal error) covers the screen. */
@@ -38,10 +40,14 @@ export class Hud {
       stats.appendChild(row);
       this.bars[key] = row;
     }
+    this.heartRow.innerHTML = '<span>🌳</span><div class="bar"><i style="background:#5fd38a"></i></div><span class="val"></span>';
+    this.heartRow.hidden = true;
+    stats.appendChild(this.heartRow);
+    this.raidLine.hidden = true;
     this.banner.hidden = true;
     this.prompt.hidden = true;
     this.overlay.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt);
+    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine);
     parent.append(this.root, this.overlay);
   }
 
@@ -64,6 +70,19 @@ export class Hud {
     d.textContent = text;
     this.log.prepend(d);
     setTimeout(() => d.remove(), 6000);
+  }
+
+  setHeart(h: { hp: number; max: number } | null): void {
+    this.heartRow.hidden = !h;
+    if (!h) return;
+    (this.heartRow.querySelector('i') as HTMLElement).style.width = `${(h.hp / h.max) * 100}%`;
+    (this.heartRow.querySelector('.val') as HTMLElement).textContent = h.hp > 0 ? String(h.hp) : 'marchito';
+    this.heartRow.classList.toggle('low', h.hp < h.max * 0.25);
+  }
+
+  setRaid(text: string | null): void {
+    this.raidLine.hidden = !text;
+    if (text) this.raidLine.textContent = text;
   }
 
   setPrompt(text: string | null): void {

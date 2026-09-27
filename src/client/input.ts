@@ -16,7 +16,7 @@ export function readMove(i: InputState): MoveInput {
   return { x: (i.right ? 1 : 0) - (i.left ? 1 : 0), z: (i.back ? 1 : 0) - (i.forward ? 1 : 0), sprint: i.sprint, jump: i.jump };
 }
 
-export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'camera' | 'menu';
+export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'camera' | 'menu';
 
 /** Also used by touch buttons, which fire these KeyboardEvent codes. */
 export const KEY_ACTIONS: Record<string, Action> = {
@@ -25,6 +25,8 @@ export const KEY_ACTIONS: Record<string, Action> = {
   Digit1: 'eat',
   KeyB: 'campfire',
   KeyV: 'wall',
+  KeyG: 'heart',
+  KeyT: 'spikes',
   KeyC: 'camera',
   Escape: 'menu',
 };

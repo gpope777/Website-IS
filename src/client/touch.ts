@@ -42,6 +42,8 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'Digit1', label: '🫐', sub: 'comer', cls: 'pill' },
   { code: 'KeyB', label: '🔥', sub: 'fogata', cls: 'pill' },
   { code: 'KeyV', label: '🧱', sub: 'muro', cls: 'pill' },
+  { code: 'KeyG', label: '🌳', sub: 'corazón', cls: 'pill' },
+  { code: 'KeyT', label: '🗡️', sub: 'estacas', cls: 'pill' },
   { code: 'KeyC', label: '🎥', sub: 'cámara', cls: 'pill' },
 ];
 

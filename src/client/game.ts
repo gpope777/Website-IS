@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
 import { createTerrain, type Terrain } from '../shared/terrain';
-import { PROTOCOL_VERSION, r2, type Anim, type ServerMsg, type Structure } from '../shared/protocol';
-import { dayFraction, PUNCH, REACH } from '../shared/sim/world-sim';
+import { PROTOCOL_VERSION, r2, type Anim, type HeartView, type RaidView, type ServerMsg, type Structure } from '../shared/protocol';
+import { dayFraction, HEART, PUNCH, REACH } from '../shared/sim/world-sim';
 import type { StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
 import { CameraRig } from './camera-rig';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
+import { raidText } from './raid-ui';
 import { clearHold, Keyboard, readMove, type Action, type InputState, KEY_ACTIONS } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
@@ -62,6 +63,8 @@ export class Game {
   private myName = '';
   private serverTime = 0;
   private dead = false;
+  private heart: HeartView | null = null;
+  private raid: RaidView | null = null;
   private attackUntil = 0;
   private sendTimer = 0;
   private lastSent = '';
@@ -147,6 +150,14 @@ export class Game {
         return this.addStructure(m.s);
       case 'toast':
         return this.hud.toast(m.text);
+      case 'hit':
+        if (this.heart?.id === m.id) this.heart = { ...this.heart, hp: m.hp };
+        this.structures.setHp(m.id, m.hp);
+        return;
+      case 'wrecked':
+        this.structures.remove(m.id);
+        for (let i = 0; i < 3; i++) this.colliders.remove(`s${m.id}:${i}`);
+        return;
       case 'error':
         return; // handled by Connection → onStatus
     }
@@ -193,6 +204,10 @@ export class Game {
   private onSnap(m: Extract<ServerMsg, { t: 'snap' }>): void {
     this.serverTime = m.time;
     this.applySelf(m.self);
+    this.raid = m.raid;
+    this.heart = m.heart;
+    this.hud.setHeart(m.heart);
+    if (m.heart) this.structures.setHp(m.heart.id, m.heart.hp);
     if (!this.kits) return;
     for (const p of m.players) {
       const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
@@ -202,6 +217,7 @@ export class Game {
     }
     for (const w of m.wolves) {
       const r = this.remote(this.wolves, w.id, () => new Actor(this.kits!.fox, WOLF_CLIPS));
+      r.actor.root.scale.setScalar(w.raid ? 1.3 : 1);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
       r.seen = m.time;
@@ -274,7 +290,7 @@ export class Game {
     if (this.dead || !this.body || this.hud.menuOpen) return;
     if (a === 'camera') return this.rig.toggle();
     if (a === 'eat') return this.conn.send({ t: 'eat' });
-    if (a === 'campfire' || a === 'wall') return this.place(a);
+    if (a === 'campfire' || a === 'wall' || a === 'heart' || a === 'spikes') return this.place(a);
     this.act();
   }
 
@@ -300,8 +316,15 @@ export class Game {
       if (d <= PUNCH.reach && (!best || d < best.d)) best = { id, d };
     }
     if (best) return this.conn.send({ t: 'attack', id: best.id });
+    if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
+  }
+
+  private canTend(): boolean {
+    const h = this.heart;
+    const s = h && this.structures.position(h.id);
+    return !!h && !!s && h.hp < h.max && Math.hypot(s.x - this.body!.x, s.z - this.body!.z) <= HEART.tendReach;
   }
 
   private nearestResource(): ResourceSpawn | null {
@@ -376,7 +399,8 @@ export class Game {
     }
 
     const focus = new THREE.Vector3(b.x, b.y, b.z);
-    this.light.update(dayFraction(this.serverTime), focus);
+    this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
+    this.hud.setRaid(raidText(this.raid, this.rig.yaw));
     this.structures.animate(performance.now() / 1000);
     this.rig.apply(this.camera, b, terrain);
     this.updatePrompt();
@@ -392,6 +416,7 @@ export class Game {
 
   private updatePrompt(): void {
     if (this.touch || this.dead) return this.hud.setPrompt(null);
+    if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const res = this.nearestResource();
     this.hud.setPrompt(res ? `E · ${HARVEST[res.kind].label}` : null);
   }
