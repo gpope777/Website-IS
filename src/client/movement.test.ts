@@ -68,6 +68,18 @@ describe('stepBody', () => {
     expect(animFor(r, b)).toBe('swim');
   });
 
+  it('swims at a high lake surface (el Lago Negro, S5-C); the fish floats there too', () => {
+    const lake: Terrain = { heightAt: () => 10, density: () => 0.5, waterAt: () => 20 };
+    const { b, r } = run(fwd, 0.5, lake);
+    expect(r.swimming).toBe(true);
+    expect(b.y).toBeCloseTo(19.1);
+    const f = createBody(0, 0, lake);
+    f.fish = { x: 1e4, z: 1e4, r: 1, top: 0 };
+    f.y = 12;
+    for (let i = 0; i < 300; i++) stepBody(f, { x: 0, z: 0, sprint: false, jump: false }, 0, 1 / 60, lake, none);
+    expect(f.y).toBeCloseTo(19.1);
+  });
+
   it('stays inside the world', () => {
     const b = createBody(HALF - 3.5, 0, flat);
     for (let i = 0; i < 120; i++) stepBody(b, { x: 1, z: 0, sprint: true, jump: false }, 0, 1 / 60, flat, none);

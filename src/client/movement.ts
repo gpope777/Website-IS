@@ -1,4 +1,4 @@
-import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
+import { clampMap, WATER_LEVEL, waterLevel, type Islet, type Terrain } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
 import { FROG, frogHop, frogMoveOk } from '../shared/frog';
 import { DRAGON, dragonCeil, inFog } from '../shared/dragon';
@@ -101,7 +101,8 @@ export const GLIDE = { speed: 7, sink: 1.6, minHeight: 1.5 } as const;
 export const CLIMB_SPEED = 2.2;
 /** Mountain rock (S4-B): off the wall you slide down slopes over 45° at `speed`; climbing, you stand up below `stand`°. */
 export const SLIDE = { speed: 4, stand: 35 } as const;
-const SWIM_DEPTH = WATER_LEVEL - 0.6;
+/** Deeper than this you swim (the sea, or el Lago Negro's own surface, S5-C). */
+const swimDepth = (t: Terrain, x: number, z: number) => waterLevel(t, x, z) - 0.6;
 const GRAVITY = 14;
 const JUMP_SPEED = 5.2;
 const LEAP = { out: 4, up: 4 } as const;
@@ -118,7 +119,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
-    x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
+    x, y: Math.max(terrain.heightAt(x, z), swimDepth(terrain, x, z)), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
     stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, wall: false, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, frog: false, hopCd: 0, lift: 0, boosted: false,
   };
 }
@@ -166,11 +167,11 @@ export function stepBody(
   if (b.sliding && !b.riding) return stepSlide(b, input, camYaw, dt, terrain, nearby, crags, bounds, jumpEdge);
 
   const hereH = terrain.heightAt(b.x, b.z);
-  const swimming = hereH < SWIM_DEPTH;
+  const swimming = hereH < swimDepth(terrain, b.x, b.z);
   if (swimming || b.onGround || b.riding) b.gliding = false;
   else if (jumpEdge) {
     // A fresh jump press in the air toggles the glider (B on touch).
-    const below = Math.max(hereH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
+    const below = Math.max(hereH, swimDepth(terrain, b.x, b.z), cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
     b.gliding = !b.gliding && !b.tired && b.y - below > GLIDE.minHeight;
   }
   let ix = input.x;
@@ -242,7 +243,7 @@ export function stepBody(
     nz = cr.z + (dz / d) * min;
   }
   const to = bounds(b.x, b.z, nx, nz);
-  if (b.riding && terrain.heightAt(to.x, to.z) < SWIM_DEPTH) {
+  if (b.riding && terrain.heightAt(to.x, to.z) < swimDepth(terrain, to.x, to.z)) {
     // The deer will not swim: it stops at the shore.
     to.x = b.x;
     to.z = b.z;
@@ -261,8 +262,8 @@ export function stepBody(
   if (b.onGround && !swimming) slide(terrain, b, dt, bounds);
 
   const terrainH = terrain.heightAt(b.x, b.z);
-  if (terrainH < SWIM_DEPTH) {
-    b.y = WATER_LEVEL - 0.9;
+  if (terrainH < swimDepth(terrain, b.x, b.z)) {
+    b.y = waterLevel(terrain, b.x, b.z) - 0.9;
     b.vy = 0;
     b.onGround = true;
     b.boosted = false;
@@ -271,7 +272,7 @@ export function stepBody(
     else regen(b, dt);
     return { ...RESULT_IDLE, moving, swimming: true };
   }
-  const ground = Math.max(terrainH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
+  const ground = Math.max(terrainH, swimDepth(terrain, b.x, b.z), cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
   if (input.jump && b.onGround) {
     b.vy = JUMP_SPEED;
     b.onGround = false;
@@ -379,7 +380,7 @@ function stepWall(b: Body, input: MoveInput, dt: number, terrain: Terrain, jumpE
   }
   b.vx = b.vz = b.vy = 0;
   if (u.tan > 1e-6) b.facing = Math.atan2(u.ux, u.uz);
-  const h = Math.max(terrain.heightAt(b.x, b.z), SWIM_DEPTH);
+  const h = Math.max(terrain.heightAt(b.x, b.z), swimDepth(terrain, b.x, b.z));
   const slope = slopeAt(terrain, b.x, b.z);
   const ahead = slopeAt(terrain, b.x + u.ux, b.z + u.uz);
   if ((slope < SLIDE.stand && ahead < STEEP.deg) || (up <= 0 && slope < STEEP.deg) || !inMountains(b.x, b.z)) {
@@ -415,7 +416,7 @@ function stepFish(b: Body, island: Islet, input: MoveInput, camYaw: number, dt: 
     b.z = to.z;
   } else b.vx = b.vz = 0; // the shore, the Ciénaga or the aguas bravas: the fish turns back
   if (moving) b.facing = Math.atan2(wx, wz);
-  const surface = WATER_LEVEL - 0.9;
+  const surface = waterLevel(terrain, b.x, b.z) - 0.9;
   const floor = Math.min(surface, fishFloor(terrain, b.x, b.z));
   b.y = input.jump ? Math.max(floor, b.y - FISH.sink * dt) : Math.min(surface, b.y + FISH.rise * dt);
   b.y = Math.max(floor, b.y);
@@ -473,7 +474,7 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
     b.x = to.x;
     b.z = to.z;
   } else b.vx = b.vz = 0; // too deep for the frog (it may still hop over, land on a pad, or float back shallower)
-  const ground = Math.max(terrain.heightAt(b.x, b.z), WATER_LEVEL, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
+  const ground = Math.max(terrain.heightAt(b.x, b.z), waterLevel(terrain, b.x, b.z), cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
   if (b.onGround) b.y = ground;
   else {
     b.vy -= GRAVITY * dt;
@@ -551,7 +552,7 @@ function stepDragon(b: Body, input: MoveInput, camYaw: number, dt: number, terra
   }
   b.x = to.x;
   b.z = to.z;
-  const ground = Math.max(terrain.heightAt(b.x, b.z), WATER_LEVEL);
+  const ground = Math.max(terrain.heightAt(b.x, b.z), waterLevel(terrain, b.x, b.z));
   const floor = b.noLand ? ground + DRAGON.noLandY : ground;
   const ceil = dragonCeil(ground);
   let y = b.y + (input.jump ? DRAGON.climb : -DRAGON.sink) * dt;
@@ -643,7 +644,7 @@ function stepClimb(b: Body, input: MoveInput, dt: number, terrain: Terrain, jump
     b.onGround = true;
     return { ...RESULT_IDLE, moving };
   }
-  const foot = Math.max(terrain.heightAt(b.x, b.z), SWIM_DEPTH);
+  const foot = Math.max(terrain.heightAt(b.x, b.z), swimDepth(terrain, b.x, b.z));
   if (b.y <= foot) {
     b.y = foot;
     b.climb = null;

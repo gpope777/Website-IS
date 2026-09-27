@@ -17,6 +17,11 @@ export function skyPlacement(cam: { x: number; y: number; z: number }, base: { x
   return { x: cam.x + dx * k, y: cam.y + dy * k, z: cam.z + dz * k, scale: k };
 }
 
+const CRACKS = 4;
+const CRACK_LIT = new THREE.Color(0xc07aff);
+const CRACK_DARK = new THREE.Color(0x140a1c);
+const UP = new THREE.Vector3(0, 1, 0);
+
 /** A twisted 12-sided cone of unit height, dark purple with a violet tip (vertex colours). */
 function towerGeometry(): THREE.BufferGeometry {
   const geo = new THREE.ConeGeometry(TOWER.r, 1, 12, 8);
@@ -49,6 +54,9 @@ export class VillainTower {
   readonly real: THREE.Mesh;
   readonly sky: THREE.Mesh;
   private readonly base: THREE.Vector3;
+  /** S5-C: one violet crack per Pilar-raíz, dark once it breaks (one instanced mesh, near only). */
+  readonly cracks: THREE.InstancedMesh;
+  private crackKey = '';
 
   constructor(terrain: Terrain) {
     const geo = towerGeometry();
@@ -58,14 +66,41 @@ export class VillainTower {
     this.sky = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthWrite: false }));
     this.sky.renderOrder = -1;
     this.sky.frustumCulled = false;
-    this.group.add(this.real, this.sky);
+    this.cracks = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1, 0.5), new THREE.MeshBasicMaterial({ fog: false }), CRACKS);
+    for (let i = 0; i < CRACKS; i++) this.cracks.setColorAt(i, CRACK_LIT);
+    this.group.add(this.real, this.sky, this.cracks);
+  }
+
+  /** Dark cracks for the broken Pilares-raíz. */
+  setCracks(broken: readonly boolean[]): void {
+    const key = broken.join();
+    if (key === this.crackKey) return;
+    this.crackKey = key;
+    for (let i = 0; i < CRACKS; i++) this.cracks.setColorAt(i, broken[i] ? CRACK_DARK : CRACK_LIT);
+    this.cracks.instanceColor!.needsUpdate = true;
+  }
+
+  private placeCracks(height: number): void {
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    for (let i = 0; i < CRACKS; i++) {
+      const f = 0.15 + 0.12 * i;
+      const a = (i * Math.PI) / 2 + f * 1.6; // follows the twist
+      const r = TOWER.r * (1 - f) + 0.1;
+      q.setFromAxisAngle(UP, a);
+      m.compose(new THREE.Vector3(this.base.x + Math.sin(a) * r, this.base.y + f * height, this.base.z + Math.cos(a) * r), q, new THREE.Vector3(1, height * 0.06, 1));
+      this.cracks.setMatrixAt(i, m);
+    }
+    this.cracks.instanceMatrix.needsUpdate = true;
   }
 
   update(cam: THREE.Vector3, height: number, far: number): void {
     // Real within 300 m, but never past the far plane (low tier draws 120 m): beyond that the sky copy takes over.
     const near = Math.hypot(cam.x - this.base.x, cam.z - this.base.z) < Math.min(TOWER_NEAR, far * SKY_AT);
     this.real.visible = near;
+    this.cracks.visible = near;
     this.sky.visible = !near;
+    if (this.real.scale.y !== height) this.placeCracks(height);
     this.real.scale.set(1, height, 1);
     if (near) return;
     const p = skyPlacement(cam, this.base, far * SKY_AT);

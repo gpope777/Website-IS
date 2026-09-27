@@ -24,7 +24,7 @@ import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
-import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type FogState, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
+import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type FogState, type HeartView, type PillarView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
 import { DAY_LENGTH, dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
@@ -73,6 +73,9 @@ import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
 import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
 import { VillainTower } from './scene/villain-tower';
+import { PillarMeshes } from './scene/pillars';
+import { pillarAction } from './corrupt-ui';
+import { pillarSites, type PillarSites } from '../shared/pillars';
 import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
@@ -102,6 +105,9 @@ const ZANCUDO_IMG = '/enemies/enemy9.png';
 /** El rayo marchito (enemy11.png, RGBA 460 × 485, 72 % transparent): a 2 m purple paper bolt (spec S5 §7.2). */
 const RAYO_IMG = '/enemies/enemy11.png';
 const RAYO_ASPECT = 460 / 485;
+/** La Flecha (enemy10.png, RGBA 463 × 437, 75 % transparent): a 3 m black arrow (spec S5 §9). */
+const FLECHA_IMG = '/enemies/enemy10.png';
+const FLECHA_ASPECT = 463 / 437;
 const ZANCUDO_ASPECT = 358 / 291;
 const CUCURUCHO_IMG = '/enemies/enemy13.png';
 const CUCURUCHO_ASPECT = 556 / 601;
@@ -287,6 +293,12 @@ export class Game {
   private readonly corruptGroup = new THREE.Group();
   /** S5-A: El Marchito's tower (real near it, a sky copy from everywhere else). */
   private villainTower: VillainTower | null = null;
+  /** S5-C: los Pilares-raíz (seeded spots, their meshes and the last view). */
+  private pillarSpots: PillarSites | null = null;
+  private pillarMeshes: PillarMeshes | null = null;
+  private pillarView: PillarView | null = null;
+  /** La Flecha's red line on the ground while she aims (one shared mesh). */
+  private readonly flechaLine = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0xff2a2a, fog: false }));
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
   private rescueMeshes: RescueMeshes | null = null;
@@ -519,6 +531,11 @@ export class Game {
     });
     this.corruptGroup.visible = false;
     this.scene.add(this.corruptGroup);
+    this.pillarSpots = pillarSites(seed);
+    this.pillarMeshes = new PillarMeshes(this.terrain, seed);
+    this.corruptGroup.add(this.pillarMeshes.group);
+    this.flechaLine.visible = false;
+    this.scene.add(this.flechaLine);
     this.villainTower = new VillainTower(this.terrain);
     this.scene.add(this.villainTower.group);
     this.zarzalKnot = new ZarzalKnot(this.terrain);
@@ -594,6 +611,11 @@ export class Game {
     this.fogatasLit = m.fogatas;
     this.fog = m.fog;
     this.towerH = m.towerH;
+    this.pillarView = m.pillars ?? null;
+    if (m.pillars) {
+      this.pillarMeshes?.sync(m.pillars);
+      this.villainTower?.setCracks(m.pillars.broken);
+    }
     this.fogataMeshes?.sync(m.fogatas);
     if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
@@ -630,15 +652,17 @@ export class Game {
     this.cage = m.cage ?? null;
     this.rescueMeshes?.sync(this.cage);
     this.anchorTargets = m.wolves.filter((w) => w.kind === 'anchor').map((w) => ({ id: w.id, x: w.x, z: w.z }));
+    this.syncFlechaLine(m.wolves.find((w) => w.kind === 'lieut3' && w.aim));
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : w.kind === 'lieut3' ? new PaperActor(FLECHA_IMG, 3, this.camera, FLECHA_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       // The rayo flashes white during its 0.8 s tell and goes pale when a gust grounds it (anim idle).
       if (w.kind === 'rayo' && r.actor instanceof PaperActor) r.actor.setTint(w.anim === 'attack' ? 0xffffff : w.anim === 'idle' ? 0xe8dca0 : 0xb48ad8);
       else if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if ((w.kind === 'lieut1' || w.kind === 'lieut2') && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
+      else if (w.kind === 'lieut3' && r.actor instanceof PaperActor) r.actor.setTint(w.stuck ? 0xffe9a0 : w.aim ? 0xffb0a0 : 0xffffff);
       else if (w.kind === 'boss3' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.swamp.boss?.grounded ? 0xffe9a0 : 0xffffff);
       else if (w.kind === 'boss4' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.mountain.boss?.stuck ? 0xffe9a0 : m.dungeon.mountain.boss?.windup ? 0xff9a8a : 0xffffff);
       else if (w.kind === 'boss2' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.coast.boss?.exposed ? 0xffe9a0 : 0xffffff);
@@ -1060,6 +1084,8 @@ export class Game {
     if (fa?.t === 'travel') return this.conn.send({ t: 'travel', to: 'heart' });
     if (fa?.t === 'hint') return this.hud.toast(fa.label);
     if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
+    const pa = this.pillarAct();
+    if (pa) return this.conn.send({ t: 'pillar', id: pa.id });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
     if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
@@ -1118,6 +1144,30 @@ export class Game {
   }
 
   /** The root cage within reach while the Tragón is taken. */
+  /** La Flecha's clavada: a red strip on the ground from her to where the dash ends. */
+  private syncFlechaLine(w: { x: number; z: number; aim?: { x: number; z: number } } | undefined): void {
+    const line = this.flechaLine;
+    if (!w?.aim || !this.terrain) {
+      line.visible = false;
+      return;
+    }
+    const dx = w.aim.x - w.x;
+    const dz = w.aim.z - w.z;
+    const mx = (w.x + w.aim.x) / 2;
+    const mz = (w.z + w.aim.z) / 2;
+    line.visible = true;
+    line.scale.set(1, 1, Math.max(0.5, Math.hypot(dx, dz)));
+    line.rotation.y = Math.atan2(dx, dz);
+    line.position.set(mx, this.terrain.heightAt(mx, mz) + 0.25, mz);
+  }
+
+  /** A Pilar-raíz core within reach (S5-C). */
+  private pillarAct(): { id: number; label: string } | null {
+    const b = this.body;
+    if (!b || this.dead || !this.pillarSpots) return null;
+    return pillarAction(b, this.pillarSpots, this.pillarView);
+  }
+
   private rescueAct(): { label: string } | null {
     const b = this.body;
     if (!b || this.dead || !this.rescueSpot) return null;
@@ -1527,6 +1577,8 @@ export class Game {
     if (fa) return this.hud.setPrompt(fa.t === 'hint' ? `${NAMES.fogata[0]!.toUpperCase()}${NAMES.fogata.slice(1)} apagada · ${fa.label}` : `E · ${fa.label}`);
     const ra = this.rescueAct();
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
+    const pa = this.pillarAct();
+    if (pa) return this.hud.setPrompt(`E · ${pa.label}`);
     const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma?.act === 17) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio (mantener) · Subir`);
