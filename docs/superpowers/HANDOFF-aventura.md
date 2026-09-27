@@ -20,3 +20,16 @@
 - Commits end with the `Co-Authored-By` trailer shown in the plan.
 
 **After plan A:** write plan B (combat) with superpowers:writing-plans, against the code as it stands. The plan map is at the top of plan A.
+
+---
+
+# Progreso autónomo (noche 2026-09-27)
+
+PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main = deploy).
+
+## Plan A — HECHO
+- Commits: 32f50a6 (T1 items/protocolo v2), fff4221 (T2 Corazón), 171cab3 (T3 raider AI), a391bf8 (T4 asedios), 0e05933 (T5 cliente).
+- Tests: npm test 93, test:workers 12, check + build verdes.
+- Decisiones/desvíos: el test de estacas reposiciona al lobo cada tick porque los asaltantes (6,2 m/s) salen del radio de 1,3 m en ~2 ticks. **En juego real las estacas casi no dañan: revisar balance** (radio mayor o ralentizar al pisarlas).
+- Verificado en navegador local: login, teclas G/T llegan al server, botones 🌳/🗡️ en móvil. NO verificado: un asedio completo (jugador nuevo sin materiales).
+- Qué probar: plantar Corazón, estacas, aviso al atardecer (flecha del banner), oleada, marchitar + atender con bayas.
