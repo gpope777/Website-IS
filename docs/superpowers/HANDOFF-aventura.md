@@ -725,3 +725,37 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: subir, buscar las 4 manchas (¿se ve bien la 17 en el nevero?), tomar un orbe de la Montaña y ver cuál desaparece. Forzar el 4.º asedio (`raidN: 3` y `mountainsSeen: true` en el guardado): ¿se ve el Triángulo negro al atardecer?, ¿las rocas rompen muros demasiado rápido (40 cada 6 s)?, ¿340 PV con arma 4? Constantes: `MOUNTAIN_ZONES` en `corruption.ts`, `TRIANGULO` en `sim/lieutenant.ts`.
+
+## Slice 4 · S4-E — mazmorra de la Montaña y la Piedra — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-E-piedra-mazmorra.md` (f8d4db2).
+- Commits: 757630d (T1 reglas: `src/shared/piedra.ts`, `src/shared/mountain-dungeon.ts`, `pushBlock` con tamaño de rejilla), 0a5efae (T2 pilares en el servidor, protocolo v39), 5fb84f0 (T3 mazmorra en el servidor), 1fe3f8b (T4 bruto de roca, torre, marcas S4-E), 68e69ce (T5 cliente).
+- Tests: npm test 731 (antes 707), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 39**. Campo guardado nuevo opcional `SavedPlayer.piedra`: las partidas viejas cargan. Los pilares nunca se guardan.
+- Cómo funciona:
+  - **Entrada:** la boca de la cueva está 5 m al norte de la raíz de la zona 14 (x −70, 145 m al norte del borde). A / E a ≤9 m → dentro. Al salir apareces 6 m al sur de la boca.
+  - **Interior** en `x = HALF + 600`, 24 × 190 m, suelo a 30 m, luz azul fría, cálido (como todas las mazmorras):
+    1. **Palancas** (6 s) → verja 0.
+    2. **Altar de la Piedra** (A / E) → `piedra` guardado.
+    3. **Losa alta** (verja 1): una losa encima de una repisa de roca de 3 m (se trepa). Abierta **solo mientras pesa**: un pilar a ≤2 m, o alguien de pie arriba.
+    4. **Bloques** (verja 2): rejilla 5 × 5, 2 bloques a 2 casillas pálidas, 5 empujes. Palanca de reinicio. Resuelta, se queda abierta.
+    5. **Corredor de rocas** (sin verja, 40 m): 3 carriles, una roca por carril cada 2 s a 8 m/s hacia la entrada. −15 y 3 m atrás; rodar la esquiva, bloquear la para. Un pilar en un carril para todas las rocas de ese carril por debajo de él.
+    6. **Bruto de roca** (500 PV): la carga del bruto reforzado detrás de una losa gris. De frente, los golpes hacen el 10 %. Si su carga choca con un pilar o con la pared de la sala: **aturdido y expuesto 5 s**. Una parada lo expone 3 s. Al caer, verja 3.
+    7. **Sala del jefe:** vacía y lista para S4-F ("La sala está en calma. Algo con gorro duerme bajo el hielo").
+  - **Piedra** (H / botón de poder, 🪨): **Alzar** un pilar de 2 × 2 × 3 m a 4 m delante, en rejilla de 2 m. 3 s de enfriamiento propio. Máximo 3 por jugador (el 4.º tumba el más viejo), 120 s, 80 PV. Se trepa y se pisa (es un peñasco), pesa en las losas, los asaltantes lo muerden como a un muro, las rocas de El Triángulo lo buscan. Alzado bajo una bestia: aturdida 1 s y −4. Cualquier bruto élite que carga contra un pilar se estrella 5 s.
+  - **Empujar:** E / A junto a un bloque (Bloques, sala de bloques): una casilla en dirección contraria a ti. Sin Piedra: "No se mueve".
+  - **Cambio de poder:** J / mantener el botón cicla 🌿 → 🌬️ → 🔥 → 🪨 saltando los que no tienes.
+  - **Torre:** cuarta trampa del Menú ("Trampa: … / torre", solo con Piedra) y tecla **I**. 6 piedra + 2 cuarzo, 150 PV. Se trepa; desde arriba las flechas llegan a 36 m (×1,5). Cada 4 s aparta 3 m a los asaltantes que están a ≤3 m de su pie.
+  - **Marcas `// S4-E` resueltas:** Bloques se resuelve con Empujar (la solución de 8 empujes abre el santuario); un pilar pisa cualquier losa (la de la mazmorra del bosque, Losa, Marea, las dos de Losas gemelas y la losa alta); un pilar a ≤2 m de la raíz de 15–17 la aplasta ("La roca aplasta la raíz marchita. La montaña respira"; la 14 nunca); los pilares son blanco de las rocas de El Triángulo.
+- Decidido por Claude — revisar:
+  - **Los pilares son construcciones** (tipo `'pillar'`, nunca se pueden `place`), no un `snap.pillars` nuevo: así valen solos los mensajes `built`/`hit`/`wrecked`, los muros de los asaltantes y el blanco de las rocas. Sus peñascos usan ids 920 000 + id.
+  - Cuatro verjas físicas + el corredor de rocas sin verja (como la sima y la pasarela).
+  - La losa alta cuenta un pilar cuyo centro está a ≤2 m de ella (el pilar sale del suelo junto a la repisa, no encima): con Piedra se resuelve solo; sin ella, un amigo trepa y se queda arriba.
+  - Las rocas son una función pura del tiempo (cliente y servidor las calculan igual, sin red). Los pilares no se rompen con ellas.
+  - El aturdimiento por pilar vale para los cuatro brutos élite; la pared solo aturde al bruto de roca. El pilar no se daña al recibir la carga.
+  - La torre solo aparta a asaltantes (no a los lobos sueltos de la noche). "Encima de la torre" = a ≤1,4 m de su centro y a ≥ altura − 0,6.
+  - El bruto de roca es el zorro a escala 2,4 con una losa gris delante; sin modelo propio.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión → 39 en todos los tests que la miran; `decodeClient` acepta `dungeon` hasta 25 (los tests que rechazaban 18 ahora rechazan 26). El test viejo de Bloques ("no se mueven aún") sigue pasando: es el caso sin Piedra.
+- **Marcas pendientes:** `// S4-F` (El Cucurucho limpia la 14; su sala ya existe, vacía), `// S4-H`.
+- Rendimiento móvil: interior de ~60 mallas pequeñas + 5 luces fijas; 9 rocas (3 por carril) movidas por fotograma solo dentro. Cada pilar/torre es una malla (máx. 3 pilares × 8 jugadores). Sin luces nuevas fuera.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: subir a la raíz morada grande (x −70) y entrar por la boca. Palancas, altar (J hasta 🪨). Alzar un pilar junto a la repisa y cruzar la verja; o trepar la repisa con un amigo. Bloques (¿se entiende hacia dónde empuja?). Corredor: pasar sin pilares (¿2 s es justo?) y con pilares. Bruto de roca: pegarle de frente (casi nada), poner un pilar entre los dos y esperar la carga. Fuera: Bloques del santuario con Empujar, un pilar en una losa de Losas gemelas, un pilar en una raíz 15–17, una torre junto al Corazón de noche. Constantes: `PIEDRA`/`TOWER` en `src/shared/piedra.ts`, `MOUNTAIN_DUNGEON` en `src/shared/mountain-dungeon.ts`, `ENEMY.elite4`, `ELITE.frontMult/wallStun`.
