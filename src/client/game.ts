@@ -4,7 +4,7 @@ import { createTerrain, type Terrain } from '../shared/terrain';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
-import { bossBarText, dungeonAction, emptyDungeonView, marchitoBarText } from './dungeon-ui';
+import { bossBarText, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText } from './dungeon-ui';
 import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
@@ -318,7 +318,7 @@ export class Game {
     this.shrineViews = m.shrines;
     this.dungeon = m.dungeon;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
-    this.hud.setBoss(bossBarText(m.dungeon) ?? marchitoBarText(m.marchito));
+    this.hud.setBoss(bossBarText(m.dungeon) ?? eliteBarText(m.dungeon) ?? marchitoBarText(m.marchito));
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     const key = m.corrupt.join(',');
@@ -341,7 +341,7 @@ export class Game {
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
-      else r.actor.root.scale.setScalar(w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
+      else r.actor.root.scale.setScalar(w.kind === 'elite' ? 2.4 : w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
       r.seen = m.time;
@@ -593,7 +593,7 @@ export class Game {
     if (fallen) return this.conn.send({ t: 'revive', name: fallen });
     const sp = this.shrinePart();
     if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
-    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower);
+    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
@@ -819,7 +819,7 @@ export class Game {
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const sp = this.body && this.shrinePart();
     if (sp) return this.hud.setPrompt(sp.part > 0 ? 'E · Tirar de la palanca' : sp.open ? 'E · Tomar el orbe' : 'La verja está cerrada');
-    const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower);
+    const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma) return this.hud.setPrompt(ma.act === 3 ? 'E / M · Bajar del ciervo' : `E · ${ma.label}`);
     const b = this.body;

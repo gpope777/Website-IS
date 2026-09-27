@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DUNGEON, leverPos } from '../shared/dungeon';
+import { DUNGEON, inside, leverPos } from '../shared/dungeon';
 import type { DungeonView } from '../shared/protocol';
-import { bossBarText, dungeonAction, emptyDungeonView } from './dungeon-ui';
+import { bossBarText, dungeonAction, eliteBarText, emptyDungeonView } from './dungeon-ui';
 
 const entrance = { x: 100, y: 2, z: 0 };
 const shut: DungeonView = emptyDungeonView();
@@ -24,6 +24,19 @@ describe('dungeonAction', () => {
     expect(dungeonAction(p, entrance, open, true)).toBeNull();
     expect(dungeonAction(p, entrance, shut, false)).toBeNull();
   });
+  it('block, lantern and brazier: pick up, drop, light', () => {
+    const b = inside(DUNGEON.blockStart);
+    expect(dungeonAction(at(b.x, b.z), entrance, shut, true, 'Ana')).toEqual({ act: 5, label: 'Coger el bloque' });
+    const carried: DungeonView = { ...shut, block: { x: 0, z: 0, held: 'Ana' } };
+    expect(dungeonAction(at(DUNGEON.x, 70), entrance, carried, true, 'Ana')).toEqual({ act: 5, label: 'Soltar el bloque' });
+    expect(dungeonAction(at(b.x, b.z), entrance, { ...shut, block: { ...b, held: 'Leo' } }, true, 'Ana')).toBeNull();
+    const l = inside(DUNGEON.lantern);
+    expect(dungeonAction(at(l.x, l.z), entrance, shut, true, 'Ana')).toEqual({ act: 6, label: 'Coger la linterna' });
+    const lit: DungeonView = { ...shut, lantern: { x: 0, z: 0, held: 'Ana' } };
+    expect(dungeonAction(at(DUNGEON.x, 95), entrance, lit, true, 'Ana')).toEqual({ act: 6, label: 'Soltar la linterna' });
+    const br = inside(DUNGEON.brazier);
+    expect(dungeonAction(at(br.x + 1, br.z), entrance, lit, true, 'Ana')).toEqual({ act: 7, label: 'Encender el brasero' });
+  });
   it('nothing in the open', () => {
     expect(dungeonAction(at(0, 0, 1), entrance, shut, false)).toBeNull();
   });
@@ -44,5 +57,13 @@ describe('marchitoBarText', () => {
     expect(marchitoBarText(null)).toBeNull();
     expect(marchitoBarText({ will: 320, max: 400, laughing: false })).toBe('El Marchito · voluntad 320/400');
     expect(marchitoBarText({ will: 320, max: 400, laughing: true })).toBe('El Marchito se ríe');
+  });
+});
+
+describe('eliteBarText', () => {
+  it('shows its HP and warns of the charge', () => {
+    expect(eliteBarText(emptyDungeonView())).toBeNull();
+    expect(eliteBarText({ ...emptyDungeonView(), elite: { hp: 300, max: 420, charging: false } })).toBe('Bruto reforzado 300/420');
+    expect(eliteBarText({ ...emptyDungeonView(), elite: { hp: 300, max: 420, charging: true } })).toBe('Bruto reforzado 300/420 · ¡carga!');
   });
 });

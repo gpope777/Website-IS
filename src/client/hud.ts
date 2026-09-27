@@ -199,6 +199,7 @@ export class Hud {
        <p>El Marchito: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
+       <p>La Raíz-madre: palancas, un nudo que abre la Enredadera, una losa (un compañero o el bloque encima), una linterna para el brasero y un bruto reforzado: cuando se agache, apártate o rueda. E / A coge y suelta</p>
        <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la Enredadera junto a su raíz marchita o venciendo al Tragón</p>
        <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · 🗡️ pone la elegida</p>
        <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>

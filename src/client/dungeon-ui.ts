@@ -1,5 +1,5 @@
 import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
-import type { DungeonView, MarchitoView } from '../shared/protocol';
+import type { CarryView, DungeonView, MarchitoView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
 export function emptyDungeonView(): DungeonView {
@@ -15,6 +15,8 @@ export function dungeonAction(
   entrance: { x: number; z: number },
   view: DungeonView,
   power: boolean,
+  /** Your name: what you carry is yours to drop. */
+  me = '',
 ): { act: number; label: string } | null {
   const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
   if (!inDungeon(pos.x, pos.z)) {
@@ -28,7 +30,20 @@ export function dungeonAction(
     }
   }
   if (view.gate && !power && near(DUNGEON.x, DUNGEON.altarZ, DUNGEON.altarReach)) return { act: 4, label: 'Tomar la Enredadera' };
+  const mine = (c: CarryView) => me !== '' && c.held === me;
+  const br = inside(DUNGEON.brazier);
+  if (!view.lit && mine(view.lantern) && near(br.x, br.z, DUNGEON.carryReach)) return { act: 7, label: 'Encender el brasero' };
+  if (mine(view.lantern)) return { act: 6, label: 'Soltar la linterna' };
+  if (mine(view.block)) return { act: 5, label: 'Soltar el bloque' };
+  if (!view.block.held && near(view.block.x, view.block.z, DUNGEON.carryReach)) return { act: 5, label: 'Coger el bloque' };
+  if (!view.lit && !view.lantern.held && near(view.lantern.x, view.lantern.z, DUNGEON.carryReach)) return { act: 6, label: 'Coger la linterna' };
   return null;
+}
+
+/** The mini-boss's bar while it fights. */
+export function eliteBarText(view: DungeonView): string | null {
+  const e = view.elite;
+  return e ? `Bruto reforzado ${e.hp}/${e.max}${e.charging ? ' · ¡carga!' : ''}` : null;
 }
 
 /** El Marchito's bar while he is in the base. */
