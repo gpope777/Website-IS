@@ -1,7 +1,7 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
 ## Aventura completa — estado (LEER PRIMERO)
-La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 1062, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 59** (T6-A de #6 Tiendas hecho); todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F) y la curva de Savia (P4-A). **Lo siguiente:** #6 Tiendas y economía → #2 Mundo y visuales → #7 Pulido (con el tutorial).
+La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen") y **#6 Tiendas y economía también** (Puesto, Caja, trueque, Buhonero, Encargos; ver "Tiendas — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 1111, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 62**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen" · **#6** → "Tiendas — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F), la curva de Savia (P4-A) y los precios del Buhonero (T6-D). **Lo siguiente:** #2 Mundo y visuales → #7 Pulido (con el tutorial).
 
 **Branch:** `aventura/slice-1` (pushed to origin).
 
@@ -1158,6 +1158,16 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar: abrir el Libro con una partida avanzada; ganar cada Proeza (la del frío: anochecer en las Faldas y subir sin fuego); ponerse los 3 sombreros nuevos. Constantes: `FEAT_FAST`, `FEAT_HEART` en `progression.ts`; formas en `src/client/actors/hats.ts`.
 
+## Tiendas — resumen (LEER PRIMERO)
+#6 Tiendas y economía está hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-tiendas-design.md`; planes `docs/superpowers/plans/2026-09-27-tiendas-T6-*.md`). Sin moneda: trueque de los 7 materiales; Rango, oficios, sombreros, poderes, monturas y niveles no se comercian.
+- **T6-A** (v59): reglas puras en `src/shared/shop.ts`, el Puesto (8 madera, 4 piedra; uno por jugador; sin vida, los asedios no lo ven), 4 estantes, reponer/quitar/recoger.
+- **T6-B** (v60): comprar con el dueño fuera, Caja (tope 200), registro de 10 ventas, aviso al conectar, Menú → Puestos, 1 compra cada 0,5 s.
+- **T6-C** (v61): trueque directo con A (Cambiar), ventana de dos columnas, dos Vale, atómico, guardado inmediato.
+- **T6-D** (v62): el Buhonero junto al Corazón tras el rescate del Tragón (tabla fija, 20 tratos/día, nunca vende lo raro), +1 al amanecer del material del bioma, Encargos (Busco) con la paga apartada.
+- **Decidido por Claude — revisar (lo más gordo):** el Puesto es un mensaje propio (`stallPlace`), no una `Structure`; no hay mapa, "Puestos" es una lista con distancia y rumbo; eventos `stall` a todos; los trueques viven solo en memoria; la paga de un Encargo es el `stock` del estante (mismo movimiento que una venta vista del otro lado); el Buhonero llega al amanecer después del rescate, 6 m al este del Corazón; reposición = 1 unidad por Puesto y amanecer; `found` solo cuenta lo recogido del mundo (partidas viejas: se deduce de la mochila y los niveles de arma/Capa); precios del Buhonero = tabla del spec §5.2 sin tocar.
+- **Conservación:** cada plan tiene tests de propiedad (puros y por `handle()`) que suman mochilas + tumbas + Puestos tras cada paso; solo mueven la cuenta construir/recoger el Puesto, los tratos del Buhonero y la reposición, y se contabilizan explícitamente.
+- **Orden de prueba (2–3 jugadores):** 1) poner el Puesto, fijar precios, reponer, quitar, recoger. 2) Ana vende perlas; Bea compra; Ana vacía la Caja; Ana sale, Bea compra, Ana vuelve y ve el aviso. 3) Menú → Puestos. 4) Cambiar con A: Ver, ofrecer, dos Vale; alejarse a mitad; tres "No". 5) Con una partida tras el rescate del Tragón: esperar al amanecer, A junto al Buhonero, hacer tratos hasta el tope. 6) Ana pone un Encargo "Busco 3 cuarzo, pago 12 piedra", apartar paga, sale; Bea entrega y cobra. 7) Puesto en la Montaña vendiendo cuarzo (tras haber picado cuarzo): al amanecer, +1.
+
 ## Tiendas · T6-A — Reglas y el Puesto — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-tiendas-T6-A-reglas-puesto.md` (2e216a0).
 - Commits: fdd90f0 (T1 reglas puras en `src/shared/shop.ts`: `STALL`, `newStall`, `setShelf`, `restock`, `takeShelf`, `pickUp`, `stallGoods`, `canPlaceStall`; nombres `stall`/`till` en `names.ts`), 298ef37 (T2 servidor, protocolo v59), 2b575e2 (T3 cliente: malla, Menú, A y panel del dueño).
@@ -1227,3 +1237,27 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar: dos jugadores juntos; A → pregunta; Ver; poner perlas contra bayas; cambiar una línea y ver que se quitan los Vale; los dos Vale; alejarse a mitad; decir No tres veces.
 - Lo siguiente: T6-D (Buhonero, biomas y Encargos; v62).
+
+## Tiendas · T6-D — Buhonero, biomas y Encargos — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-tiendas-T6-D-buhonero.md` (5e414ca).
+- Commits: 41f5a1a (T1 reglas puras: `MERCHANT`, `RARE`, `merchantDeal`, `biomeItem`, `biomeRestock`, `canDeliver`, `deliver`, `setShelf` con modo; `NAMES.merchant`, `NAMES.order`), 357dd19 (T2 servidor, protocolo v62), f3b0ab0 (T3 cliente: Buhonero de papel, su panel, Busco/Entregar en los paneles del Puesto).
+- Tests: npm test 1111 (antes 1091), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 62**. Campos guardados nuevos, opcionales: `SavedWorld.merchant`, `SavedPlayer.found`, `SavedPlayer.merchant {day, used}`. Mensajes nuevos: `deal {id}`, `deliver {stall, shelf}`; `stallSet` acepta `mode` opcional. Snapshot: `merchant {x,z} | null`, `self.deals`. Las partidas viejas cargan igual.
+- Cómo funciona:
+  - **El Buhonero** aparece el amanecer siguiente a `invasion2 === 'rescued'` ("Con el Tragón volvió alguien…"), 6 m al este del Corazón, y se queda. A a ≤4 m (después del Puesto, antes de cosechar y de Cambiar) abre su tabla: compra todo (5 madera → 1 baya, 1 perla → 4 bayas, 1 espina → 6 bayas…), vende madera y piedra por bayas (6 → 5) y bayas por piedra (10 → 5). **20 tratos por jugador y día de juego** ("Te quedan N tratos hoy."). Nunca vende perlas, ámbar, cuarzo ni espinas. Ningún ciclo con él gana nada (probado).
+  - **Reposición por bioma:** al amanecer, un Puesto en la Costa (perla), Pantano (ámbar), Montaña (cuarzo), Ceniza/Tierras Corruptas (espina) o Bosque (bayas) con un estante Vendo de ese material recibe +1 (el estante no pasa de 10 así). Lo raro solo si el dueño lo **recogió** alguna vez (`found`).
+  - **Encargos:** en el panel del dueño, el botón Vendo/Busco (solo con el estante vacío; 2 como mucho). "Busco 3 cuarzo, pago 12 piedra": **Apartar +12** saca la paga de la mochila. Quien llega ve "Busca 3 cuarzo, paga 12 piedra · 1 veces" y **Entregar**: cobra al momento, el cuarzo va a la Caja, aunque el dueño esté fuera (cuenta en "vendió N veces"). Menú → Puestos dice "busca cuarzo".
+- **Conservación:** test puro de 500 × 60 operaciones (Vendo/Busco, reponer, quitar, comprar, entregar, vaciar, tratos, reposición) y 30 × 100 pasos por `handle()` con Ana, Bea y Cai (más moverse, irse, volver, amaneceres): mochilas + tumbas + Puestos = inicio + libro de tratos del Buhonero + reposiciones; nada baja de 0; nunca más de 2 Busco.
+- Decidido por Claude — revisar:
+  - La paga del Encargo vive en el `stock` del estante (unidades del material con que se paga); se quitó el campo `escrow` que no se usaba. Así los topes 60/120, Apartar y Quitar funcionan igual y nada se cuenta dos veces.
+  - Vendo/Busco solo se cambia con el estante vacío ("Quita el género primero."); tercer Busco: "Solo dos encargos.".
+  - Entregar comparte el límite de 0,5 s con Comprar; el dueño no entrega en su Puesto; se apunta en el registro como una venta.
+  - Los tratos del Buhonero también usan ese límite de 0,5 s.
+  - Buhonero = papel del Tragón con tinte cálido (placeholder para #2). Sin Corazón no está.
+  - Reposición: 1 unidad por Puesto y amanecer, en el primer estante que encaje. Bosque → bayas sin `found`. La Costa es todo lo que queda al sur del borde del bosque fuera del Pantano.
+  - `found` se marca en los puntos de recogida (cosechar, cofres, ámbar, cuarzo, orbes, espinas de bestias, La Flecha, tenientes); comprar, cambiar, tumbas y el Buhonero no cuentan. Un jugador nuevo sin nada raro no guarda el campo.
+  - Cambio de regla con tests adaptados (ninguno borrado): versión 61 → 62 en los tests de versión.
+- Rendimiento móvil: el Buhonero es un actor de papel más; panel en HTML. Cero luces, cero pastillas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: ver "Tiendas — resumen", pasos 5–7. Constantes: `MERCHANT`, `RESTOCK_MAX`, `STALL.wantMax` en `src/shared/shop.ts`.
+- Lo siguiente: #2 Mundo y visuales → #7 Pulido.
