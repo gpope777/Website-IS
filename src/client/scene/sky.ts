@@ -31,7 +31,8 @@ export class DayLight {
     scene.add(this.sun, this.sun.target, this.moon, this.hemi);
   }
 
-  update(f: number, focus: THREE.Vector3, raid = 0): void {
+  /** `swamp` 0..1 closes the fog to the Pantano's (near 35, far 70). */
+  update(f: number, focus: THREE.Vector3, raid = 0, swamp = 0): void {
     const angle = (f - 0.25) * Math.PI * 2; // sunrise at 0.25
     const sunY = Math.sin(angle);
     const sunX = Math.cos(angle);
@@ -51,5 +52,9 @@ export class DayLight {
     this.fog.color.copy(this.bg);
     this.fog.near = 20 + 20 * daylight;
     this.fog.far = Math.min(this.tier.drawDistance * 0.8, 60 + 100 * daylight);
+    if (swamp > 0) {
+      this.fog.near += (Math.min(this.fog.near, 35) - this.fog.near) * swamp;
+      this.fog.far += (Math.min(this.fog.far, 70) - this.fog.far) * swamp;
+    }
   }
 }

@@ -49,12 +49,16 @@ import { RescueMeshes } from './scene/rescue';
 import { rescueSite, type RescueSite } from '../shared/rescue';
 import type { CageView } from '../shared/protocol';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
-import { buildTerrainMesh, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
+import { buildTerrainMesh, buildThorns, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
+import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
 import { buildGrass, ResourceMeshes } from './scene/vegetation';
 import { TouchControls, isTouchDevice } from './touch';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
+
+/** Camera far plane deep in the swamp (fog far is 70 m there). */
+const SWAMP_FAR = 100;
 
 /** The nephew's drawing used for el Tragón de Papel (and, purified, the Heart's defender). */
 const TRAGON_IMG = '/enemies/enemy1.png';
@@ -169,6 +173,7 @@ export class Game {
   private zones: Zone[] = [];
   private ground: THREE.Mesh | null = null;
   private farGround: THREE.Mesh | null = null;
+  private swampGround: THREE.Mesh | null = null;
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
   private rescueMeshes: RescueMeshes | null = null;
@@ -349,10 +354,12 @@ export class Game {
     this.scene.add(this.coastMeshes.group, this.gustFx.mesh);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
     this.zones = allZones(this.terrain, seed, this.entrance);
-    const [nearPatch, farPatch] = terrainPatches(t.terrainSegments);
+    const [nearPatch, farPatch, swampPatch] = terrainPatches(t.terrainSegments);
     this.ground = buildTerrainMesh(this.terrain, nearPatch!);
     this.farGround = buildTerrainMesh(this.terrain, farPatch!); // far sea: coarse; tinted for the island/islet zones
     this.scene.add(this.farGround);
+    this.swampGround = buildTerrainMesh(this.terrain, swampPatch!); // el Pantano: coarse, fogged
+    this.scene.add(this.swampGround, buildThorns(this.terrain, seed));
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
     this.rescueSpot = rescueSite(this.terrain, seed);
     this.rescueMeshes = new RescueMeshes(this.rescueSpot, this.terrain);
@@ -409,6 +416,7 @@ export class Game {
       this.corruptKey = key;
       tintTerrain(this.ground, this.zones, m.corrupt);
       if (this.farGround) tintTerrain(this.farGround, this.zones, m.corrupt);
+      if (this.swampGround) tintTerrain(this.swampGround, this.zones, m.corrupt);
       this.corruptionMeshes?.sync(m.corrupt);
     }
     if (!this.kits) return;
@@ -944,7 +952,14 @@ export class Game {
     this.syncWhale(dt);
 
     const focus = new THREE.Vector3(b.x, b.y, b.z);
-    this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
+    const fog = swampFog(b.x, b.z);
+    this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog);
+    // Deep in the swamp the fog hides everything past 70 m: a shorter far plane saves phones some work.
+    const far = fog >= 1 ? Math.min(SWAMP_FAR, TIERS[this.tier].drawDistance) : TIERS[this.tier].drawDistance;
+    if (this.camera.far !== far) {
+      this.camera.far = far;
+      this.camera.updateProjectionMatrix();
+    }
     this.hud.setRaid(raidText(this.raid, this.rig.yaw));
     this.structures.animate(performance.now() / 1000);
     this.shrineMeshes?.animate(performance.now() / 1000);

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { COAST, COAST_Z0, HALF, SOUTH, WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
+import { COAST, COAST_Z0, HALF, SOUTH, SWAMP, WATER_LEVEL, WORLD_SIZE, type Terrain } from '../../shared/terrain';
 import { inCienaga } from '../../shared/coast';
+import { ZARZAL, zarzalAt } from '../../shared/swamp';
+import { createRng } from '../../shared/rng';
 import { taintAt, type Zone } from '../../shared/corruption';
 
 const TAINT = new THREE.Color(0x5a3a6e);
@@ -9,26 +11,34 @@ const TAINT = new THREE.Color(0x5a3a6e);
 export const NEAR_SOUTH = HALF + 90;
 
 export interface Patch {
+  x0: number;
+  x1: number;
   z0: number;
   z1: number;
   segX: number;
   segZ: number;
 }
 
-/** Forest + Ciénaga + beach + shallows at the tier's cell size, the far sea at ×2 (phones: ~+25 % vertices, not +46 %). */
+/**
+ * Forest + Ciénaga + beach + shallows at the tier's cell size; the far sea and the swamp (flat bog, fogged) at ×2
+ * (phones: ~+25 % vertices for the coast, ~+5 % for the swamp).
+ */
 export function terrainPatches(segments: number): Patch[] {
   const cell = WORLD_SIZE / segments;
   const far = segments / 2;
+  const w = SWAMP.x1 - SWAMP.x0;
+  const d = SWAMP.z1 - SWAMP.z0;
   return [
-    { z0: -HALF, z1: NEAR_SOUTH, segX: segments, segZ: Math.round((NEAR_SOUTH + HALF) / cell) },
-    { z0: NEAR_SOUTH, z1: SOUTH, segX: far, segZ: Math.max(1, Math.round((SOUTH - NEAR_SOUTH) / (cell * 2))) },
+    { x0: -HALF, x1: HALF, z0: -HALF, z1: NEAR_SOUTH, segX: segments, segZ: Math.round((NEAR_SOUTH + HALF) / cell) },
+    { x0: -HALF, x1: HALF, z0: NEAR_SOUTH, z1: SOUTH, segX: far, segZ: Math.max(1, Math.round((SOUTH - NEAR_SOUTH) / (cell * 2))) },
+    { x0: SWAMP.x0, x1: SWAMP.x1, z0: SWAMP.z0, z1: SWAMP.z1, segX: Math.round(w / (cell * 2)), segZ: Math.round(d / (cell * 2)) },
   ];
 }
 
 export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(WORLD_SIZE, patch.z1 - patch.z0, patch.segX, patch.segZ);
+  const geo = new THREE.PlaneGeometry(patch.x1 - patch.x0, patch.z1 - patch.z0, patch.segX, patch.segZ);
   geo.rotateX(-Math.PI / 2);
-  geo.translate(0, 0, (patch.z0 + patch.z1) / 2);
+  geo.translate((patch.x0 + patch.x1) / 2, 0, (patch.z0 + patch.z1) / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
   const grass = new THREE.Color(0x4f7a3a);
@@ -38,6 +48,10 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
   const mud = new THREE.Color(0x4a3a44);
   const sand = new THREE.Color(0xc9b98c);
   const seabed = new THREE.Color(0x35505a);
+  const bog = new THREE.Color(0x3d4a2e);
+  const thorn = new THREE.Color(0x5b4a55);
+  const mound = new THREE.Color(0x2f4a28);
+  const laguna = new THREE.Color(0x1f2a24);
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -52,6 +66,8 @@ export function buildTerrainMesh(terrain: Terrain, patch: Patch): THREE.Mesh {
       const coast = inCienaga(x, z) ? mud : h > WATER_LEVEL ? sand : seabed;
       tmp.lerp(coast, k);
     }
+    if (x < -HALF) tmp.copy(h > WATER_LEVEL + 0.5 ? mound : h < WATER_LEVEL - 2 ? laguna : bog);
+    if (x < ZARZAL.x1 && zarzalAt(terrain, x, z)) tmp.lerp(thorn, 0.8);
     colors.set([tmp.r, tmp.g, tmp.b], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -78,12 +94,38 @@ export function tintTerrain(mesh: THREE.Mesh, zones: readonly Zone[], corrupt: r
   col.needsUpdate = true;
 }
 
-/** One quad over the whole map (the sea is just terrain below WATER_LEVEL). */
+/** One quad over the whole map, swamp included (the sea is just terrain below WATER_LEVEL). */
 export function buildWater(): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(WORLD_SIZE, SOUTH + HALF);
+  const geo = new THREE.PlaneGeometry(HALF - SWAMP.x0, SOUTH + HALF);
   geo.rotateX(-Math.PI / 2);
-  geo.translate(0, 0, (SOUTH - HALF) / 2);
+  geo.translate((HALF + SWAMP.x0) / 2, 0, (SOUTH - HALF) / 2);
   const water = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x2f6f8f, transparent: true, opacity: 0.78 }));
   water.position.y = WATER_LEVEL;
   return water;
+}
+
+/** El Zarzal's thorns: seeded dark spikes on thorn cells, one draw call. */
+export function buildThorns(terrain: Terrain, seed: number, count = 220): THREE.InstancedMesh {
+  const mesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.22, 1.3, 4), new THREE.MeshLambertMaterial({ color: 0x3a2c38 }), count);
+  const rng = createRng(seed ^ 0x2a42a1);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const v = new THREE.Vector3();
+  const sc = new THREE.Vector3();
+  let n = 0;
+  for (let tries = 0; n < count && tries < count * 10; tries++) {
+    const x = ZARZAL.x0 + rng() * (ZARZAL.x1 - ZARZAL.x0);
+    const z = SWAMP.z0 + rng() * (SWAMP.z1 - SWAMP.z0);
+    const a = rng();
+    const b = rng();
+    if (!zarzalAt(terrain, x, z)) continue;
+    const s = 0.7 + a * 0.9;
+    q.setFromEuler(e.set((b - 0.5) * 0.8, a * 6.28, (a - 0.5) * 0.8));
+    m.compose(v.set(x, Math.max(terrain.heightAt(x, z), WATER_LEVEL) + 0.5 * s, z), q, sc.set(s, s, s));
+    mesh.setMatrixAt(n++, m);
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  return mesh;
 }
