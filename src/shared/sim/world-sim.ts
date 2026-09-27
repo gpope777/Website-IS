@@ -1,7 +1,7 @@
 import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
-import { smoothAt, STEEP, steepBlocked } from '../mountains';
+import { smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
@@ -803,7 +803,7 @@ export class WorldSim {
     if (!seaOk) this.hint(p.name, l, 'La corriente te devuelve');
     // Las Montañas: no walking or riding uphill onto a cell over 50° (the client stops at 45°). The frog's high jump is exempt.
     const steep = !l.frog && m.y < ground + 0.6 && steepBlocked(this.terrain, p.x, p.z, m.x, m.z, STEEP.serverDeg);
-    if (steep) this.hint(p.name, l, smoothAt(m.x, m.z) ? 'Roca lisa. Sin agarre' : l.riding ? 'El ciervo no trepa' : 'Demasiado empinado');
+    if (steep) this.hint(p.name, l, STEEP_TEXT[smoothAt(m.x, m.z) ? 'smooth' : l.riding ? 'deer' : 'steep']);
     // The server knows who rides: only riders (and just-dismounted ones, for lag) get the deer's speed.
     const mounted = l.riding || l.frog || this.time < l.rodeUntil;
     // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).

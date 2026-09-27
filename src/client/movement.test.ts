@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
-import { coastFeatures, createTerrain, HALF, RIVER, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, createTerrain, HALF, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk, inBravas, wildFish } from '../shared/fish';
 import { FROG, frogStepOk } from '../shared/frog';
 import { seatOffset, WHALE, whaleStepOk, wildWhale } from '../shared/whale';
@@ -543,5 +543,54 @@ describe('riding la Rana', () => {
     const { b, r } = run(fwd, 1, shallow, none, 0, [], frogBody(shallow));
     expect(b.y).toBeCloseTo(WATER_LEVEL, 5);
     expect(r.swimming).toBe(false);
+  });
+});
+
+describe('las Montañas', () => {
+  const t = createTerrain(42);
+  const zd = (d: number) => -HALF - d;
+  const E = t.heightAt(0, -HALF + 0.001);
+
+  it('on foot and on the deer, los Peldaños stop you; back down is fine', () => {
+    for (const riding of [false, true]) {
+      const b = createBody(0, -HALF + 3, t);
+      b.riding = riding;
+      const { r } = run(fwd, 3, t, none, 0, [], b);
+      expect(b.y).toBeLessThan(E + 1);
+      expect(r.steep).toBe('smooth');
+      const back = run({ ...fwd, z: 1 }, 1, t, none, 0, [], b);
+      expect(back.b.z).toBeGreaterThan(-HALF + 1);
+    }
+  });
+
+  it('the deer does not climb a pared', () => {
+    const p = mountainFeatures(42).paredes[0]!;
+    const b = createBody(p.x + p.rt + p.w + 2, p.z, t);
+    b.riding = true;
+    const res = run(fwd, 3, t, none, Math.PI / 2, [], b); // camera looking −x
+    expect(res.r.steep).toBe('deer');
+    expect(b.y).toBeLessThan(t.heightAt(p.x, p.z) - p.h / 2);
+  });
+
+  it('the frog cannot walk up, but four well-placed high jumps climb los Peldaños', () => {
+    const b = createBody(0, -HALF + 3, t);
+    b.frog = true;
+    run(fwd, 2, t, none, 0, [], b);
+    expect(b.y).toBeLessThan(E + 1);
+    for (let k = 0; k < PELDANOS.steps; k++) {
+      b.z = zd(PELDANOS.first + PELDANOS.pitch * k - 3.5);
+      b.y = t.heightAt(b.x, b.z);
+      Object.assign(b, { vx: 0, vz: 0, vy: 0, onGround: true, hopCd: 0, facing: Math.PI });
+      stepBody(b, { x: 0, z: 0, sprint: false, jump: true }, 0, 1 / 60, t, none);
+      for (let i = 0; i < 400 && !b.onGround; i++) stepBody(b, { x: 0, z: 0, sprint: false, jump: false }, 0, 1 / 60, t, none);
+      expect(b.y).toBeCloseTo(E + PELDANOS.rise * (k + 1), 0);
+    }
+    expect(b.y - E).toBeGreaterThan(23);
+  });
+
+  it('walks across the seam onto the first terrace floor', () => {
+    const b = createBody(0, -HALF + 2, t);
+    run(fwd, 0.9, t, none, 0, [], b);
+    expect(b.z).toBeLessThan(-HALF - 0.3);
   });
 });

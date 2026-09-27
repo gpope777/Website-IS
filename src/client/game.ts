@@ -40,6 +40,7 @@ import { raidText } from './raid-ui';
 import { clearHold, Keyboard, nextPower, POWER_ICON, readMove, type Action, type InputState, KEY_ACTIONS, type PowerChoice } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
+import { STEEP_TEXT } from '../shared/mountains';
 import { animFor, createBody, rollInput, staminaFor, stepBody, type Body } from './movement';
 import { Connection, wsUrl, type NetStatus } from './net';
 import { loadTier, saveTier, TIERS, type Tier } from './quality';
@@ -212,6 +213,8 @@ export class Game {
   private fogatasLit: boolean[] = [];
   private fogataMeshes: FogataMeshes | null = null;
   private travelLeft: number | null = null;
+  /** Las Montañas: when the next "too steep" toast may show (ms). */
+  private steepToastAt = 0;
   private padKey = '';
   private shrineViews: ShrineView[] = [];
   /** Shrines this player cleared (from the server). */
@@ -1083,6 +1086,10 @@ export class Game {
       Object.assign(b, { x: d.position.x - Math.sin(yaw) * MOUNT.seatBack, y: d.position.y - MOUNT.height, z: d.position.z - Math.cos(yaw) * MOUNT.seatBack, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, gliding: false, facing: yaw });
       res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
     } else res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z), this.climbList, (px, pz, nx, nz) => clampStep(px, pz, nx, nz, this.dungeon.gates, this.dungeon.coast.gates, this.dungeon.swamp.gates));
+    if (res.steep && now >= this.steepToastAt) {
+      this.steepToastAt = now + 3000;
+      this.hud.toast(STEEP_TEXT[res.steep]);
+    }
     this.hud.setStamina(b.stamina / b.staminaMax, b.tired);
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';

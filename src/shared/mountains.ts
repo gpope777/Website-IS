@@ -6,6 +6,9 @@ import { inMountains, mountainDepth, PELDANOS, type Terrain } from './terrain';
  */
 export const STEEP = { deg: 45, serverDeg: 50, probe: 1 } as const;
 
+/** What a refused uphill step says (client toast and server hint). */
+export const STEEP_TEXT = { smooth: 'Roca lisa. Sin agarre', deer: 'El ciervo no trepa', steep: 'Demasiado empinado' } as const;
+
 /** Terrain slope at (x, z) in degrees (central difference over 1 m). */
 export function slopeAt(t: Terrain, x: number, z: number): number {
   const gx = t.heightAt(x + 0.5, z) - t.heightAt(x - 0.5, z);

@@ -7,6 +7,7 @@ import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
 import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
 import { BOG, inBog, ZARZAL, zarzalAt } from '../shared/swamp';
+import { smoothAt, steepBlocked } from '../shared/mountains';
 import { VIENTO } from '../shared/viento';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
@@ -67,6 +68,8 @@ export interface StepResult {
   swimming: boolean;
   climbing: boolean;
   gliding: boolean;
+  /** Las Montañas refused an uphill step (for a toast): smooth rock, the deer, or just too steep. */
+  steep?: 'smooth' | 'deer' | 'steep';
 }
 
 export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2, swimFast: 4 } as const;
@@ -220,6 +223,7 @@ export function stepBody(
     to.z = b.z;
     b.vx = b.vz = 0;
   }
+  const steep = steepStop(terrain, b, to);
   b.x = to.x;
   b.z = to.z;
   if (moving) b.facing = Math.atan2(wx, wz);
@@ -269,7 +273,20 @@ export function stepBody(
     b.lift = 0;
     regen(b, dt);
   }
-  return { ...RESULT_IDLE, moving, running, gliding: b.gliding };
+  return { ...RESULT_IDLE, moving, running, gliding: b.gliding, steep };
+}
+
+/**
+ * Las Montañas: an uphill step onto a cell over 45° whose ground is above your feet is refused (the server allows 50°).
+ * Mid-air too, so a jump that hits a riser falls back instead of snapping onto it. Stops the body in place.
+ */
+function steepStop(terrain: Terrain, b: Body, to: { x: number; z: number }): StepResult['steep'] {
+  if (terrain.heightAt(to.x, to.z) <= b.y || !steepBlocked(terrain, b.x, b.z, to.x, to.z)) return undefined;
+  const kind = smoothAt(to.x, to.z) ? 'smooth' : b.riding ? 'deer' : 'steep';
+  to.x = b.x;
+  to.z = b.z;
+  b.vx = b.vz = 0;
+  return kind;
 }
 
 /** On the fish: water only, 9 m/s (14 sprinting, no stamina); B held dives to the seabed, release floats up. */
@@ -349,6 +366,7 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
     }
   }
   const to = bounds(b.x, b.z, nx, nz);
+  const steep = steepStop(terrain, b, to);
   if (frogMoveOk(terrain, b, to, !b.onGround, crags)) {
     b.x = to.x;
     b.z = to.z;
@@ -366,7 +384,7 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
   }
   Object.assign(b, { gliding: false, climb: null });
   regen(b, dt);
-  return { ...RESULT_IDLE, moving, running: input.sprint && moving };
+  return { ...RESULT_IDLE, moving, running: input.sprint && moving, steep };
 }
 
 /** Piloting the whale: 5 m/s (7 sprinting), on the surface, never where the sea is under 3 m (aguas bravas are fine). */
