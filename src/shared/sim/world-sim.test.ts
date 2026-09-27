@@ -8,7 +8,8 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
-import { HALF, RIVER, WATER_LEVEL } from '../terrain';
+import { HALF, LAGUNA, RIVER, WATER_LEVEL } from '../terrain';
+const LAGUNA_EDGE = { x: LAGUNA.x, z: LAGUNA.z - LAGUNA.rz - 6 };
 import { inBog, ZARZAL, zarzalAt } from '../swamp';
 import { CIENAGA, depthAt } from '../coast';
 import { BOSS } from './boss';
@@ -3540,5 +3541,109 @@ describe('taming la Rana', () => {
     put(sim, 'Ana', sim.fishHome.x + 1, sim.fishHome.z);
     sim.handle('Ana', { t: 'mount', act: 6 });
     expect(snap(sim, 'Ana').self.race).toMatchObject({ i: 0, beast: 'fish' });
+  });
+});
+
+describe('riding la Rana', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  /** A stretch of bog (x, z) → (x - 12, z) that stays bog, away from the thorns. */
+  const bogRun = (sim: WorldSim) => {
+    for (let z = 80; z < HALF + 40; z += 3)
+      for (let x = -HALF - 70; x > -HALF - 170; x -= 3) {
+        let ok = true;
+        for (let k = 0; k <= 12 && ok; k += 1) ok = inBog(sim.terrain, x - k, z);
+        if (ok) return { x, z };
+      }
+    throw new Error('no bog');
+  };
+  const rider = (at?: { x: number; z: number }) => {
+    const sim = setup('Ana');
+    const a = at ?? bogRun(sim);
+    put(sim, 'Ana', a.x, a.z);
+    sim.getPlayer('Ana')!.y = Math.max(sim.terrain.heightAt(a.x, a.z), WATER_LEVEL);
+    sim.getPlayer('Ana')!.frog = { ...a };
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    return sim;
+  };
+  const go = (sim: WorldSim, x: number, y: number, z: number) => {
+    const p = sim.getPlayer('Ana')!;
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    const before = { x: p.x, y: p.y, z: p.z };
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'idle' });
+    return p.x !== before.x || p.y !== before.y || p.z !== before.z;
+  };
+
+  it('gets on beside your own frog only; A gets off anywhere and it waits', () => {
+    const sim = setup('Ana');
+    const a = bogRun(sim);
+    sim.getPlayer('Ana')!.frog = { ...a };
+    put(sim, 'Ana', a.x + FROG.reach + 2, a.z);
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    expect(snap(sim, 'Ana').self.onFrog).toBe(false);
+    put(sim, 'Ana', a.x + 1, a.z);
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    expect(snap(sim, 'Ana').self.onFrog).toBe(true);
+    expect(snap(sim, 'Ana').frogs.some((f) => f.owner === 'Ana')).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 2 }); // no deer while on the frog
+    sim.handle('Ana', { t: 'mount', act: 7 }); // nor the fish
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 14 });
+    expect(snap(sim, 'Ana').self.onFrog).toBe(false);
+    expect(snap(sim, 'Ana').frogs.some((f) => f.owner === 'Ana')).toBe(true);
+  });
+
+  it('11 m/s through the bog is fine on the frog; 20 is not', () => {
+    const sim = rider();
+    const p = sim.getPlayer('Ana')!;
+    const y = WATER_LEVEL;
+    expect(go(sim, p.x - 11, y, p.z)).toBe(true);
+    const sim2 = rider();
+    const q = sim2.getPlayer('Ana')!;
+    expect(go(sim2, q.x - 12, y, q.z)).toBe(true);
+    const sim3 = rider();
+    const r = sim3.getPlayer('Ana')!;
+    for (let i = 0; i < 11; i++) sim3.step(0.1);
+    sim3.handle('Ana', { t: 'move', x: r.x - 20, y, z: r.z, yaw: 0, anim: 'idle' });
+    expect(snap(sim3, 'Ana').self.fix).toBe(true);
+  });
+
+  it('the high jump passes; flying far above does not', () => {
+    const sim = rider();
+    const p = sim.getPlayer('Ana')!;
+    expect(go(sim, p.x - 2, WATER_LEVEL + 7, p.z)).toBe(true);
+    const sim2 = rider();
+    const q = sim2.getPlayer('Ana')!;
+    expect(go(sim2, q.x - 2, WATER_LEVEL + 15, q.z)).toBe(false);
+  });
+
+  it('no water deeper than 2 m on the frog', () => {
+    const probe = setup('Ana');
+    let z = LAGUNA_EDGE.z;
+    while (probe.terrain.heightAt(LAGUNA.x, z) >= WATER_LEVEL - FROG.deep - 0.2) z += 0.5;
+    const shallow = { x: LAGUNA.x, z: z - 4 };
+    expect(probe.terrain.heightAt(shallow.x, shallow.z)).toBeGreaterThanOrEqual(WATER_LEVEL - FROG.deep);
+    const sim = rider(shallow);
+    expect(go(sim, LAGUNA.x, WATER_LEVEL, z)).toBe(false);
+    expect(go(sim, LAGUNA.x, WATER_LEVEL, z - 2)).toBe(true);
+  });
+
+  it('the Zarzal still bites and holds it to a crawl', () => {
+    const sim = setup('Ana');
+    let spot: { x: number; z: number } | null = null;
+    for (let x = -HALF - 5; x > -HALF - 55 && !spot; x -= 1) if (zarzalAt(sim.terrain, x, 100) && zarzalAt(sim.terrain, x - 8, 100)) spot = { x, z: 100 };
+    const s2 = rider(spot!);
+    const p = s2.getPlayer('Ana')!;
+    const hp = p.vitals.health;
+    expect(go(s2, p.x - 8, Math.max(s2.terrain.heightAt(p.x - 8, p.z), WATER_LEVEL), p.z)).toBe(false);
+    expect(p.vitals.health).toBeLessThan(hp);
+    expect(texts(s2).some((t) => t.includes('muerde'))).toBe(true);
+  });
+
+  it('death drops you off the frog', () => {
+    const sim = rider();
+    down(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.onFrog).toBe(false);
+    expect(sim.getPlayer('Ana')!.frog).toBeDefined();
   });
 });

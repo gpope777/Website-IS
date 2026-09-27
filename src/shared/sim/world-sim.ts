@@ -676,20 +676,21 @@ export class WorldSim {
     // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
     // Riders cannot climb (no crag allowance) nor swim.
     const lifted = this.time < l.boostUntil && m.y <= l.boostCeil; // a gust's lift while gliding
-    const yOk = m.y > ground - 1 && (m.y < ground + 4 || (!l.riding && m.y < cragCeiling) || m.y <= p.y || lifted);
-    const dryOk = !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
+    // ponytail: the frog's high jump is only a ceiling (ground + FROG.ceil), no server jump physics.
+    const yOk = m.y > ground - 1 && (m.y < ground + (l.frog ? FROG.ceil : 4) || (!l.riding && !l.frog && m.y < cragCeiling) || m.y <= p.y || lifted);
+    const dryOk = l.frog ? this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - FROG.deep : !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
     // The sea past 4 m turns swimmers back (they may only head shallower); gliders fly over it.
     const swimming = m.y < WATER_LEVEL - 0.5;
     const seaOk = !swimming || deepStepOk(this.terrain, p.x, p.z, m.x, m.z);
     if (!seaOk) this.hint(p.name, l, 'La corriente te devuelve');
     // The server knows who rides: only riders (and just-dismounted ones, for lag) get the deer's speed.
-    const mounted = l.riding || this.time < l.rodeUntil;
+    const mounted = l.riding || l.frog || this.time < l.rodeUntil;
     // Walkers wade through the Ciénaga's mud (only when the whole window was spent in it, so entering is never unfair).
     const wading = !mounted && inCienaga(l.anchorX, l.anchorZ) && inCienaga(m.x, m.z);
     // El Zarzal slows walkers and riders; the bog slows walkers (same whole-window rule).
     const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ) && zarzalAt(this.terrain, m.x, m.z);
     const bogged = !mounted && inBog(this.terrain, l.anchorX, l.anchorZ) && inBog(this.terrain, m.x, m.z);
-    const cap = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
+    const cap = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
     if (!inBounds || !wallOk || !yOk || !dryOk || !seaOk || moved > cap * elapsed + 1) {
       l.fix = true;
@@ -697,6 +698,7 @@ export class WorldSim {
     }
     this.accept(p, l, m);
     if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
+    if (l.frog) p.frog = { x: r2(p.x), z: r2(p.z) };
     if (m.y <= ground + 0.5) l.boosted = false; // landed (or swimming): the next flight may lift again
   }
 
@@ -1296,7 +1298,7 @@ export class WorldSim {
 
   /** Sit behind the nearest rider in reach whose seat is free. */
   private board(p: SavedPlayer, l: Live): void {
-    if (l.riding || l.tame || inAnyDungeon(p.x, p.z)) return;
+    if (l.riding || l.frog || l.tame || inAnyDungeon(p.x, p.z)) return;
     const taken = new Set([...this.live.values()].flatMap((o) => (o.seat ? [o.seat] : [])));
     let best: SavedPlayer | null = null;
     for (const [n, ol] of this.live) {
@@ -1397,11 +1399,11 @@ export class WorldSim {
     }
     if (act === 7) {
       const f = p.fish;
-      if (!f || l.fish || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FISH.reach) return;
+      if (!f || l.fish || l.frog || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FISH.reach) return;
       l.fish = true;
       return;
     }
-    if (l.race || l.tame || l.riding || l.fish || Math.hypot(this.fishHome.x - p.x, this.fishHome.z - p.z) > FISH.reach) return;
+    if (l.race || l.tame || l.riding || l.fish || l.frog || Math.hypot(this.fishHome.x - p.x, this.fishHome.z - p.z) > FISH.reach) return;
     if (p.fish) return this.tell(p.name, 'Ya tienes pez');
     if (this.time + EPS < l.raceReadyAt) return this.tell(p.name, 'El pez aún recela');
     l.race = { i: 0, deadline: this.time + FISH.ringTime, beast: 'fish' };
@@ -1531,7 +1533,7 @@ export class WorldSim {
 
   /** First free seat (the first aboard pilots). From the fish: it waits where you were. */
   private boardWhale(p: SavedPlayer, l: Live): void {
-    if (!this.whaleTamed || l.riding || l.tame || l.race || inAnyDungeon(p.x, p.z) || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.reach) return;
+    if (!this.whaleTamed || l.riding || l.frog || l.tame || l.race || inAnyDungeon(p.x, p.z) || Math.hypot(this.whale.x - p.x, this.whale.z - p.z) > WHALE.reach) return;
     const free = this.whaleSeats.indexOf(null);
     if (free < 0) return this.tell(p.name, 'No queda sitio');
     if (l.fish) {
