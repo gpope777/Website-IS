@@ -38,7 +38,7 @@ export const DRAGON = {
   fly: 15, climb: 4, sink: 2, ceil: 35, maxY: 120, maxSpeed: 17, serverCeil: 36, grace: 2, reach: 5,
   heartNoLand: 30, raidFloor: 5, height: 1.2, width: 8,
 } as const;
-export function dragonOut(seed: number, time: number, purified4: boolean): boolean;  // storm today && purified4
+export function dragonOut(seed: number, day: number, purified4: boolean): boolean;  // storm that day && purified4
 export function dragonPos(pico: { x: number; z: number; top: number }, time: number): { x: number; y: number; z: number; yaw: number };
 export function dragonCeil(ground: number): number;   // min(ground + ceil, maxY)
 export function inFog(z: number): boolean;            // north of the rim (z < -HALF - MOUNTAINS.rimFrom)
