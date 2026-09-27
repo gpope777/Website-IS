@@ -9,7 +9,9 @@ import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
 import { weatherAt } from '../weather';
-import { HALF, LAGUNA, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../terrain';
+import { CORRUPT_LANDS, corruptFeatures, HALF, LAGUNA, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../terrain';
+import { RIM_LINE } from '../corrupt-lands';
+import { STEEP_TEXT } from '../mountains';
 const LAGUNA_EDGE = { x: LAGUNA.x, z: LAGUNA.z - LAGUNA.rz - 6 };
 import { inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { CIENAGA, depthAt } from '../coast';
@@ -5046,5 +5048,30 @@ describe('El Triángulo (S4-D)', () => {
 
   it('protocol version moved on', () => {
     expect(PROTOCOL_VERSION).toBe(43);
+  });
+});
+
+describe('las Tierras Corruptas: el Borde (S5-A)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const moveTo = (sim: WorldSim, x: number, z: number, y = sim.terrain.heightAt(x, z)) => {
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+    const p = sim.getPlayer('Ana')!;
+    return p.x === x && p.z === z;
+  };
+
+  it('nobody crosses the rim line on foot; inside la Ceniza you walk; los Escalones refuse walkers', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, RIM_LINE + 0.5);
+    msgs(sim);
+    expect(moveTo(sim, 0, RIM_LINE - 0.5, sim.terrain.heightAt(0, RIM_LINE + 0.5))).toBe(false);
+    expect(texts(sim)).toContain(STEEP_TEXT.rim);
+    const z = CORRUPT_LANDS.z1 - 50;
+    put(sim, 'Ana', 0, z);
+    expect(moveTo(sim, 0, z - 3)).toBe(true);
+    const s = corruptFeatures(42).steps;
+    const foot = CORRUPT_LANDS.z1 - s.d0 + 1;
+    put(sim, 'Ana', s.x, foot);
+    expect(moveTo(sim, s.x, foot - 2.5)).toBe(false);
   });
 });

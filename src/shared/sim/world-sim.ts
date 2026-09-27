@@ -22,6 +22,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
+import { rimCrossBlocked } from '../corrupt-lands';
 import { DRAGON, dragonOut, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -849,6 +850,12 @@ export class WorldSim {
     }
     const elapsed = Math.max(this.time - l.anchorAt, TICK_DT);
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
+    if (!l.dragon && rimCrossBlocked(p.z, m.z)) {
+      // S5: el Borde only crosses flying (the dragon's gate is in onFly).
+      this.hint(p.name, l, STEEP_TEXT.rim);
+      l.fix = true;
+      return;
+    }
     const seat = this.seatOf(p.name);
     if (seat !== null) {
       // On the whale: only the pilot steers; its body is the whale's plus the pilot seat. Surface only, 3 m of water.

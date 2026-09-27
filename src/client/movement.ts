@@ -2,6 +2,7 @@ import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terra
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
 import { FROG, frogHop, frogMoveOk } from '../shared/frog';
 import { DRAGON, dragonCeil, inFog } from '../shared/dragon';
+import { rimCrossBlocked } from '../shared/corrupt-lands';
 import { seatOffset, WHALE, whaleStepOk } from '../shared/whale';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
@@ -84,7 +85,7 @@ export interface StepResult {
   climbing: boolean;
   gliding: boolean;
   /** Las Montañas refused an uphill step (for a toast): smooth rock, the deer, or just too steep. */
-  steep?: 'smooth' | 'deer' | 'steep' | 'wet';
+  steep?: 'smooth' | 'deer' | 'steep' | 'wet' | 'rim';
   /** On your belly down the snow (S4-H). */
   sliding?: boolean;
 }
@@ -310,6 +311,11 @@ export function stepBody(
  * Mid-air too, so a jump that hits a riser falls back instead of snapping onto it. Stops the body in place.
  */
 function steepStop(terrain: Terrain, b: Body, to: { x: number; z: number }, grab = false): StepResult['steep'] {
+  if (rimCrossBlocked(b.z, to.z)) {
+    to.z = b.z; // el Borde (S5): only flying crosses it
+    b.vz = Math.max(0, b.vz);
+    return 'rim';
+  }
   if (terrain.heightAt(to.x, to.z) <= b.y || !steepBlocked(terrain, b.x, b.z, to.x, to.z)) return undefined;
   const wet = !!b.wet;
   const kind = smoothAt(to.x, to.z) ? 'smooth' : b.riding ? 'deer' : wet ? 'wet' : 'steep';

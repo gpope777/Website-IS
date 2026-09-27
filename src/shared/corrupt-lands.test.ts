@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, CORRUPT_LANDS, corruptFeatures, createTerrain, HALF, inCorrupt, inMap, MOUNTAINS } from './terrain';
-import { slopeAt } from './mountains';
+import { slopeAt, smoothAt, steepBlocked } from './mountains';
+import { RIM_LINE, rimCrossBlocked } from './corrupt-lands';
 
 const SEEDS = [7, 12345];
 const zAt = (d: number) => CORRUPT_LANDS.z1 - d;
@@ -89,5 +90,22 @@ describe('las Tierras Corruptas: terrain', () => {
     expect(inMap(0, -HALF - 219.5, 2)).toBe(true);
     expect(inMap(-HALF - 10, -HALF - 300, 2)).toBe(false);
     expect(clampMap(0, -HALF - 900, 3)).toEqual({ x: 0, z: CORRUPT_LANDS.z0 + 3 });
+  });
+});
+
+describe('las Tierras Corruptas: rules', () => {
+  it('el Borde: only flying crosses the rim line northward', () => {
+    expect(rimCrossBlocked(RIM_LINE + 1, RIM_LINE - 0.5)).toBe(true);
+    expect(rimCrossBlocked(RIM_LINE - 0.5, RIM_LINE + 1)).toBe(false);
+    expect(rimCrossBlocked(RIM_LINE - 1, RIM_LINE - 3)).toBe(false);
+  });
+
+  it('el Borde is smooth, la Ceniza is not; los Escalones are too steep to walk up', () => {
+    const t = createTerrain(42);
+    expect(smoothAt(0, zAt(10))).toBe(true);
+    expect(smoothAt(0, zAt(50))).toBe(false);
+    const s = corruptFeatures(42).steps;
+    expect(steepBlocked(t, s.x, zAt(s.d0 - 1), s.x, zAt(s.d0 + 2))).toBe(true);
+    expect(steepBlocked(t, s.x, zAt(s.d0 + 2), s.x, zAt(s.d0 - 1))).toBe(false);
   });
 });

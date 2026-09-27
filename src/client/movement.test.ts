@@ -1,3 +1,4 @@
+import { RIM_LINE } from '../shared/corrupt-lands';
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
 import { coastFeatures, createTerrain, HALF, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../shared/terrain';
@@ -774,5 +775,17 @@ describe('tobogán de nieve (S4-H)', () => {
     expect(Math.abs(b.x)).toBeLessThan(2);
     expect(b.z).toBeGreaterThan(-HALF - 2);
     expect(b.z).toBeLessThan(-HALF + 4);
+  });
+});
+
+describe('las Tierras Corruptas (S5-A)', () => {
+  const t = createTerrain(42);
+  it('walking north stops at the rim line', () => {
+    const b = createBody(0, RIM_LINE + 1, t);
+    b.y = t.heightAt(0, RIM_LINE + 1);
+    b.wet = true; // no grabbing the rim's rock
+    const { r } = run(fwd, 2, t, none, 0, [], b);
+    expect(b.z).toBeGreaterThanOrEqual(RIM_LINE);
+    expect(r.steep).toBe('rim');
   });
 });
