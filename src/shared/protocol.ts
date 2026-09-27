@@ -3,7 +3,7 @@ import type { Vitals } from './survival';
 import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 
-export const PROTOCOL_VERSION = 34;
+export const PROTOCOL_VERSION = 35;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
@@ -16,7 +16,7 @@ export interface Structure { id: number; kind: StructureKind; x: number; y: numb
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
 /** `parts` follow `Shrine.parts`: lever or wheel pulled / plate pressed. `block` = Marea's pumice block. */
-export interface ShrineView { id: number; open: boolean; parts: boolean[]; block?: CarryView }
+export interface ShrineView { id: number; open: boolean; parts: boolean[]; block?: CarryView; /** Bloques: where the 3 stone blocks sit now. */ blocks?: { x: number; z: number }[] }
 /** Something you can carry in the Raíz-madre: where it is and who holds it. */
 export interface CarryView { x: number; z: number; held: string | null }
 /** Live dungeon state: gates (`gate` = gate 0, the levers'), levers pulled, the plate, the block and lantern, the brazier, whether the boss was purified, and the bars while they fight. */
@@ -171,7 +171,7 @@ export function decodeClient(raw: string): ClientMsg | null {
       if (m.kind === undefined) return { t: 'power', x: m.x, z: m.z };
       return (POWER_KINDS as readonly unknown[]).includes(m.kind) ? { t: 'power', x: m.x, z: m.z, kind: m.kind as PowerKind } : null;
     case 'shrine':
-      return id(m.id) && id(m.part) && (m.part as number) <= 4 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
+      return id(m.id) && id(m.part) && (m.part as number) <= 7 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
       return id(m.act) && (m.act as number) <= 17 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':

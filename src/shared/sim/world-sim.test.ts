@@ -19,6 +19,8 @@ import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
 import { FROG } from '../frog';
 import { AMBER, SWAMP_SHRINE } from '../swamp-shrines';
+import { corniceLedges, QUARTZ } from '../mountain-shrines';
+import { PROTOCOL_VERSION } from '../protocol';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
@@ -890,7 +892,7 @@ describe('shrines', () => {
     const again = new WorldSim(saved);
     again.connect('Ana');
     expect(snap(again, 'Ana').self.shrines).toEqual([]);
-    expect(snap(again, 'Ana').shrines).toHaveLength(9); // S2-C/S3-C: the coast's and the swamp's three follow the forest's (intentional change)
+    expect(snap(again, 'Ana').shrines).toHaveLength(12); // S2-C/S3-C/S4-C: the coast's, the swamp's and the mountains' three follow the forest's (intentional change)
   });
 });
 
@@ -4748,5 +4750,101 @@ describe('las Montañas: cold (S4-B)', () => {
     const low = sim.getPlayer('Ana')!.vitals.warmth;
     for (let i = 0; i < 20; i++) sim.step(0.1);
     expect(sim.getPlayer('Ana')!.vitals.warmth).toBeGreaterThan(low);
+  });
+});
+
+describe('mountain shrines and refugios (S4-C)', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const view = (sim: WorldSim, name: string, id: number) => snap(sim, name).shrines.find((v) => v.id === id)!;
+  const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+
+  it('there are 12 shrines; the Cornisa has no gate, only its height; the orb gives quartz and cleanses nothing', () => {
+    const sim = setup('Ana');
+    expect(sim.shrines).toHaveLength(12);
+    const s = kind(sim, 'cornice');
+    expect(s.id).toBe(9);
+    const ledges = corniceLedges(sim.terrain, 42);
+    for (const l of ledges) expect(sim.climbables()).toContainEqual(l);
+    const before = snap(sim, 'Ana').corrupt;
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.getPlayer('Ana')!.y = s.orb.y - 6;
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).not.toContain(9);
+    sim.getPlayer('Ana')!.y = s.y;
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toContain(9);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(QUARTZ.orb);
+    expect(snap(sim, 'Ana').corrupt).toEqual(before);
+  });
+
+  it('Losas gemelas: both plates at once open it 20 s; a gust rolls the boulder onto plate 2; it rolls home after 60 s', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'twins');
+    const [p1, p2, home] = s.parts as { x: number; z: number }[];
+    put(sim, 'Ana', p1!.x, p1!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([true, false]);
+    put(sim, 'Leo', p2!.x, p2!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    put(sim, 'Ana', s.x + 40, s.z);
+    put(sim, 'Leo', s.x + 40, s.z);
+    for (let i = 0; i < 195; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    for (let i = 0; i < 10; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    // Solo: Viento at the boulder, then stand on plate 1.
+    const ana = sim.getPlayer('Ana')!;
+    ana.viento = true;
+    put(sim, 'Ana', home!.x, home!.z + 4);
+    sim.handle('Ana', { t: 'power', x: home!.x, z: home!.z, kind: 'viento' });
+    expect(texts(sim)).toContain('La roca rueda por el surco y cae en la losa');
+    expect(view(sim, 'Ana', s.id).block).toMatchObject({ x: expect.closeTo(p2!.x, 1), z: expect.closeTo(p2!.z, 1) });
+    put(sim, 'Ana', p1!.x, p1!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    for (let i = 0; i < 600; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).block).toMatchObject({ x: expect.closeTo(home!.x, 1), z: expect.closeTo(home!.z, 1) });
+  });
+
+  it('Bloques: blocks do not move yet, the lever resets, the gate stays shut', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'blocks');
+    const v = view(sim, 'Ana', s.id);
+    expect(v.blocks).toHaveLength(3);
+    put(sim, 'Ana', v.blocks![0]!.x, v.blocks![0]!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(texts(sim)).toContain('No se mueve');
+    const lever = s.parts[6]!;
+    put(sim, 'Ana', lever.x, lever.z);
+    use(sim, 'Ana', s.id, 7);
+    expect(texts(sim)).toContain('Los bloques vuelven a su sitio');
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    use(sim, 'Ana', s.id, 0);
+    expect(texts(sim)).toContain('Una verja de luz lo protege');
+  });
+
+  it('refugios are fogatas 4–5: a Llamarada lights one, the Heart sends you there by day, and a lit one keeps you warm', () => {
+    const sim = setup('Ana');
+    const spots = generateFogatas(sim.terrain, 42);
+    const r = spots[4]!;
+    expect(r.refugio).toBe(true);
+    const ana = sim.getPlayer('Ana')!;
+    ana.fuego = true;
+    put(sim, 'Ana', r.x + 2, r.z);
+    sim.handle('Ana', { t: 'power', x: r.x, z: r.z, kind: 'fuego' });
+    expect(snap(sim, 'Ana').fogatas[4]).toBe(true);
+    const high = spots[5]!;
+    (sim as unknown as { fogatas: boolean[] }).fogatas[5] = true;
+    put(sim, 'Ana', high.x + 1, high.z);
+    ana.vitals = { ...ana.vitals, warmth: 50 };
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    expect(ana.vitals.warmth).toBeGreaterThanOrEqual(50);
+  });
+
+  it('decodes shrine parts up to 7', () => {
+    expect(PROTOCOL_VERSION).toBe(35);
   });
 });

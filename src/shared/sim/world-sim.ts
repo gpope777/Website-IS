@@ -22,6 +22,7 @@ import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
+import { blockCell, blocksCentre, blocksSolved, BLOCKS, corniceLedges, generateMountainShrines, MOUNTAIN_SHRINE, QUARTZ, type Cell } from '../mountain-shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -224,6 +225,8 @@ export class WorldSim {
   readonly shrines: readonly Shrine[];
   /** Sunken chests on the deep seabed (seeded; one each per player). */
   readonly chests: readonly Chest[];
+  /** Cornisa's 2 bare resting ledges (seeded). */
+  readonly ledges: readonly Crag[];
   /** Amber trees on the swamp's montículos (seeded; per player). */
   readonly amberTrees: readonly AmberTree[];
   /** The Raíz-madre's trunk in the world (the dungeon entrance). */
@@ -302,7 +305,7 @@ export class WorldSim {
     eliteDown: false,
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
-  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[]; /** Turba: Llamaradas the peat wall took. */ burns: number }[];
+  private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[]; /** Turba: Llamaradas the peat wall took. */ burns: number; /** Bloques: each block's grid cell. */ cells: Cell[]; /** Losas gemelas: when the boulder reached plate 2 (null = home). */ boulderAt: number | null }[];
   private readonly players = new Map<string, SavedPlayer>();
   private readonly live = new Map<string, Live>();
   private readonly resState = new Map<number, { uses: number; regrow: number }>();
@@ -379,7 +382,8 @@ export class WorldSim {
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
-    this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed), ...generateSwampShrines(this.terrain, saved.seed)];
+    this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed), ...generateSwampShrines(this.terrain, saved.seed), ...generateMountainShrines(this.terrain, saved.seed)];
+    this.ledges = corniceLedges(this.terrain, saved.seed);
     this.chests = generateChests(this.terrain, saved.seed);
     this.amberTrees = generateAmberTrees(this.terrain, saved.seed);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
@@ -395,7 +399,7 @@ export class WorldSim {
     this.whale = saved.whale ? { ...saved.whale } : { ...this.whaleHome, yaw: 0 };
     this.zones = allZones(this.terrain, saved.seed, this.entrance);
     this.cleansed = new Set(saved.cleansed ?? (saved.purified ? [0] : []));
-    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : null, burns: 0, lit: s.kind === 'candles' ? [0, 0, 0] : [], pads: s.kind === 'lilies' ? s.parts.map(() => ({ at: null, downUntil: 0 })) : [] }));
+    this.shrineLive = this.shrines.map((s) => ({ pulled: s.parts.map(() => null), openUntil: -Infinity, pressed: false, block: s.kind === 'tide' ? { ...s.parts[1]!, held: null } : s.kind === 'twins' ? { ...s.parts[2]!, held: null } : null, burns: 0, cells: s.kind === 'blocks' ? BLOCKS.starts.map((c) => [c[0], c[1]] as const) : [], boulderAt: null, lit: s.kind === 'candles' ? [0, 0, 0] : [], pads: s.kind === 'lilies' ? s.parts.map(() => ({ at: null, downUntil: 0 })) : [] }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
     for (const p of this.players.values()) if (p.enredadera === undefined && (p.shrines ?? []).length > 0) p.enredadera = true;
@@ -707,7 +711,7 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []))];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : [])), ...this.ledges];
   }
 
   /** Nenúfares' pads still afloat. */
@@ -1088,20 +1092,25 @@ export class WorldSim {
     // The shrine's light cleanses the corrupt zone of its own biome nearest it, never a Raíz-madre's
     // (forest 0 takes the Tragón, coast 6 the Antenón, swamp 10 El Zancudo).
     const biome = (i: number) => (isSwampZone(i) ? 'swamp' : isCoastZone(i) ? 'coast' : 'forest');
-    const mine = s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
+    const mine = s.id >= MOUNTAIN_SHRINE.firstId ? 'mountain' : s.id >= SWAMP_SHRINE.firstId ? 'swamp' : s.id >= COAST_SHRINE.firstId ? 'coast' : 'forest';
+    // S4-D: a mountain orb will cleanse the nearest zone 15–17; no mountain zones yet, so it cleanses nothing.
     const ids = this.corrupt().filter((i) => i !== 0 && i !== COAST_ZONES.root && i !== SWAMP_ZONES.root && biome(i) === mine);
     const zn = nearestZone(this.zones, s.x, s.z, ids);
-    if (mine === 'swamp') {
+    if (mine === 'mountain') {
+      p.inv = addItem(p.inv, 'quartz', QUARTZ.orb);
+      this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${QUARTZ.orb} de ${NAMES.quartz}`);
+    } else if (mine === 'swamp') {
       p.inv = addItem(p.inv, 'amber', AMBER.orb);
       this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${AMBER.orb} de ${NAMES.amber}`);
     } else this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
-    const where = { forest: 'bosque', coast: 'costa', swamp: 'pantano' }[mine];
+    const where = { forest: 'bosque', coast: 'costa', swamp: 'pantano', mountain: 'montaña' }[mine];
     if (zn) this.cleanse(zn.id, `La luz del santuario limpia un trozo de ${where}`);
   }
 
   /** Levers, wheels and Marea's pumice block. */
   private onShrinePart(p: SavedPlayer, s: Shrine, st: (typeof this.shrineLive)[number], part: number): void {
     if (s.kind === 'candles') return this.onCandle(p, s, st, part);
+    if (s.kind === 'blocks') return this.onBlocks(p, s, st, part);
     if (s.kind === 'tide') {
       const b = st.block!;
       if (part !== 1) return;
@@ -1126,6 +1135,23 @@ export class WorldSim {
     }
     if (s.kind === 'fan') return this.tell(p.name, `La verja-molino no se mueve. Quizá con ${NAMES.powerWind.toLowerCase()}… o con tres manos`);
     return this.tell(p.name, s.kind === 'sunken' ? 'La palanca cede. Falta la otra, y hay prisa' : 'La palanca cede. Falta la otra');
+  }
+
+  /** Bloques: parts 1–3 = push that block (needs Piedra, S4-E), part 7 = the reset lever. */
+  private onBlocks(p: SavedPlayer, s: Shrine, st: (typeof this.shrineLive)[number], part: number): void {
+    if (part === MOUNTAIN_SHRINE.lever) {
+      const lever = s.parts[MOUNTAIN_SHRINE.lever - 1]!;
+      if (Math.hypot(lever.x - p.x, lever.z - p.z) > SHRINE.partReach) return;
+      st.cells = BLOCKS.starts.map((c) => [c[0], c[1]] as const);
+      st.openUntil = -Infinity;
+      return this.tell(p.name, 'Los bloques vuelven a su sitio');
+    }
+    const cell = st.cells[part - 1];
+    if (!cell) return;
+    const at = blockCell(blocksCentre(s), cell);
+    if (Math.hypot(at.x - p.x, at.z - p.z) > SHRINE.partReach) return;
+    // S4-E: with Piedra, Empujar moves it one cell away from you (pushBlock) and a solved grid opens the gate.
+    this.tell(p.name, 'No se mueve');
   }
 
   /** Candiles: part 4 = take a torch at the post; 1–3 = light that brazier with it (the torch is spent). */
@@ -1396,6 +1422,12 @@ export class WorldSim {
       if (s.kind === 'tide' && st.block && !st.block.held && hits(st.block.x, st.block.z)) {
         const to = slide(st.block.x, st.block.z, dir, VIENTO.slide);
         Object.assign(st.block, { x: r2(to.x), z: r2(to.z) });
+      }
+      if (s.kind === 'twins' && st.boulderAt === null && hits(st.block!.x, st.block!.z)) {
+        const plate = s.parts[1]!;
+        Object.assign(st.block!, { x: plate.x, z: plate.z });
+        st.boulderAt = this.time;
+        this.tell(p.name, 'La roca rueda por el surco y cae en la losa');
       }
       if (s.kind === 'fan' && !this.shrineOpen(id) && s.parts.some((w) => hits(w.x, w.z))) {
         st.pulled = st.pulled.map(() => this.time);
@@ -2369,7 +2401,8 @@ export class WorldSim {
   }
 
   private shrineOpen(id: number): boolean {
-    return this.shrines[id]!.kind === 'ledge' || this.time < this.shrineLive[id]!.openUntil;
+    const k = this.shrines[id]!.kind;
+    return k === 'ledge' || k === 'cornice' || this.time < this.shrineLive[id]!.openUntil;
   }
 
   private shrineViews(): ShrineView[] {
@@ -2380,6 +2413,12 @@ export class WorldSim {
       if (s.kind === 'candles') return { id, open, parts: [...st.lit.map((t) => this.time < t), false] };
       if (s.kind === 'lilies') return { id, open, parts: st.pads.map((q) => this.time >= q.downUntil) };
       if (s.kind === 'peat') return { id, open, parts: [0, 1, 2].map((i) => st.burns > i) };
+      if (s.kind === 'cornice') return { id, open, parts: [] };
+      if (s.kind === 'twins') return { id, open, parts: [st.pulled[0] != null, st.pulled[1] != null], block: { x: r2(st.block!.x), z: r2(st.block!.z), held: null } };
+      if (s.kind === 'blocks') {
+        const c = blocksCentre(s);
+        return { id, open, parts: [], blocks: st.cells.map((q) => { const w = blockCell(c, q); return { x: r2(w.x), z: r2(w.z) }; }) };
+      }
       if (s.kind === 'tide') return { id, open, parts: [st.pressed], block: { x: r2(st.block!.x), z: r2(st.block!.z), held: st.block!.held } };
       const window = s.kind === 'fan' ? COAST_SHRINE.wheelWindow : s.kind === 'sunken' ? COAST_SHRINE.sunkenWindow : SHRINE.leverWindow;
       const parts = s.parts.map((_, i) => st.pulled[i] != null && (open || this.time - st.pulled[i]! <= window + EPS));
@@ -2391,6 +2430,12 @@ export class WorldSim {
     for (const [name, l] of this.live) if (l.torch && this.players.get(name)!.dead) l.torch = false; // dropped in the mud
     this.shrines.forEach((s, id) => {
       if (s.kind === 'lilies') return this.stepLilies(id);
+      if (s.kind === 'twins') return this.stepTwins(id);
+      if (s.kind === 'blocks') {
+        const st = this.shrineLive[id]!;
+        if (blocksSolved(st.cells)) st.openUntil = this.time + 1;
+        return;
+      }
       if (s.kind !== 'plate' && s.kind !== 'tide') return;
       const st = this.shrineLive[id]!;
       const plate = s.parts[0]!;
@@ -2411,6 +2456,36 @@ export class WorldSim {
       }
       if (st.pressed) st.openUntil = this.time + SHRINE.plateHold;
     });
+  }
+
+  /** Somebody (alive, here) standing on a plate. */
+  private onPlate(plate: { x: number; z: number }): boolean {
+    for (const [name, l] of this.live) {
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null || Math.hypot(plate.x - p.x, plate.z - p.z) > SHRINE.plateRadius) continue;
+      if (Math.abs(p.y - this.terrain.heightAt(plate.x, plate.z)) <= 1.5) return true;
+    }
+    return false;
+  }
+
+  /** Losas gemelas: both plates held at once (a player, or the boulder on plate 2) opens the gate 20 s; the boulder rolls home after 60 s. */
+  private stepTwins(id: number): void {
+    const s = this.shrines[id]!;
+    const st = this.shrineLive[id]!;
+    const [p1, p2, home] = s.parts as [{ x: number; z: number }, { x: number; z: number }, { x: number; z: number }];
+    const b = st.block!;
+    if (st.boulderAt !== null && this.time - st.boulderAt >= MOUNTAIN_SHRINE.boulderBack - EPS) {
+      Object.assign(b, { x: home.x, z: home.z });
+      st.boulderAt = null;
+    }
+    // S4-E: a Piedra pillar on a plate holds it too.
+    const a = this.onPlate(p1);
+    const c = this.onPlate(p2) || Math.hypot(b.x - p2.x, b.z - p2.z) <= SHRINE.plateRadius;
+    st.pulled = [a ? this.time : null, c ? this.time : null, null];
+    if (a && c) {
+      if (!this.shrineOpen(id)) for (const n of this.live.keys()) if (Math.hypot(this.players.get(n)!.x - s.x, this.players.get(n)!.z - s.z) < 30) this.tell(n, 'Las dos losas ceden a la vez. Algo se abre en el santuario');
+      st.openUntil = this.time + MOUNTAIN_SHRINE.twinsOpen;
+    }
   }
 
   /** Nenúfares: a pad sinks a while after someone stands on it, and comes back; standing on the last one opens the gate. */
@@ -2501,7 +2576,7 @@ export class WorldSim {
     return this.structures.some((s) => {
       const d = Math.hypot(s.x - x, s.z - z);
       return (s.kind === 'campfire' && d < r) || (s.kind === 'heart' && s.hp > 0 && d < HEART.warmRadius);
-    });
+    }) || this.fogataSpots.some((f, i) => this.fogatas[i] && Math.hypot(f.x - x, f.z - z) < r); // lit fogatas and refugios warm (S4 §9.2)
   }
 
   private targets(): WolfTarget[] {
