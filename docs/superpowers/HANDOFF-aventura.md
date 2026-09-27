@@ -276,3 +276,25 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador: no (solo tests + build).
 - Bloqueos: ninguno.
 - Qué probar: bajar a la playa (a caballo), nadar al halo dorado, A, seguir los anillos (¿7 s es justo nadando rápido?), calmarlo con 2 toques. Montado: sprint por el mar, mantener B para bajar al fondo, intentar entrar en la playa y cerca de la isla (se para), volver a la orilla y A para bajar. Constantes: `FISH` en `src/shared/fish.ts`.
+
+## Slice 2 · S2-C — santuarios de la Costa, cofres hundidos, perlas y mejora de arma — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-C-santuarios-costa.md` (da01fdb).
+- Commits: 94818d5 (T1 reglas: `src/shared/coast-shrines.ts`, perla, `UPGRADE`), 9b06fcb (T2 santuarios en el servidor, protocolo v15), 81712a9 (T3 cofres, perlas y mejora, v16), f1408be (T4 cliente).
+- Tests: npm test 351 (antes 325), test:workers 12, check + build verdes. PROTOCOL_VERSION = 16. Campos guardados nuevos opcionales `SavedPlayer.chests` y `SavedPlayer.weaponLvl`: las partidas viejas cargan.
+- Cómo funciona:
+  - **Tres santuarios más** (ids 3–5, en la misma lista que los del bosque: mismo orbe de +20 de aliento, uno por jugador, estado del acertijo compartido y solo en vivo).
+    - **Marea** (playa): losa a 12 m del orbe. La pisa un amigo, o se lleva la **piedra pómez** con A (A otra vez la suelta donde estás). Encima de la losa, la verja se queda abierta. Si quien la lleva muere o se va, la suelta allí.
+    - **Hundido** (playa + bajíos): una palanca en la arena y otra en el fondo, a ~40 m mar adentro (2–4 m de fondo). La del fondo solo cede buceando (a ≤2 m del fondo; en la superficie: "Está en el fondo"). Las dos en **8 s**.
+    - **Islote** (islote 1): verja-molino con **3 ruedas**, las tres en 6 s. Con una sola: "La verja-molino no se mueve. Quizá con viento… o con tres manos".
+  - **6 cofres** en el mar hondo, alrededor de 2 ruinas sembradas, lejos de islotes y aguas bravas. Una columna de luz tenue sube hasta la superficie. A buceando junto a uno (≤2,5 m y ≤2 m sobre él) lo abre: 6–10 de madera, piedra o bayas y **1 perla**. Uno por jugador (`SavedPlayer.chests`).
+  - **Mejora de arma:** A junto al Corazón con 3 perlas + 10 piedra + 5 madera → +15 % de daño a puño y arco, hasta +3 ("Arma +N" en la mochila).
+- Decisiones/desvíos:
+  - **Viento no existe todavía (S2-F).** El Islote se construye ya y se abre con tres jugadores. Solo, es un santuario de "vuelve luego". Hay marcas `// S2-F` en `onShrinePart` para la ráfaga (girar el molino y empujar la pómez).
+  - **No hay forja en el juego:** la mejora se compra en el Corazón, con un coste fijo. Si el Corazón está dañado, A primero lo cuida (bayas) y después mejora.
+  - La piedra pómez **no frena** (igual que el bloque de raíz de la mazmorra). El spec pedía 3 m/s, pero eso exige predicción en el cliente.
+  - Los orbes de la Costa **no limpian zonas del bosque**. Las zonas de la Costa llegan en otro plan, y ahí el orbe limpiará la más cercana.
+  - Cambio de regla con test adaptado: "old saves load" ahora espera 6 santuarios (antes 3). Los tests de versión de protocolo pasan a 16.
+  - Con la pómez en la mano, A siempre la suelta primero (antes que pegar).
+- Verificado en navegador local (Chromium headless 1000×600, semilla 42): entra sin errores de consola. El snap trae los 6 santuarios (el 3 con `block`), `chests: []` y `weapon: 0`. Con la partida importada en la playa y 3 perlas, la mochila muestra "Piedra 12 · Perlas 3". NO verificado: ver los santuarios y los cofres en pantalla, bucear hasta un cofre, la mejora en vivo, ni en móvil.
+- Bloqueos: ninguno.
+- Qué probar: en la playa, buscar los dos haces de luz. En Marea: coger la pómez, llevarla a la losa, soltarla y tomar el orbe. En Hundido: montar el pez, bucear hasta la palanca del fondo, volver a la de la arena en menos de 8 s (¿da tiempo solo?). En el islote 1, con tres, girar las ruedas. En el mar hondo: seguir la luz, bucear y abrir un cofre. Con 3 perlas, ir al Corazón y mejorar. Constantes: `COAST_SHRINE`/`CHEST` en `coast-shrines.ts`, `UPGRADE` en `items.ts`.
