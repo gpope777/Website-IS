@@ -54,10 +54,10 @@ export function collectTill(s: Stall, inv: Inventory): ShopResult;
 
 ### Task 3: client — buyer's panel, Caja in the owner panel, Puestos in the Menú
 
-- [ ] **Step 1: failing tests** (`stall-ui.test.ts`). `buyHtml(s, inv)`: "Puesto de Ana", a row per shelf with stock "1 perlas por 6 bayas · quedan 3" and `buy-i` (disabled when short / empty / Caja llena, with the reason), empty shelves hidden, "No vende nada." when none; `stallHtml` shows "Caja: 12 bayas", `till` button (disabled when empty) and the log lines "Bea · 1 perlas · 6 bayas · día 14"; `stallListHtml(stalls, pos)` lists "Puesto de Ana · vende perlas · 40 m al norte".
-- [ ] **Step 2: implement.** A beside another's Puesto → buy panel (redraws on `stall`); owner panel gets Vaciar caja; Menú "Puestos" button → the list.
-- [ ] **Step 3:** green, self-review, commit `feat(tiendas): comprar en el cliente y lista de puestos`.
+- [x] **Step 1: failing tests** (`stall-ui.test.ts`). `buyHtml(s, inv)`: "Puesto de Ana", a row per shelf with stock "1 perlas por 6 bayas · quedan 3" and `buy-i` (disabled when short / empty / Caja llena, with the reason), empty shelves hidden, "No vende nada." when none; `stallHtml` shows "Caja: 12 bayas", `till` button (disabled when empty) and the log lines "Bea · 1 perlas · 6 bayas · día 14"; `stallListHtml(stalls, pos)` lists "Puesto de Ana · vende perlas · 40 m al norte".
+- [x] **Step 2: implement.** A beside another's Puesto → buy panel (redraws on `stall`); owner panel gets Vaciar caja; Menú "Puestos" button → the list.
+- [x] **Step 3:** green, self-review, commit `feat(tiendas): comprar en el cliente y lista de puestos`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF: "## Tiendas · T6-B — …"; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF: "## Tiendas · T6-B — …"; one short comment on PR #3.

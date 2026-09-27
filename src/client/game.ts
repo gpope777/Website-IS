@@ -80,7 +80,7 @@ import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '..
 import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
 import { bookHtml } from './book-ui';
-import { nextItem, stallAction, stallHtml } from './stall-ui';
+import { buyHtml, nextItem, stallAction, stallHtml, stallListHtml } from './stall-ui';
 import { StallMeshes } from './scene/stalls';
 import { STALL, type Stall } from '../shared/shop';
 import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
@@ -677,7 +677,13 @@ export class Game {
         this.hud.hideOverlay();
       },
       pick: () => this.conn.send({ t: 'stallPick' }),
+      till: () => this.conn.send({ t: 'stallTill' }),
     };
+    if (s.owner !== this.myName) {
+      // T6-B: someone else's Puesto: the buy panel.
+      s.shelves.forEach((_, i) => (actions[`buy-${i}`] = () => this.conn.send({ t: 'buy', stall: id, shelf: i })));
+      return this.hud.showSkills(buyHtml(s, inv), actions);
+    }
     s.shelves.forEach((sh, i) => {
       const set = (o: Partial<{ give: ItemId; n: number; want: ItemId; m: number }>) => {
         const give = o.give ?? sh.give;
@@ -1118,6 +1124,7 @@ export class Game {
         onBook: () => this.showBook(),
         stall: [...this.stalls.values()].some((s) => s.owner === this.myName) ? undefined : `Poner ${NAMES.stall.toLowerCase()} (8 madera, 4 piedra)`,
         onStall: () => this.placeStall(),
+        onStalls: this.stalls.size ? () => this.hud.showSkills(stallListHtml([...this.stalls.values()], this.body ?? { x: 0, z: 0 }), { back: () => this.hud.hideOverlay() }) : undefined,
         tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,
         onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
@@ -1306,12 +1313,11 @@ export class Game {
     if (ca?.t === 'upgrade') return this.conn.send({ t: 'upgrade' });
     if (sa?.t === 'capa') return this.conn.send({ t: 'capa' });
     const st = stallAction(b, [...this.stalls.values()], this.myName);
-    if (st?.own) {
+    if (st) {
       this.releaseInputs();
       if (document.pointerLockElement) document.exitPointerLock();
       return this.showStall(st.s.id);
     }
-    if (st) return this.hud.toast(`${NAMES.stall} de ${st.s.owner}.`);
     const res = this.nearestResource();
     if (res) this.conn.send({ t: 'harvest', id: res.id });
   }

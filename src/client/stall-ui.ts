@@ -1,6 +1,6 @@
 import { count, ITEM_LABELS, ITEMS, type Inventory, type ItemId } from '../shared/items';
 import { NAMES } from '../shared/names';
-import { STALL, type Stall } from '../shared/shop';
+import { canBuy, STALL, tillTotal, type Stall } from '../shared/shop';
 
 const low = (k: ItemId) => ITEM_LABELS[k].toLowerCase();
 
@@ -37,6 +37,48 @@ export function stallHtml(s: Stall, inv: Inventory): string {
   return `<h2>${NAMES.stall} de ${s.owner}</h2>
     <p>Lo que pongas sale de tu mochila y se queda aquí. Cambiar el precio es gratis.</p>
     ${rows}
+    <p>${NAMES.till}: ${tillText(s)}</p>
+    <button data-a="till"${tillTotal(s) > 0 ? '' : ' disabled'}>Vaciar ${NAMES.till.toLowerCase()}</button>
+    ${s.log.length ? `<p>Últimas ventas:</p>${s.log.map((v) => `<p>${v.who} · ${v.n} ${low(v.give)} · ${v.m} ${low(v.want)} · día ${v.day}</p>`).join('')}` : ''}
     <button class="secondary" data-a="pick">Recoger ${NAMES.stall.toLowerCase()}</button>
     <button data-a="back">Volver</button>`;
+}
+
+const tillText = (s: Stall) => {
+  const parts = ITEMS.filter((k) => count(s.till, k) > 0).map((k) => `${count(s.till, k)} ${low(k)}`);
+  return parts.length ? parts.join(', ') : 'vacía';
+};
+
+/** T6-B: the buyer's panel. Only stocked Vendo shelves; greyed with the reason when you can't. */
+export function buyHtml(s: Stall, inv: Inventory): string {
+  const rows = s.shelves
+    .map((sh, i) => {
+      if (sh.mode !== 'sell' || sh.stock <= 0) return '';
+      const why = canBuy(s, i, inv);
+      return `<div class="shelf">
+        <p>${sh.n} ${low(sh.give)} por ${sh.m} ${low(sh.want)} · quedan ${sh.stock}${why ? ` · ${why}` : ''}</p>
+        <button data-a="buy-${i}"${why ? ' disabled' : ''}>Comprar</button>
+      </div>`;
+    })
+    .join('');
+  return `<h2>${NAMES.stall} de ${s.owner}</h2>
+    ${rows || '<p>No vende nada.</p>'}
+    <button data-a="back">Volver</button>`;
+}
+
+const DIRS = ['norte', 'noreste', 'este', 'sureste', 'sur', 'suroeste', 'oeste', 'noroeste'];
+
+/** T6-B: the Menú's list of Puestos (−z is north). */
+export function stallListHtml(stalls: readonly Stall[], pos: { x: number; z: number }): string {
+  const rows = stalls
+    .map((s) => {
+      const dx = s.x - pos.x;
+      const dz = s.z - pos.z;
+      const d = Math.round(Math.hypot(dx, dz));
+      const dir = DIRS[(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8]!;
+      const goods = [...new Set(s.shelves.filter((sh) => sh.mode === 'sell' && sh.stock > 0).map((sh) => low(sh.give)))];
+      return `<p>${NAMES.stall} de ${s.owner} · ${goods.length ? `vende ${goods.join(', ')}` : 'no vende nada'} · ${d < 5 ? 'aquí' : `${d} m al ${dir}`}</p>`;
+    })
+    .join('');
+  return `<h2>Puestos</h2>${rows || '<p>No hay puestos.</p>'}<button data-a="back">Volver</button>`;
 }
