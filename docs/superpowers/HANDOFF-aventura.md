@@ -469,3 +469,26 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador local (Chromium headless 1000×600, mundo `pantano`, semilla 42): tras importar la partida con Ana en (−340, 160), se ven el agua de la ciénaga, un montículo verde oscuro, espinas oscuras a lo lejos y una colina del borde. Sin errores de consola. NO verificado: cruzar el Zarzal andando, el río en pez o en ballena, la niebla de noche ni el móvil.
 - Bloqueos: ninguno.
 - Qué probar: ir al oeste a pie desde el bosque (z ≈ 100): ¿mata el Zarzal antes de llegar al interior? ¿Se entiende el aviso? Probar a caballo: también muere. Planear desde lo alto del borde: ¿se aterriza todavía en espinas? En la Costa, ir en pez hacia el oeste pegado a z ≈ HALF+103 (≈343), buscar la boca, remontar el río hasta la Laguna y bajar en un montículo. A pie en la ciénaga alta: ¿el 60 % se hace pesado? Meterse en el río a pie y dejarse llevar hacia el mar. En móvil: fps con la niebla. Constantes: `SWAMP`/`RIVER`/`LAGUNA` en `terrain.ts`, `ZARZAL`/`BOG`/`FOG_BLEND` en `src/shared/swamp.ts`, `SWAMP_FAR` en `game.ts`.
+
+## Slice 3 · S3-B — la Rana — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-B-rana.md` (529dd97).
+- Commits: abb2010 (T1 reglas: `src/shared/frog.ts`), 488951c (T2 domarla en el servidor, protocolo v24), eecb602 (T3 montarla y el salto alto), 6a2565b (T4 cliente).
+- Tests: npm test 499 (antes 476), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 24**. Campo guardado nuevo opcional `SavedPlayer.frog`: las partidas viejas cargan.
+- Cómo funciona:
+  - **La rana salvaje** espera en el montículo más cercano a la orilla norte de la Laguna Negra, con halo dorado y la garganta que brilla (no la tapa la niebla).
+  - **Domarla:** A a ≤4 m → "Salta al agua. Sigue los 3 nenúfares, 6 s cada uno". Los 3 nenúfares (sembrados, 8–12 m entre sí, siempre en ciénaga vadeable) salen en el agua; el siguiente brilla verde a través de la niebla. HUD: "Nenúfar 2/3 · 4 s". Llegar a ≤2,5 m de cada uno. Tarde → "Se escapa" y 3 s de espera. Tras el tercero, el anillo de siempre en **3 rondas** (3,0 / 3,8 / 4,6 rad/s, zona 1,1 / 0,9 / 0,7); un amigo a ≤6 m la calma (×1,5).
+  - **Montarla:** tierra y agua de hasta **2 m**: 8 m/s, 11 corriendo, sin aguante. La ciénaga alta no la frena. Tope del servidor **12** (+2 s de gracia al bajar). El Zarzal la muerde igual y la frena a 3 m/s. La Ciénaga de la Costa también muerde (solo el ciervo es inmune).
+  - **B = salto alto:** 7 m arriba, 9 m adelante, 1,2 s de espera. Aterriza en tierra, agua somera o encima de un peñasco; sin daño por caída.
+  - **Bajar:** A en cualquier sitio; la rana espera allí. A junto a ella para volver a subir. Entrar en una mazmorra, morir o teletransportarte te baja. En la rana no puedes montar ciervo ni pez, subir detrás de nadie ni a la ballena.
+  - Teclado: E / M bajar, Espacio salto alto. Táctil: A contextual y B. Rejilla sigue en 10.
+- Decidido por Claude — revisar:
+  - Acciones 12/13/14 dentro del mensaje `mount` (como el pez), no un mensaje nuevo.
+  - La carrera de nenúfares reutiliza la del pez (`race` lleva ahora `beast`).
+  - El salto en el servidor es solo un techo: un jinete de rana puede estar hasta 13 m sobre el suelo (7 del salto + lo que baja un montículo). No hay física de salto en el servidor.
+  - En agua la rana flota a `WATER_LEVEL` (nunca "nada" para el servidor).
+  - Montículo "más cercano a la orilla norte" = el de centro más cerca del punto norte de la elipse de la Laguna; en algunas semillas queda a 30–40 m.
+  - Dibujo: una rana de cajas (verde, garganta dorada), sin PNG, como el pez.
+- Rendimiento móvil: una rana = 12 cajas pequeñas; 3 discos para los nenúfares. Sin luces nuevas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: entrar al Pantano en pez, bajar en un montículo y buscar el brillo de la garganta en la niebla. Perseguir los nenúfares a pie en la ciénaga (60 %): ¿6 s es justo? Las 3 rondas del anillo. Montada: ¿8/11 m/s se sienten bien? Saltar a un montículo alto y encima de un peñasco. Meterse en el Zarzal en rana (debe morder). Bajar y volver a subir. Constantes: `FROG` en `src/shared/frog.ts`.
