@@ -14,4 +14,12 @@ describe('traps', () => {
     expect(nextTrap('roots')).toBe('spikes');
     expect(TRAP_LABEL.roots).toBe('red de raíces');
   });
+
+  it('with Fuego the hoguera joins the cycle; U places it (S3-E)', () => {
+    expect(KEY_ACTIONS.KeyU).toBe('fire');
+    expect(nextTrap('roots', true)).toBe('fire');
+    expect(nextTrap('fire', true)).toBe('spikes');
+    expect(nextTrap('fire')).toBe('spikes');
+    expect(TRAP_LABEL.fire).toBe('hoguera');
+  });
 });

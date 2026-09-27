@@ -1,8 +1,8 @@
 import { NAMES } from '../shared/names';
 import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
 import { COAST_DUNGEON, inCoastDungeon, insideCoast } from '../shared/coast-dungeon';
-import { SWAMP_DUNGEON } from '../shared/swamp-dungeon';
-import type { CarryView, CoastDungeonView, DungeonView, MarchitoView } from '../shared/protocol';
+import { inSwampDungeon, insideSwamp, SWAMP_DUNGEON } from '../shared/swamp-dungeon';
+import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, SwampDungeonView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
 export function emptyDungeonView(): DungeonView {
@@ -94,4 +94,28 @@ export function antenonBarText(view: CoastDungeonView): string | null {
   if (!b) return null;
   const state = b.tell === 'sweep' ? '¡barrido!' : b.tell === 'charge' ? '¡carga!' : b.exposed ? '¡expuesto!' : 'cáscara';
   return `${NAMES.bossCoast} ${b.hp}/${b.max} · ${state}`;
+}
+
+/** The contextual A / E action around the swamp Raíz-madre (acts 13–17). The server re-checks everything. */
+export function swampDungeonAction(pos: { x: number; z: number }, entrance: { x: number; z: number }, view: SwampDungeonView, fuego: boolean): { act: number; label: string } | null {
+  const S = SWAMP_DUNGEON;
+  const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
+  if (!inSwampDungeon(pos.x, pos.z)) return near(entrance.x, entrance.z, S.trunkR + S.enterReach) ? { act: 13, label: `Entrar en la ${NAMES.swampRoot}` } : null;
+  if (near(S.x, S.entryZ, S.exitReach)) return { act: 14, label: `Salir de la ${NAMES.swampRoot}` };
+  if (!view.gates[0]) {
+    for (const i of [0, 1]) {
+      const l = insideSwamp(S.levers[i]!);
+      if (near(l.x, l.z, S.leverReach)) return { act: 15 + i, label: 'Tirar de la raíz' };
+    }
+  }
+  if (view.gates[0] && !fuego && near(S.x, S.altarZ, S.altarReach)) return { act: 17, label: `Tomar el ${NAMES.powerFire}` };
+  return null;
+}
+
+/** The bruto de turba's bar while it fights. */
+export function peatBarText(view: SwampDungeonView): string | null {
+  const e = view.elite;
+  if (!e) return null;
+  const name = NAMES.eliteSwamp.charAt(0).toUpperCase() + NAMES.eliteSwamp.slice(1);
+  return `${name} ${e.hp}/${e.max}${e.burning ? ' · ardiendo' : e.charging ? ' · ¡carga!' : ''}`;
 }

@@ -102,3 +102,24 @@ describe('antenonBarText', () => {
     expect(b(false, 'charge')).toBe(`${NAMES.bossCoast} 360/360 · ¡carga!`);
   });
 });
+
+describe('swamp dungeon UI (S3-E)', () => {
+  it('enters from the Laguna trunk, leaves, pulls levers, takes Fuego', async () => {
+    const { swampDungeonAction, peatBarText } = await import('./dungeon-ui');
+    const { SWAMP_DUNGEON: S, insideSwamp } = await import('../shared/swamp-dungeon');
+    const e = { x: -500, z: 400 };
+    const v = emptyDungeonView().swamp;
+    expect(swampDungeonAction({ x: e.x + 5, z: e.z }, e, v, false)).toEqual({ act: 13, label: `Entrar en la ${NAMES.swampRoot}` });
+    expect(swampDungeonAction({ x: e.x + 30, z: e.z }, e, v, false)).toBeNull();
+    expect(swampDungeonAction({ x: S.x, z: S.entryZ }, e, v, false)?.act).toBe(14);
+    const l = insideSwamp(S.levers[1]);
+    expect(swampDungeonAction(l, e, v, false)?.act).toBe(16);
+    const altar = { x: S.x, z: S.altarZ };
+    expect(swampDungeonAction(altar, e, v, false)).toBeNull();
+    const open = { ...v, gates: [true, false, false, false] };
+    expect(swampDungeonAction(altar, e, open, false)).toEqual({ act: 17, label: `Tomar el ${NAMES.powerFire}` });
+    expect(swampDungeonAction(altar, e, open, true)).toBeNull();
+    expect(peatBarText(v)).toBeNull();
+    expect(peatBarText({ ...v, elite: { hp: 200, max: 480, charging: false, burning: true } })).toBe('Bruto de turba 200/480 · ardiendo');
+  });
+});

@@ -213,8 +213,9 @@ export class Hud {
        <button data-a="resume">Seguir jugando</button>
        <p>La ${NAMES.forestRoot}: palancas, un nudo que abre la ${NAMES.powerVine}, una losa (un compañero o el bloque encima), una linterna para el brasero y un ${NAMES.eliteForest}: cuando se agache, apártate o rueda. E / A coge y suelta</p>
        <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la ${NAMES.powerVine} junto a su raíz marchita o venciendo al ${NAMES.bossForestShort}</p>
-       <p>Poderes: H lanza el elegido (🌿 ${NAMES.powerVine} / 🌬️ ${NAMES.powerWind}) · J cambia · en táctil, mantén pulsado el botón de poder medio segundo para cambiar. El ${NAMES.powerWind} (altar de la ${NAMES.coastRoot}) empuja bestias (el mar se las lleva), desliza la piedra pómez, gira molinos, arranca raíces marchitas de la costa y, planeando, te sube una vez por vuelo</p>
-       <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · 🗡️ pone la elegida</p>
+       <p>Poderes: H lanza el elegido (🌿 ${NAMES.powerVine} / 🌬️ ${NAMES.powerWind} / 🔥 ${NAMES.powerFire}) · J cambia · en táctil, mantén pulsado el botón de poder medio segundo para cambiar. El ${NAMES.powerWind} (altar de la ${NAMES.coastRoot}) empuja bestias (el mar se las lleva), desliza la piedra pómez, gira molinos, arranca raíces marchitas de la costa y, planeando, te sube una vez por vuelo</p>
+       <p>El ${NAMES.powerFire} (altar de la ${NAMES.swampRoot}, en medio de la Laguna Negra): 🔥 una llamarada corta. Quema bestias (los lobos huyen), enciende braseros y lámparas de gas, y quema espinas, turba y raíces marchitas del pantano</p>
+       <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · U hoguera (con el ${NAMES.powerFire}: quema a la primera bestia y espanta lobos) · 🗡️ pone la elegida</p>
        <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
        <button class="secondary" data-a="leave">Salir</button>`,

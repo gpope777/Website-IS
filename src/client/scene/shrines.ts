@@ -115,7 +115,7 @@ export class ShrineMeshes {
         }
       }
       if (s.kind === 'peat') {
-        // The peat wall replaces the light gate: dark roots that only burn (S3-E).
+        // The peat wall replaces the light gate: dark roots that only burn (three Llamaradas; it hides once open).
         (gate as THREE.Mesh).material = PEAT;
         gate.geometry = new THREE.CylinderGeometry(1.6, 1.8, 2.6, 10, 1, false);
       }

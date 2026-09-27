@@ -23,7 +23,7 @@ export class StructureMeshes {
 
   /** Adds the mesh and returns collision circles for it. */
   add(s: Structure): Circle[] {
-    const obj = s.kind === 'campfire' ? this.campfire(s) : s.kind === 'heart' ? this.heart() : s.kind === 'spikes' ? this.spikes() : s.kind === 'roots' ? this.net() : this.wall();
+    const obj = s.kind === 'campfire' ? this.campfire(s) : s.kind === 'heart' ? this.heart() : s.kind === 'spikes' ? this.spikes() : s.kind === 'roots' ? this.net() : s.kind === 'fire' ? this.hoguera(s) : this.wall();
     obj.position.set(s.x, s.y, s.z);
     obj.rotation.y = s.rot;
     this.group.add(obj);
@@ -31,7 +31,7 @@ export class StructureMeshes {
     if (s.kind === 'heart') this.setHp(s.id, s.hp);
     if (s.kind === 'campfire') return [{ x: s.x, z: s.z, r: 0.6 }];
     if (s.kind === 'heart') return [{ x: s.x, z: s.z, r: 1.2 }];
-    if (s.kind === 'spikes' || s.kind === 'roots') return []; // players walk over them
+    if (s.kind === 'spikes' || s.kind === 'roots' || s.kind === 'fire') return []; // players walk over them
     // A 3 m wall along its local X axis, approximated by three circles.
     return [-1, 0, 1].map((o) => ({ x: s.x + Math.cos(s.rot) * o, z: s.z - Math.sin(s.rot) * o, r: 0.55 }));
   }
@@ -112,6 +112,22 @@ export class StructureMeshes {
   }
 
   /** Red de raíces: a flat mat of crossed roots. */
+  /** Hoguera: a wide ring of stones around a low flame (no light of its own: it is a trap, not a fire to warm by). */
+  private hoguera(s: Structure): THREE.Group {
+    const g = new THREE.Group();
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22, 0), STONE);
+      stone.position.set(Math.cos(a) * 1.2, 0.12, Math.sin(a) * 1.2);
+      g.add(stone);
+    }
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.6, 8), FLAME);
+    flame.position.y = 0.3;
+    g.add(flame);
+    this.fires.push({ flame, light: null, seed: s.x });
+    return g;
+  }
+
   private net(): THREE.Group {
     const g = new THREE.Group();
     for (let i = 0; i < 4; i++) {
