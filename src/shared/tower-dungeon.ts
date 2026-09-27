@@ -6,7 +6,7 @@ import type { Crag } from './crags';
  * La Torre (spec S5 §11): the fifth interior off the map, along +z, violet light. Four floors, one
  * power and one white ally each: the thorn pit (Enredadera bridges, gate 0) → three miasma vents
  * (Viento, gate 1) → the dark room's four braziers (Fuego, gate 2) → the rockfall and the shelf's plate
- * (Piedra, gate 3) → La Flecha's arena (gate 4) → the stair (the checkpoint) → la Copa (S5-F).
+ * (Piedra, gate 3) → La Flecha's arena (gate 4) → the stair (the checkpoint) → la Copa: El Marchito (S5-F, sim/marchito-final.ts).
  */
 export const TOWER_DUNGEON = {
   x: HALF + 750,

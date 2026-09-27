@@ -287,7 +287,7 @@ describe('La Flecha, the stair and the Copa (S5-E)', () => {
     pf(sim).towerLive.flechaDown = true;
     put(sim, 'Ana', T.x + 3, T.copa.z);
     sim.step(0.1);
-    expect(toasts(sim)).toContain('La Copa está vacía. Arriba solo hay cielo');
+    expect(toasts(sim).some((t) => t.startsWith('El Marchito baja a la Copa'))).toBe(true); // S5-F: the Copa is no longer empty
     const p = sim.getPlayer('Ana')!;
     const kill = () => (sim as unknown as { kill(p: unknown): void }).kill(p);
     kill();

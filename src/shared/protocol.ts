@@ -4,7 +4,7 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 51;
+export const PROTOCOL_VERSION = 52;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
@@ -45,7 +45,23 @@ export interface DungeonView {
   tower: TowerDungeonView;
 }
 /** The tower (S5-E): gates (pit, vents, braziers, plate, La Flecha), the two root bridges, vents clear right now, braziers lit, the plate weighted, La Flecha's bar, the white allies on their floors. */
-export interface TowerDungeonView { gates: boolean[]; bridges: boolean[]; vents: boolean[]; braziers: boolean[]; plate: boolean; flecha: { hp: number; max: number; aiming: boolean; stuck: boolean } | null; allies: (AllyView & { kind: 'tragon' | 'antenon' | 'zancudo' | 'cucurucho' })[] }
+export interface TowerDungeonView { gates: boolean[]; bridges: boolean[]; vents: boolean[]; braziers: boolean[]; plate: boolean; flecha: { hp: number; max: number; aiming: boolean; stuck: boolean } | null; allies: (AllyView & { kind: 'tragon' | 'antenon' | 'zancudo' | 'cucurucho' })[]; /** S5-F: El Marchito in the Copa while he fights. */ final: FinalView | null }
+/** El Marchito's final fight (S5-F): phase, HP (the core's share in phase 3), the roots, the swipe's tell, root lines being told, the four brotes, a pull's progress (0–1), el Corazón Negro and its trail. */
+export interface FinalView {
+  phase: 1 | 2 | 3;
+  hp: number;
+  max: number;
+  catching: boolean;
+  bare: boolean;
+  green: boolean;
+  stagger: boolean;
+  swipe: boolean;
+  lines: { x0: number; z0: number; x1: number; z1: number }[];
+  brotes: { power: 'vine' | 'wind' | 'fire' | 'stone'; x: number; z: number; open: boolean; broken: boolean; steps: number; need: number }[];
+  pull: number | null;
+  core: { hp: number; max: number; stopped: boolean; healing: boolean } | null;
+  trail: { x: number; z: number }[];
+}
 /** The mountain interior: gates (levers, high plate, blocks, bruto de roca), levers pulled, the plate weighted, where the two blocks sit, and the bruto de roca's bar. */
 export interface MountainDungeonView { gates: boolean[]; levers: boolean[]; plate: boolean; blocks: { x: number; z: number }[]; elite: { hp: number; max: number; charging: boolean; exposed: boolean } | null; /** El Cucurucho while it fights: winding up, charging, hat stuck, the alud's marked circles. */ boss: { hp: number; max: number; windup: boolean; charging: boolean; stuck: boolean; alud: { x: number; z: number }[] } | null }
 /** The swamp interior: gates (levers, thorns, gas lamps, bruto de turba), levers pulled, Llamaradas the thorns took (0–3), lamps lit, boardwalk planks still up, and the bruto de turba's bar. */
@@ -196,7 +212,7 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'shrine':
       return id(m.id) && id(m.part) && (m.part as number) <= 7 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
-      return id(m.act) && (m.act as number) <= 27 ? { t: 'dungeon', act: m.act as number } : null;
+      return id(m.act) && (m.act as number) <= 28 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':
       if (!id(m.act) || (m.act as number) > 17) return null;
       if (m.act === 1) return num(m.at) ? { t: 'mount', act: 1, at: m.at } : null;

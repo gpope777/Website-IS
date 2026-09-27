@@ -17,6 +17,7 @@ import { pillarZone, allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoast
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
 import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { clampTowerDungeon, columnCrags, inArena, inCopa, inTowerDungeon, insideTower, towerEntrance, towerFloor, towerShelfCrag, TOWER_DUNGEON, TOWER_ROCKFALL } from '../tower-dungeon';
+import { burnRoots, createFinal, FINAL, finalMult, hitFinal, staggerFinal, stepFinal, type FinalBoss } from './marchito-final';
 import { createTowerAlly, stepTowerAlly, TOWER_ALLY_KINDS, type TowerAlly } from './tower-allies';
 import { boulders, dungeonBlockCell, inMountainBossRoom, inMountainDungeon, inRockfall, inRockRoom, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON, rockfallLane, shelfCrag } from '../mountain-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
@@ -34,7 +35,7 @@ import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaCost, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type TowerDungeonView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
+import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type TowerDungeonView, type FinalView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
@@ -194,6 +195,8 @@ export interface SavedWorld {
   invasion3?: 'pending' | 'done';
   /** S5-D: the tower's door opened (the dawn after Invasion 3). Optional. */
   towerOpen?: boolean;
+  /** S5-F: El Marchito fell in the Copa (the ending, S5-G). Optional. */
+  ending?: boolean;
 }
 
 export interface Grave extends GraveView {
@@ -432,6 +435,8 @@ export class WorldSim {
   private boss4: Cucurucho | null = null;
   /** S5-E: La Flecha as the tower's mini-boss (live-only; beaten stays beaten until a restart). */
   private towerFlecha: Wolf | null = null;
+  /** S5-F: El Marchito's final fight in the Copa (live-only; a restart or an empty Copa resets it). */
+  private towerFinal: FinalBoss | null = null;
   /** The white Cucurucho's atalaya by the Heart; live-only, rebuilt from `purified4`. */
   private ally4: Atalaya | null = null;
   /** La Escalera del Umbral raised (saved); the Umbral's cracks so far are live-only. */
@@ -450,6 +455,8 @@ export class WorldSim {
   invasion3: 'none' | 'pending' | 'done';
   /** The tower's door is open (S5 §8.2). */
   towerOpen: boolean;
+  /** El Marchito fell (S5-F): the ending (S5-G). */
+  ending: boolean;
   /** Invasion 3 is under way tonight (from its dusk to dawn); `dark` once night fell. Live-only. */
   private inv3: { dark: boolean } | null = null;
   /** When each owner's parked dragon may bite a rayo again (S5 §8.3). Live-only. */
@@ -568,6 +575,7 @@ export class WorldSim {
     this.invasion2 = saved.invasion2 ?? (saved.players.some((p) => p.fish) ? 'pending' : 'none');
     this.invasion3 = saved.invasion3 ?? (this.pillarsBroken.every(Boolean) ? 'pending' : 'none');
     this.towerOpen = saved.towerOpen ?? false;
+    this.ending = saved.ending ?? false;
     this.rescue = rescueSite(this.terrain, saved.seed);
     this.anchors = [0, 1, 2].map((i) => saved.anchors?.[i] ?? false);
     this.buildAnchors();
@@ -818,6 +826,7 @@ export class WorldSim {
     this.stepMountainDungeon();
     this.stepTowerDungeon(dt);
     this.stepTowerFlecha(dt);
+    this.stepTowerFinal(dt);
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepPeatFight(dt);
@@ -872,6 +881,13 @@ export class WorldSim {
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
     const tf = this.towerFlecha;
     if (tf && near(tf.x, tf.z)) wolves.push({ id: tf.id, kind: tf.kind, x: r2(tf.x), y: r2(tf.y), z: r2(tf.z), yaw: r2(tf.yaw), anim: tf.anim, raid: false, ...(tf.aim && tf.hp > 0 ? { aim: { x: r2(tf.aim.x), z: r2(tf.aim.z) } } : {}), ...((tf.stuck ?? 0) > 0 && tf.hp > 0 ? { stuck: true as const } : {}), ...(tf.burn && tf.hp > 0 ? { burning: true as const } : {}) });
+    const fb = this.towerFinal;
+    if (fb && near(fb.x, fb.z)) {
+      wolves.push({ id: fb.id, kind: fb.kind, x: r2(fb.x), y: r2(fb.y), z: r2(fb.z), yaw: r2(fb.yaw), anim: fb.anim, raid: false });
+      for (const br of fb.brotes) if (!br.broken) wolves.push({ id: br.id, kind: br.kind, x: r2(br.x), y: r2(br.y), z: r2(br.z), yaw: 0, anim: 'idle', raid: false });
+      const c = fb.core;
+      if (c) wolves.push({ id: c.id, kind: c.kind, x: r2(c.x), y: r2(c.y), z: r2(c.z), yaw: r2(c.yaw), anim: c.anim, raid: false });
+    }
     const pe = this.peat;
     if (pe && near(pe.x, pe.z)) wolves.push({ id: pe.id, kind: pe.kind, x: r2(pe.x), y: r2(pe.y), z: r2(pe.z), yaw: r2(pe.yaw), anim: pe.anim, raid: false, ...(pe.burn && pe.hp > 0 ? { burning: true as const } : {}) });
     const rk = this.rock;
@@ -927,6 +943,7 @@ export class WorldSim {
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
       ...(this.invasion3 === 'none' ? {} : { invasion3: this.invasion3 }),
       ...(this.towerOpen ? { towerOpen: true } : {}),
+      ...(this.ending ? { ending: true } : {}),
       ...(this.invasion2 === 'taken' ? { anchors: [...this.anchors] } : {}),
       ...(this.cleansed.size ? { cleansed: [...this.cleansed].sort((a, b) => a - b) } : {}),
       ...(this.whaleTamed ? { whale: { x: r2(this.whale.x), z: r2(this.whale.z), yaw: r2(this.whale.yaw) } } : {}),
@@ -1673,6 +1690,7 @@ export class WorldSim {
       if (!this.fogatas[i] && hits(f.x, f.z, FOGATA.light)) this.lightFogata(p, i);
     });
     this.flameTowerBraziers(p, hits);
+    this.flameFinal(p, hits);
     if (!inSwampDungeon(p.x, p.z)) return;
     const S = SWAMP_DUNGEON;
     const g = this.swampLive;
@@ -1906,12 +1924,15 @@ export class WorldSim {
     if (this.boss3 && this.boss3.id === id) return this.boss3;
     if (this.boss4 && this.boss4.id === id) return this.boss4;
     if (this.towerFlecha && this.towerFlecha.id === id) return this.towerFlecha;
+    const fb = this.towerFinal;
+    if (fb && fb.id === id) return fb;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
 
   /** Hurt an enemy for a player; the folded boss shrugs it off. `ranged`: an arrow, a gust or a flame (they reach El Zancudo in the air, at half). */
   private strike(name: string, w: Wolf, dmg: number, ranged = false): void {
     if (w === this.marchito) return this.wearMarchito(name, dmg);
+    if (w === this.towerFinal) return this.strikeFinal(name, dmg);
     if (w.kind === 'anchor') {
       if (hitWolf(w, dmg)) {
         if (w === this.lakeAnchor) this.breakLakeAnchor();
@@ -2264,9 +2285,9 @@ export class WorldSim {
       return !p.dead && l.awayFor === null && inTowerDungeon(p.x, p.z);
     });
     if (!inside.length) return;
-    if (!g.copaSeen && inside.some(([n]) => inCopa(this.players.get(n)!.x, this.players.get(n)!.z))) {
+    if (this.ending && !g.copaSeen && inside.some(([n]) => inCopa(this.players.get(n)!.x, this.players.get(n)!.z))) {
       g.copaSeen = true;
-      this.sayTower('La Copa está vacía. Arriba solo hay cielo'); // S5-F: El Marchito waits here
+      this.sayTower('La Copa está en calma. Abajo se ve todo el bosque');
     }
     this.stepTowerFloors(inside.map(([n]) => this.players.get(n)!), dt);
     const onShelf = inside.some(([name]) => {
@@ -2334,6 +2355,94 @@ export class WorldSim {
       hitWolf(hit.foe, hit.damage);
       if (a.kind === 'antenon') this.sayTower(`${upFirst(names[f]!)} blanco sopla y una bestia cae por la cornisa`);
     }
+  }
+
+  /**
+   * S5-F: El Marchito in the Copa. The first living player in wakes him (HP by those in the Copa); he stays while
+   * someone alive is in the Copa and resets when it empties (a death sends you to the stair, outside it).
+   */
+  private stepTowerFinal(dt: number): void {
+    const f = this.towerFinal;
+    if (this.ending) {
+      if (f && f.hp <= 0 && f.deadFor < FINAL.corpseTime) f.deadFor += dt;
+      else this.towerFinal = null;
+      return;
+    }
+    const fighters = this.targets().filter((t) => !t.dead && inCopa(t.x, t.z)).map((t) => ({ ...t, fires: false }));
+    if (!fighters.length) {
+      if (f) this.resetFinal();
+      return;
+    }
+    if (!f) {
+      this.towerFinal = createFinal(fighters.length);
+      this.sayTower(`${NAMES.villain} baja a la Copa. Las raíces lo tapan: que arda el ${NAMES.powerFire}`);
+    }
+    const b = this.towerFinal!;
+    const pillars = this.structures.filter((s) => s.kind === 'pillar' && inCopa(s.x, s.z)).map((s) => ({ id: s.id, x: s.x, z: s.z }));
+    const { hits, events } = stepFinal(b, fighters, pillars, dt, this.rng);
+    for (const e of events) {
+      if (e === 'bare') this.sayTower('Las raíces arden y se caen. Ahora sí');
+      else if (e === 'regrow') this.sayTower('Le vuelven a salir raíces. Verdes: tardarán en prender');
+      else if (e === 'green') this.sayTower('Las raíces nuevas ya están secas');
+    }
+    for (const h of hits) this.finalHit(h.name, h.dmg, h.kind, b);
+  }
+
+  /** A swipe (rolled or parried like a bite), a root line (rolled; a parry only blocks) or the trail (always). */
+  private finalHit(name: string, dmg: number, kind: 'swipe' | 'line' | 'trail', b: FinalBoss): void {
+    const p = this.players.get(name);
+    const l = this.live.get(name);
+    if (!p || !l || p.dead) return;
+    if (kind === 'swipe') {
+      this.bite(name, dmg, b);
+      return;
+    }
+    if (kind === 'trail') return this.hurt(p, dmg);
+    const out = resolveHit(l.guard, this.time, dmg);
+    if (out.kind === 'dodged') return;
+    if (out.kind === 'parried') return this.tell(name, 'Paras la raíz. Duele en los brazos');
+    this.hurt(p, out.dmg);
+    this.hint(name, l, 'Las rayas moradas del suelo son raíces. Rueda');
+  }
+
+  /** The Copa empties: the fight starts over next time. */
+  private resetFinal(): void {
+    this.towerFinal = null;
+  }
+
+  /** A blow on his body: through the roots (×0.1) unless they burnt; sunk or frozen, nothing. */
+  private strikeFinal(name: string, dmg: number): void {
+    const b = this.towerFinal!;
+    const m = finalMult(b);
+    if (m <= 0) return;
+    const l = this.live.get(name);
+    if (m < 1 && l) this.hint(name, l, `Las raíces paran casi todo. El ${NAMES.powerFire} de cerca`);
+    if (hitFinal(b, dmg * m) === 'phase2') this.sayTower(`${NAMES.villain} se hunde en la Copa. Salen cuatro brotes: uno por poder`);
+  }
+
+  /** A Llamarada near him sets the roots alight (and scratches him). */
+  private flameFinal(p: SavedPlayer, hits: (x: number, z: number, range?: number) => boolean): void {
+    const b = this.towerFinal;
+    if (!b || b.hp <= 0 || b.phase !== 1 || !hits(b.x, b.z, FUEGO.range + FINAL.body)) return;
+    const r = burnRoots(b, p.x, p.z);
+    if (r === 'catch') this.sayTower('Las raíces prenden…');
+    else if (r === 'green') this.tell(p.name, 'Las raíces nuevas están verdes. Aún no prenden');
+    else if (r === 'far') this.tell(p.name, 'Demasiado lejos para que prendan');
+    this.strike(p.name, b, FUEGO.damage, true);
+  }
+
+  private finalView(): FinalView | null {
+    const b = this.towerFinal;
+    if (!b || this.ending) return null;
+    const c = b.core;
+    return {
+      phase: b.phase, hp: Math.ceil(c ? c.hp : b.hp), max: c ? c.max : b.max, catching: b.catching > 0, bare: b.bare > 0, green: b.green > 0, stagger: b.stagger > 0, swipe: b.swipeTell > 0,
+      lines: b.lines.map((l) => ({ x0: r2(l.x0), z0: r2(l.z0), x1: r2(l.x1), z1: r2(l.z1) })),
+      brotes: [],
+      pull: null,
+      core: null,
+      trail: b.trail.map((t) => ({ x: r2(t.x), z: r2(t.z) })),
+    };
   }
 
   /** La Flecha in the arena: wakes when someone alive walks in, resets if it empties; beaten = gate 4 and 2 espinas to each fighter. */
@@ -3002,7 +3111,7 @@ export class WorldSim {
   private towerView(): TowerDungeonView {
     const g = this.towerLive;
     const T = TOWER_DUNGEON;
-    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: this.towerFlecha && this.towerFlecha.hp > 0 ? { hp: Math.round(this.towerFlecha.hp), max: T.flechaHp, aiming: !!this.towerFlecha.aim, stuck: (this.towerFlecha.stuck ?? 0) > 0 } : null, allies: g.allies.flatMap((a) => (a ? [{ kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: r2(a.yaw), anim: a.anim }] : [])) };
+    return { gates: this.towerGates(), bridges: [...g.bridges], vents: g.ventAt.map((t) => g.ventsDone || (t != null && this.time - t <= T.ventClear + EPS)), braziers: [...g.braziers], plate: g.plate || g.jammed, flecha: this.towerFlecha && this.towerFlecha.hp > 0 ? { hp: Math.round(this.towerFlecha.hp), max: T.flechaHp, aiming: !!this.towerFlecha.aim, stuck: (this.towerFlecha.stuck ?? 0) > 0 } : null, allies: g.allies.flatMap((a) => (a ? [{ kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: r2(a.yaw), anim: a.anim }] : [])), final: this.finalView() };
   }
 
   private dungeonView(): DungeonView {
@@ -3974,8 +4083,9 @@ export class WorldSim {
       if (w === this.boss2) this.boss2.exposed = Math.max(this.boss2.exposed, ANTENON.parryFor);
       if (w === this.boss3) groundZancudo(this.boss3, ZANCUDO.parryFall);
       if (w === this.boss4) stickCucurucho(this.boss4, CUCURUCHO.parryFor);
+      if (w === this.towerFinal) staggerFinal(this.towerFinal);
       this.strike(name, w, BLOCK.parryDamage);
-      this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : w === this.boss3 ? 'Parada: cae al suelo' : w === this.boss4 ? 'Parada: el gorro se levanta' : 'Parada');
+      this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : w === this.boss3 ? 'Parada: cae al suelo' : w === this.boss4 ? 'Parada: el gorro se levanta' : w === this.towerFinal ? 'Parada: se tambalea y las raíces se abren' : 'Parada');
       return false;
     }
     this.hurt(p, out.dmg);
