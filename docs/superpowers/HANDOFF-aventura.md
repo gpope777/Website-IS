@@ -1,7 +1,7 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
 ## Aventura completa — estado (LEER PRIMERO)
-La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 1043, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 58**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F) y la curva de Savia (P4-A). **Lo siguiente:** #6 Tiendas y economía → #2 Mundo y visuales → #7 Pulido (con el tutorial).
+La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 1062, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 59** (T6-A de #6 Tiendas hecho); todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F) y la curva de Savia (P4-A). **Lo siguiente:** #6 Tiendas y economía → #2 Mundo y visuales → #7 Pulido (con el tutorial).
 
 **Branch:** `aventura/slice-1` (pushed to origin).
 
@@ -1157,3 +1157,25 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: abrir el Libro con una partida avanzada; ganar cada Proeza (la del frío: anochecer en las Faldas y subir sin fuego); ponerse los 3 sombreros nuevos. Constantes: `FEAT_FAST`, `FEAT_HEART` en `progression.ts`; formas en `src/client/actors/hats.ts`.
+
+## Tiendas · T6-A — Reglas y el Puesto — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-tiendas-T6-A-reglas-puesto.md` (2e216a0).
+- Commits: fdd90f0 (T1 reglas puras en `src/shared/shop.ts`: `STALL`, `newStall`, `setShelf`, `restock`, `takeShelf`, `pickUp`, `stallGoods`, `canPlaceStall`; nombres `stall`/`till` en `names.ts`), 298ef37 (T2 servidor, protocolo v59), 2b575e2 (T3 cliente: malla, Menú, A y panel del dueño).
+- Tests: npm test 1062 (antes 1043), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 59**. Campo guardado nuevo, opcional: `SavedWorld.stalls`. Las partidas viejas cargan sin Puestos.
+- Cómo funciona:
+  - **Menú → "Poner puesto (8 madera, 4 piedra)"** (solo si no tienes uno): sale 2,5 m delante. Uno por jugador, a ≥15 m de otro, en tierra seca dentro del mapa (en cualquier bioma, no solo el bosque).
+  - **A junto a tu Puesto** (≤4 m) abre el panel: 4 estantes "Vendo N X por M Y · quedan S"; botones de material (rotan entre los 7), − / +, **Reponer +N** (una tanda sale de la mochila), **Quitar** (todo el estante vuelve) y **Recoger puesto** (estantes, Caja y el coste completo vuelven). A junto al de otro: "Puesto de Ana." (comprar llega en T6-B).
+  - El Puesto no es una `Structure`: sin vida, los asedios no lo ven. Colisiona con jugadores.
+- **Conservación:** cada operación comprueba todo y luego aplica todo, sin mutar; si falla, no cambia nada. Tests de propiedad: 500 secuencias aleatorias de 40 operaciones puras y 40 × 60 mensajes por `handle()` (dueño y extraño, válidos e inválidos) mantienen mochilas + tumbas + Puestos iguales; solo construir (−8 madera −4 piedra) y recoger (+coste) mueven la cuenta.
+- Decidido por Claude — revisar:
+  - Mensaje propio `stallPlace` en vez de un `StructureKind` nuevo (el Puesto no es estructura; evita tocar todas las tablas por tipo).
+  - No se puede cambiar el material de un estante con género ("Quita el género primero."); el precio sí, gratis.
+  - Reponer = una tanda (N unidades) por toque; topes 60 por estante y 120 por Puesto.
+  - Los eventos `stall` van a todos (3–4 jugadores; el filtro de 60 m del spec no compensa aún).
+  - Estante por defecto: "Vendo 1 madera por 1 bayas". Etiquetas en plural fijo ("1 perlas"): seco, a pulir en #7.
+  - Cambio de regla con tests adaptados (ninguno borrado): versión 58 → 59 en los tests de versión.
+- Rendimiento móvil: 1 malla fusionada (mostrador, 2 postes, toldo), 1 material, 1 draw call por Puesto. Panel en HTML. Cero luces, cero pastillas.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: poner el Puesto con 8 madera y 4 piedra; A → subir precios, reponer, quitar; recoger y ver que todo vuelve; intentar un segundo Puesto; que un asedio lo ignore. Constantes: `STALL` en `src/shared/shop.ts`; malla en `src/client/scene/stalls.ts`.
+- Lo siguiente: T6-B (comprar, Caja, registro, mapa, ritmo; v60).

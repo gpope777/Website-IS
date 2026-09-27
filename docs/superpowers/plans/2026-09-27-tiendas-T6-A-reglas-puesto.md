@@ -1,6 +1,6 @@
 # Tiendas · T6-A: Reglas y el Puesto — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** the first plan of subproject #6 (spec §3.1, §3.2, §7, §10.1–10.4, row T6-A of §11). Pure shop rules in `src/shared/shop.ts` with **conservation tests** (no sequence of stock / take / set / pick up creates or destroys a material), the **Puesto** saved in `SavedWorld.stalls`, building it from the Menú and picking it up with A, the 4 **Vendo** shelves with Reponer / Quitar and free prices, the owner's HTML panel, and one merged mesh. Buying, the Caja's income, the log and the map are T6-B.
 
@@ -47,22 +47,22 @@ export function stallGoods(s: Stall): Inventory; // stock + escrow + till
 export function canPlaceStall(stalls: Stall[], owner: string, x: number, z: number): string | null;
 ```
 
-- [ ] **Step 1: failing tests.** A new stall has 4 empty sell shelves; `setShelf` validates `give ≠ want`, 1 ≤ n, m ≤ 20 and integer, the shelf index, and refuses a new `give` with stock; `restock` moves `n` from the mochila, refuses without enough ("No te llega la madera."), past 60 per shelf or 120 total; `takeShelf` returns all; `pickUp` returns shelves + till + cost; `canPlaceStall` refuses a second Puesto of the same owner and one closer than 15 m; inputs are never mutated; **property test:** 500 seeded random sequences of 40 ops (set / restock / take, valid and invalid) keep `inv + stallGoods` constant per material; after `pickUp`, `inv` = start + cost.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(tiendas): reglas puras del Puesto y conservación`.
+- [x] **Step 1: failing tests.** A new stall has 4 empty sell shelves; `setShelf` validates `give ≠ want`, 1 ≤ n, m ≤ 20 and integer, the shelf index, and refuses a new `give` with stock; `restock` moves `n` from the mochila, refuses without enough ("No te llega la madera."), past 60 per shelf or 120 total; `takeShelf` returns all; `pickUp` returns shelves + till + cost; `canPlaceStall` refuses a second Puesto of the same owner and one closer than 15 m; inputs are never mutated; **property test:** 500 seeded random sequences of 40 ops (set / restock / take, valid and invalid) keep `inv + stallGoods` constant per material; after `pickUp`, `inv` = start + cost.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(tiendas): reglas puras del Puesto y conservación`.
 
 ### Task 2: server — stalls in the world (protocolo v59)
 
-- [ ] **Step 1: failing tests** (`world-sim-t6a.test.ts`, `protocol.test.ts`). Protocol 59; `decodeClient` accepts the 5 messages and rejects bad shelves, amounts, items; `stallPlace` with materials builds a Puesto (−8 madera −4 piedra, event `stall` to everyone, `welcome.stalls` has it); a second one → "Ya tienes un puesto."; in water / off-map / too far / near another Puesto → refused, nothing spent; `stallSet`/`stallStock`/`stallTake` only by the owner within 4 m (others: nothing changes); `stallPick` gives everything back and removes it (`gone: true`); save → load keeps the Puesto; an old save without `stalls` loads; a raid never targets a Puesto (not in `structures`); **property test** over `handle()`: random stall messages from owner and a stranger keep mochilas + tumbas + Puestos constant, except place/pick by exactly the cost.
-- [ ] **Step 2: implement** (`stalls` array, `onStallPlace`, `onStallSet`, `onStallStock`, `onStallTake`, `onStallPick`, save/load, welcome).
-- [ ] **Step 3:** green (adapt 58 → 59 in the version tests, noted), self-review, commit `feat(tiendas): el Puesto en el servidor (protocolo v59)`.
+- [x] **Step 1: failing tests** (`world-sim-t6a.test.ts`, `protocol.test.ts`). Protocol 59; `decodeClient` accepts the 5 messages and rejects bad shelves, amounts, items; `stallPlace` with materials builds a Puesto (−8 madera −4 piedra, event `stall` to everyone, `welcome.stalls` has it); a second one → "Ya tienes un puesto."; in water / off-map / too far / near another Puesto → refused, nothing spent; `stallSet`/`stallStock`/`stallTake` only by the owner within 4 m (others: nothing changes); `stallPick` gives everything back and removes it (`gone: true`); save → load keeps the Puesto; an old save without `stalls` loads; a raid never targets a Puesto (not in `structures`); **property test** over `handle()`: random stall messages from owner and a stranger keep mochilas + tumbas + Puestos constant, except place/pick by exactly the cost.
+- [x] **Step 2: implement** (`stalls` array, `onStallPlace`, `onStallSet`, `onStallStock`, `onStallTake`, `onStallPick`, save/load, welcome).
+- [x] **Step 3:** green (adapt 58 → 59 in the version tests, noted), self-review, commit `feat(tiendas): el Puesto en el servidor (protocolo v59)`.
 
 ### Task 3: client — mesh, Menú, A and the owner's panel
 
-- [ ] **Step 1: failing tests.** `stall-ui.ts`: `stallHtml(stall, inv)` shows "Puesto de Ana", 4 rows "Vendo 1 madera por 1 bayas · quedan 0", buttons `give-i`, `n-i-dec/inc`, `want-i`, `m-i-dec/inc`, `stock-i` ("Reponer +1", disabled without enough), `take-i` (disabled at 0), `pick`, `back`; `nextItem` cycles the 7 materials; `stallAction(pos, stalls, me)` returns own / other / null by distance 4.
-- [ ] **Step 2: implement.** `StallMeshes` (1 merged geometry, 1 material, a collider circle); `welcome`/`stall` events update them; Menú button "Poner puesto" (only without one); A → panel (owner) or toast (others); panel taps send the messages and redraw on the next `stall` event.
-- [ ] **Step 3:** green, self-review, commit `feat(tiendas): el Puesto en el cliente`.
+- [x] **Step 1: failing tests.** `stall-ui.ts`: `stallHtml(stall, inv)` shows "Puesto de Ana", 4 rows "Vendo 1 madera por 1 bayas · quedan 0", buttons `give-i`, `n-i-dec/inc`, `want-i`, `m-i-dec/inc`, `stock-i` ("Reponer +1", disabled without enough), `take-i` (disabled at 0), `pick`, `back`; `nextItem` cycles the 7 materials; `stallAction(pos, stalls, me)` returns own / other / null by distance 4.
+- [x] **Step 2: implement.** `StallMeshes` (1 merged geometry, 1 material, a collider circle); `welcome`/`stall` events update them; Menú button "Poner puesto" (only without one); A → panel (owner) or toast (others); panel taps send the messages and redraw on the next `stall` event.
+- [x] **Step 3:** green, self-review, commit `feat(tiendas): el Puesto en el cliente`.
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF: "## Tiendas · T6-A — …"; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF: "## Tiendas · T6-A — …"; one short comment on PR #3.
