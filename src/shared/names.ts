@@ -110,4 +110,7 @@ export const NAMES = {
   feat: 'Proeza',
   feats: 'Proezas',
   featNames: ['Sin un rasguño', 'Pez veloz', 'Pies secos', 'Solo contra el frío', 'Noche entera', 'Corazón quieto'],
+  /** T6-A: the player shop and its till. */
+  stall: 'Puesto',
+  till: 'Caja',
 } as const;
