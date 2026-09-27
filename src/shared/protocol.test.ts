@@ -14,6 +14,15 @@ describe('decodeClient', () => {
     ok({ t: 'attack', id: 3 });
     ok({ t: 'eat' });
     ok({ t: 'respawn' });
+    ok({ t: 'dungeon', act: 0 });
+    ok({ t: 'dungeon', act: 4 });
+  });
+
+  it('rejects bad dungeon acts', () => {
+    bad(JSON.stringify({ t: 'dungeon', act: 5 }));
+    bad(JSON.stringify({ t: 'dungeon', act: -1 }));
+    bad(JSON.stringify({ t: 'dungeon', act: 1.5 }));
+    bad(JSON.stringify({ t: 'dungeon' }));
   });
 
   it('rejects garbage', () => {
@@ -44,7 +53,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(6);
+    expect(PROTOCOL_VERSION).toBe(7);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -97,6 +106,6 @@ describe('power and shrine protocol', () => {
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(6);
+    expect(PROTOCOL_VERSION).toBe(7);
   });
 });

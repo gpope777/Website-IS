@@ -31,8 +31,10 @@ export interface EnemyDef {
 export const ENEMY: Record<EnemyKind, EnemyDef> = {
   wolf: { hp: WOLF.hp, run: WOLF.run, damage: WOLF.damage, reach: WOLF.reach, biteCooldown: WOLF.biteCooldown },
   brute: { hp: 140, run: 4.2, damage: 22, reach: 2.2, biteCooldown: 2 },
+  /** El Tragón de Papel, the dungeon boss (see sim/boss.ts). */
+  boss: { hp: 300, run: 2.8, damage: 24, reach: 3.2, biteCooldown: 2.2 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito' };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: 'el Tragón de Papel' };
 
 export interface Wolf {
   id: number;

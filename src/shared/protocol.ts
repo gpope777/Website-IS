@@ -2,23 +2,27 @@ import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
 export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean }
-export type EnemyKind = 'wolf' | 'brute';
+export type EnemyKind = 'wolf' | 'brute' | 'boss';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
 /** `parts` follow `Shrine.parts`: lever pulled / plate pressed. */
 export interface ShrineView { id: number; open: boolean; parts: boolean[] }
+/** Live dungeon state: root gate, levers pulled, whether the boss was purified, and its bar while it fights. */
+export interface DungeonView { gate: boolean; levers: boolean[]; purified: boolean; boss: { hp: number; max: number; weak: boolean } | null }
+/** The purified boss guarding the Heart. */
+export interface AllyView { x: number; y: number; z: number; yaw: number; anim: WolfAnim }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean }
 
 export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
 
@@ -37,12 +41,14 @@ export type ClientMsg =
   | { t: 'revive'; name: string }
   | { t: 'power'; x: number; z: number }
   /** part 0 = take the orb, 1/2 = pull lever 1/2 */
-  | { t: 'shrine'; id: number; part: number };
+  | { t: 'shrine'; id: number; part: number }
+  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar */
+  | { t: 'dungeon'; act: number };
 
 export type ServerMsg =
   | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[] }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
@@ -110,6 +116,8 @@ export function decodeClient(raw: string): ClientMsg | null {
       return num(m.x) && num(m.z) ? { t: 'power', x: m.x, z: m.z } : null;
     case 'shrine':
       return id(m.id) && id(m.part) && (m.part as number) <= 2 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
+    case 'dungeon':
+      return id(m.act) && (m.act as number) <= 4 ? { t: 'dungeon', act: m.act as number } : null;
     default:
       return null;
   }
