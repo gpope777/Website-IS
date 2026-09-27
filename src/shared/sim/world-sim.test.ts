@@ -22,6 +22,8 @@ import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
 import { VIENTO } from '../viento';
+import { insideSwamp, SWAMP_DUNGEON } from '../swamp-dungeon';
+import { FUEGO, HOGUERA } from '../fuego';
 import { ANTENON, ANTENON_ALLY } from './antenon';
 import { RESCUE } from '../rescue';
 import { coastRaidBrutes } from '../corruption';
@@ -4002,5 +4004,104 @@ describe('La Gata Araña (S3-D)', () => {
     expect(sim.getPlayer('Leo')!.inv.amber ?? 0).toBe(0);
     for (let i = 0; i < 32; i++) sim.step(0.1);
     expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut1')).toEqual([]);
+  });
+});
+
+describe('swamp dungeon (S3-E)', () => {
+  const S = SWAMP_DUNGEON;
+  const act = (sim: WorldSim, name: string, a: number) => sim.handle(name, { t: 'dungeon', act: a });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : m.t === 'vision' ? m.lines : []));
+  function enter(sim: WorldSim, name = 'Ana') {
+    const e = sim.swampEntrance;
+    put(sim, name, e.x, e.z - 3);
+    act(sim, name, 13);
+  }
+  const move = (sim: WorldSim, name: string, x: number, z: number, y = S.floor) => sim.handle(name, { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+
+  it('A at the sunken trunk takes you inside (off the fish), and back out', () => {
+    const sim = setup('Ana');
+    act(sim, 'Ana', 13);
+    expect(sim.getPlayer('Ana')!.x).toBe(0);
+    const e = sim.swampEntrance;
+    put(sim, 'Ana', e.x, e.z - 4);
+    sim.getPlayer('Ana')!.fish = { x: e.x, z: e.z - 4 };
+    sim.handle('Ana', { t: 'mount', act: 7 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(true);
+    act(sim, 'Ana', 13);
+    const p = sim.getPlayer('Ana')!;
+    expect(p.x).toBe(S.x);
+    expect(p.y).toBe(S.floor);
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    expect(texts(sim).some((t) => t.includes(NAMES.swampRoot))).toBe(true);
+    act(sim, 'Ana', 14);
+    expect(Math.hypot(p.x - e.x, p.z - e.z)).toBeLessThan(S.trunkR + S.enterReach);
+  });
+
+  it('two levers open gate 0; the altar wakes Fuego (saved)', () => {
+    const sim = setup('Ana', 'Bea');
+    enter(sim, 'Ana');
+    enter(sim, 'Bea');
+    act(sim, 'Ana', 17);
+    expect(sim.getPlayer('Ana')!.fuego).toBeUndefined();
+    const l0 = insideSwamp(S.levers[0]);
+    const l1 = insideSwamp(S.levers[1]);
+    put(sim, 'Ana', l0.x, l0.z);
+    put(sim, 'Bea', l1.x, l1.z);
+    act(sim, 'Ana', 15);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[0]).toBe(false);
+    sim.step(1);
+    act(sim, 'Bea', 16);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[0]).toBe(true);
+    put(sim, 'Ana', S.x, S.altarZ);
+    act(sim, 'Ana', 17);
+    expect(snap(sim, 'Ana').self.fuego).toBe(true);
+    expect(sim.save().players.find((p) => p.name === 'Ana')!.fuego).toBe(true);
+  });
+
+  it('a shut gate stops walkers', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    put(sim, 'Ana', S.x, 31.5);
+    sim.step(1.1);
+    move(sim, 'Ana', S.x, 32.5);
+    expect(sim.getPlayer('Ana')!.z).toBe(31.5);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+  });
+
+  it('a plank sinks 1.2 s after someone stands on it and comes back 4 s later', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x: S.x, z: S.mud[0] + 1, y: S.floor });
+    sim.step(0.1);
+    sim.step(1.0);
+    expect(snap(sim, 'Ana').dungeon.swamp.planks[0]).toBe(true);
+    sim.step(0.2);
+    expect(snap(sim, 'Ana').dungeon.swamp.planks[0]).toBe(false);
+    Object.assign(p, { x: S.x, z: S.mud[0] + 10 }); // off it, on plank 3
+    sim.step(S.downFor);
+    expect(snap(sim, 'Ana').dungeon.swamp.planks[0]).toBe(true);
+  });
+
+  it('the mud sends you back to the gas hall gate, 10 PV poorer', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    put(sim, 'Ana', S.x + 5, 100);
+    const p = sim.getPlayer('Ana')!;
+    expect(p.y).toBe(S.floor - S.mudDepth);
+    const hp = p.vitals.health;
+    sim.step(0.1);
+    expect(p.z).toBe(S.fallBack);
+    expect(p.y).toBe(S.floor);
+    expect(p.vitals.health).toBeCloseTo(hp - S.fallDamage, 0);
+    expect(texts(sim).some((t) => t.startsWith('El barro te traga'))).toBe(true);
+  });
+
+  it('warm inside; old saves load without fuego', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    expect(snap(sim, 'Ana').self.fuego).toBe(false);
+    const again = new WorldSim(sim.save());
+    expect(again.getPlayer('Ana')!.fuego).toBeUndefined();
   });
 });

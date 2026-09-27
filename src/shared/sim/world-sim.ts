@@ -2,6 +2,7 @@ import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, zarzalAt } from '../swamp';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
+import { FUEGO } from '../fuego';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
@@ -10,6 +11,7 @@ import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
 import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isSwampZone, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
+import { inMud, insideSwamp, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
 import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
@@ -61,7 +63,7 @@ export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const
 const EPS = 1e-6;
 
 const upFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida' };
+const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida', fire: 'Hoguera lista. Ya arderá' };
 
 export interface SavedPlayer {
   name: string;
@@ -93,6 +95,8 @@ export interface SavedPlayer {
   capaLvl?: number;
   /** Has Viento (coast dungeon altar). Optional: older saves have none. */
   viento?: boolean;
+  /** Has Fuego (swamp dungeon altar). Optional: older saves have none. */
+  fuego?: boolean;
 }
 
 export interface SavedWorld {
@@ -156,6 +160,8 @@ interface Live {
   powerReadyAt: number;
   /** Sim time Viento can be cast again. Live-only. */
   windReadyAt: number;
+  /** Sim time Fuego can be cast again. Live-only. */
+  fireReadyAt?: number;
   /** Glider lift from a gust: the highest accepted y until `boostUntil`; `boosted` = used this flight. */
   boostCeil: number;
   boostUntil: number;
@@ -212,6 +218,8 @@ export class WorldSim {
   readonly entrance: { x: number; y: number; z: number };
   /** The coast Raíz-madre's trunk, on the dungeon island. */
   readonly coastEntrance: { x: number; z: number };
+  /** The swamp Raíz-madre's sunken trunk, in the Laguna Negra. */
+  readonly swampEntrance: { x: number; z: number } = swampEntrance();
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
   readonly wild: { x: number; y: number; z: number };
   /** Where the wild giant fish waits, and its race rings (seeded). */
@@ -268,6 +276,17 @@ export class WorldSim {
     plate: false,
     eliteDown: false,
     block: { ...insideCoast(COAST_DUNGEON.blockStart) },
+  };
+  /** The swamp interior (live-only): levers, gate 0, Llamaradas the thorns took, lamp light times and gate 2, the planks, the bruto de turba. */
+  private readonly swampLive = {
+    pulled: [null, null] as (number | null)[],
+    gate: false,
+    thorn: 0,
+    lampAt: [null, null, null] as (number | null)[],
+    lamps: false,
+    planks: Array.from({ length: SWAMP_DUNGEON.planks }, () => ({ at: null as number | null, downUntil: 0 })),
+    eliteDown: false,
+    bossSaid: false,
   };
   /** Live-only puzzle state, one per shrine: lever pull times, open-until, plate pressed. */
   private readonly shrineLive: { pulled: (number | null)[]; openUntil: number; pressed: boolean; block: { x: number; z: number; held: string | null } | null; /** Candiles: lit-until per brazier. */ lit: number[]; /** Nenúfares: when someone first stood on each pad, and until when it is under. */ pads: { at: number | null; downUntil: number }[] }[];
@@ -549,6 +568,7 @@ export class WorldSim {
     this.stepNets();
     this.stepDungeon();
     this.stepCoastDungeon();
+    this.stepSwampDungeon();
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
     this.stepBossFight(dt);
@@ -634,7 +654,7 @@ export class WorldSim {
   climbables(): Crag[] {
     const wrapped = new Set(this.vines.map((v) => v.id));
     const bare = this.shrines.flatMap((s) => (s.pillar && !wrapped.has(s.pillar.id) ? [s.pillar] : []));
-    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []))];
+    return [...this.crags, ...bare, ...this.vines, ...this.padCrags(), ...plankCrags(this.swampLive.planks.map((pl) => this.time >= pl.downUntil)), ...this.amberTrees.flatMap((t) => (t.stump ? [t.stump] : []))];
   }
 
   /** Nenúfares' pads still afloat. */
@@ -713,7 +733,7 @@ export class WorldSim {
       return;
     }
     const inBounds = inAnyDungeon(m.x, m.z) || inMap(m.x, m.z, 2);
-    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates());
+    const through = clampStep(p.x, p.z, m.x, m.z, this.gates(), this.coastGates(), this.swampGates());
     // Inside, walls are a clamp: a move the clamp would change went through a wall or the shut gate.
     const wallOk = !inAnyDungeon(p.x, p.z, 2) || Math.hypot(through.x - m.x, through.z - m.z) < 0.3;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
@@ -1232,6 +1252,7 @@ export class WorldSim {
       this.teleport(p, l, DUNGEON.x, DUNGEON.entryZ + 1.5);
       return this.tell(p.name, `Dentro de la ${NAMES.forestRoot}. Huele a papel viejo`);
     }
+    if (act >= 13) return this.onSwampDungeon(p, l, act, near);
     if (act >= 8) return this.onCoastDungeon(p, l, act, near);
     if (!inDungeon(p.x, p.z)) return;
     if (act === 1) {
@@ -1315,6 +1336,77 @@ export class WorldSim {
       p.viento = true;
       this.tell(p.name, `Despierta el ${NAMES.powerWind}: J cambia de poder (o mantén pulsado el botón de poder), H lanza una ráfaga`);
     }
+  }
+
+  /** The swamp Raíz-madre: 13 enter, 14 leave, 15/16 levers, 17 the Fuego altar. */
+  private onSwampDungeon(p: SavedPlayer, l: Live, act: number, near: (x: number, z: number, r: number) => boolean): void {
+    const S = SWAMP_DUNGEON;
+    const e = this.swampEntrance;
+    if (act === 13) {
+      if (!near(e.x, e.z, S.trunkR + S.enterReach)) return;
+      this.teleport(p, l, S.x, S.entryZ + 1.5);
+      return this.tell(p.name, `Dentro de la ${NAMES.swampRoot}. Huele a turba y a gas`);
+    }
+    if (!inSwampDungeon(p.x, p.z)) return;
+    const g = this.swampLive;
+    if (act === 14) {
+      if (!near(S.x, S.entryZ, S.exitReach)) return;
+      return this.teleport(p, l, e.x, e.z - (S.trunkR + 2));
+    }
+    if (act === 15 || act === 16) {
+      const i = act - 15;
+      const lever = insideSwamp(S.levers[i]!);
+      if (!near(lever.x, lever.z, S.leverReach) || g.gate) return;
+      g.pulled[i] = this.time;
+      const other = g.pulled[1 - i];
+      if (other != null && this.time - other <= S.leverWindow + EPS) {
+        g.gate = true;
+        return this.say('La verja de raíces se abre. Chapotea');
+      }
+      return this.tell(p.name, 'La raíz cede. Falta la otra');
+    }
+    if (act === 17) {
+      if (!g.gate || !near(S.x, S.altarZ, S.altarReach) || p.fuego) return;
+      p.fuego = true;
+      this.tell(p.name, `Despierta el ${NAMES.powerFire}: J cambia de poder (o mantén pulsado el botón de poder), H lanza una llamarada`);
+    }
+  }
+
+  /** Which of the four swamp gates are open: levers, thorns, gas lamps, the bruto de turba. */
+  private swampGates(): boolean[] {
+    const g = this.swampLive;
+    return [g.gate, g.thorn >= FUEGO.burns, g.lamps, g.eliteDown];
+  }
+
+  /** Boardwalk planks under ~1.2 s of weight sink for 4 s; the mud sends fallers back to the gas hall's gate. */
+  private stepSwampDungeon(): void {
+    const S = SWAMP_DUNGEON;
+    const g = this.swampLive;
+    const standing = new Set<number>();
+    for (const [name, l] of this.live) {
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null || !inMud(p.x, p.z)) continue;
+      const i = plankAt(p.x, p.z);
+      const up = i >= 0 && this.time >= g.planks[i]!.downUntil;
+      if (up && p.y >= S.floor - 0.5 && p.y <= S.floor + 0.5) standing.add(i);
+      if (p.y > S.floor - 1) continue; // on a plank, jumping, or still sinking
+      this.teleport(p, l, S.x, S.fallBack);
+      p.vitals = damage(p.vitals, S.fallDamage * capaMult(p.capaLvl ?? 0));
+      this.tell(name, 'El barro te traga y te escupe atrás. Las tablas no aguantan mucho');
+      if (p.vitals.health <= 0) this.kill(p);
+    }
+    g.planks.forEach((pl, i) => {
+      if (this.time < pl.downUntil) return;
+      if (!standing.has(i)) {
+        pl.at = null;
+        return;
+      }
+      pl.at ??= this.time;
+      if (this.time - pl.at + EPS >= S.sinkAfter) {
+        pl.downUntil = this.time + S.downFor;
+        pl.at = null;
+      }
+    });
   }
 
   /** Which of the four coast gates are open: levers, fan, plate, the bruto escudado. */
@@ -1795,7 +1887,17 @@ export class WorldSim {
       boss: this.boss2 && this.boss2.hp > 0 ? { hp: Math.round(this.boss2.hp), max: ENEMY.boss2.hp, exposed: this.boss2.exposed > 0, tell: this.boss2.windup > 0 ? this.boss2.move : null } : null,
       elite: this.shield && this.shield.hp > 0 ? { hp: Math.round(this.shield.hp), max: ENEMY.elite2.hp, exposed: this.shield.exposed > 0, charging: this.shield.windup > 0 || this.shield.charge > 0 } : null,
     };
-    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast };
+    const w = this.swampLive;
+    const S = SWAMP_DUNGEON;
+    const swamp = {
+      gates: this.swampGates(),
+      levers: w.pulled.map((t) => t != null && (w.gate || this.time - t <= S.leverWindow + EPS)),
+      thorn: Math.min(w.thorn, FUEGO.burns),
+      lamps: w.lampAt.map((t) => t != null && (w.lamps || this.time - t <= S.lampWindow + EPS)),
+      planks: w.planks.map((pl) => this.time >= pl.downUntil),
+      elite: null,
+    };
+    return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp };
   }
 
   /** Which of the five dungeon gates are open. */
@@ -2035,6 +2137,8 @@ export class WorldSim {
       power: !!p.enredadera,
       viento: !!p.viento,
       windLeft: Math.max(0, Math.ceil(l.windReadyAt - this.time - EPS)),
+      fuego: !!p.fuego,
+      fireLeft: Math.max(0, Math.ceil((l.fireReadyAt ?? 0) - this.time - EPS)),
       tame: this.tameView(p, l),
       riding: l.riding,
       steed: !!p.steed,
