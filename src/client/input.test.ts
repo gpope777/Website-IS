@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { clearHold, readMove, type InputState } from './input';
+import { clearHold, KEY_ACTIONS, readMove, type InputState } from './input';
 
-const base: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false };
+const base: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false, block: false };
 
 describe('readMove', () => {
   it('maps WASD to camera-relative input', () => {
@@ -16,8 +16,16 @@ describe('readMove', () => {
 
 describe('clearHold', () => {
   it('zeroes every held movement/action flag but leaves the analog stick alone', () => {
-    const i: InputState = { forward: true, back: true, left: true, right: true, sprint: true, jump: true, axis: { x: 1, z: 1 } };
+    const i: InputState = { forward: true, back: true, left: true, right: true, sprint: true, jump: true, block: true, axis: { x: 1, z: 1 } };
     clearHold(i);
-    expect(i).toEqual({ forward: false, back: false, left: false, right: false, sprint: false, jump: false, axis: { x: 1, z: 1 } });
+    expect(i).toEqual({ forward: false, back: false, left: false, right: false, sprint: false, jump: false, block: false, axis: { x: 1, z: 1 } });
+  });
+});
+
+describe('combat keys', () => {
+  it('maps Q/R/X to roll, bow and lock', () => {
+    expect(KEY_ACTIONS.KeyQ).toBe('roll');
+    expect(KEY_ACTIONS.KeyR).toBe('bow');
+    expect(KEY_ACTIONS.KeyX).toBe('lock');
   });
 });

@@ -7,6 +7,8 @@ export interface InputState {
   right: boolean;
   sprint: boolean;
   jump: boolean;
+  /** Held guard (Z / 🛡️). */
+  block: boolean;
   /** Touch stick: x = strafe, z = forward(-)/back(+), magnitude ≤ 1. */
   axis?: { x: number; z: number };
 }
@@ -16,7 +18,7 @@ export function readMove(i: InputState): MoveInput {
   return { x: (i.right ? 1 : 0) - (i.left ? 1 : 0), z: (i.back ? 1 : 0) - (i.forward ? 1 : 0), sprint: i.sprint, jump: i.jump };
 }
 
-export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'camera' | 'menu';
+export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock';
 
 /** Also used by touch buttons, which fire these KeyboardEvent codes. */
 export const KEY_ACTIONS: Record<string, Action> = {
@@ -28,6 +30,9 @@ export const KEY_ACTIONS: Record<string, Action> = {
   KeyG: 'heart',
   KeyT: 'spikes',
   KeyC: 'camera',
+  KeyQ: 'roll',
+  KeyR: 'bow',
+  KeyX: 'lock',
   Escape: 'menu',
 };
 
@@ -43,6 +48,7 @@ const HOLD: Record<string, keyof Omit<InputState, 'axis'>> = {
   ShiftLeft: 'sprint',
   ShiftRight: 'sprint',
   Space: 'jump',
+  KeyZ: 'block',
 };
 
 /** Zero every held movement/action flag, e.g. on blur or when an overlay (menu/death) takes over input. */

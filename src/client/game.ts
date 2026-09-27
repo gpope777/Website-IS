@@ -40,7 +40,7 @@ export class Game {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly rig = new CameraRig();
-  private readonly input: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false };
+  private readonly input: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false, block: false };
   private readonly hud: Hud;
   private readonly conn: Connection;
   private readonly keyboard: Keyboard;

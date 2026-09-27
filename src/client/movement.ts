@@ -39,6 +39,11 @@ const SWIM_DEPTH = WATER_LEVEL - 0.6;
 const GRAVITY = 14;
 const JUMP_SPEED = 5.2;
 
+/** Stick input (camera-relative) that moves along `facing`: used for the roll dash. */
+export function rollInput(facing: number, camYaw: number): MoveInput {
+  return { x: Math.sin(facing - camYaw), z: Math.cos(facing - camYaw), sprint: true, jump: false };
+}
+
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return { x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0 };
 }

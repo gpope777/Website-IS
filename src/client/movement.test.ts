@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
 import { HALF, WATER_LEVEL } from '../shared/terrain';
 import { ColliderGrid } from './colliders';
-import { animFor, createBody, PLAYER_RADIUS, SPEED, stepBody, type MoveInput } from './movement';
+import { animFor, createBody, PLAYER_RADIUS, rollInput, SPEED, stepBody, type MoveInput } from './movement';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const none = () => [];
@@ -75,5 +75,15 @@ describe('ColliderGrid', () => {
     expect(g.near(40, 0)).toHaveLength(0);
     g.remove('a');
     expect(g.near(8.1, 0)).toHaveLength(0);
+  });
+});
+
+describe('rollInput', () => {
+  it('runs along the facing whatever the camera does', () => {
+    for (const [facing, cam] of [[0, 0], [1, -2], [Math.PI - 0.2, 0.5]] as const) {
+      const b = createBody(0, 0, flat);
+      stepBody(b, rollInput(facing, cam), cam, 0.1, flat, none);
+      expect(Math.atan2(b.x, b.z)).toBeCloseTo(facing);
+    }
   });
 });
