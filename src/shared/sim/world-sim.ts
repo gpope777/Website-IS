@@ -1,6 +1,7 @@
 import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
+import { cragsNear, generateCrags, type Crag } from '../crags';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type GraveView, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
@@ -11,6 +12,8 @@ export const DAY_LENGTH = 6 * 60;
 export const TICK_DT = 0.1;
 export const VIEW_RADIUS = 100;
 export const MAX_SPEED = 9;
+/** Within this many metres of a crag's side, moves may be as high as its top + 3 m (climbing, jumping off the top). */
+export const CLIMB_PAD = 4;
 /** Cap on the re-anchor allowance window, so idling still bounds the accepted jump distance. */
 const MAX_ANCHOR_WINDOW = 2;
 export const REACH = 3.5;
@@ -97,6 +100,7 @@ export class WorldSim {
   readonly seed: number;
   readonly salt: string;
   readonly terrain: Terrain;
+  readonly crags: readonly Crag[];
   readonly resources: ResourceSpawn[];
   time: number;
   private readonly players = new Map<string, SavedPlayer>();
@@ -120,6 +124,7 @@ export class WorldSim {
     this.time = saved.time;
     this.terrain = createTerrain(saved.seed);
     this.resources = generateResources(this.terrain, saved.seed);
+    this.crags = generateCrags(this.terrain, saved.seed);
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     for (const [id, st] of Object.entries(saved.resources)) this.resState.set(Number(id), { ...st });
     this.structures = saved.structures.map((s) => ({ ...s, hp: s.hp ?? STRUCTURE_HP[s.kind] }));
@@ -341,7 +346,10 @@ export class WorldSim {
     const moved = Math.hypot(m.x - l.anchorX, m.z - l.anchorZ);
     const inBounds = Math.abs(m.x) < HALF - 2 && Math.abs(m.z) < HALF - 2;
     const ground = Math.max(this.terrain.heightAt(m.x, m.z), WATER_LEVEL - 0.9);
-    const yOk = m.y > ground - 1 && m.y < ground + 4;
+    const cragCeiling = cragsNear(this.crags, m.x, m.z, CLIMB_PAD).reduce((t, c) => Math.max(t, c.top + 3), -Infinity);
+    // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
+    // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
+    const yOk = m.y > ground - 1 && (m.y < ground + 4 || m.y < cragCeiling || m.y <= p.y);
     // ponytail: speed + bounds sanity check only, no server physics. Fine for co-op; add server-side collision if cheating matters.
     if (!inBounds || !yOk || moved > MAX_SPEED * elapsed + 1) {
       l.fix = true;

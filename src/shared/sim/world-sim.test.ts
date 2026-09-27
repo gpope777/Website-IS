@@ -651,3 +651,59 @@ describe('revive', () => {
     expect(sim.drain().some((o) => o.to === 'Leo' && o.msg.t === 'toast' && o.msg.text === 'Ya es tarde')).toBe(true);
   });
 });
+
+describe('traversal moves', () => {
+  it('accepts climbing up the side of a crag and standing on top', () => {
+    const sim = setup('Ana');
+    const c = sim.crags[0]!;
+    const x = c.x + c.r + 0.45;
+    put(sim, 'Ana', x, c.z);
+    sim.step(1.1); // let the move-check anchor catch up with the teleport
+    for (let y = sim.getPlayer('Ana')!.y + 0.22; y < c.top; y += 0.22) {
+      sim.handle('Ana', { t: 'move', x, y, z: c.z, yaw: 0, anim: 'climb' });
+      expect(sim.getPlayer('Ana')!.y).toBeCloseTo(y);
+      sim.step(0.1);
+    }
+    sim.handle('Ana', { t: 'move', x: c.x + c.r - 0.6, y: c.top, z: c.z, yaw: 0, anim: 'idle' });
+    expect(sim.getPlayer('Ana')!.y).toBeCloseTo(c.top);
+    expect(snap(sim, 'Ana').self.fix).toBe(false);
+  });
+
+  it('accepts a glide that keeps going down, far from the crag', () => {
+    const sim = setup('Ana');
+    const c = sim.crags[0]!;
+    const p = sim.getPlayer('Ana')!;
+    p.x = c.x;
+    p.z = c.z;
+    p.y = c.top;
+    sim.step(1.1);
+    let x = c.x;
+    let y = c.top;
+    for (let i = 0; i < 40; i++) {
+      x += 0.7;
+      y = Math.max(y - 0.16, sim.terrain.heightAt(x, c.z));
+      sim.handle('Ana', { t: 'move', x, y, z: c.z, yaw: 0, anim: 'glide' });
+      expect(p.x).toBeCloseTo(x);
+      sim.step(0.1);
+    }
+    expect(x - c.x).toBeGreaterThan(c.r + 20);
+  });
+
+  it('rejects rising in mid-air away from any crag', () => {
+    const sim = setup('Ana');
+    const x = 5;
+    const z = 5;
+    expect(sim.crags.every((c) => Math.hypot(c.x - x, c.z - z) > c.r + 10)).toBe(true);
+    put(sim, 'Ana', x, z);
+    const g = sim.terrain.heightAt(x, z);
+    sim.handle('Ana', { t: 'move', x, y: g + 6, z, yaw: 0, anim: 'jump' });
+    expect(sim.getPlayer('Ana')!.y).toBeCloseTo(g);
+    let y = g;
+    for (let i = 0; i < 10; i++) {
+      y += 0.5;
+      sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'jump' });
+      sim.step(0.1);
+    }
+    expect(sim.getPlayer('Ana')!.y).toBeLessThan(g + 4);
+  });
+});
