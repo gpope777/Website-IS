@@ -25,6 +25,14 @@
 
 # Progreso autónomo (noche 2026-09-27)
 
+## RESUMEN PARA LEER PRIMERO
+- **Planes A–H: todos hechos, ninguno bloqueado.** Rama `aventura/slice-1`, PR draft #2. Nada mergeado ni desplegado.
+- Tests finales: npm test 250, test:workers 12, check + build verdes. PROTOCOL_VERSION = 9; las partidas viejas cargan (campos nuevos opcionales).
+- **Nada se probó de punta a punta en navegador real** (Chromium headless a ~2 fps). Cada sección abajo dice qué se vio y qué no.
+- Balance que hay que revisar sí o sí: estacas casi inútiles (A), boss Tragón pega demasiado (F: mata en ~12 s), voluntad/daño de El Marchito (H).
+- Decisiones de alcance grandes: escalada = fallback de pilares marcados (D, el terreno no tiene pendientes >30°); Enredadera se obtiene en el altar de la mazmorra (F); mazmorra "instanciada" = zona fuera del mapa en la misma sala (F); el pill 🎥 cámara se cambió por 🌿 poder (E, cámara sigue en tecla C y Menú); la mochila ahora cae en una tumba al reaparecer (C).
+
+
 PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main = deploy).
 
 ## Plan A — HECHO
