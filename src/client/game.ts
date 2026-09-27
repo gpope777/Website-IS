@@ -1,3 +1,4 @@
+import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
 import { createTerrain, type Terrain } from '../shared/terrain';
@@ -828,7 +829,7 @@ export class Game {
     const res = this.nearestResource();
     if (res) return this.hud.setPrompt(`E · ${HARVEST[res.kind].label}`);
     const wall = b && b.onGround ? cragsNear(this.climbList, b.x, b.z, 1).find((c) => b.y < c.top - 0.6) : undefined;
-    if (wall?.bare) return this.hud.setPrompt(this.hasPower ? 'H · Enredadera: cubrir la roca' : 'Roca lisa: no hay agarre');
+    if (wall?.bare) return this.hud.setPrompt(this.hasPower ? `H · ${NAMES.powerVine}: cubrir la roca` : 'Roca lisa: no hay agarre');
     this.hud.setPrompt(wall ? (b!.tired ? 'Sin aliento' : 'Empuja contra la roca para trepar') : null);
   }
 

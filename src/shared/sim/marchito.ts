@@ -1,3 +1,4 @@
+import { NAMES } from '../names';
 import { ENEMY, type Wolf, type WolfTarget } from './wolves';
 
 /**
@@ -106,8 +107,8 @@ export function joinNames(names: readonly string[]): string {
 /** What he says. Dry, short, a little theatrical. */
 export const VISION = {
   purified: (names: string) => ['Una voz como hojas secas:', `«Así que muerden, las ramitas. ${names}.»`, '«Iré a ver ese Corazón yo mismo.»'],
-  arrive: ['El Marchito entra en el claro. No se le puede matar.', '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],
-  laugh: ['El Marchito se ríe como una rama al partirse.', '«Solo vine a mirar. La próxima vez me quedo.»'],
-  driven: (names: string) => ['El Marchito retrocede entre la niebla.', `«${names}. Me acordaré de sus nombres.»`],
+  arrive: [`${NAMES.villain} entra en el claro. No se le puede matar.`, '«Bonito Corazón. Sería una pena.»', 'Aguanten, o échenlo a golpes.'],
+  laugh: [`${NAMES.villain} se ríe como una rama al partirse.`, '«Solo vine a mirar. La próxima vez me quedo.»'],
+  driven: (names: string) => [`${NAMES.villain} retrocede entre la niebla.`, `«${names}. Me acordaré de sus nombres.»`],
   taunt: (name: string) => `«¿Eso es todo, ${name}?»`,
 };

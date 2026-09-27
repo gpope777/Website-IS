@@ -1,3 +1,4 @@
+import { NAMES } from '../shared/names';
 import { ITEM_LABELS, ITEMS, type Inventory } from '../shared/items';
 import type { ErrorCode } from '../shared/protocol';
 import type { Vitals } from '../shared/survival';
@@ -194,13 +195,13 @@ export class Hud {
       `<h2>Menú</h2>
        <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
        <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
-       <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 Enredadera (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
+       <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 ${NAMES.powerVine} (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
        <p>El ciervo salvaje (un halo dorado en el bosque): E / A junto a él para domarlo; pulsa cuando la aguja cruce la zona, tres veces · E / M montar y bajar · Shift: galope</p>
-       <p>El Marchito: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
+       <p>${NAMES.villain}: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
-       <p>La Raíz-madre: palancas, un nudo que abre la Enredadera, una losa (un compañero o el bloque encima), una linterna para el brasero y un bruto reforzado: cuando se agache, apártate o rueda. E / A coge y suelta</p>
-       <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la Enredadera junto a su raíz marchita o venciendo al Tragón</p>
+       <p>La ${NAMES.forestRoot}: palancas, un nudo que abre la ${NAMES.powerVine}, una losa (un compañero o el bloque encima), una linterna para el brasero y un ${NAMES.eliteForest}: cuando se agache, apártate o rueda. E / A coge y suelta</p>
+       <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la ${NAMES.powerVine} junto a su raíz marchita o venciendo al ${NAMES.bossForestShort}</p>
        <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · 🗡️ pone la elegida</p>
        <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>

@@ -1,3 +1,4 @@
+import { NAMES } from '../names';
 import { HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import type { EnemyKind, WolfAnim } from '../protocol';
 
@@ -38,7 +39,7 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   /** El Marchito in person (see sim/marchito.ts): hp is his voluntad (the 4-player cap; see marchitoWill), he never dies. */
   marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: 'el Tragón de Papel', elite: 'el bruto reforzado', marchito: 'El Marchito' };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, marchito: `${NAMES.villain}` };
 
 export interface Wolf {
   id: number;

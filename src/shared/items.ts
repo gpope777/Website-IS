@@ -1,3 +1,4 @@
+import { NAMES } from './names';
 export type ItemId = 'wood' | 'stone' | 'berries';
 export type Inventory = Partial<Record<ItemId, number>>;
 
@@ -6,7 +7,7 @@ export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Pie
 
 export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots';
 export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots'];
-export const STRUCTURE_LABELS: Record<StructureKind, string> = { campfire: 'Fogata', wall: 'Muro', heart: 'Corazón del Bosque', spikes: 'Estacas', roots: 'Red de raíces' };
+export const STRUCTURE_LABELS: Record<StructureKind, string> = { campfire: 'Fogata', wall: 'Muro', heart: `${NAMES.heart}`, spikes: 'Estacas', roots: 'Red de raíces' };
 export const BUILD_COST: Record<StructureKind, Inventory> = {
   campfire: { wood: 5, stone: 3 },
   wall: { wood: 4 },

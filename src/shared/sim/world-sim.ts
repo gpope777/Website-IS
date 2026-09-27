@@ -1,3 +1,4 @@
+import { NAMES } from '../names';
 import { createRng } from '../rng';
 import { createTerrain, HALF, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
@@ -45,7 +46,7 @@ export const REVIVE = { window: 30, reach: 2.5, health: 40, floor: 30 } as const
 // Tolerance for float drift in this.time, which accumulates 0.1s ticks in floating point.
 const EPS = 1e-6;
 
-const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: 'El Corazón del Bosque echó raíces', spikes: 'Estacas clavadas', roots: 'Red de raíces tendida' };
+const BUILT_TEXT: Record<StructureKind, string> = { campfire: 'Fogata encendida', wall: 'Muro levantado', heart: `El ${NAMES.heart} echó raíces`, spikes: 'Estacas clavadas', roots: 'Red de raíces tendida' };
 
 export interface SavedPlayer {
   name: string;
@@ -666,7 +667,7 @@ export class WorldSim {
     if (b && b.hp > 0 && Math.hypot(b.x - plan.x, b.z - plan.z) <= BOSS.rootRadius + plan.r) {
       b.rooted = BOSS.rootFor;
       b.weak = Math.max(b.weak, BOSS.rootFor);
-      this.say('La enredadera atrapa al Tragón. El papel se desdobla');
+      this.say(`La enredadera atrapa al ${NAMES.bossForestShort}. El papel se desdobla`);
     }
   }
 
@@ -701,8 +702,8 @@ export class WorldSim {
     const fighters = this.targets().filter((t) => !t.dead && inBossRoom(t.x, t.z));
     if (this.boss && this.boss.hp <= 0 && !this.purified) {
       this.purified = true;
-      this.say('El Tragón se deshace en papel limpio. Ahora cuida el Corazón');
-      this.cleanse(0, 'La Raíz-madre deja de supurar morado');
+      this.say(`El ${NAMES.bossForestShort} se deshace en papel limpio. Ahora cuida el Corazón`);
+      this.cleanse(0, `La ${NAMES.forestRoot} deja de supurar morado`);
       this.vision(VISION.purified(joinNames(this.activeNames())));
       if (this.invasion === 'none') {
         this.invasion = 'pending';
@@ -722,7 +723,7 @@ export class WorldSim {
     }
     if (!this.boss) {
       this.boss = createBoss();
-      this.say('El Tragón de Papel despierta. El papel doblado no se rompe: párale o enrédalo');
+      this.say(`El ${NAMES.bossForest} despierta. El papel doblado no se rompe: párale o enrédalo`);
     }
     const b = this.boss;
     const bit = stepBoss(b, fighters, dt);
@@ -735,7 +736,7 @@ export class WorldSim {
     if (act === 0) {
       if (!near(this.entrance.x, this.entrance.z, DUNGEON.trunkR + DUNGEON.enterReach)) return;
       this.teleport(p, l, DUNGEON.x, DUNGEON.entryZ + 1.5);
-      return this.tell(p.name, 'Dentro de la Raíz-madre. Huele a papel viejo');
+      return this.tell(p.name, `Dentro de la ${NAMES.forestRoot}. Huele a papel viejo`);
     }
     if (!inDungeon(p.x, p.z)) return;
     if (act === 1) {
@@ -761,7 +762,7 @@ export class WorldSim {
     if (act === 4) {
       if (!g.gate || !near(DUNGEON.x, DUNGEON.altarZ, DUNGEON.altarReach) || p.enredadera) return;
       p.enredadera = true;
-      this.tell(p.name, 'Despierta la Enredadera: H o 🌿 hace crecer una enredadera trepable');
+      this.tell(p.name, `Despierta la ${NAMES.powerVine}: H o 🌿 hace crecer una enredadera trepable`);
       return;
     }
     if (act === 5 || act === 6) {
@@ -939,7 +940,7 @@ export class WorldSim {
     if (e && e.hp <= 0) {
       if (!g.eliteDown) {
         g.eliteDown = true;
-        this.say('El bruto reforzado se deshace en hojas secas. La última verja se abre');
+        this.say(`El ${NAMES.eliteForest} se deshace en hojas secas. La última verja se abre`);
       }
       e.deadFor += dt;
       if (e.deadFor >= ELITE.corpseTime) this.elite = null;
@@ -953,7 +954,7 @@ export class WorldSim {
     }
     if (!this.elite) {
       this.elite = createElite();
-      this.say('Un bruto reforzado se levanta. Cuando se agache, apártate o rueda');
+      this.say(`Un ${NAMES.eliteForest} se levanta. Cuando se agache, apártate o rueda`);
     }
     const hit = stepElite(this.elite, fighters, dt);
     if (hit) this.bite(hit.name, hit.dmg, this.elite);
@@ -1113,11 +1114,11 @@ export class WorldSim {
       const corrupt = this.corrupt();
       const src = nearestZone(this.zones, heart.x, heart.z, corrupt);
       this.raid = { phase: 'warn', dir: raidDirFrom(heart, this.zones, corrupt, this.rootDir(heart)) + (this.rng() - 0.5) * RAID.jitter };
-      const where = !src || src.id === 0 ? 'la Raíz-madre' : 'una zona marchita';
+      const where = !src || src.id === 0 ? `la ${NAMES.forestRoot}` : 'una zona marchita';
       this.say(
         this.purified
           ? `Restos de corrupción desde ${where}. Vienen menos: vuelvan al Corazón`
-          : `El cielo se tiñe de morado hacia ${where}. El Marchito envía a sus bestias: vuelvan al Corazón`,
+          : `El cielo se tiñe de morado hacia ${where}. ${NAMES.villain} envía a sus bestias: vuelvan al Corazón`,
       );
     }
     if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {
@@ -1175,7 +1176,7 @@ export class WorldSim {
     if (s.kind !== 'heart' && s.hp === 0) return this.wreck(s);
     this.outbox.push({ to: null, msg: { t: 'hit', id, hp: Math.round(s.hp) } });
     if (s.kind === 'heart' && s.hp === 0) {
-      this.say('El Corazón del Bosque se marchitó. Cuídenlo con bayas');
+      this.say(`El ${NAMES.heart} se marchitó. Cuídenlo con bayas`);
       this.raid = null;
       this.wolves = this.wolves.filter((w) => !w.raid);
     }
