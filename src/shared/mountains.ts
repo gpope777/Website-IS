@@ -1,4 +1,4 @@
-import { inMountains, mountainDepth, PELDANOS, type Terrain } from './terrain';
+import { HALF, inMountains, mountainDepth, PELDANOS, type Terrain } from './terrain';
 
 /**
  * The mountains' slope rule (spec S4 §3.3): uphill onto a cell steeper than `deg` is refused on foot and on mounts
@@ -47,4 +47,25 @@ export function altitudeCold(t: Terrain, x: number, z: number): boolean {
 /** Free climbing (S4-B): steep mountain rock you can grab on foot — not the smooth Peldaños, not wet from rain. */
 export function climbableAt(x: number, z: number, wet: boolean): boolean {
   return inMountains(x, z) && !smoothAt(x, z) && !wet;
+}
+
+/**
+ * La Escalera del Umbral (spec S4 §3.2): the carved Umbral block at the Peldaños' foot takes 3 Piedra casts
+ * within `reach`; then a 4 m band of the Peldaños (|x| < half) is a ramp for everyone, forever.
+ */
+export const UMBRAL = { x: 0, z: -HALF + 3, size: 2, reach: 5, casts: 3 } as const;
+export const ESCALERA = { half: 2, len: 40, rise: PELDANOS.rise * PELDANOS.steps } as const;
+
+/** Inside the ramp's band (depth 0–len into the mountains, |x| < half)? */
+export function inEscalera(x: number, z: number): boolean {
+  const d = mountainDepth(z);
+  return Math.abs(x) < ESCALERA.half && d > 0 && d < ESCALERA.len;
+}
+
+/** The terrain with the Escalera raised while `on()`: in the band, the forest rim + rise · d / len (≈31°). */
+export function withEscalera(base: Terrain, on: () => boolean): Terrain {
+  return {
+    heightAt: (x, z) => (on() && inEscalera(x, z) ? base.heightAt(x, -HALF) + (ESCALERA.rise * mountainDepth(z)) / ESCALERA.len : base.heightAt(x, z)),
+    density: (x, z) => base.density(x, z),
+  };
 }

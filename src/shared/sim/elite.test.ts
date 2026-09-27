@@ -6,6 +6,7 @@ import { ENEMY } from './wolves';
 import { MARCHITO } from './marchito';
 import { ANTENON } from './antenon';
 import { ZANCUDO } from './zancudo';
+import { CUCURUCHO } from './cucurucho';
 import { BOSS } from './boss';
 import { RESCUE } from '../rescue';
 
@@ -100,7 +101,7 @@ describe('the bruto escudado (S2-F)', () => {
 
 describe('special enemy ids', () => {
   it('are all distinct (and above any wolf id a world will reach)', () => {
-    const ids = [BOSS.id, MARCHITO.id, ELITE.id, ELITE.shieldId, ELITE.peatId, ELITE.rockId, ANTENON.id, ZANCUDO.id, RESCUE.anchorIdBase, RESCUE.anchorIdBase + 1, RESCUE.anchorIdBase + 2];
+    const ids = [BOSS.id, MARCHITO.id, ELITE.id, ELITE.shieldId, ELITE.peatId, ELITE.rockId, ANTENON.id, ZANCUDO.id, CUCURUCHO.id, RESCUE.anchorIdBase, RESCUE.anchorIdBase + 1, RESCUE.anchorIdBase + 2];
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids.slice(1)) expect(id).toBeGreaterThanOrEqual(900_000);
   });

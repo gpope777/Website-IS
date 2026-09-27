@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clampMap, createTerrain, HALF, inMap, inMountains, MOUNTAINS, mountainFeatures, PELDANOS, PICO, SWAMP } from './terrain';
 import { generateCrags } from './crags';
-import { altitudeCold, climbableAt, slopeAt, smoothAt, steepBlocked } from './mountains';
+import { altitudeCold, climbableAt, ESCALERA, inEscalera, slopeAt, smoothAt, steepBlocked, UMBRAL, withEscalera } from './mountains';
 import snapshot from './terrain-s3.snapshot.json';
 
 const SEEDS = [42, 7, 1234];
@@ -147,5 +147,29 @@ describe('climbable rock (S4-B)', () => {
     expect(climbableAt(p.x + p.rt + 1, p.z, true)).toBe(false);
     expect(climbableAt(0, -HALF - PELDANOS.first - 0.5, false)).toBe(false);
     expect(climbableAt(0, 0, false)).toBe(false);
+  });
+});
+
+describe('la Escalera del Umbral (S4-F)', () => {
+  const base = createTerrain(42);
+  let on = false;
+  const t = withEscalera(base, () => on);
+  it('changes nothing until it is raised', () => {
+    on = false;
+    for (const d of [2, 12.5, 30]) expect(t.heightAt(0, -HALF - d)).toBe(base.heightAt(0, -HALF - d));
+  });
+  it('raised, the band is a walkable ramp up the Peldaños; beside it the steps stay', () => {
+    on = true;
+    const rim = base.heightAt(0, -HALF);
+    expect(t.heightAt(0, -HALF - ESCALERA.len / 2)).toBeCloseTo(rim + ESCALERA.rise / 2, 5);
+    for (let d = 1; d < ESCALERA.len - 1; d += 2) expect(slopeAt(t, 0, -HALF - d)).toBeLessThan(35);
+    let z = -HALF + 2;
+    for (; z > -HALF - ESCALERA.len - 2; z -= 0.5) expect(steepBlocked(t, 0, z, 0, z - 0.5)).toBe(false);
+    expect(t.heightAt(8, -HALF - 20)).toBe(base.heightAt(8, -HALF - 20));
+    expect(steepBlocked(t, 8, -HALF - 5, 8, -HALF - 20)).toBe(true);
+  });
+  it('the Umbral block sits at the foot, on the forest side', () => {
+    expect(UMBRAL.z).toBeGreaterThan(-HALF);
+    expect(inEscalera(UMBRAL.x, UMBRAL.z)).toBe(false);
   });
 });
