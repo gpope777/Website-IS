@@ -916,3 +916,29 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: bajar en la Ceniza, cruzar el espinar sin puentes (¿10 PV/s asusta lo justo?), echar Enredadera en las 3 raíces. Llamar al pez al lago, bucear hasta el ancla (¿se entiende que hay que bajar?), 3 ráfagas en la orilla. Entrar a pie y a caballo en la ceniza; los 3 rayos. Subir los Escalones con la rana, alzar un pilar en la losa. Forzar el 2.º asedio (`raidN: 1`, `corruptSeen: true`): ¿se lee la raya roja?, ¿1 s da para rodar?, ¿se clava en un muro? Constantes: `PILLAR`, `THICKET`, `LAKE_PILLAR`, `ASH_RUN`, `LID` en `src/shared/pillars.ts`, `BLACK_LAKE` en `terrain.ts`, `FLECHA` en `sim/lieutenant.ts`, `CORRUPT_ZONES` en `corruption.ts`.
+
+## Slice 5 · S5-D — Invasión 3 en el Corazón y la defensa aérea del dragón — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S5-D-invasion3-defensa-aerea.md` (a41f105).
+- Commits: f18851d (T1 reglas: `stepChanneler`, `heartWill`, `AIR` en `dragon.ts`), efd2390 (T2 la invasión en el servidor, protocolo v49), ca47932 (T3 zarpazo y dragones aparcados, v50), 26095f7 (T4 cliente).
+- Tests: npm test 883 (antes 862), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 50**. Campos guardados nuevos opcionales: `SavedWorld.invasion3` ('pending' | 'done') y `SavedWorld.towerOpen`. Las partidas viejas cargan (con los 4 pilares ya rotos y sin campo → 'pending').
+- Cómo funciona:
+  - **Disparo:** al romper el 4.º Pilar-raíz, `invasion3 = 'pending'` y visión «Ah. Ahora voy yo.» (resuelta la marca `// S5-D`). En la franja del aviso de asedio (atardecer) con Corazón vivo y alguien fuera de las mazmorras, **El Marchito llega del norte** (28 m del Corazón, hacia la torre): "El Marchito viene a por el Corazón del Bosque…".
+  - **El asedio de esa noche** viene del norte, **×1,5** bestias y **6 rayos marchitos** delante de la manada. Los rayos del asedio se lanzan a jugadores **y a construcciones** (10 por picado a muros y trampas), nunca al Corazón.
+  - **Canaliza:** va al Corazón y lo envuelve **90 s** (barra "El Marchito envuelve el Corazón del Bosque · 40 % · voluntad …"). Zarpazo de 14 a quien esté a 3 m. **Voluntad ×1,3** por jugadores activos al llegar: 390 / 546 / 702 / 858.
+  - **Echarlo:** voluntad a 0 → se va, el Corazón intacto, «Mañana, en mi casa. Traigan a sus bichos blancos.».
+  - **No echarlo:** al 100 % el Corazón **baja a 1 PV** (no se marchita por él), se ríe 4 s y se va; visión más mala.
+  - **Pase lo que pase:** el asedio sigue hasta el amanecer; al amanecer `invasion3 = 'done'`, `towerOpen` y "Amanece. La puerta de la Torre se abre" (una puerta violeta en el pie sur de la torre; `snap.towerOpen` para el S5-E).
+  - **Zarpazo:** a lomos del dragón y en el aire, A / clic / la pastilla A = zarpazo a un rayo a ≤ 5 m en 3D, **40**, 1 s. Sin rayo: "Zarpazo al aire. Solo alcanzas a los rayos". El servidor rechaza cualquier otro blanco ("Desde el aire solo alcanzas a los rayos"). Vale también en el Espinar.
+  - **Dragones aparcados:** cada dragón domado aparcado a ≤ 30 m del Corazón, de noche, muerde (40) al rayo vivo más cercano a ≤ 12 m cada 3 s. Nunca a bestias de suelo ni al Marchito; no si su dueño va montado. Da igual que el dueño esté conectado.
+- Decidido por Claude — revisar:
+  - Solo un Marchito a la vez: si la Invasión 2 se debe el mismo atardecer, va primero; la 3 espera al siguiente.
+  - Si el Corazón ya estaba en 0 (por las bestias), el Marchito no lo "sube" a 1: se queda marchito. Las bestias del asedio pueden marchitar un Corazón a 1 PV esa noche (la regla de siempre); aun así, la torre se abre al amanecer.
+  - Guardar entre el atardecer y el amanecer deja 'pending': vuelve el siguiente atardecer (lo roto sigue roto).
+  - Los rayos del asedio usan construcciones como blancos falsos (`#<id>`) en `stepRayo`, sin tocar su lógica; el tope de 8/12 rayos no se fuerza (6 del asedio + los del día que haya).
+  - El zarpazo usa el mismo mensaje `attack` (sin mensaje nuevo, rejilla en 10); la "pastilla de ataque" es el botón A. No hay etiqueta "Zarpazo" en el botón: se dice en el toast.
+  - Los textos usan `NAMES.heart` ("Corazón del Bosque"), no "Corazón" a secas como el spec.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión de protocolo → 49 y 50 en `protocol.test.ts` y `world-sim.test.ts`.
+- Rendimiento móvil: sin mallas nuevas de día. De noche en la Invasión 3, 6 cartas de rayo más. La puerta: 1 plano solo cerca de la torre.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: romper los 4 pilares (o cargar con `pillars: [0,1,2,3]`), esperar al atardecer junto al Corazón: ¿se ve venir del norte? ¿La barra asusta lo justo? Echarlo con 1 y 2 jugadores (390 / 546). No echarlo: ¿se entiende que el Corazón queda a 1 PV y hay que curarlo? Volar con el dragón entre los 6 rayos: ¿5 m es fácil de acertar? Aparcar el dragón junto al Corazón antes del atardecer y mirar si muerde. Al amanecer, ir a ver la puerta. Constantes: `MARCHITO.channelFor`, `heartWill` en `src/shared/sim/marchito.ts`, `AIR` en `src/shared/dragon.ts`, `INVASION3` en `src/shared/sim/world-sim.ts`.

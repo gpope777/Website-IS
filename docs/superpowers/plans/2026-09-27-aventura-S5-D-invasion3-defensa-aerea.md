@@ -1,6 +1,6 @@
 # Aventura — Slice 5 · S5-D: Invasión 3 en el Corazón y la defensa aérea del dragón — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** El Marchito's last invasion, the first one aimed at the Heart itself (spec S5 §8). Breaking the **4th Pilar-raíz** sets `SavedWorld.invasion3 = 'pending'` with the vision «Ah. Ahora voy yo.» (resolves the `// S5-D` marker in `breakPillar`). At the **next dusk warning** with a living Heart and someone outside the dungeons, he walks in from the **north** (the tower's side, 28 m out) — "El Marchito viene a por el Corazón" — and that night's raid comes from the north **×1.5** plus **6 rayos marchitos**. He walks to the Heart and **channels 90 s** (bar "El Marchito envuelve el Corazón · 40 % · voluntad …"), swiping 14 at anyone within 3 m. **Voluntad** = Invasion 1's formula by active players **×1.3** (390 / 546 / 702 / 858). Driven off → he leaves, the Heart is untouched, «Mañana, en mi casa. Traigan a sus bichos blancos.». Not driven off → the Heart **drops to 1 PV (never withers)**, he laughs and leaves, meaner vision. **Either way** the raid runs to dawn; at dawn `invasion3 = 'done'`, `towerOpen = true`, "Amanece. La puerta de la Torre se abre". **Air defense:** riding the dragon, the attack (pill / click) is a **zarpazo** that hits a rayo within 5 m in 3D for **40**, 1 s cooldown (also over the Espinar); nothing else can be hit from the air. Each **tamed dragon parked within 30 m of the Heart at night** bites the nearest rayo within 12 m every 3 s for 40. Rayos in raids dive at players **and structures** (10 per dive to a wall/trap), never the Heart.
 
@@ -46,15 +46,15 @@ export const AIR = { claw: 40, reach: 5, cooldown: 1, guardR: 30, biteR: 12, eve
 export function clawReach(rider: { x: number; y: number; z: number }, foe: { x: number; y: number; z: number }): boolean;
 export function guardTarget<T extends { x: number; z: number; hp: number; kind: string }>(dragon: { x: number; z: number }, foes: readonly T[]): T | null;
 ```
-- [ ] **Step 1: failing tests.** `heartWill(1..4)` = 390/546/702/858. `stepChanneler`: walks toward the Heart, channel stays null/0 far away, then counts; `drained` exactly once at 90 s, then laughs `laughFor` and `leave`; swipes a player within reach (cooldown respected) and does not channel that tick. `clawReach` true at 4.9 m 3D, false at 3 m horizontal + 4.5 m up. `guardTarget` picks the nearest living rayo within 12 m, ignores wolves/brutes/marchito/dead.
-- [ ] **Step 2: implement** (`createMarchito` sets `channel: null`).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): reglas de la Invasión 3 y de la defensa aérea`.
+- [x] **Step 1: failing tests.** `heartWill(1..4)` = 390/546/702/858. `stepChanneler`: walks toward the Heart, channel stays null/0 far away, then counts; `drained` exactly once at 90 s, then laughs `laughFor` and `leave`; swipes a player within reach (cooldown respected) and does not channel that tick. `clawReach` true at 4.9 m 3D, false at 3 m horizontal + 4.5 m up. `guardTarget` picks the nearest living rayo within 12 m, ignores wolves/brutes/marchito/dead.
+- [x] **Step 2: implement** (`createMarchito` sets `channel: null`).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): reglas de la Invasión 3 y de la defensa aérea`.
 
 ### Task 2: Server — Invasión 3 (protocol v49)
 
 **Files:** Modify `src/shared/protocol.ts`, `src/shared/sim/world-sim.ts`; Create `src/shared/sim/world-sim-s5d.test.ts`; Tests `world-sim.test.ts` / `protocol.test.ts` (version only).
 
-- [ ] **Step 1: failing tests** (`world-sim-s5d.test.ts`):
+- [x] **Step 1: failing tests** (`world-sim-s5d.test.ts`):
   - Breaking the 4th pillar sets `invasion3 = 'pending'` (saved) with the vision «Ah. Ahora voy yo.»; the 3rd does not. An old save with 4 pillars and no field loads as `'pending'`; a fresh world saves none.
   - Nothing before dusk; at the warning: Marchito ~28 m **north** (z < heart.z − 20), `max = heartWill(active)`, the raid's dir points north, vision "viene a por el Corazón".
   - Left alone: `snap.marchito.channel` rises; after ~90 s at the Heart its hp is 1 (not 0), he leaves, `invasion3` still pending until dawn; at dawn `'done'` and `towerOpen` (saved) with toast "La puerta de la Torre se abre".
@@ -62,25 +62,25 @@ export function guardTarget<T extends { x: number; z: number; hp: number; kind: 
   - At nightfall the raid has ≥ 6 raid rayos and ≥ 1.5× the normal beasts (compare with the same world without `invasion3`).
   - A raid rayo diving on a wall (no player near) damages the wall by 10; never the Heart.
   - Save mid-invasion → `'pending'`.
-- [ ] **Step 2: implement** `stepInvasion3` (start, channel, 1 PV, dawn), `big` raid, raid rayos, snapshot fields, bump v49.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): Invasión 3, El Marchito va a por el Corazón (protocolo v49)`.
+- [x] **Step 2: implement** `stepInvasion3` (start, channel, 1 PV, dawn), `big` raid, raid rayos, snapshot fields, bump v49.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): Invasión 3, El Marchito va a por el Corazón (protocolo v49)`.
 
 ### Task 3: Server — zarpazo and parked dragons (protocol v50)
 
 **Files:** Modify `src/shared/sim/world-sim.ts`, `src/shared/protocol.ts`; Tests `world-sim-s5d.test.ts`.
 
-- [ ] **Step 1: failing tests:**
+- [x] **Step 1: failing tests:**
   - Riding the dragon, `attack` on a rayo 4 m away in 3D (flying at its height) → −40; again at once → nothing (1 s); after 1 s → dead. A rayo 3 m away horizontally but 6 m below → nothing. A wolf in reach → nothing, hint "Desde el aire solo alcanzas a los rayos".
   - On foot the old rules still hold (a high rayo: "Vuela alto…").
   - A parked tamed dragon 10 m from the Heart at night bites a rayo within 12 m (−40 within 3 s), not a wolf; a dragon parked 40 m away does nothing; by day nothing; while its owner rides it nothing.
-- [ ] **Step 2: implement** the dragon branch of `onAttack` (`AIR`, `clawReach`), `stepSkyGuard(dt, night)`; bump v50.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): zarpazo desde el dragón y dragones que guardan el cielo (protocolo v50)`.
+- [x] **Step 2: implement** the dragon branch of `onAttack` (`AIR`, `clawReach`), `stepSkyGuard(dt, night)`; bump v50.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): zarpazo desde el dragón y dragones que guardan el cielo (protocolo v50)`.
 
 ### Task 4: Client + ship
 
 **Files:** Modify `src/client/dungeon-ui.ts` (+test), `src/client/game.ts`, `src/client/scene/villain-tower.ts`, `docs/superpowers/HANDOFF-aventura.md`.
 
-- [ ] **Step 1: failing tests:** `marchitoBarText({ will: 390, max: 390, laughing: false, channel: 0.4 })` → "El Marchito envuelve el Corazón · 40 % · voluntad 390/390". A pure `clawPick(rider, foes)` in `dungeon-ui.ts` (nearest rayo within `AIR.reach` in 3D, else null).
-- [ ] **Step 2: implement:** bar text; in `game.ts`'s attack path, when riding the dragon send `attack` for `clawPick` (else toast "Desde el aire solo alcanzas a los rayos"); the attack pill's label reads "Zarpazo" while flying if labels are contextual; a violet door plane at the tower foot while `snap.towerOpen`.
-- [ ] **Step 3:** all green; commit `feat(aventura): cliente de la Invasión 3 y el zarpazo`.
-- [ ] **Step 4: Ship.** `git push origin aventura/resto` (retry 2/4/8/16 s); append "## Slice 5 · S5-D — …" to the HANDOFF (Spanish, same style), commit, push; one short comment on PR #3.
+- [x] **Step 1: failing tests:** `marchitoBarText({ will: 390, max: 390, laughing: false, channel: 0.4 })` → "El Marchito envuelve el Corazón · 40 % · voluntad 390/390". A pure `clawPick(rider, foes)` in `dungeon-ui.ts` (nearest rayo within `AIR.reach` in 3D, else null).
+- [x] **Step 2: implement:** bar text; in `game.ts`'s attack path, when riding the dragon send `attack` for `clawPick` (else toast "Desde el aire solo alcanzas a los rayos"); the attack pill's label reads "Zarpazo" while flying if labels are contextual; a violet door plane at the tower foot while `snap.towerOpen`.
+- [x] **Step 3:** all green; commit `feat(aventura): cliente de la Invasión 3 y el zarpazo`.
+- [x] **Step 4: Ship.** `git push origin aventura/resto` (retry 2/4/8/16 s); append "## Slice 5 · S5-D — …" to the HANDOFF (Spanish, same style), commit, push; one short comment on PR #3.
