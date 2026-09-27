@@ -11,8 +11,8 @@ import { createElite, ELITE, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
-import { COAST_SHRINE, generateCoastShrines } from '../coast-shrines';
-import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
+import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
+import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, weaponMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type PlayerView, type SelfState, type ShrineView, type ServerMsg, type SteedView, type Structure, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
@@ -71,6 +71,10 @@ export interface SavedPlayer {
   steed?: { x: number; z: number };
   /** Tamed giant fish and where it waits. Optional: older saves have none. */
   fish?: { x: number; z: number };
+  /** Sunken chest ids opened. Optional: older saves have none. */
+  chests?: number[];
+  /** Weapon upgrade level 0–3. Optional: older saves have none. */
+  weaponLvl?: number;
 }
 
 export interface SavedWorld {
@@ -159,6 +163,8 @@ export class WorldSim {
   readonly crags: readonly Crag[];
   readonly resources: ResourceSpawn[];
   readonly shrines: readonly Shrine[];
+  /** Sunken chests on the deep seabed (seeded; one each per player). */
+  readonly chests: readonly Chest[];
   /** The Raíz-madre's trunk in the world (the dungeon entrance). */
   readonly entrance: { x: number; y: number; z: number };
   /** Where the wild deer grazes (it never leaves: every player tames their own). */
@@ -235,6 +241,7 @@ export class WorldSim {
     this.crags = generateCrags(this.terrain, saved.seed);
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
     this.shrines = [...forest, ...generateCoastShrines(this.terrain, saved.seed)];
+    this.chests = generateChests(this.terrain, saved.seed);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...forest, this.entrance]);
     this.island = coastFeatures(saved.seed).island;
@@ -350,6 +357,10 @@ export class WorldSim {
         return this.onMount(p, l, msg.act, msg.at);
       case 'dungeon':
         return this.onDungeon(p, l, msg.act);
+      case 'chest':
+        return this.onChest(p, msg.id);
+      case 'upgrade':
+        return this.onUpgrade(p);
       case 'hello':
         return; // the room handles hello
     }
@@ -615,7 +626,29 @@ export class WorldSim {
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     l.punchReadyAt = this.time + PUNCH.cooldown;
     l.anim = 'attack';
-    this.strike(p.name, w, PUNCH.damage);
+    this.strike(p.name, w, PUNCH.damage * weaponMult(p.weaponLvl ?? 0));
+  }
+
+  private onChest(p: SavedPlayer, id: number): void {
+    const c = this.chests[id];
+    const opened = p.chests ?? [];
+    if (!c || p.dead || opened.includes(id)) return;
+    if (Math.hypot(c.x - p.x, c.z - p.z) > CHEST.reach || p.y > c.y + CHEST.above) return;
+    p.chests = [...opened, id];
+    for (const [item, n] of Object.entries(c.loot) as [ItemId, number][]) p.inv = addItem(p.inv, item, n);
+    const mat = (Object.entries(c.loot) as [ItemId, number][]).find(([k]) => k !== 'pearl')!;
+    this.tell(p.name, `Cofre hundido: ${mat[1]} de ${ITEM_LABELS[mat[0]].toLowerCase()} y una ${NAMES.pearl}`);
+  }
+
+  private onUpgrade(p: SavedPlayer): void {
+    const h = this.heart();
+    if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
+    const lvl = p.weaponLvl ?? 0;
+    if (lvl >= UPGRADE.max) return this.tell(p.name, 'El arma ya no da más de sí');
+    if (!hasAll(p.inv, UPGRADE.cost)) return this.tell(p.name, 'Faltan materiales');
+    p.inv = removeAll(p.inv, UPGRADE.cost);
+    p.weaponLvl = lvl + 1;
+    this.tell(p.name, `El ${NAMES.heart} templa tu arma: +${Math.round(UPGRADE.step * 100 * p.weaponLvl)} % de daño`);
   }
 
   private onEat(p: SavedPlayer): void {
@@ -664,7 +697,7 @@ export class WorldSim {
     if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
     g.bowReadyAt = this.time + BOW.cooldown;
     l.anim = 'bow';
-    this.strike(p.name, w, BOW.damage);
+    this.strike(p.name, w, BOW.damage * weaponMult(p.weaponLvl ?? 0));
   }
 
   private onRevive(p: SavedPlayer, name: string): void {
@@ -1278,6 +1311,8 @@ export class WorldSim {
       fish: !!p.fish,
       onFish: l.fish,
       race: l.race ? { i: l.race.i, deadline: r2(l.race.deadline) } : null,
+      chests: [...(p.chests ?? [])],
+      weapon: p.weaponLvl ?? 0,
     };
   }
 

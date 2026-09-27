@@ -54,7 +54,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(15);
+    expect(PROTOCOL_VERSION).toBe(16);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -109,7 +109,7 @@ describe('power and shrine protocol', () => {
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(15);
+    expect(PROTOCOL_VERSION).toBe(16);
   });
 });
 
@@ -127,6 +127,17 @@ describe('mount protocol', () => {
     ok({ t: 'mount', act: 8 });
     bad('{"t":"mount","act":9}');
     bad('{"t":"mount","act":-1}');
-    expect(PROTOCOL_VERSION).toBe(15);
+    expect(PROTOCOL_VERSION).toBe(16);
+  });
+});
+
+describe('chest and upgrade protocol', () => {
+  it('decodes chests and upgrades', () => {
+    ok({ t: 'chest', id: 3 });
+    ok({ t: 'upgrade' });
+    bad('{"t":"chest","id":-1}');
+    bad('{"t":"chest","id":1.5}');
+    bad('{"t":"chest"}');
+    expect(PROTOCOL_VERSION).toBe(16);
   });
 });

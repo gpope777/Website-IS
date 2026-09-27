@@ -2302,3 +2302,87 @@ describe('riding the giant fish', () => {
     expect(sim.getPlayer('Ana')!.fish).toBeDefined();
   });
 });
+
+describe('sunken chests and the weapon upgrade', () => {
+  const chestSim = () => {
+    const sim = setup('Ana', 'Leo');
+    const c = sim.chests[0]!;
+    return { sim, c };
+  };
+
+  it('a diver opens their own chest once: materials and a pearl', () => {
+    const { sim, c } = chestSim();
+    put(sim, 'Ana', c.x, c.z);
+    sim.getPlayer('Ana')!.y = c.y + 0.6;
+    sim.handle('Ana', { t: 'chest', id: c.id });
+    const inv = snap(sim, 'Ana').self.inv;
+    expect(inv.pearl).toBe(1);
+    for (const [k, n] of Object.entries(c.loot)) expect(inv[k as keyof typeof inv]).toBe(n);
+    expect(snap(sim, 'Ana').self.chests).toEqual([c.id]);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: expect.stringContaining('perla') });
+    sim.handle('Ana', { t: 'chest', id: c.id });
+    expect(snap(sim, 'Ana').self.inv.pearl).toBe(1);
+    expect(sim.save().players.find((p) => p.name === 'Ana')!.chests).toEqual([c.id]);
+    put(sim, 'Leo', c.x, c.z);
+    sim.getPlayer('Leo')!.y = c.y + 0.6;
+    sim.handle('Leo', { t: 'chest', id: c.id });
+    expect(snap(sim, 'Leo').self.inv.pearl).toBe(1);
+  });
+
+  it('a swimmer at the surface or far away cannot open it', () => {
+    const { sim, c } = chestSim();
+    put(sim, 'Ana', c.x, c.z);
+    sim.getPlayer('Ana')!.y = WATER_LEVEL - 0.5;
+    sim.handle('Ana', { t: 'chest', id: c.id });
+    put(sim, 'Ana', c.x + 5, c.z);
+    sim.handle('Ana', { t: 'chest', id: c.id });
+    sim.handle('Ana', { t: 'chest', id: 99 });
+    expect(snap(sim, 'Ana').self.chests).toEqual([]);
+    expect(snap(sim, 'Ana').self.inv.pearl).toBeUndefined();
+  });
+
+  it('upgrades the weapon at the Heart with 3 pearls, up to +3, and hits harder', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { pearl: 2, stone: 50, wood: 50 };
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(0);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Faltan materiales' });
+    p.inv = { pearl: 20, stone: 50, wood: 50 };
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(1);
+    expect(p.inv).toEqual({ pearl: 17, stone: 40, wood: 45 });
+    sim.handle('Ana', { t: 'upgrade' });
+    sim.handle('Ana', { t: 'upgrade' });
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(3);
+    expect(p.inv.pearl).toBe(11);
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'El arma ya no da más de sí' });
+    expect(sim.save().players[0]!.weaponLvl).toBe(3);
+    const w = wolfAt(sim, 0, 10);
+    sim.handle('Ana', { t: 'shoot', id: w.id });
+    expect(w.hp).toBeCloseTo(ENEMY.wolf.hp - BOW.damage * 1.45, 5);
+  });
+
+  it('far from the Heart nothing happens', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { pearl: 3, stone: 10, wood: 5 };
+    put(sim, 'Ana', p.x + 30, p.z);
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(0);
+  });
+
+  it('old saves without chests or weapon level load', () => {
+    const sim = setup('Ana');
+    const saved = sim.save();
+    delete saved.players[0]!.chests;
+    delete saved.players[0]!.weaponLvl;
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self.chests).toEqual([]);
+    expect(snap(again, 'Ana').self.weapon).toBe(0);
+  });
+});
