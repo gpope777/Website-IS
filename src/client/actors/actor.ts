@@ -15,6 +15,10 @@ export const PLAYER_CLIPS: Record<string, ClipDef> = {
   jump: { clip: 'Jump', once: true },
   swim: { clip: 'Walking', speed: 0.5 },
   attack: { clip: 'Punch', once: true },
+  // The robot kit has no roll/guard/bow clips: placeholders until real animations exist.
+  roll: { clip: 'WalkJump', speed: 1.6, once: true },
+  block: { clip: 'Idle', speed: 0.3 },
+  bow: { clip: 'Punch', speed: 0.7, once: true },
   dead: { clip: 'Death', once: true },
 };
 

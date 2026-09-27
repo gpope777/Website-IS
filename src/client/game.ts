@@ -3,6 +3,8 @@ import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resour
 import { createTerrain, type Terrain } from '../shared/terrain';
 import { PROTOCOL_VERSION, r2, type Anim, type HeartView, type RaidView, type ServerMsg, type Structure } from '../shared/protocol';
 import { dayFraction, HEART, PUNCH, REACH } from '../shared/sim/world-sim';
+import { BOW } from '../shared/sim/combat';
+import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
 import { loadModels, type ModelKit } from './actors/models';
@@ -13,7 +15,7 @@ import { raidText } from './raid-ui';
 import { clearHold, Keyboard, readMove, type Action, type InputState, KEY_ACTIONS } from './input';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
-import { animFor, createBody, stepBody, type Body } from './movement';
+import { animFor, createBody, rollInput, stepBody, type Body } from './movement';
 import { Connection, wsUrl, type NetStatus } from './net';
 import { loadTier, saveTier, TIERS, type Tier } from './quality';
 import { DayLight } from './scene/sky';
@@ -30,6 +32,15 @@ interface Remote {
 }
 
 const IDLE_INPUT = { x: 0, z: 0, sprint: false, jump: false };
+const ROLL_MS = { dash: 350, cooldown: 800 } as const;
+const ARROW_TIME = 0.2;
+
+interface Arrow {
+  mesh: THREE.Mesh;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  t: number;
+}
 
 /** Suppresses a stray Escape keydown that some browsers echo right after the same
  * Escape already exited pointer lock (which we turn into opening the menu ourselves). */
@@ -66,6 +77,15 @@ export class Game {
   private heart: HeartView | null = null;
   private raid: RaidView | null = null;
   private attackUntil = 0;
+  private lockId: number | null = null;
+  private rollUntil = 0;
+  private rollReadyAt = 0;
+  private bowUntil = 0;
+  private blockSent = false;
+  private readonly marker = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 8), new THREE.MeshBasicMaterial({ color: 0xff5a4d }));
+  private readonly arrowGeo = new THREE.BoxGeometry(0.05, 0.05, 0.8);
+  private readonly arrowMat = new THREE.MeshBasicMaterial({ color: 0xe8d9b0 });
+  private arrows: Arrow[] = [];
   private sendTimer = 0;
   private lastSent = '';
   private disposed = false;
@@ -82,6 +102,9 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
     this.scene.add(this.structures.group);
+    this.marker.rotation.x = Math.PI; // point down at the target
+    this.marker.visible = false;
+    this.scene.add(this.marker);
 
     this.hud = new Hud(root);
     this.keyboard = new Keyboard(this.input, (a) => this.onAction(a));
@@ -217,7 +240,7 @@ export class Game {
     }
     for (const w of m.wolves) {
       const r = this.remote(this.wolves, w.id, () => new Actor(this.kits!.fox, WOLF_CLIPS));
-      r.actor.root.scale.setScalar(w.raid ? 1.3 : 1);
+      r.actor.root.scale.setScalar(w.kind === 'brute' ? 1.8 : w.raid ? 1.3 : 1);
       r.buf.push({ t: m.time, x: w.x, y: w.y, z: w.z, yaw: w.yaw });
       r.anim = w.anim;
       r.seen = m.time;
@@ -291,7 +314,104 @@ export class Game {
     if (a === 'camera') return this.rig.toggle();
     if (a === 'eat') return this.conn.send({ t: 'eat' });
     if (a === 'campfire' || a === 'wall' || a === 'heart' || a === 'spikes') return this.place(a);
+    if (a === 'roll') return this.roll();
+    if (a === 'lock') return this.toggleLock();
+    if (a === 'bow') return this.shoot();
     this.act();
+  }
+
+  // ---------------------------------------------------------------- combat
+
+  /** Live enemies, where the client currently draws them. */
+  private enemies(): AimTarget[] {
+    const out: AimTarget[] = [];
+    for (const [id, w] of this.wolves) {
+      if (w.anim === 'dead') continue;
+      const p = w.actor.root.position;
+      out.push({ id, x: p.x, z: p.z });
+    }
+    return out;
+  }
+
+  /** Protocol yaw of where the camera looks (camera forward is (-sin yaw, -cos yaw)). */
+  private aimYaw(): number {
+    return this.rig.yaw + Math.PI;
+  }
+
+  private roll(): void {
+    const now = performance.now();
+    if (now < this.rollReadyAt) return;
+    this.rollUntil = now + ROLL_MS.dash;
+    this.rollReadyAt = now + ROLL_MS.cooldown;
+    this.conn.send({ t: 'roll' });
+  }
+
+  private toggleLock(): void {
+    if (this.lockId !== null) {
+      this.lockId = null;
+      return;
+    }
+    const b = this.body!;
+    this.lockId = pickTarget(b.x, b.z, this.aimYaw(), this.enemies(), LOCK.range, LOCK.cone) ?? pickTarget(b.x, b.z, b.facing, this.enemies(), LOCK.range, LOCK.cone);
+    if (this.lockId === null) this.hud.toast('Nada que fijar');
+  }
+
+  private shoot(): void {
+    const b = this.body!;
+    const now = performance.now();
+    if (now < this.bowUntil) return;
+    const enemies = this.enemies();
+    const locked = this.lockId !== null ? enemies.find((e) => e.id === this.lockId) : undefined;
+    const lockOk = locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= BOW.range;
+    const id = lockOk ? locked.id : pickTarget(b.x, b.z, this.aimYaw(), enemies, BOW.range, BOW.cone);
+    const t = enemies.find((e) => e.id === id);
+    if (!t) return this.hud.toast('Nada a tiro');
+    this.face(t);
+    this.bowUntil = now + BOW.cooldown * 1000;
+    this.conn.send({ t: 'shoot', id: t.id });
+    const from = new THREE.Vector3(b.x, b.y + 1.3, b.z);
+    const to = this.wolves.get(t.id)!.actor.root.position.clone().setY(this.wolves.get(t.id)!.actor.root.position.y + 0.5);
+    const mesh = new THREE.Mesh(this.arrowGeo, this.arrowMat);
+    mesh.position.copy(from);
+    mesh.lookAt(to);
+    this.scene.add(mesh);
+    this.arrows.push({ mesh, from, to, t: 0 });
+  }
+
+  /** Turn toward a target and tell the server right away: it checks the bow cone against our last yaw. */
+  private face(t: AimTarget): void {
+    const b = this.body!;
+    b.facing = yawTo(b.x, b.z, t.x, t.z);
+    this.conn.send({ t: 'move', x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.facing), anim: 'idle' });
+  }
+
+  private stepCombat(dt: number): void {
+    const b = this.body!;
+    if (this.input.block !== this.blockSent && !this.dead) {
+      this.blockSent = this.input.block;
+      this.conn.send({ t: 'block', on: this.blockSent });
+    }
+    const enemies = this.enemies();
+    if (this.lockId !== null && !keepLock(this.lockId, b.x, b.z, enemies)) this.lockId = null;
+    const locked = this.lockId !== null ? enemies.find((e) => e.id === this.lockId) : undefined;
+    this.marker.visible = !!locked;
+    if (locked) {
+      const p = this.wolves.get(locked.id)!.actor.root.position;
+      this.marker.position.set(p.x, p.y + 1.6 + Math.sin(performance.now() / 200) * 0.08, p.z);
+      // Soft lock: ease the camera so it sits behind us looking at the target.
+      const want = yawTo(b.x, b.z, locked.x, locked.z) + Math.PI;
+      const diff = Math.atan2(Math.sin(want - this.rig.yaw), Math.cos(want - this.rig.yaw));
+      this.rig.yaw += diff * Math.min(1, dt * 4);
+    }
+    for (const a of this.arrows) {
+      a.t += dt;
+      a.mesh.position.lerpVectors(a.from, a.to, Math.min(1, a.t / ARROW_TIME));
+    }
+    this.arrows = this.arrows.filter((a) => {
+      if (a.t < ARROW_TIME) return true;
+      a.mesh.removeFromParent();
+      return false;
+    });
   }
 
   /** The browser eats the Escape keydown that exits pointer lock, so open the menu ourselves
@@ -308,6 +428,11 @@ export class Game {
   private act(): void {
     const b = this.body!;
     this.attackUntil = performance.now() + 450;
+    const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
+    if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
+      this.face(locked);
+      return this.conn.send({ t: 'attack', id: locked.id });
+    }
     let best: { id: number; d: number } | null = null;
     for (const [id, w] of this.wolves) {
       if (w.anim === 'dead') continue;
@@ -362,11 +487,20 @@ export class Game {
     }
     this.serverTime += dt;
 
-    const mv = this.dead || this.hud.menuOpen ? IDLE_INPUT : readMove(this.input);
+    const now = performance.now();
+    const rolling = now < this.rollUntil;
+    const blocking = this.input.block && !rolling;
+    let mv = this.dead || this.hud.menuOpen ? IDLE_INPUT : readMove(this.input);
+    if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
+    else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
     const res = stepBody(b, mv, this.rig.yaw, dt, terrain, (x, z) => this.colliders.near(x, z));
     let anim: Anim | 'dead' = animFor(res, b);
-    if (performance.now() < this.attackUntil) anim = 'attack';
+    if (blocking) anim = 'block';
+    if (now < this.attackUntil) anim = 'attack';
+    if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
+    if (rolling) anim = 'roll';
     if (this.dead) anim = 'dead';
+    this.stepCombat(dt);
 
     this.sendTimer -= dt;
     if (this.sendTimer <= 0 && !this.dead) {
@@ -416,6 +550,7 @@ export class Game {
 
   private updatePrompt(): void {
     if (this.touch || this.dead) return this.hud.setPrompt(null);
+    if (this.lockId !== null) return this.hud.setPrompt('X · Soltar objetivo');
     if (this.body && this.canTend()) return this.hud.setPrompt('E · Cuidar el Corazón (5 bayas)');
     const res = this.nearestResource();
     this.hud.setPrompt(res ? `E · ${HARVEST[res.kind].label}` : null);

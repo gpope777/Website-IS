@@ -161,7 +161,7 @@ canvas { display: block; }
 .touch-actions .btn-b { right: 100px; bottom: 0; width: 76px; height: 76px; font-size: 22px; background: rgba(79, 163, 217, 0.28); border-color: rgba(79, 163, 217, 0.7); }
 
 .touch-pills {
-  position: absolute; right: 26px; bottom: 214px; display: grid; grid-template-columns: repeat(3, 54px); gap: 8px; pointer-events: none;
+  position: absolute; right: 26px; bottom: 214px; display: grid; grid-template-columns: repeat(5, 54px); gap: 8px; pointer-events: none;
 }
 .touch-pills .touch-btn { width: 54px; height: 44px; border-radius: 12px; font-size: 14px; pointer-events: auto; }
 
@@ -196,7 +196,7 @@ canvas { display: block; }
   .touch-actions { right: 16px; bottom: 16px; width: 160px; height: 140px; }
   .touch-actions .btn-a { width: 74px; height: 74px; bottom: 56px; }
   .touch-actions .btn-b { width: 64px; height: 64px; right: 86px; }
-  .touch-pills { bottom: 168px; right: 16px; grid-template-columns: repeat(3, 48px); gap: 6px; }
+  .touch-pills { bottom: 168px; right: 16px; grid-template-columns: repeat(5, 48px); gap: 6px; }
   .touch-pills .touch-btn { width: 48px; height: 38px; }
   .touch .stats { display: none; }
 }

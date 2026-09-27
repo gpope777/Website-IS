@@ -44,6 +44,10 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'KeyV', label: '🧱', sub: 'muro', cls: 'pill' },
   { code: 'KeyG', label: '🌳', sub: 'corazón', cls: 'pill' },
   { code: 'KeyT', label: '🗡️', sub: 'estacas', cls: 'pill' },
+  { code: 'KeyQ', label: '🌀', sub: 'rodar', cls: 'pill' },
+  { code: 'KeyZ', label: '🛡️', sub: 'bloquear', cls: 'pill', hold: 'block' },
+  { code: 'KeyR', label: '🏹', sub: 'arco', cls: 'pill' },
+  { code: 'KeyX', label: '🎯', sub: 'fijar', cls: 'pill' },
   { code: 'KeyC', label: '🎥', sub: 'cámara', cls: 'pill' },
 ];
 
@@ -131,6 +135,7 @@ export class TouchControls {
     this.lookPointer = null;
     this.setAxis(0, 0);
     this.input.jump = false;
+    this.input.block = false;
     this.knob.style.transform = '';
     this.stickBase.classList.remove('active');
   }

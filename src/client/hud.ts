@@ -112,6 +112,7 @@ export class Hud {
       .join('');
     this.panel(
       `<h2>Menú</h2>
+       <p>E golpear · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
