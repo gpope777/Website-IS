@@ -298,3 +298,20 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador local (Chromium headless 1000×600, semilla 42): entra sin errores de consola. El snap trae los 6 santuarios (el 3 con `block`), `chests: []` y `weapon: 0`. Con la partida importada en la playa y 3 perlas, la mochila muestra "Piedra 12 · Perlas 3". NO verificado: ver los santuarios y los cofres en pantalla, bucear hasta un cofre, la mejora en vivo, ni en móvil.
 - Bloqueos: ninguno.
 - Qué probar: en la playa, buscar los dos haces de luz. En Marea: coger la pómez, llevarla a la losa, soltarla y tomar el orbe. En Hundido: montar el pez, bucear hasta la palanca del fondo, volver a la de la arena en menos de 8 s (¿da tiempo solo?). En el islote 1, con tres, girar las ruedas. En el mar hondo: seguir la luz, bucear y abrir un cofre. Con 3 perlas, ir al Corazón y mejorar. Constantes: `COAST_SHRINE`/`CHEST` en `coast-shrines.ts`, `UPGRADE` en `items.ts`.
+
+## Slice 2 · S2-D — corrupción de la Costa — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-D-corrupcion-costa.md` (689cab7).
+- Commits: dd3b840 (T1 zonas de la Costa, reglas), 0e5d652 (T2 servidor, protocolo v17), ca7c7fa (T3 cliente: tinte del mar lejano).
+- Tests: npm test 363 (antes 351), test:workers 12, check + build verdes. PROTOCOL_VERSION = 17. Sin campos guardados nuevos: `cleansed` ya guardaba ids; las partidas viejas cargan con las 4 zonas de la Costa corruptas.
+- Cómo funciona:
+  - **4 zonas más** (ids fijos 6–9, en la misma lista que las del bosque, `allZones`): 6 = la Raíz-madre de la Costa en la isla de la mazmorra, 7 en la playa, 8 en los bajíos, 9 en el último islote. Mismo tinte morado y misma raíz marchita; misma regla nocturna (+2 bestias por jugador dentro).
+  - **Orbes:** un orbe de la Costa limpia la zona corrupta de la Costa más cercana (7–9, nunca la 6): "La luz del santuario limpia un trozo de costa". Un orbe del bosque ya nunca limpia la Costa.
+  - **Presión en los asedios:** mientras la zona 6 siga corrupta, cada asedio trae **+1 bruto por cada 2 zonas corruptas de la Costa** (4 corruptas → +2, encima de `maxWave` y también con el Tragón purificado). El aviso del atardecer añade "Algo sube de la costa". Los asedios siguen viniendo de la zona corrupta más cercana al Corazón (casi nunca una de la Costa).
+- Decisiones/desvíos:
+  - Ids de la Costa fijos 6–9 aunque un mundo tenga menos de 6 zonas en el bosque: los `cleansed` guardados nunca se desplazan.
+  - La **Enredadera no limpia la Costa**; lo hará el Viento (marca `// S2-F`). La zona 6 solo se limpia venciendo al jefe de la Costa (S2-G). Hasta entonces, con los 3 orbes de la Costa tomados quedan 6 sola → la presión baja a 0 (1 zona corrupta / 2 = 0).
+  - Cambios de regla con tests adaptados (ninguno borrado): 4 tests de asedio del bosque limpian la zona 6 antes de contar la ola (`calmCoast`); el test de S2-C "un orbe de la Costa no limpia el bosque" ahora mira solo las zonas del bosque. Versión de protocolo en los tests → 17.
+  - El mar lejano (malla gruesa) ahora también se tiñe, porque la isla y los islotes caen en ella.
+- Verificado en navegador: no (solo tests + build).
+- Bloqueos: ninguno.
+- Qué probar: ir a la playa y buscar la mancha morada; pasar una noche dentro (más bestias). Tomar un orbe de la Costa y ver qué mancha desaparece. En casa, al atardecer: "Algo sube de la costa" y dos brutos de más; tras limpiar dos zonas de la Costa, uno. Constantes: `COAST_ZONES`, `coastRaidBrutes` en `corruption.ts`.
