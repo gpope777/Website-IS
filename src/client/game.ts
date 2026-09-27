@@ -448,6 +448,7 @@ export class Game {
     root.appendChild(this.renderer.domElement);
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
+    Actor.shadowDiscs = !t.shadows;
     this.weatherFx = new WeatherFx(this.scene);
     this.scene.add(this.structures.group, this.stallMeshes.group, this.graves.group, this.vineGroup);
     this.marker.rotation.x = Math.PI; // point down at the target

@@ -42,6 +42,8 @@ const HAT_LIFT = 1.3;
 
 /** An animated, independently skinned copy of a model kit, with an optional floating name tag. */
 export class Actor {
+  /** V2-B: a dark disc under the feet when the tier has no shadow map (set by the game before making actors). */
+  static shadowDiscs = false;
   readonly root = new THREE.Group();
   private readonly mixer: THREE.AnimationMixer;
   private readonly actions = new Map<string, THREE.AnimationAction>();
@@ -60,6 +62,7 @@ export class Actor {
     this.mixer = new THREE.AnimationMixer(model);
     for (const c of kit.clips) this.actions.set(c.name, this.mixer.clipAction(c));
     if (label) this.root.add(nameTag(label));
+    if (Actor.shadowDiscs) this.root.add(shadowDisc());
     this.play('idle');
   }
 
@@ -234,4 +237,18 @@ function nameTag(text: string): THREE.Sprite {
   sprite.scale.set(1.6, 0.4, 1);
   sprite.position.y = 2.25;
   return sprite;
+}
+
+let discGeo: THREE.CircleGeometry | null = null;
+let discMat: THREE.MeshBasicMaterial | null = null;
+/** One shared geometry and material for every disc (spec §5.2: low has no shadow map). */
+export function shadowDisc(r = 0.55): THREE.Mesh {
+  discGeo ??= new THREE.CircleGeometry(1, 16).rotateX(-Math.PI / 2);
+  discMat ??= new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+  const m = new THREE.Mesh(discGeo, discMat);
+  m.name = 'shadow-disc';
+  m.scale.setScalar(r);
+  m.position.y = 0.05;
+  m.renderOrder = 1;
+  return m;
 }
