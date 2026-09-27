@@ -59,8 +59,14 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   boss4: { hp: 420, run: 3, damage: 8, reach: 2.4, biteCooldown: 4 },
   /** El rayo marchito, the flying common enemy of the Tierras (see sim/rayo.ts): hovers, dives for 10 every 3 s. */
   rayo: { hp: 60, run: 9, damage: 10, reach: 1.6, biteCooldown: 3 },
+  /** El Marchito, the final boss in the Copa (see sim/marchito-final.ts): hp is the solo base (it scales with players). */
+  boss5: { hp: 1200, run: 0, damage: 18, reach: 5, biteCooldown: 10 },
+  /** El Corazón Negro, his core in phase 3: runs, never bites (its trail burns). */
+  core: { hp: 300, run: 7, damage: 0, reach: 0, biteCooldown: 99 },
+  /** One of the four brotes of phase 2: pulled out, not fought. */
+  brote: { hp: 1, run: 0, damage: 0, reach: 0, biteCooldown: 99 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), lieut3: NAMES.lieutenant3.replace(/^La /, 'la '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el '), rayo: `un ${NAMES.flier}` };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), lieut3: NAMES.lieutenant3.replace(/^La /, 'la '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el '), rayo: `un ${NAMES.flier}`, boss5: NAMES.villain, core: NAMES.blackHeart, brote: 'un brote' };
 
 export interface Wolf {
   id: number;
