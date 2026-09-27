@@ -1373,3 +1373,39 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, teléfono, `?fps=1`): fps en Baja en el bosque (hay +70 k triángulos de hierba); caminar y mirar que la hierba no "salte" al cargar trozos (se construyen 2 por fotograma); limpiar una zona con Enredadera y ver la ola; ¿la hierba tapa bayas o avisos del suelo?; con lluvia en las Montañas, ¿se mueve más?
 - Lo siguiente: V2-D (agua y vida ambiente).
+
+## Visuales · V2-D — Agua y vida ambiente — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-visuales-V2-D-agua-vida.md` (6676d22).
+- Commits: 9db0058 (T1 puro: `scene/water-data.ts` mapa de profundidad, olas, bajo el agua; `scene/life.ts` cantidades por gama, dónde/cuándo, bandadas, cangrejos), c5989b5 (T2 `scene/water.ts` shader de agua), a3a4b74 (T3 bajo el agua, cáusticas en alta, Lago Negro, paradas `lago`/`lago-limpio`), 39fff4c (T4 `scene/ambient.ts` vida), y el de cierre (base nueva + este texto).
+- Tests: npm test 1176 (antes 1164), test:workers 12, check + build verdes. **PROTOCOL_VERSION sigue en 62.** Nada nuevo en red ni guardado; `WATER_LEVEL`, nadar y bucear iguales (las olas solo se dibujan).
+- **Cifras antes → después** (llamadas / triángulos, de día; de noche igual o −1/−2: sin pájaros ni cangrejos, con luciérnagas):
+
+| Parada | Baja | Media | Alta |
+|---|---|---|---|
+| Bosque | 73 / 185 k → 75 / 185 k | 154 / 429 k → 156 / 437 k | 199 / 813 k → 201 / 846 k |
+| Costa | 64 / 76 k → 65 / 76 k | 99 / 118 k → 101 / 126 k | 101 / 165 k → 103 / 198 k |
+| Bajo el agua | 58 / 70 k → 59 / 70 k | 85 / 109 k → 87 / 118 k | 86 / 155 k → 89 / 188 k |
+| Pantano | 51 / 89 k → 53 / 89 k | 80 / 188 k → 82 / 196 k | 85 / 369 k → 87 / 402 k |
+| Montañas | 70 / 105 k → 71 / 105 k | 94 / 158 k → 95 / 166 k | 102 / 219 k → 103 / 252 k |
+| Tierras | 49 / 22 k → 50 / 22 k | 67 / 35 k → 68 / 35 k | 67 / 45 k → 68 / 45 k |
+| Purificado | 53 / 56 k → 54 / 56 k | 75 / 116 k → 76 / 116 k | 83 / 235 k → 84 / 235 k |
+| Lago Negro (nueva) | — → 47 / 18 k | — → 65 / 28 k | — → 66 / 36 k |
+| Lago limpio (nueva) | — → 52 / 55 k | — → 75 / 122 k | — → 83 / 253 k |
+| Mazmorra | 87 / 67 k → 89 / 67 k | 110 / 108 k → 112 / 116 k | 128 / 193 k → 130 / 225 k |
+| Presupuesto §3 | 120 / 250 k | 180 / 500 k | 260 / 1 200 k |
+
+  - **Todo dentro.** Bosque en media sigue lo más justo: 156 / 437 k (+2 llamadas, +8 k de la rejilla de olas 64²). En alta la rejilla 128² suma 33 k en todas partes. Textura nueva: el mapa de profundidad (256² = 256 KB en baja, 512² = 1 MB en media/alta). Aparecen "puntos" (luciérnagas/partículas) donde antes había 0: por eso la base se actualizó a propósito.
+- Cómo funciona:
+  - **Agua** (`scene/water.ts`, un `ShaderMaterial`, mismo quad): profundidad leída de un mapa horneado al cargar (R profundidad, G Pantano, B aguas bravas) en el **fragmento** (no en el vértice); turquesa en bajíos → azul hondo; Pantano marrón verdoso opaco sin espuma; **espuma** con ruido en la orilla (< 0,45 m) y en las **aguas bravas** alrededor de la isla de la mazmorra; fresnel hacia los colores de la cúpula + brillo del sol; ondas en la normal en todas las gamas; **olas en el vértice** solo en media (64²) y alta (128²), 0,15 m, ×0,2 en el Pantano.
+  - **Bajo el agua:** velo HTML azul (0,35) + niebla 2–28 m del color hondo; la superficie se ve por debajo como una lámina clara. **Cáusticas** en alta: líneas brillantes en el fondo bajo el nivel del mar (`patchCaustics`), de día.
+  - **Lago Negro:** mismo shader (disco polar con la profundidad por vértice), casi negro con brillo morado en la orilla; con `purify` pasa a azul limpio con espuma blanca.
+  - **Vida** (`scene/ambient.ts`, 1 llamada por sistema, oculto si no toca): pájaros (1/2/3 bandadas de 12; oscuros en bosque y Tierras purificadas, gaviotas en la Costa, 3 águilas grandes en Montañas; solo de día, aleteo en el vértice); luciérnagas (40/120/250; bosque de noche, Pantano siempre, doradas en las Tierras purificadas); partículas (200/400/600: hojas en el bosque de día, mosquitos en el Pantano, nieve suelta en Montañas si no llueve/nieva ya, ceniza en las Tierras sin purificar); cangrejos (media/alta, 10 en la arena de la Costa de día, huyen de lado a < 4 m); peces (alta, 20 en círculos bajo el mar de la Costa si hay > 2,5 m de fondo).
+- Decidido por Claude — revisar:
+  - Profundidad con textura en el fragmento (funciona en cualquier móvil); la regla "nada de texturas en el vértice" de V2-C se mantiene. Baja usa mapa 256² (hornear 512² tarda ~0,2 s en PC; en móvil sería más).
+  - El agua no pasa por la niebla por altura de media/alta (es un `ShaderMaterial`, usa la lineal). No se nota en las capturas.
+  - Pájaros, cangrejos y peces mueven sus matrices en CPU (≤ 36/10/20 por fotograma); solo el aleteo va en el shader. Luciérnagas y partículas: 0 CPU (se envuelven alrededor del jugador en el vértice).
+  - Sin lagos helados (no existen en el terreno). El lago limpio no tiene olas (spec).
+- Verificado en navegador: sí, capturas del arnés (SwiftShader): Costa de día con el mar azul claro, gaviotas y un cangrejo en la arena; bajo el agua con velo azul y cáusticas en el fondo (alta); Lago Negro morado oscuro y, purificado, azul limpio entre la pradera; bosque de día con hojas en el aire; bosque y Pantano de noche con luciérnagas verdes. La espuma se ve fina desde lejos; las olas y el aleteo no se ven en una captura.
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono, `?fps=1`): fps en Baja en la Costa y el Pantano; bucear y mirar el velo y que se vea la salida; ¿la espuma de las aguas bravas avisa bien?; de noche en el bosque, luciérnagas; acercarse a un cangrejo (Media).
+- Lo siguiente: V2-E (criaturas y animaciones).

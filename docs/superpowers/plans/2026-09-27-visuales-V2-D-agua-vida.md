@@ -58,24 +58,24 @@ export function wrap(v: number, centre: number, box: number): number;
 export function crabStep(crab, player, dt): crab;  // flees sideways under 4 m
 ```
 
-- [ ] **Step 1: failing tests.** Water: map deterministic; forest/land texels have depth 0; beach→open sea depth grows; swamp texels flagged, sea not; bravas ring flagged around the island; `waveHeight` bounded by `amp` and smaller in the swamp; `underwater`. Life: amounts monotone low ≤ medium ≤ high and within §3 (1/2/3 flocks, 40/120/250); no birds/crabs at night; fireflies at night in the forest, always in the swamp, golden only purified; no ash once purified; `wrap` keeps within ±box/2 of the centre; flock points stay near their anchor; a crab within 4 m moves away, one far away stays.
-- [ ] **Step 2: implement.** **Step 3:** green, commit `feat(visuales): datos del agua y reglas de la vida ambiente (puro)`.
+- [x] **Step 1: failing tests.** Water: map deterministic; forest/land texels have depth 0; beach→open sea depth grows; swamp texels flagged, sea not; bravas ring flagged around the island; `waveHeight` bounded by `amp` and smaller in the swamp; `underwater`. Life: amounts monotone low ≤ medium ≤ high and within §3 (1/2/3 flocks, 40/120/250); no birds/crabs at night; fireflies at night in the forest, always in the swamp, golden only purified; no ash once purified; `wrap` keeps within ±box/2 of the centre; flock points stay near their anchor; a crab within 4 m moves away, one far away stays.
+- [x] **Step 2: implement.** **Step 3:** green, commit `feat(visuales): datos del agua y reglas de la vida ambiente (puro)`.
 
 ### Task 2: the water shader (sea and swamp)
 
-- [ ] **Step 1:** `water.ts`: `WATER_UNIFORMS` (time, sun dir/colour, zenith/horizon, `dayK`, map), `makeWaterMaterial(kind, opts)` (`ShaderMaterial`, `fog: true`, `transparent`, `DoubleSide`; fog, tone mapping and colour space chunks), `buildSea(terrain, seed, tier)` (quad `waterGrid`², map texture). Remove `buildWater` from `terrain-mesh.ts`; `game.ts` sets the uniforms each frame from `skyLook`/`DayLight`.
-- [ ] **Step 2:** green; harness `--stop costa,bajo-agua,pantano,bosque --shots` per tier: medium bosque still ≤ 180 / 500 k; look at the shore foam and the swamp. Commit `feat(visuales): agua con profundidad, espuma, cielo reflejado y olas en media/alta`.
+- [x] **Step 1:** `water.ts`: `WATER_UNIFORMS` (time, sun dir/colour, zenith/horizon, `dayK`, map), `makeWaterMaterial(kind, opts)` (`ShaderMaterial`, `fog: true`, `transparent`, `DoubleSide`; fog, tone mapping and colour space chunks), `buildSea(terrain, seed, tier)` (quad `waterGrid`², map texture). Remove `buildWater` from `terrain-mesh.ts`; `game.ts` sets the uniforms each frame from `skyLook`/`DayLight`.
+- [x] **Step 2:** green; harness `--stop costa,bajo-agua,pantano,bosque --shots` per tier: medium bosque still ≤ 180 / 500 k; look at the shore foam and the swamp. Commit `feat(visuales): agua con profundidad, espuma, cielo reflejado y olas en media/alta`.
 
 ### Task 3: underwater, caustics and el Lago Negro
 
-- [ ] **Step 1:** underwater overlay + fog in `game.ts` (per frame, from `underwater(camera.y, waterLevel(...))`); `patchGround(mat, { caustics })` on high (test: key and chunk only with the option); `pillars.ts` lake = `buildLake(...)` with kind `lago` → `lagoLimpio` by `purify`.
-- [ ] **Step 2:** harness stops `lago`, `lago-limpio`; green; shots bajo-agua (high: caustics), lago day/night, lago-limpio. Commit `feat(visuales): bajo el agua, cáusticas en alta y el Lago Negro que se limpia`.
+- [x] **Step 1:** underwater overlay + fog in `game.ts` (per frame, from `underwater(camera.y, waterLevel(...))`); `patchGround(mat, { caustics })` on high (test: key and chunk only with the option); `pillars.ts` lake = `buildLake(...)` with kind `lago` → `lagoLimpio` by `purify`.
+- [x] **Step 2:** harness stops `lago`, `lago-limpio`; green; shots bajo-agua (high: caustics), lago day/night, lago-limpio. Commit `feat(visuales): bajo el agua, cáusticas en alta y el Lago Negro que se limpia`.
 
 ### Task 4: ambient life
 
-- [ ] **Step 1:** `ambient.ts` `AmbientLife(scene, terrain, seed, tier)`: birds (`InstancedMesh`, V of 2 triangles, flap + path in the vertex shader), fireflies (`Points`, additive, wrap), particles (`Points`, per-kind colour/size/motion), crabs (`InstancedMesh`, CPU), fish (`InstancedMesh`, circle in the shader). `update(x, y, z, biome, frac, purified, precip, dt)`.
-- [ ] **Step 2:** green; harness on all stops for the tier (targeted), medium bosque day/night checked first; shots of costa/pantano/bosque night. Commit `feat(visuales): pájaros, luciérnagas, cangrejos, peces y partículas por bioma`.
+- [x] **Step 1:** `ambient.ts` `AmbientLife(scene, terrain, seed, tier)`: birds (`InstancedMesh`, V of 2 triangles, flap + path in the vertex shader), fireflies (`Points`, additive, wrap), particles (`Points`, per-kind colour/size/motion), crabs (`InstancedMesh`, CPU), fish (`InstancedMesh`, circle in the shader). `update(x, y, z, biome, frac, purified, precip, dt)`.
+- [x] **Step 2:** green; harness on all stops for the tier (targeted), medium bosque day/night checked first; shots of costa/pantano/bosque night. Commit `feat(visuales): pájaros, luciérnagas, cangrejos, peces y partículas por bioma`.
 
 ### Task 5: Ship
 
-- [ ] Full harness `npm run perf` (3 tiers, one pass); `--update` with the new cost; HANDOFF "## Visuales · V2-D — …" with before/after table, decisions, what to test on a phone; push; one short comment on PR #3.
+- [x] Full harness `npm run perf` (3 tiers, one pass); `--update` with the new cost; HANDOFF "## Visuales · V2-D — …" with before/after table, decisions, what to test on a phone; push; one short comment on PR #3.

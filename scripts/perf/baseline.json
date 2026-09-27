@@ -17,436 +17,544 @@
   },
   "readings": {
     "low/bosque/dia": {
-      "calls": 73,
-      "triangles": 185439,
-      "points": 0,
+      "calls": 75,
+      "triangles": 185463,
+      "points": 200,
       "lines": 0,
-      "geometries": 122,
-      "textures": 8,
-      "programs": 31
+      "geometries": 124,
+      "textures": 9,
+      "programs": 32
     },
     "low/bosque/noche": {
-      "calls": 73,
+      "calls": 74,
       "triangles": 185439,
-      "points": 0,
+      "points": 40,
       "lines": 0,
-      "geometries": 122,
-      "textures": 8,
-      "programs": 31
+      "geometries": 125,
+      "textures": 9,
+      "programs": 33
     },
     "low/costa/dia": {
-      "calls": 64,
-      "triangles": 75793,
+      "calls": 65,
+      "triangles": 75817,
       "points": 0,
       "lines": 0,
-      "geometries": 152,
-      "textures": 8,
-      "programs": 32
+      "geometries": 155,
+      "textures": 9,
+      "programs": 34
     },
     "low/costa/noche": {
       "calls": 64,
       "triangles": 75793,
       "points": 0,
       "lines": 0,
-      "geometries": 152,
-      "textures": 8,
-      "programs": 32
+      "geometries": 155,
+      "textures": 9,
+      "programs": 34
     },
     "low/bajo-agua/dia": {
-      "calls": 58,
-      "triangles": 69593,
+      "calls": 59,
+      "triangles": 69617,
       "points": 0,
       "lines": 0,
-      "geometries": 161,
-      "textures": 8,
-      "programs": 32
+      "geometries": 164,
+      "textures": 9,
+      "programs": 34
     },
     "low/bajo-agua/noche": {
       "calls": 58,
       "triangles": 69593,
       "points": 0,
       "lines": 0,
-      "geometries": 161,
-      "textures": 8,
-      "programs": 32
+      "geometries": 164,
+      "textures": 9,
+      "programs": 34
     },
     "low/pantano/dia": {
-      "calls": 51,
+      "calls": 53,
       "triangles": 89451,
-      "points": 0,
+      "points": 240,
       "lines": 0,
-      "geometries": 176,
-      "textures": 8,
-      "programs": 34
+      "geometries": 179,
+      "textures": 9,
+      "programs": 36
     },
     "low/pantano/noche": {
-      "calls": 51,
+      "calls": 53,
       "triangles": 89451,
-      "points": 0,
+      "points": 240,
       "lines": 0,
-      "geometries": 176,
-      "textures": 8,
-      "programs": 34
+      "geometries": 179,
+      "textures": 9,
+      "programs": 36
     },
     "low/montanas/dia": {
-      "calls": 70,
-      "triangles": 105347,
+      "calls": 71,
+      "triangles": 105353,
       "points": 600,
       "lines": 0,
-      "geometries": 205,
-      "textures": 8,
-      "programs": 37
+      "geometries": 208,
+      "textures": 9,
+      "programs": 39
     },
     "low/montanas/noche": {
       "calls": 70,
       "triangles": 105347,
       "points": 600,
       "lines": 0,
-      "geometries": 205,
-      "textures": 8,
-      "programs": 37
+      "geometries": 208,
+      "textures": 9,
+      "programs": 39
     },
     "low/tierras/dia": {
-      "calls": 49,
+      "calls": 50,
       "triangles": 21983,
-      "points": 0,
+      "points": 200,
       "lines": 0,
-      "geometries": 225,
-      "textures": 8,
-      "programs": 39
+      "geometries": 228,
+      "textures": 9,
+      "programs": 41
     },
     "low/tierras/noche": {
-      "calls": 49,
+      "calls": 50,
       "triangles": 21983,
-      "points": 0,
+      "points": 200,
       "lines": 0,
-      "geometries": 225,
-      "textures": 8,
-      "programs": 39
+      "geometries": 228,
+      "textures": 9,
+      "programs": 41
     },
     "low/mazmorra/dia": {
-      "calls": 87,
-      "triangles": 66535,
-      "points": 0,
+      "calls": 89,
+      "triangles": 66559,
+      "points": 200,
       "lines": 0,
-      "geometries": 287,
-      "textures": 8,
-      "programs": 39
+      "geometries": 301,
+      "textures": 9,
+      "programs": 42
     },
     "low/mazmorra/noche": {
-      "calls": 87,
+      "calls": 88,
       "triangles": 66535,
-      "points": 0,
+      "points": 40,
       "lines": 0,
-      "geometries": 287,
-      "textures": 8,
-      "programs": 39
+      "geometries": 301,
+      "textures": 9,
+      "programs": 42
     },
     "medium/bosque/dia": {
-      "calls": 154,
-      "triangles": 428536,
-      "points": 0,
+      "calls": 156,
+      "triangles": 436774,
+      "points": 400,
       "lines": 0,
-      "geometries": 175,
-      "textures": 11,
-      "programs": 43
+      "geometries": 177,
+      "textures": 12,
+      "programs": 44
     },
     "medium/bosque/noche": {
-      "calls": 154,
-      "triangles": 428536,
-      "points": 0,
+      "calls": 155,
+      "triangles": 436726,
+      "points": 120,
       "lines": 0,
-      "geometries": 175,
-      "textures": 11,
-      "programs": 43
+      "geometries": 178,
+      "textures": 12,
+      "programs": 45
     },
     "medium/costa/dia": {
-      "calls": 99,
-      "triangles": 117605,
+      "calls": 101,
+      "triangles": 125963,
       "points": 0,
       "lines": 0,
-      "geometries": 219,
-      "textures": 11,
-      "programs": 44
+      "geometries": 223,
+      "textures": 12,
+      "programs": 47
     },
     "medium/costa/noche": {
       "calls": 99,
-      "triangles": 117605,
+      "triangles": 125795,
       "points": 0,
       "lines": 0,
-      "geometries": 219,
-      "textures": 11,
-      "programs": 44
+      "geometries": 223,
+      "textures": 12,
+      "programs": 47
     },
     "medium/bajo-agua/dia": {
-      "calls": 85,
-      "triangles": 109418,
+      "calls": 87,
+      "triangles": 117668,
       "points": 0,
       "lines": 0,
-      "geometries": 214,
-      "textures": 11,
-      "programs": 44
+      "geometries": 218,
+      "textures": 12,
+      "programs": 47
     },
     "medium/bajo-agua/noche": {
       "calls": 85,
-      "triangles": 109418,
+      "triangles": 117608,
       "points": 0,
       "lines": 0,
-      "geometries": 214,
-      "textures": 11,
-      "programs": 44
+      "geometries": 218,
+      "textures": 12,
+      "programs": 47
     },
     "medium/pantano/dia": {
-      "calls": 80,
-      "triangles": 187639,
-      "points": 0,
+      "calls": 82,
+      "triangles": 195829,
+      "points": 520,
       "lines": 0,
-      "geometries": 237,
-      "textures": 11,
-      "programs": 46
+      "geometries": 241,
+      "textures": 12,
+      "programs": 48
     },
     "medium/pantano/noche": {
-      "calls": 80,
-      "triangles": 187639,
-      "points": 0,
+      "calls": 82,
+      "triangles": 195829,
+      "points": 520,
       "lines": 0,
-      "geometries": 237,
-      "textures": 11,
-      "programs": 46
+      "geometries": 241,
+      "textures": 12,
+      "programs": 48
     },
     "medium/montanas/dia": {
-      "calls": 94,
-      "triangles": 158163,
+      "calls": 95,
+      "triangles": 166359,
       "points": 600,
       "lines": 0,
-      "geometries": 264,
-      "textures": 11,
-      "programs": 47
+      "geometries": 268,
+      "textures": 12,
+      "programs": 49
     },
     "medium/montanas/noche": {
       "calls": 94,
-      "triangles": 158163,
+      "triangles": 166353,
       "points": 600,
       "lines": 0,
-      "geometries": 264,
-      "textures": 11,
-      "programs": 47
+      "geometries": 268,
+      "textures": 12,
+      "programs": 49
     },
     "medium/tierras/dia": {
-      "calls": 67,
+      "calls": 68,
       "triangles": 35044,
-      "points": 0,
+      "points": 400,
       "lines": 0,
-      "geometries": 281,
-      "textures": 11,
-      "programs": 49
+      "geometries": 285,
+      "textures": 12,
+      "programs": 51
     },
     "medium/tierras/noche": {
-      "calls": 67,
+      "calls": 68,
       "triangles": 35044,
-      "points": 0,
+      "points": 400,
       "lines": 0,
-      "geometries": 281,
-      "textures": 11,
-      "programs": 49
+      "geometries": 285,
+      "textures": 12,
+      "programs": 51
     },
     "medium/mazmorra/dia": {
-      "calls": 110,
-      "triangles": 107636,
-      "points": 0,
+      "calls": 112,
+      "triangles": 115874,
+      "points": 400,
       "lines": 0,
-      "geometries": 343,
-      "textures": 11,
-      "programs": 49
+      "geometries": 358,
+      "textures": 12,
+      "programs": 52
     },
     "medium/mazmorra/noche": {
-      "calls": 110,
-      "triangles": 107636,
-      "points": 0,
+      "calls": 111,
+      "triangles": 115826,
+      "points": 120,
       "lines": 0,
-      "geometries": 343,
-      "textures": 11,
-      "programs": 49
+      "geometries": 358,
+      "textures": 12,
+      "programs": 52
     },
     "high/bosque/dia": {
-      "calls": 199,
-      "triangles": 813021,
-      "points": 0,
+      "calls": 201,
+      "triangles": 845859,
+      "points": 600,
       "lines": 0,
-      "geometries": 187,
-      "textures": 11,
-      "programs": 44
+      "geometries": 190,
+      "textures": 12,
+      "programs": 47
     },
     "high/bosque/noche": {
-      "calls": 199,
-      "triangles": 813021,
-      "points": 0,
+      "calls": 200,
+      "triangles": 845787,
+      "points": 250,
       "lines": 0,
-      "geometries": 187,
-      "textures": 11,
-      "programs": 44
+      "geometries": 191,
+      "textures": 12,
+      "programs": 48
     },
     "high/costa/dia": {
-      "calls": 101,
-      "triangles": 165145,
+      "calls": 103,
+      "triangles": 198103,
       "points": 0,
       "lines": 0,
-      "geometries": 225,
-      "textures": 11,
-      "programs": 45
+      "geometries": 229,
+      "textures": 12,
+      "programs": 50
     },
     "high/costa/noche": {
       "calls": 101,
-      "triangles": 165145,
+      "triangles": 197911,
       "points": 0,
       "lines": 0,
-      "geometries": 225,
-      "textures": 11,
-      "programs": 45
+      "geometries": 229,
+      "textures": 12,
+      "programs": 50
     },
     "high/bajo-agua/dia": {
-      "calls": 86,
-      "triangles": 154793,
+      "calls": 89,
+      "triangles": 187803,
       "points": 0,
       "lines": 0,
-      "geometries": 223,
-      "textures": 11,
-      "programs": 45
+      "geometries": 228,
+      "textures": 12,
+      "programs": 50
     },
     "high/bajo-agua/noche": {
-      "calls": 86,
-      "triangles": 154793,
+      "calls": 87,
+      "triangles": 187719,
       "points": 0,
       "lines": 0,
-      "geometries": 223,
-      "textures": 11,
-      "programs": 45
+      "geometries": 228,
+      "textures": 12,
+      "programs": 50
     },
     "high/pantano/dia": {
-      "calls": 85,
-      "triangles": 369479,
-      "points": 0,
+      "calls": 87,
+      "triangles": 402245,
+      "points": 850,
       "lines": 0,
-      "geometries": 249,
-      "textures": 11,
-      "programs": 47
+      "geometries": 254,
+      "textures": 12,
+      "programs": 51
     },
     "high/pantano/noche": {
-      "calls": 85,
-      "triangles": 369479,
-      "points": 0,
+      "calls": 87,
+      "triangles": 402245,
+      "points": 850,
       "lines": 0,
-      "geometries": 249,
-      "textures": 11,
-      "programs": 47
+      "geometries": 254,
+      "textures": 12,
+      "programs": 51
     },
     "high/montanas/dia": {
-      "calls": 102,
-      "triangles": 219226,
+      "calls": 103,
+      "triangles": 251998,
       "points": 600,
       "lines": 0,
-      "geometries": 270,
-      "textures": 11,
-      "programs": 48
+      "geometries": 275,
+      "textures": 12,
+      "programs": 52
     },
     "high/montanas/noche": {
       "calls": 102,
-      "triangles": 219226,
+      "triangles": 251992,
       "points": 600,
       "lines": 0,
-      "geometries": 270,
-      "textures": 11,
-      "programs": 48
+      "geometries": 275,
+      "textures": 12,
+      "programs": 52
     },
     "high/tierras/dia": {
-      "calls": 67,
+      "calls": 68,
       "triangles": 45204,
-      "points": 0,
+      "points": 600,
       "lines": 0,
-      "geometries": 283,
-      "textures": 11,
-      "programs": 50
+      "geometries": 288,
+      "textures": 12,
+      "programs": 54
     },
     "high/tierras/noche": {
-      "calls": 67,
+      "calls": 68,
       "triangles": 45204,
-      "points": 0,
+      "points": 600,
       "lines": 0,
-      "geometries": 283,
-      "textures": 11,
-      "programs": 50
+      "geometries": 288,
+      "textures": 12,
+      "programs": 54
     },
     "high/mazmorra/dia": {
-      "calls": 128,
-      "triangles": 192600,
-      "points": 0,
+      "calls": 130,
+      "triangles": 225438,
+      "points": 600,
       "lines": 0,
-      "geometries": 350,
-      "textures": 11,
-      "programs": 50
+      "geometries": 366,
+      "textures": 12,
+      "programs": 55
     },
     "high/mazmorra/noche": {
-      "calls": 128,
-      "triangles": 192600,
-      "points": 0,
+      "calls": 129,
+      "triangles": 225366,
+      "points": 250,
       "lines": 0,
-      "geometries": 350,
-      "textures": 11,
-      "programs": 50
+      "geometries": 366,
+      "textures": 12,
+      "programs": 55
     },
     "low/purificado/dia": {
-      "calls": 53,
-      "triangles": 55658,
+      "calls": 54,
+      "triangles": 55682,
       "points": 0,
       "lines": 0,
-      "geometries": 229,
-      "textures": 8,
-      "programs": 39
+      "geometries": 232,
+      "textures": 9,
+      "programs": 41
     },
     "low/purificado/noche": {
-      "calls": 53,
+      "calls": 54,
       "triangles": 55658,
-      "points": 0,
+      "points": 40,
       "lines": 0,
-      "geometries": 229,
-      "textures": 8,
-      "programs": 39
+      "geometries": 232,
+      "textures": 9,
+      "programs": 41
     },
     "medium/purificado/dia": {
-      "calls": 75,
-      "triangles": 115784,
+      "calls": 76,
+      "triangles": 115832,
       "points": 0,
       "lines": 0,
-      "geometries": 289,
-      "textures": 11,
-      "programs": 49
+      "geometries": 293,
+      "textures": 12,
+      "programs": 51
     },
     "medium/purificado/noche": {
-      "calls": 75,
+      "calls": 76,
       "triangles": 115784,
-      "points": 0,
+      "points": 120,
       "lines": 0,
-      "geometries": 289,
-      "textures": 11,
-      "programs": 49
+      "geometries": 293,
+      "textures": 12,
+      "programs": 51
     },
     "high/purificado/dia": {
-      "calls": 83,
-      "triangles": 235059,
+      "calls": 84,
+      "triangles": 235131,
       "points": 0,
       "lines": 0,
-      "geometries": 299,
-      "textures": 11,
-      "programs": 50
+      "geometries": 304,
+      "textures": 12,
+      "programs": 54
     },
     "high/purificado/noche": {
-      "calls": 83,
+      "calls": 84,
       "triangles": 235059,
+      "points": 250,
+      "lines": 0,
+      "geometries": 304,
+      "textures": 12,
+      "programs": 54
+    },
+    "low/lago/dia": {
+      "calls": 47,
+      "triangles": 17791,
+      "points": 200,
+      "lines": 0,
+      "geometries": 239,
+      "textures": 9,
+      "programs": 42
+    },
+    "low/lago/noche": {
+      "calls": 47,
+      "triangles": 17791,
+      "points": 200,
+      "lines": 0,
+      "geometries": 239,
+      "textures": 9,
+      "programs": 42
+    },
+    "low/lago-limpio/dia": {
+      "calls": 52,
+      "triangles": 55305,
       "points": 0,
       "lines": 0,
+      "geometries": 244,
+      "textures": 9,
+      "programs": 42
+    },
+    "low/lago-limpio/noche": {
+      "calls": 52,
+      "triangles": 55281,
+      "points": 40,
+      "lines": 0,
+      "geometries": 244,
+      "textures": 9,
+      "programs": 42
+    },
+    "medium/lago/dia": {
+      "calls": 65,
+      "triangles": 28392,
+      "points": 400,
+      "lines": 0,
+      "geometries": 296,
+      "textures": 12,
+      "programs": 52
+    },
+    "medium/lago/noche": {
+      "calls": 65,
+      "triangles": 28392,
+      "points": 400,
+      "lines": 0,
+      "geometries": 296,
+      "textures": 12,
+      "programs": 52
+    },
+    "medium/lago-limpio/dia": {
+      "calls": 75,
+      "triangles": 121745,
+      "points": 0,
+      "lines": 0,
+      "geometries": 306,
+      "textures": 12,
+      "programs": 52
+    },
+    "medium/lago-limpio/noche": {
+      "calls": 75,
+      "triangles": 121697,
+      "points": 120,
+      "lines": 0,
+      "geometries": 306,
+      "textures": 12,
+      "programs": 52
+    },
+    "high/lago/dia": {
+      "calls": 66,
+      "triangles": 36060,
+      "points": 600,
+      "lines": 0,
       "geometries": 299,
-      "textures": 11,
-      "programs": 50
+      "textures": 12,
+      "programs": 55
+    },
+    "high/lago/noche": {
+      "calls": 66,
+      "triangles": 36060,
+      "points": 600,
+      "lines": 0,
+      "geometries": 299,
+      "textures": 12,
+      "programs": 55
+    },
+    "high/lago-limpio/dia": {
+      "calls": 83,
+      "triangles": 253247,
+      "points": 0,
+      "lines": 0,
+      "geometries": 316,
+      "textures": 12,
+      "programs": 55
+    },
+    "high/lago-limpio/noche": {
+      "calls": 83,
+      "triangles": 253175,
+      "points": 250,
+      "lines": 0,
+      "geometries": 316,
+      "textures": 12,
+      "programs": 55
     }
   }
 }
