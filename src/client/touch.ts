@@ -53,6 +53,8 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'KeyH', label: '🌿', sub: 'poder', cls: 'pill' },
 ];
 
+/** Holding the power pill this long switches powers. */
+const POWER_HOLD_MS = 500;
 const STICK_RADIUS = 52; // px the knob can travel from centre
 const DEAD_ZONE = 0.12;
 const SPRINT_ZONE = 0.92;
@@ -71,6 +73,8 @@ export class TouchControls {
   private readonly stickBase: HTMLElement;
   private readonly knob: HTMLElement;
   private stickCentre = { x: 0, y: 0 };
+
+  private powerPill: HTMLElement | null = null;
 
   constructor(parent: HTMLElement, private readonly input: InputState, private readonly h: TouchHandlers) {
     this.root = div('touch-layer');
@@ -95,7 +99,11 @@ export class TouchControls {
     for (const b of ACTION_BUTTONS) actions.appendChild(this.button(b));
 
     const pills = div('touch-pills');
-    for (const b of PILL_BUTTONS) pills.appendChild(this.button(b));
+    for (const b of PILL_BUTTONS) {
+      const el = this.button(b);
+      if (b.code === 'KeyH') this.powerPill = el;
+      pills.appendChild(el);
+    }
 
     const system = div('touch-system');
     const menu = this.button({ code: '', label: 'MENÚ', cls: 'sys' });
@@ -132,6 +140,12 @@ export class TouchControls {
   };
 
   /** Clear every held flag, e.g. when the game pauses or a menu opens. */
+  /** The power pill's icon follows the chosen power. */
+  setPowerIcon(icon: string): void {
+    const span = this.powerPill?.querySelector('span');
+    if (span) span.textContent = icon;
+  }
+
   release(): void {
     this.stickPointer = null;
     this.lookPointer = null;
@@ -255,6 +269,28 @@ export class TouchControls {
       b.addEventListener('pointerdown', down);
       b.addEventListener('pointerup', up);
       b.addEventListener('pointercancel', up);
+    } else if (def.code === 'KeyH') {
+      // The power pill: a tap casts, holding it 0.5 s switches powers (Gabriel's call: no second pill).
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        b.classList.add('active');
+        timer = setTimeout(() => {
+          timer = null;
+          b.classList.remove('active');
+          this.h.onAction('TouchSwitch');
+        }, POWER_HOLD_MS);
+      });
+      const up = (cast: boolean) => (e: PointerEvent) => {
+        e.preventDefault();
+        b.classList.remove('active');
+        if (!timer) return;
+        clearTimeout(timer);
+        timer = null;
+        if (cast) this.h.onAction('KeyH');
+      };
+      b.addEventListener('pointerup', up(true));
+      b.addEventListener('pointercancel', up(false));
     } else if (def.code) {
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();

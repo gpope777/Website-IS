@@ -67,3 +67,24 @@ describe('eliteBarText', () => {
     expect(eliteBarText({ ...emptyDungeonView(), elite: { hp: 300, max: 420, charging: true } })).toBe('Bruto reforzado 300/420 · ¡carga!');
   });
 });
+
+describe('coast dungeon prompts (S2-F)', () => {
+  it('enter, leave, levers, altar; and the shield bar', async () => {
+    const { coastDungeonAction, shieldBarText } = await import('./dungeon-ui');
+    const { COAST_DUNGEON: C, insideCoast } = await import('../shared/coast-dungeon');
+    const v = emptyDungeonView().coast;
+    const e = { x: 10, z: 400 };
+    expect(coastDungeonAction({ x: 12, z: 401 }, e, v, false)?.act).toBe(8);
+    expect(coastDungeonAction({ x: 40, z: 401 }, e, v, false)).toBeNull();
+    expect(coastDungeonAction({ x: C.x, z: C.entryZ }, e, v, false)?.act).toBe(9);
+    const l = insideCoast(C.levers[1]);
+    expect(coastDungeonAction(l, e, v, false)?.act).toBe(11);
+    const altar = { x: C.x, z: C.altarZ };
+    expect(coastDungeonAction(altar, e, v, false)).toBeNull();
+    const open = { ...v, gates: [true, false, false, false] };
+    expect(coastDungeonAction(altar, e, open, false)).toEqual({ act: 12, label: 'Tomar el Viento' });
+    expect(coastDungeonAction(altar, e, open, true)).toBeNull();
+    expect(shieldBarText(v)).toBeNull();
+    expect(shieldBarText({ ...v, elite: { hp: 300, max: 420, exposed: true, charging: false } })).toBe('Bruto escudado 300/420 · ¡expuesto!');
+  });
+});

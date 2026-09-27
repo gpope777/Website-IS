@@ -1,7 +1,7 @@
 import { NAMES } from '../shared/names';
 import { DUNGEON, inDungeon, inside, leverPos } from '../shared/dungeon';
-import { COAST_DUNGEON, insideCoast } from '../shared/coast-dungeon';
-import type { CarryView, DungeonView, MarchitoView } from '../shared/protocol';
+import { COAST_DUNGEON, inCoastDungeon, insideCoast } from '../shared/coast-dungeon';
+import type { CarryView, CoastDungeonView, DungeonView, MarchitoView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
 export function emptyDungeonView(): DungeonView {
@@ -58,4 +58,28 @@ export function marchitoBarText(v: MarchitoView | null): string | null {
 export function bossBarText(view: DungeonView): string | null {
   const b = view.boss;
   return b ? `${NAMES.bossForest} ${b.hp}/${b.max} · ${b.weak ? '¡expuesto!' : 'doblado'}` : null;
+}
+
+/** The contextual A / E action around the coast Raíz-madre (acts 8–12). The server re-checks everything. */
+export function coastDungeonAction(pos: { x: number; z: number }, entrance: { x: number; z: number }, view: CoastDungeonView, viento: boolean): { act: number; label: string } | null {
+  const C = COAST_DUNGEON;
+  const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
+  if (!inCoastDungeon(pos.x, pos.z)) return near(entrance.x, entrance.z, C.trunkR + C.enterReach) ? { act: 8, label: `Entrar en la ${NAMES.coastRoot}` } : null;
+  if (near(C.x, C.entryZ, C.exitReach)) return { act: 9, label: `Salir de la ${NAMES.coastRoot}` };
+  if (!view.gates[0]) {
+    for (const i of [0, 1]) {
+      const l = insideCoast(C.levers[i]!);
+      if (near(l.x, l.z, C.leverReach)) return { act: 10 + i, label: 'Tirar de la raíz' };
+    }
+  }
+  if (view.gates[0] && !viento && near(C.x, C.altarZ, C.altarReach)) return { act: 12, label: `Tomar el ${NAMES.powerWind}` };
+  return null;
+}
+
+/** The bruto escudado's bar while it fights. */
+export function shieldBarText(view: CoastDungeonView): string | null {
+  const e = view.elite;
+  if (!e) return null;
+  const name = NAMES.eliteCoast.charAt(0).toUpperCase() + NAMES.eliteCoast.slice(1);
+  return `${name} ${e.hp}/${e.max} · ${e.exposed ? '¡expuesto!' : e.charging ? '¡carga!' : 'escudo'}`;
 }

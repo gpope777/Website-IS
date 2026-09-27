@@ -47,3 +47,16 @@ describe('vision key', () => {
     expect(KEY_ACTIONS.Enter).toBe('dismiss');
   });
 });
+
+describe('power switching (S2-F)', () => {
+  it('J and the held pill switch; H casts', async () => {
+    const { nextPower } = await import('./input');
+    expect(KEY_ACTIONS.KeyJ).toBe('switch');
+    expect(KEY_ACTIONS.TouchSwitch).toBe('switch');
+    expect(KEY_ACTIONS.KeyH).toBe('power');
+    expect(nextPower('enredadera', { enredadera: true, viento: true })).toBe('viento');
+    expect(nextPower('viento', { enredadera: true, viento: true })).toBe('enredadera');
+    expect(nextPower('enredadera', { enredadera: true, viento: false })).toBe('enredadera');
+    expect(nextPower('enredadera', { enredadera: false, viento: true })).toBe('viento');
+  });
+});

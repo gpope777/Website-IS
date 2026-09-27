@@ -413,3 +413,21 @@ describe('piloting the whale', () => {
     expect(inBravas(island, b.x, b.z)).toBe(true);
   });
 });
+
+describe('Viento lift (S2-F)', () => {
+  const flat: Terrain = { heightAt: () => 0, density: () => 0 };
+  const still: MoveInput = { x: 0, z: 0, sprint: false, jump: false };
+  it('lifts a glider 6 m once per flight; landing resets it', async () => {
+    const { boost } = await import('./movement');
+    const { VIENTO } = await import('../shared/viento');
+    const b = createBody(0, 0, flat);
+    expect(boost(b)).toBe(false); // on the ground: nothing
+    Object.assign(b, { y: 10, onGround: false, gliding: true });
+    expect(boost(b)).toBe(true);
+    for (let i = 0; i < 10; i++) stepBody(b, still, 0, 0.1, flat, () => []);
+    expect(b.y).toBeCloseTo(10 + VIENTO.boost - GLIDE.sink * 1, 0);
+    expect(boost(b)).toBe(false);
+    for (let i = 0; i < 100 && !b.onGround; i++) stepBody(b, still, 0, 0.1, flat, () => []);
+    expect(b.boosted).toBe(false);
+  });
+});

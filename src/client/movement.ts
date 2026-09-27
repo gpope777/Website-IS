@@ -5,6 +5,7 @@ import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
 import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
+import { VIENTO } from '../shared/viento';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
 export interface MoveInput {
@@ -41,6 +42,9 @@ export interface Body {
   fish: Islet | null;
   /** Piloting the whale (from the server): the body is the pilot seat; surface only, 3 m of water. */
   whale: boolean;
+  /** Metres of Viento lift still to rise, and whether this flight already used its lift. */
+  lift: number;
+  boosted: boolean;
 }
 
 export interface Circle {
@@ -82,8 +86,19 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false, lift: 0, boosted: false,
   };
+}
+
+/** Rise speed while a Viento lift lasts (the server allows the climb for VIENTO.boostFor s). */
+const LIFT_SPEED = 12;
+
+/** A Viento gust while gliding lifts you VIENTO.boost metres, once per flight. False when it does not apply. */
+export function boost(b: Body): boolean {
+  if (!b.gliding || b.boosted) return false;
+  b.boosted = true;
+  b.lift = VIENTO.boost;
+  return true;
 }
 
 const RESULT_IDLE: StepResult = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
@@ -202,6 +217,8 @@ export function stepBody(
     b.y = WATER_LEVEL - 0.9;
     b.vy = 0;
     b.onGround = true;
+    b.boosted = false;
+    b.lift = 0;
     if (swimFast) spend(b, STAMINA.swimFast * dt);
     else regen(b, dt);
     return { ...RESULT_IDLE, moving, swimming: true };
@@ -217,6 +234,11 @@ export function stepBody(
   }
   if (b.gliding) b.vy = -GLIDE.sink;
   else b.vy -= GRAVITY * dt;
+  if (b.lift > 0) {
+    const up = Math.min(b.lift, LIFT_SPEED * dt);
+    b.lift -= up;
+    b.y += up;
+  }
   const ny = b.y + b.vy * dt;
   if (ny <= ground) {
     b.y = ground;
@@ -231,6 +253,8 @@ export function stepBody(
   }
   if (b.onGround) {
     b.gliding = false;
+    b.boosted = false;
+    b.lift = 0;
     regen(b, dt);
   }
   return { ...RESULT_IDLE, moving, running, gliding: b.gliding };
