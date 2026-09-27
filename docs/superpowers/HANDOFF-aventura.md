@@ -704,3 +704,24 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: subir la Cornisa trepando un día seco (¿llega el aliento con las repisas?) y en rana (¿se aterriza en las repisas?). Losas con un amigo y solo con Viento. Ver las vetas desde lejos, picar una colgado de la pared. Comprar el nivel 4. Encender un refugio, viajar desde el Corazón y pasar la noche al lado. Constantes: `MOUNTAIN_SHRINE`, `BLOCKS`, `QUARTZ` en `src/shared/mountain-shrines.ts`, `UPGRADE` en `src/shared/items.ts`, `FOGATA` en `src/shared/fogatas.ts`.
+
+## Slice 4 · S4-D — corrupción de la Montaña y El Triángulo — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S4-D-corrupcion-triangulo.md` (5309644).
+- Commits: 8443b4b (T1+T2 zonas 14–17, orbes de la Montaña, `mountainsSeen`, protocolo v37), d61aefd (T3 El Triángulo en reglas y servidor, v38), 4598d31 (T4 cliente).
+- Tests: npm test 697 (antes 680), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 38**. Campo guardado nuevo opcional `SavedWorld.mountainsSeen`: las partidas viejas cargan con 14–17 corruptas y sin Montañas vistas.
+- Cómo funciona:
+  - **Cuatro zonas más** (ids fijos 14–17, `MOUNTAIN_ZONES` en `corruption.ts`): **14 = Raíz-madre de la Montaña** (r 18) en un punto fijo (x −70, 140 m al norte del borde), donde S4-E abrirá la boca de la cueva; 15 en un prado suave de las Faldas; 16 al pie de la pared 0, del lado del bosque; 17 en el nevero alto. Mismo dibujo y misma regla de noche, pero las bestias extra salen **al pie de los Peldaños**, del lado del bosque (no trepan).
+  - **Limpieza:** el orbe de un santuario de la Montaña (9–11) limpia la 15–17 corrupta más cercana ("La luz del santuario limpia un trozo de montaña"); nunca la 14. Enredadera, Viento y Llamarada no tocan la Montaña.
+  - **Montañas vistas** (`mountainsSeen`): alguien vivo entró en `inMountains`. De momento sin visión (es de S4-H).
+  - **El Triángulo** (`EnemyKind 'lieut2'`, `TRIANGULO` en `sim/lieutenant.ts`): recorte de `enemy7.png` (2,8 m). Con las Montañas vistas y la 14 corrupta, guía los asedios con **`raidN % 3 === 1`** desde el 4.º (nunca coincide con la Gata). Aviso: "El Triángulo guía el asedio esta noche". 340 PV, velocidad de lobo, patea 12 cada 2 s; anda como la Gata (persigue a ≤28 m, si no espera a 14 m del Corazón) y sale 12 m detrás de su manada. **Rocas:** cada 6 s, 40 de daño a la construcción de jugador más cercana a ≤25 m; **nunca al Corazón**. **Al caer:** el asedio huye (como con la Gata), **2 cuarzo** a cada jugador vivo a ≤40 m y visión: «Mis rocas… <nombres>, sube a por mí, a ver.»
+- Decidido por Claude — revisar:
+  - La 14 va en un punto fijo, no sembrado: S4-E pone ahí la cueva y así no hay que buscarla.
+  - La roca es instantánea, sin proyectil dibujado: se ve en la barra de vida del muro (o en el muro que desaparece). Apunta a cualquier construcción que no sea el Corazón (muros, trampas, fogatas…).
+  - Las bestias extra de una zona de la Montaña aparecen al pie de los Peldaños (la regla del spec §3.3), así que quedarse arriba de noche es más tranquilo que en el bosque.
+  - La caída de la Gata y del Triángulo comparten un solo manejador; el texto de la Gata no cambia.
+  - Cambios de regla con tests adaptados (ninguno borrado): versión → 38; el orbe de la Cornisa ahora sí limpia una zona (antes "no limpia nada"); las zonas del Pantano ya no son las últimas de la lista (`slice(-8, -4)`); la lista esperada tras un orbe del Pantano incluye 14–17.
+- **Marcas pendientes:** `// S4-E` (un pilar de Piedra a ≤2 m de la raíz de 15–17 la aplasta; los pilares también serán blanco de las rocas), `// S4-F` (vencer a El Cucurucho limpia la 14 y con ello El Triángulo deja de venir: `triLeads` ya mira la 14), `// S4-H` (visión al entrar por primera vez en las Montañas, donde se pone `mountainsSeen`).
+- Rendimiento móvil: un `PaperActor` más solo en su asedio; las zonas usan el mismo dibujo que las demás.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: subir, buscar las 4 manchas (¿se ve bien la 17 en el nevero?), tomar un orbe de la Montaña y ver cuál desaparece. Forzar el 4.º asedio (`raidN: 3` y `mountainsSeen: true` en el guardado): ¿se ve el Triángulo negro al atardecer?, ¿las rocas rompen muros demasiado rápido (40 cada 6 s)?, ¿340 PV con arma 4? Constantes: `MOUNTAIN_ZONES` en `corruption.ts`, `TRIANGULO` en `sim/lieutenant.ts`.

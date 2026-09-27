@@ -1,6 +1,6 @@
 # Aventura — Slice 4 · S4-D: corrupción de la Montaña y El Triángulo — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Four mountain corruption zones (ids 14–17) in the shared list. Zone 14 is the **Raíz-madre de la Montaña** (r 18) at the spot where S4-E will open the cave mouth; 15 on a Faldas meadow, 16 at a pared's foot, 17 on the high snowfield (r 16). Same visuals and night rule (in the mountains the extra beasts spawn at the Peldaños' foot, on the forest side). **Mountain shrine orbs cleanse the nearest corrupt 15–17** (never 14). A **mountains-seen flag** (`SavedWorld.mountainsSeen`). With the mountains seen and zone 14 corrupt, raids with **`raidN % 3 === 1`** (from raid 4) are led by **El Triángulo** (`enemy7.png` paper cutout, 2.8 m, 340 PV, wolf speed, kicks 12 every 2 s; every 6 s throws a rock at the nearest player structure within 25 m for 40 damage, never the Heart; spawns 12 m behind his pack). Beating him: the raid flees (as the Gata), **2 cuarzo** to each living player within 40 m, vision «Mis rocas… <nombres>, sube a por mí, a ver».
 
@@ -36,16 +36,16 @@ export function isSwampZone(id: number): boolean;    // 10..13 (was >= 10)
 export function isMountainZone(id: number): boolean; // >= 14
 export function generateMountainZones(terrain: Terrain, seed: number): Zone[]; // 14,15,16,17
 ```
-- [ ] **Step 1: failing tests.** For 4 seeds: `allZones` ends with 14–17; 14 at the fixed root (r 18); all `inMountains`; 15 at d 45–100 and 17 at d 150–195 with `slopeAt < 20`; 16 within 4 m of pared 0's foot circle (`rt + w`); no two overlap. `isSwampZone(14) === false`, `isMountainZone(14)`, `isMountainZone(13) === false`.
-- [ ] **Step 2: implement** (`createRng(seed ^ 0x40e7a)`; fallbacks: fixed points).
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): zonas corruptas de la Montaña (reglas)`.
+- [x] **Step 1: failing tests.** For 4 seeds: `allZones` ends with 14–17; 14 at the fixed root (r 18); all `inMountains`; 15 at d 45–100 and 17 at d 150–195 with `slopeAt < 20`; 16 within 4 m of pared 0's foot circle (`rt + w`); no two overlap. `isSwampZone(14) === false`, `isMountainZone(14)`, `isMountainZone(13) === false`.
+- [x] **Step 2: implement** (`createRng(seed ^ 0x40e7a)`; fallbacks: fixed points).
+- [x] **Step 3:** green, self-review, commit `feat(aventura): zonas corruptas de la Montaña (reglas)`.
 
 ### Task 2: Server — mountain orbs cleanse, night rule, mountainsSeen (protocol v37)
 
 **Files:** Modify `src/shared/protocol.ts`, `src/shared/sim/world-sim.ts`; Tests `protocol.test.ts`, `world-sim.test.ts`.
-- [ ] **Step 1: failing tests.** New world `snap.corrupt` includes 14–17. A mountain orb cleanses the nearest corrupt 15–17 ("La luz del santuario limpia un trozo de montaña"), never 14, never others; a swamp orb never cleanses a mountain zone. Enredadera at zone 15's root cleanses nothing. A player standing in zone 15 at dusk brings extra beasts that spawn south of the rim (z > −HALF). Entering the mountains sets `mountainsSeen` (saved; absent in old saves). Version → 37.
-- [ ] **Step 2: implement.** Resolve `// S4-D` in `onShrine` (biome map gets `mountain`, root 14 excluded); vine filter excludes mountain; extra-beast spawn clamps to the Peldaños' foot; add `// S4-E` / `// S4-F` / `// S4-H` markers.
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): corrupción de la Montaña en el servidor (protocolo v37)`.
+- [x] **Step 1: failing tests.** New world `snap.corrupt` includes 14–17. A mountain orb cleanses the nearest corrupt 15–17 ("La luz del santuario limpia un trozo de montaña"), never 14, never others; a swamp orb never cleanses a mountain zone. Enredadera at zone 15's root cleanses nothing. A player standing in zone 15 at dusk brings extra beasts that spawn south of the rim (z > −HALF). Entering the mountains sets `mountainsSeen` (saved; absent in old saves). Version → 37.
+- [x] **Step 2: implement.** Resolve `// S4-D` in `onShrine` (biome map gets `mountain`, root 14 excluded); vine filter excludes mountain; extra-beast spawn clamps to the Peldaños' foot; add `// S4-E` / `// S4-F` / `// S4-H` markers.
+- [x] **Step 3:** green, self-review, commit `feat(aventura): corrupción de la Montaña en el servidor (protocolo v37)`.
 
 ### Task 3: El Triángulo (rules + server, protocol v38)
 
@@ -58,16 +58,16 @@ export function triLeads(raidN: number, mountainsSeen: boolean, corrupt: readonl
 export function stepTriangulo(w, targets, goal, terrain, dt, rng): string | null; // same walk as the Gata
 export function rockTarget(w: { x: number; z: number }, structures: readonly { id: number; kind: string; x: number; z: number }[]): number | null;
 ```
-- [ ] **Step 1: failing tests.** Pure: `triLeads` truth table (1 → false, 4/7 → true, never with `gataLeads` for the same n); `rockTarget` picks the nearest non-Heart within 25 m, null with only the Heart. Sim: raid 4 with mountains seen: warning "El Triángulo guía el asedio esta noche", one `lieut2` with 340 PV; raid 4 without seen or with 14 cleansed: none; a wall 10 m from him loses 40 after 6 s, the Heart never loses PV to rocks. Killing him: pack flees, near player +2 cuarzo, far none, vision "Mis rocas". Version → 38.
-- [ ] **Step 2: implement.**
-- [ ] **Step 3:** green, self-review, commit `feat(aventura): El Triángulo guía asedios (protocolo v38)`.
+- [x] **Step 1: failing tests.** Pure: `triLeads` truth table (1 → false, 4/7 → true, never with `gataLeads` for the same n); `rockTarget` picks the nearest non-Heart within 25 m, null with only the Heart. Sim: raid 4 with mountains seen: warning "El Triángulo guía el asedio esta noche", one `lieut2` with 340 PV; raid 4 without seen or with 14 cleansed: none; a wall 10 m from him loses 40 after 6 s, the Heart never loses PV to rocks. Killing him: pack flees, near player +2 cuarzo, far none, vision "Mis rocas". Version → 38.
+- [x] **Step 2: implement.**
+- [x] **Step 3:** green, self-review, commit `feat(aventura): El Triángulo guía asedios (protocolo v38)`.
 
 ### Task 4: Client — El Triángulo as a paper cutout
 
 **Files:** Modify `src/client/game.ts`.
-- [ ] **Step 1:** `TRIANGULO_IMG = '/enemies/enemy7.png'` (455 × 469, real alpha), `PaperActor(TRIANGULO_IMG, 2.8, camera, 455 / 469)` for `lieut2`, white tint. `check` + `build`.
-- [ ] **Step 2:** green, self-review, commit `feat(aventura): cliente de El Triángulo`.
+- [x] **Step 1:** `TRIANGULO_IMG = '/enemies/enemy7.png'` (455 × 469, real alpha), `PaperActor(TRIANGULO_IMG, 2.8, camera, 455 / 469)` for `lieut2`, white tint. `check` + `build`.
+- [x] **Step 2:** green, self-review, commit `feat(aventura): cliente de El Triángulo`.
 
 ### Task 5: Ship
 
-- [ ] Push `aventura/resto`; append "Slice 4 · S4-D" to `docs/superpowers/HANDOFF-aventura.md`; one short comment on PR #3. No merge, no deploy.
+- [x] Push `aventura/resto`; append "Slice 4 · S4-D" to `docs/superpowers/HANDOFF-aventura.md`; one short comment on PR #3. No merge, no deploy.
