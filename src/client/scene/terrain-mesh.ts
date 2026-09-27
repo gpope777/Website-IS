@@ -5,6 +5,7 @@ import { inCienaga } from '../../shared/coast';
 import { ZARZAL, zarzalAt } from '../../shared/swamp';
 import { createRng } from '../../shared/rng';
 import { taintAt, type Zone } from '../../shared/corruption';
+import { patchSway } from './patches';
 
 const TAINT = new THREE.Color(0x5a3a6e);
 
@@ -230,8 +231,10 @@ export function buildThorns(terrain: Terrain, seed: number, count = 220): THREE.
 }
 
 /** Decorative pines on the Faldas' gentle slopes, away from the chute and the paredes: one draw call, no collision. */
-export function buildPines(terrain: Terrain, seed: number, count = 150): THREE.InstancedMesh {
-  const mesh = new THREE.InstancedMesh(new THREE.ConeGeometry(1.1, 4.5, 6), new THREE.MeshLambertMaterial({ color: 0x2c4a32 }), count);
+export function buildPines(terrain: Terrain, seed: number, waves = 1, count = 150): THREE.InstancedMesh {
+  const mat = new THREE.MeshLambertMaterial({ color: 0x2c4a32 });
+  patchSway(mat, { base: -1, span: 3.25, amp: 0.25, waves }); // V2-C: the top sways
+  const mesh = new THREE.InstancedMesh(new THREE.ConeGeometry(1.1, 4.5, 6), mat, count);
   const { paredes } = mountainFeatures(seed);
   const rng = createRng(seed ^ 0x9171e5);
   const m = new THREE.Matrix4();

@@ -66,14 +66,12 @@ import type { PerfStop } from './perf-hook';
 
 /** Resources are drawn within drawDistance × this (the fog is opaque from drawDistance × 0.8) plus a crown's height. */
 const NEAR_RADIUS = 0.9;
-/** Grass tufts (0.9 m tall) are specks past this. */
-const GRASS_NEAR = 70;
 /** V2-A: `?perf=1` exposes window.__perf for `npm run perf`. Only in dev and `--mode perf` builds; production strips it. */
 const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
 const OFFER_KEY = 'bosque.tierOffer';
 
 import { DayLight } from './scene/sky';
-import { patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
+import { LIFE_UNIFORMS, patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
 import { biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
@@ -110,8 +108,8 @@ import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, c
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
-import { buildGrass, ResourceMeshes } from './scene/vegetation';
-import { NearInstances } from './scene/near-instances';
+import { ResourceMeshes } from './scene/vegetation';
+import { GrassField } from './scene/grass';
 import { TouchControls, isTouchDevice } from './touch';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
@@ -403,7 +401,9 @@ export class Game {
   /** Resource spawns inside a crag: hidden and uncollided on the client. */
   private readonly buried = new Set<number>();
   private resMeshes: ResourceMeshes | null = null;
-  private grass: NearInstances | null = null;
+  private grass: GrassField | null = null;
+  /** V2-C: 0 calm, 0.5 rain, 1 storm (stronger wind). */
+  private windStorm = 0;
   private readonly tmpFwd = new THREE.Vector3();
   private readonly skyLook = newLook();
   private readonly lookTarget = newLook();
@@ -648,7 +648,7 @@ export class Game {
     const plain = withDungeon(createTerrain(seed));
     this.terrain = withLookout(withGrieta(withEscalera(plain, () => this.escaleraUp), () => this.ending), () => this.ending);
     this.spawns = generateResources(this.terrain, seed);
-    this.resMeshes = new ResourceMeshes(this.spawns, t.shadows);
+    this.resMeshes = new ResourceMeshes(this.spawns, t.shadows, this.tier === 'low' ? 1 : 2);
     this.crags = generateCrags(this.terrain, seed);
     const forest = generateShrines(this.terrain, seed, this.crags);
     this.shrines = [...forest, ...generateCoastShrines(this.terrain, seed), ...generateSwampShrines(this.terrain, seed), ...generateMountainShrines(this.terrain, seed)];
@@ -707,7 +707,7 @@ export class Game {
       this.scene.add(detail, silhouette);
       return { chunk, detail, silhouette };
     });
-    this.scene.add(buildPines(this.terrain, seed));
+    this.scene.add(buildPines(this.terrain, seed, this.tier === 'low' ? 1 : 2));
     // S5-A: las Tierras Corruptas, 4 chunks like the mountains, all hidden from the south.
     this.corruptMeshes = corruptChunks(t.terrainSegments, corruptFeatures(seed).steps).map((chunk) => {
       const detail = buildTerrainMesh(ground, chunk.detail);
@@ -739,7 +739,7 @@ export class Game {
     this.scene.add(this.rescueMeshes.group);
     this.corruptKey = '';
     this.scene.add(this.corruptionMeshes.group);
-    this.scene.add(this.ground, buildWater(), this.grassNear(buildGrass(this.terrain, t.grass, seed)), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
+    this.scene.add(this.ground, buildWater(), (this.grass = new GrassField(this.terrain, seed, t, this.tier)).group, this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
     const solid = this.climbList;
     for (const s of this.spawns) {
@@ -1931,7 +1931,8 @@ export class Game {
     if (this.lookFresh) easeLook(this.skyLook, this.lookTarget, dt);
     else copyLook(this.skyLook, this.lookTarget);
     this.lookFresh = true;
-    this.light.update(frac, focus, this.skyLook, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, stormDim(here), performance.now() / 1000);
+    this.windStorm = stormDim(here);
+    this.light.update(frac, focus, this.skyLook, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, this.windStorm, performance.now() / 1000);
     // Deep in the swamp the fog hides everything past 70 m: a shorter far plane saves phones some work.
     const far = fog >= 1 ? Math.min(SWAMP_FAR, TIERS[this.tier].drawDistance) : TIERS[this.tier].drawDistance;
     if (this.camera.far !== far) {
@@ -1983,11 +1984,22 @@ export class Game {
     const fogCol = (this.scene.fog as THREE.Fog | null)?.color;
     if (fogCol) WORLD_UNIFORMS.fogSunCol.value.copy(fogCol).lerp(this.skyLook.sun, 0.6 * this.light.daylight);
     WORLD_UNIFORMS.fogSunDir.value.copy(this.light.sunDirection);
-  }
-
-  private grassNear(g: { mesh: THREE.InstancedMesh; near: NearInstances }): THREE.InstancedMesh {
-    this.grass = g.near;
-    return g.mesh;
+    // V2-C: wind for grass, crowns, pines and awnings; on high the grass bends away from nearby players.
+    LIFE_UNIFORMS.windT.value = performance.now() / 1000;
+    LIFE_UNIFORMS.windAmp.value = 1 + this.windStorm * 1.2;
+    if (this.tier === 'high') {
+      const press = LIFE_UNIFORMS.pressPos.value;
+      const b = this.body;
+      press[0]!.set(b?.x ?? 0, b?.y ?? -1e4, b?.z ?? 0, b ? 1 : 0);
+      let i = 1;
+      for (const r of this.others.values()) {
+        if (i >= press.length) break;
+        const p = r.actor.root.position;
+        if (Math.hypot(p.x - x, p.z - z) > 30) continue;
+        press[i++]!.set(p.x, p.y, p.z, 1);
+      }
+      for (; i < press.length; i++) press[i]!.set(0, -1e4, 0, 0);
+    }
   }
 
   /** V2-B perf: only trees, rocks, bushes and grass near the camera go to the GPU (past the fog they are invisible anyway). */
@@ -1997,7 +2009,7 @@ export class Game {
     const f = Math.hypot(fwd.x, fwd.z) > 0.2 ? { x: fwd.x, z: fwd.z } : null;
     const r = TIERS[this.tier].drawDistance * NEAR_RADIUS;
     this.resMeshes?.update(c.x, c.z, r, f);
-    this.grass?.update(c.x, c.z, Math.min(r, GRASS_NEAR), f);
+    this.grass?.update(c.x, c.z);
   }
 
   /** Parked and wild deer from the snapshot, plus one under every rider (us included). */

@@ -24,7 +24,7 @@ export interface GrassLook {
 /** 'tierras' is the purified meadow: the Tierras only grow grass once El Marchito falls. */
 export const GRASS: Record<GrassBiome, GrassLook> = {
   bosque: { root: 0x2f5a22, tip: 0x9cc04a, height: 0.55, density: 1 },
-  costa: { root: 0x8a8a5a, tip: 0xd8d09a, height: 0.8, density: 0.4 },
+  costa: { root: 0x8a8a5a, tip: 0xd8d09a, height: 0.6, density: 0.4 },
   pantano: { root: 0x1f2e18, tip: 0x5a6a30, height: 0.95, density: 0.5 },
   montanas: { root: 0x3a5a36, tip: 0x88a868, height: 0.35, density: 0.7 },
   tierras: { root: 0x6a8a4a, tip: 0xe8ecc0, height: 0.5, density: 0.8 },

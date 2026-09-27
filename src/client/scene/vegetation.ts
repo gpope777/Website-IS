@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createRng } from '../../shared/rng';
-import { COAST_Z0, HALF, WATER_LEVEL, type Terrain } from '../../shared/terrain';
 import type { ResourceSpawn } from '../../shared/resources';
 import { NearInstances } from './near-instances';
+import { patchSway } from './patches';
 
 /** Paints a whole geometry one colour (vertex colours, linear), so parts of one plant merge into one draw call. */
 function painted(geo: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
@@ -26,7 +25,7 @@ export class ResourceMeshes {
   private readonly slots: { near: NearInstances; index: number }[] = [];
   private readonly kinds: NearInstances[] = [];
 
-  constructor(spawns: ResourceSpawn[], shadows: boolean) {
+  constructor(spawns: ResourceSpawn[], shadows: boolean, waves = 1) {
     const treeGeo = mergeGeometries([
       painted(new THREE.CylinderGeometry(0.22, 0.38, 4.5, 7).translate(0, 2.25, 0), 0x5b3f26),
       painted(new THREE.ConeGeometry(2.1, 6.5, 8).translate(0, 7, 0), 0x2e6b33),
@@ -52,6 +51,9 @@ export class ResourceMeshes {
     const tree = make(treeGeo, count('tree'), new THREE.MeshLambertMaterial({ vertexColors: true }));
     const rock = make(rockGeo, count('rock'), new THREE.MeshLambertMaterial({ color: 0x8a8c86, flatShading: true }));
     const bush = make(bushGeo, count('bush'), new THREE.MeshLambertMaterial({ vertexColors: true }));
+    // V2-C: crowns (above the trunk) and bushes sway; crowns go ash-violet inside corrupt zones.
+    patchSway(tree.material as THREE.Material, { base: 4.5, span: 8, amp: 0.35, taint: true, waves });
+    patchSway(bush.material as THREE.Material, { base: -0.3, span: 1.2, amp: 0.06, waves });
 
     const lists = { tree: [] as THREE.Matrix4[], rock: [] as THREE.Matrix4[], bush: [] as THREE.Matrix4[] };
     const q = new THREE.Quaternion();
@@ -91,29 +93,4 @@ export class ResourceMeshes {
   update(cx: number, cz: number, radius: number, fwd: { x: number; z: number } | null): void {
     for (const k of this.kinds) k.update(cx, cz, radius, fwd);
   }
-}
-
-/** Decorative grass tufts (not harvestable). Wind sway and density shaders come in sub-project #2. */
-export function buildGrass(terrain: Terrain, count: number, seed: number): { mesh: THREE.InstancedMesh; near: NearInstances } {
-  const geo = new THREE.ConeGeometry(0.25, 0.9, 3).translate(0, 0.45, 0);
-  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0x7fae4a, side: THREE.DoubleSide }), count);
-  const rng = createRng(seed ^ 0x6a55);
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  const list: THREE.Matrix4[] = [];
-  let n = 0;
-  for (let tries = 0; tries < count * 4 && n < count; tries++) {
-    const x = (rng() * 2 - 1) * (HALF - 6);
-    const z = (rng() * 2 - 1) * (HALF - 6);
-    const h = terrain.heightAt(x, z);
-    if (z >= COAST_Z0 || h < WATER_LEVEL + 0.2 || terrain.density(x, z) > 0.55) continue; // grass is the forest's
-    const s = 0.7 + rng() * 0.8;
-    q.setFromAxisAngle(up, rng() * Math.PI);
-    list.push(new THREE.Matrix4().compose(new THREE.Vector3(x, h - 0.05, z), q, new THREE.Vector3(s, s, s)));
-    n++;
-  }
-  mesh.name = 'grass';
-  const near = new NearInstances([mesh], list);
-  near.update(0, 0, Infinity, null);
-  return { mesh, near };
 }

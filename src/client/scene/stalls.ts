@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Stall } from '../../shared/shop';
 import type { Circle } from '../movement';
+import { patchSway } from './patches';
 
 /** T6-A: a Puesto = counter + 2 posts + awning, one merged geometry, one material (1 draw call). Shared, never disposed. */
 let GEO: THREE.BufferGeometry | null = null;
 const MAT = new THREE.MeshLambertMaterial({ color: 0xb07a48, flatShading: true });
+patchSway(MAT, { base: 2.1, span: 1, amp: 0.12, flap: true, waves: 2 }); // V2-C: the awning flutters
 function geo(): THREE.BufferGeometry {
   if (GEO) return GEO;
   const parts = [
