@@ -32,7 +32,7 @@ export const WHALE = {
   /** Seconds of online time with nobody aboard before it swims home. */
   idle: 600,
   /** Riders sit this high above the water. */
-  height: 2.2,
+  height: 1.2,
   /** Getting off: back on your fish if it waits this close. */
   fishBack: 8,
 } as const;

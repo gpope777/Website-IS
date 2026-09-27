@@ -1,5 +1,6 @@
 import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
+import { seatOffset, WHALE, whaleStepOk } from '../shared/whale';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
@@ -38,6 +39,8 @@ export interface Body {
   riding: boolean;
   /** On the giant fish (from the server): the dungeon island, whose aguas bravas the fish avoids. */
   fish: Islet | null;
+  /** Piloting the whale (from the server): the body is the pilot seat; surface only, 3 m of water. */
+  whale: boolean;
 }
 
 export interface Circle {
@@ -79,7 +82,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false, riding: false, fish: null, whale: false,
   };
 }
 
@@ -108,6 +111,7 @@ export function stepBody(
   b.jumpHeld = input.jump;
   if (b.climb) return stepClimb(b, input, dt, terrain, jumpEdge);
   if (b.fish) return stepFish(b, b.fish, input, camYaw, dt, terrain, bounds);
+  if (b.whale) return stepWhale(b, input, camYaw, dt, terrain, bounds);
 
   const hereH = terrain.heightAt(b.x, b.z);
   const swimming = hereH < SWIM_DEPTH;
@@ -263,6 +267,37 @@ function stepFish(b: Body, island: Islet, input: MoveInput, camYaw: number, dt: 
   Object.assign(b, { vy: 0, onGround: true, gliding: false, climb: null });
   regen(b, dt);
   return { ...RESULT_IDLE, moving, swimming: true };
+}
+
+/** Piloting the whale: 5 m/s (7 sprinting), on the surface, never where the sea is under 3 m (aguas bravas are fine). */
+function stepWhale(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, bounds: Bounds): StepResult {
+  let ix = input.x;
+  let iz = input.z;
+  const mag = Math.hypot(ix, iz);
+  if (mag > 1) {
+    ix /= mag;
+    iz /= mag;
+  }
+  const moving = mag > 0.01;
+  const speed = input.sprint ? WHALE.run : WHALE.walk;
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = ix * c + iz * s;
+  const wz = -ix * s + iz * c;
+  const k = Math.min(1, 1.5 * dt); // heavy: slow to get going
+  b.vx += (wx * speed - b.vx) * k;
+  b.vz += (wz * speed - b.vz) * k;
+  const facing = moving ? Math.atan2(wx, wz) : b.facing;
+  const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
+  const off = seatOffset(0, facing);
+  if (whaleStepOk(terrain, to.x - off.x, to.z - off.z)) {
+    b.x = to.x;
+    b.z = to.z;
+    b.facing = facing;
+  } else b.vx = b.vz = 0; // "La ballena no cabe"
+  Object.assign(b, { y: WATER_LEVEL, vy: 0, onGround: true, gliding: false, climb: null });
+  regen(b, dt);
+  return { ...RESULT_IDLE, moving };
 }
 
 function regen(b: Body, dt: number): void {

@@ -1,10 +1,12 @@
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
-import { coastFeatures, createTerrain, type Islet, type Terrain } from '../shared/terrain';
+import { coastFeatures, createTerrain, type Islet, type Terrain, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishRings, wildFish } from '../shared/fish';
 import { depthAt } from '../shared/coast';
 import { FishMeshes, RaceRings, type FishPose } from './scene/fish';
+import { WhaleMesh } from './scene/whale';
+import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
 import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
@@ -13,7 +15,7 @@ import { MARCHITO } from '../shared/sim/marchito';
 import { mountAction, ringNeedle } from './mount-ui';
 import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
-import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView } from '../shared/protocol';
+import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type HeartView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
 import { dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
 import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
@@ -63,6 +65,8 @@ interface Remote {
   fish: boolean;
   /** Sitting behind this rider. */
   seat: string | null;
+  /** Aboard the whale. */
+  whale: boolean;
   /** Metres per second last frame (the deer's legs). */
   speed: number;
 }
@@ -111,6 +115,11 @@ export class Game {
   private seat: string | null = null;
   private hasSteed = false;
   private fishMeshes: FishMeshes | null = null;
+  private whaleMesh: WhaleMesh | null = null;
+  /** La Ballena from the last snapshot, where we draw it (smoothed), and our seat on it. */
+  private whaleView: WhaleView | null = null;
+  private whaleDraw: { x: number; z: number; yaw: number } | null = null;
+  private whaleSeat: number | null = null;
   private raceRings: RaceRings | null = null;
   /** The wild giant fish and parked ones in view. */
   private fishViews: SteedView[] = [];
@@ -309,6 +318,8 @@ export class Game {
     this.fishMeshes = new FishMeshes(t.shadows);
     this.raceRings = new RaceRings(fishRings(this.terrain, seed, wildFish(this.terrain, seed)));
     this.scene.add(this.fishMeshes.group, this.raceRings.group);
+    this.whaleMesh = new WhaleMesh(t.shadows);
+    this.scene.add(this.whaleMesh.group);
     this.scene.add(this.dungeonMeshes.group);
     this.shrineMeshes = new ShrineMeshes(this.shrines, this.terrain, t.shadows);
     this.zones = allZones(this.terrain, seed, this.entrance);
@@ -362,6 +373,7 @@ export class Game {
     this.shrineMeshes?.sync(m.shrines, this.cleared);
     this.steeds = m.steeds;
     this.fishViews = m.fish;
+    this.whaleView = m.whale;
     const key = m.corrupt.join(',');
     if (key !== this.corruptKey && this.ground) {
       this.corruptKey = key;
@@ -377,6 +389,7 @@ export class Game {
       r.ride = p.ride === 'deer' && !p.dead;
       r.fish = p.ride === 'fish' && !p.dead;
       r.seat = p.dead ? null : p.seat;
+      r.whale = p.ride === 'whale' && !p.dead;
       r.seen = m.time;
     }
     for (const w of m.wolves) {
@@ -436,7 +449,7 @@ export class Game {
   private remote<K>(map: Map<K, Remote>, key: K, make: () => Puppet): Remote {
     let r = map.get(key);
     if (!r) {
-      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, fish: false, seat: null, speed: 0 };
+      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, fish: false, seat: null, whale: false, speed: 0 };
       this.scene.add(r.actor.root);
       map.set(key, r);
     }
@@ -459,6 +472,8 @@ export class Game {
     this.hasFish = self.fish;
     this.onFish = self.onFish;
     this.race = self.race;
+    this.whaleSeat = self.whaleSeat;
+    if (this.body) this.body.whale = self.whaleSeat === 0;
     if (this.body) this.body.riding = self.riding;
     if (this.body) this.body.fish = self.onFish ? this.island : null;
     if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
@@ -677,7 +692,7 @@ export class Game {
     const seated = new Set([...this.others.values()].flatMap((r) => (r.seat ? [r.seat] : [])));
     const riders = [...this.others].flatMap(([name, r]) => (r.ride ? [{ name, x: r.actor.root.position.x, z: r.actor.root.position.z, full: seated.has(name) }] : []));
     const shallow = !!this.terrain && depthAt(this.terrain, b.x, b.z) < FISH.shore;
-    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews });
+    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews, whale: this.whaleView, whaleSeat: this.whaleSeat });
   }
 
   /** One tap on the taming ring: the server judges the needle at our estimate of its clock. */
@@ -778,8 +793,14 @@ export class Game {
     if (!this.dead && rolling) mv = rollInput(b.facing, this.rig.yaw);
     else if (blocking) mv = { x: mv.x * 0.5, z: mv.z * 0.5, sprint: false, jump: false };
     const driver = this.seat ? this.others.get(this.seat) : undefined;
+    const wd = this.whaleDraw;
     let res: ReturnType<typeof stepBody>;
-    if (driver) {
+    if (this.whaleSeat !== null && this.whaleSeat > 0 && wd) {
+      // A whale passenger: the server seats us; follow the whale we draw.
+      const off = seatOffset(this.whaleSeat, wd.yaw);
+      Object.assign(b, { x: wd.x + off.x, y: WATER_LEVEL, z: wd.z + off.z, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, gliding: false });
+      res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
+    } else if (driver) {
       // Sitting behind a rider: follow their deer (the server does the same), no walking of our own.
       const d = driver.actor.root;
       const yaw = d.rotation.y;
@@ -792,7 +813,7 @@ export class Game {
     if (now < this.attackUntil) anim = 'attack';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
-    if (this.riding || this.seat || this.tame || this.onFish) anim = 'idle';
+    if (this.riding || this.seat || this.tame || this.onFish || this.whaleSeat !== null) anim = 'idle';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
 
@@ -815,7 +836,7 @@ export class Game {
     const wild = this.steeds.find((s) => s.owner === null);
     if (this.me) {
       if (this.tame?.beast === 'deer' && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
-      else this.me.setPose(b.x, b.y + (this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : 0), b.z, b.facing);
+      else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third';
@@ -830,6 +851,7 @@ export class Game {
     for (const r of this.allies.values()) this.animateRemote(r, rt, dt);
     this.syncSteeds(dt, wild);
     this.syncFish(dt);
+    this.syncWhale(dt);
 
     const focus = new THREE.Vector3(b.x, b.y, b.z);
     this.light.update(dayFraction(this.serverTime), focus, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0);
@@ -887,11 +909,33 @@ export class Game {
     this.hud.setRace(this.race ? `Anillo ${this.race.i + 1}/${FISH.rings} · ${Math.max(0, Math.ceil(this.race.deadline - this.serverTime))} s` : null);
   }
 
+  /** The whale: under our body when we pilot, else eased toward the snapshot. */
+  private syncWhale(dt: number): void {
+    const w = this.whaleView;
+    const b = this.body!;
+    if (!w) {
+      this.whaleDraw = null;
+      return this.whaleMesh?.sync(null, false, false, 0);
+    }
+    if (this.whaleSeat === 0) {
+      const off = seatOffset(0, b.facing);
+      this.whaleDraw = { x: b.x - off.x, z: b.z - off.z, yaw: b.facing };
+    } else if (!this.whaleDraw || Math.hypot(this.whaleDraw.x - w.x, this.whaleDraw.z - w.z) > 30) this.whaleDraw = { x: w.x, z: w.z, yaw: w.yaw };
+    else {
+      const k = Math.min(1, 6 * dt);
+      const d = this.whaleDraw;
+      d.x += (w.x - d.x) * k;
+      d.z += (w.z - d.z) * k;
+      d.yaw += Math.atan2(Math.sin(w.yaw - d.yaw), Math.cos(w.yaw - d.yaw)) * k;
+    }
+    this.whaleMesh?.sync(this.whaleDraw, !w.tamed, w.diving, performance.now() / 1000);
+  }
+
   private animateRemote(r: Remote, rt: number, dt: number): void {
     const s = r.buf.at(rt);
     if (s) {
       const before = r.actor.root.position.clone();
-      r.actor.setPose(s.x, s.y + (r.ride || r.seat ? MOUNT.height : r.fish ? FISH.height : 0), s.z, s.yaw);
+      r.actor.setPose(s.x, s.y + (r.whale ? WHALE.height : r.ride || r.seat ? MOUNT.height : r.fish ? FISH.height : 0), s.z, s.yaw);
       r.speed = dt > 0 ? Math.hypot(r.actor.root.position.x - before.x, r.actor.root.position.z - before.z) / dt : 0;
     }
     r.actor.play(r.anim);
@@ -912,7 +956,7 @@ export class Game {
     if (ca) return this.hud.setPrompt(`E · ${ca.label}`);
     const da = this.body && dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName);
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
-    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
+    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 || ma.act === 11 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
     const b = this.body;
     if (this.onFish) return this.hud.setPrompt('Espacio (mantener) · Bucear');
     if (b?.climb) return this.hud.setPrompt('Espacio · Saltar');

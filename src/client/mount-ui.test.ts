@@ -55,3 +55,20 @@ describe('the giant fish', () => {
     expect(mountAction({ ...base, hasFish: true, onFish: true, shallow: false })).toBeNull();
   });
 });
+
+describe('the whale', () => {
+  const w = { x: 6, z: 0, yaw: 0, tamed: false, diving: false, seats: [null, null, null, null] };
+  it('tames the wild whale from 10 m, not while it is under', () => {
+    expect(mountAction({ ...base, whale: w })).toEqual({ act: 9, label: 'Domar la ballena' });
+    expect(mountAction({ ...base, whale: { ...w, x: 12 } })).toBeNull();
+    expect(mountAction({ ...base, whale: { ...w, diving: true } })).toBeNull();
+  });
+  it('boards the tamed whale from 5 m if a seat is free, and gets off', () => {
+    const t = { ...w, x: 4, tamed: true };
+    expect(mountAction({ ...base, whale: t })).toEqual({ act: 10, label: 'Subir a la ballena' });
+    expect(mountAction({ ...base, whale: { ...t, x: 6 } })).toBeNull();
+    expect(mountAction({ ...base, whale: { ...t, seats: ['a', 'b', 'c', 'd'] } })).toBeNull();
+    expect(mountAction({ ...base, whale: t, whaleSeat: 2 })).toEqual({ act: 11, label: 'Bajar de la ballena' });
+    expect(mountAction({ ...base, onFish: true, whale: t })).toEqual({ act: 10, label: 'Subir a la ballena' });
+  });
+});

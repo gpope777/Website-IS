@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
 import { coastFeatures, createTerrain, HALF, WATER_LEVEL } from '../shared/terrain';
-import { FISH, fishFloor, fishStepOk, wildFish } from '../shared/fish';
+import { FISH, fishFloor, fishStepOk, inBravas, wildFish } from '../shared/fish';
+import { seatOffset, WHALE, whaleStepOk, wildWhale } from '../shared/whale';
 import { CIENAGA, depthAt, SWIM_MAX_DEPTH } from '../shared/coast';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
@@ -376,5 +377,39 @@ describe('riding the giant fish', () => {
     expect(b.y).toBeCloseTo(fishFloor(t, b.x, b.z), 1);
     run({ x: 0, z: 0, sprint: false, jump: false }, 10, t, none, 0, [], b);
     expect(b.y).toBeCloseTo(WATER_LEVEL - 0.9, 5);
+  });
+});
+
+describe('piloting the whale', () => {
+  const t = createTerrain(42);
+  const { island } = coastFeatures(42);
+  const home = wildWhale(t, 42);
+  const aboard = (x = home.x, z = home.z) => {
+    const b = createBody(x, z, t);
+    b.y = WATER_LEVEL;
+    b.whale = true;
+    return b;
+  };
+  const along = { x: 1, z: 0, sprint: false, jump: false };
+
+  it('swims at 5, 7 sprinting, on the surface', () => {
+    let { b } = run(along, 2, t, none, 0, [], aboard());
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(WHALE.walk, 0);
+    expect(b.y).toBe(WATER_LEVEL);
+    ({ b } = run({ ...along, sprint: true }, 2, t, none, 0, [], aboard()));
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(WHALE.run, 0);
+  });
+
+  it('stops before shallow water', () => {
+    const b = aboard();
+    run({ x: 0, z: -1, sprint: true, jump: false }, 40, t, none, 0, [], b);
+    const off = seatOffset(0, b.facing);
+    expect(whaleStepOk(t, b.x - off.x, b.z - off.z)).toBe(true);
+  });
+
+  it('goes into the aguas bravas', () => {
+    const b = aboard(island.x, island.z - (island.r + FISH.bravas + 3));
+    run({ x: 0, z: 1, sprint: false, jump: false }, 2, t, none, 0, [], b); // camera yaw 0: +z is back… toward the island
+    expect(inBravas(island, b.x, b.z)).toBe(true);
   });
 });

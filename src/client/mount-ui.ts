@@ -1,6 +1,7 @@
 import { MOUNT, ringAngle } from '../shared/mount';
 import { FISH } from '../shared/fish';
-import type { SteedView, TameView } from '../shared/protocol';
+import { WHALE } from '../shared/whale';
+import type { SteedView, TameView, WhaleView } from '../shared/protocol';
 
 export interface MountCtx {
   pos: { x: number; z: number };
@@ -21,12 +22,22 @@ export interface MountCtx {
   racing?: boolean;
   shallow?: boolean;
   fishes?: readonly SteedView[];
+  /** La Ballena (always in the snapshot) and our seat on it. */
+  whale?: WhaleView | null;
+  whaleSeat?: number | null;
 }
 
 /** The contextual A / E / M action for the deer, if any. The server re-checks everything. */
 export function mountAction(c: MountCtx): { act: number; label: string } | null {
   if (c.tame) return { act: 1, label: '¡Ahora!' };
   if (c.seat) return { act: 5, label: 'Bajar' };
+  if (c.whaleSeat != null) return { act: 11, label: 'Bajar de la ballena' };
+  const w = c.whale;
+  const dw = w ? Math.hypot(w.x - c.pos.x, w.z - c.pos.z) : Infinity;
+  if (w && !c.riding && !c.racing) {
+    if (w.tamed && dw <= WHALE.reach && w.seats.includes(null)) return { act: 10, label: 'Subir a la ballena' };
+    if (!w.tamed && !w.diving && dw <= WHALE.tameReach) return { act: 9, label: 'Domar la ballena' };
+  }
   if (c.riding) return { act: 3, label: 'Bajar del ciervo' };
   if (c.onFish) return c.shallow ? { act: 8, label: 'Bajar del pez' } : null;
   if (c.racing) return null;
