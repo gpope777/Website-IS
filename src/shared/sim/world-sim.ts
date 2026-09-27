@@ -48,7 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
-import { addKillXp, canLearn, hasSkill, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, type SkillId } from '../progression';
+import { addKillXp, canLearn, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
@@ -152,6 +152,8 @@ export interface SavedPlayer {
   killDay?: { day: number; xp: number };
   /** P4-B: oficios learned (ids from SKILL_IDS). Optional. */
   skills?: string[];
+  /** P4-C: colour and hat. Optional: older saves wear the default. */
+  look?: { color: number; hat: number };
 }
 
 export interface SavedWorld {
@@ -738,6 +740,8 @@ export class WorldSim {
         return this.onLearn(p, msg.id);
       case 'forget':
         return this.onForget(p);
+      case 'look':
+        return this.onLook(p, msg.color, msg.hat);
       case 'hello':
         return; // the room handles hello
     }
@@ -906,7 +910,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ...(ol.riding && o.star ? { star: true } : {}), ride: ol.dragon ? 'dragon' : ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0 });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ...(ol.riding && o.star ? { star: true } : {}), ride: ol.dragon ? 'dragon' : ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0, ...this.lookField(o) });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -1284,6 +1288,24 @@ export class WorldSim {
     p.inv = removeAll(p.inv, { berries: SKILL_FX.forgetCost });
     p.skills = [];
     this.tell(p.name, `Olvidas tus ${NAMES.skills.toLowerCase()}. Los puntos vuelven`);
+  }
+
+  /** P4-C: wear a colour and a hat (the hat must be unlocked). */
+  private onLook(p: SavedPlayer, color: number, hat: number): void {
+    if (!hatUnlocked({ ...p, ending: this.ending }, hat)) return this.tell(p.name, HAT_HINTS[HAT_IDS[hat - 1]!]);
+    p.look = { color, hat };
+  }
+
+  /** P4-C: others only hear about a look that isn't the default. */
+  private lookField(p: SavedPlayer): { look?: Look } {
+    const l = this.lookOf(p);
+    return l.color || l.hat ? { look: l } : {};
+  }
+
+  /** P4-C: the saved look, or the default if the save holds something odd. */
+  private lookOf(p: SavedPlayer): Look {
+    const l = p.look;
+    return l && isLook(l.color, l.hat) && hatUnlocked({ ...p, ending: this.ending }, l.hat) ? { color: l.color, hat: l.hat } : { ...DEFAULT_LOOK };
   }
 
   private onUpgrade(p: SavedPlayer): void {
@@ -3857,6 +3879,8 @@ export class WorldSim {
       xp: this.xpOf(p),
       rank: rankOf(this.xpOf(p)),
       skills: (p.skills ?? []).filter((x): x is SkillId => (SKILL_IDS as readonly string[]).includes(x)),
+      look: this.lookOf(p),
+      hats: unlockedHats({ ...p, ending: this.ending }),
     };
   }
 
