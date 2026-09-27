@@ -42,7 +42,7 @@ const dry = (t: Terrain, x: number, z: number) => t.heightAt(x, z) >= WATER_LEVE
 const inMound = (m: Mound, p: { x: number; z: number }) => Math.hypot(m.x - p.x, m.z - p.z) < m.r;
 
 /** Which montículos the frog, Candiles and Turba use (amber trees keep off them). */
-function claimed(t: Terrain, seed: number): { frog: number; candles: number; peat: number; mounds: Mound[] } {
+export function claimedMounds(t: Terrain, seed: number): { frog: number; candles: number; peat: number; mounds: Mound[] } {
   const { mounds } = swampFeatures(seed);
   const frog = mounds.findIndex((m) => inMound(m, wildFrog(t, seed)));
   let candles = -1;
@@ -75,7 +75,7 @@ function shrine(t: Terrain, id: number, kind: Shrine['kind'], x: number, z: numb
 export function generateSwampShrines(t: Terrain, seed: number): Shrine[] {
   const rng = createRng(seed ^ 0x5a4b);
   const S = SWAMP_SHRINE;
-  const { candles: ci, peat: pi, mounds } = claimed(t, seed);
+  const { candles: ci, peat: pi, mounds } = claimedMounds(t, seed);
   const cm = mounds[ci]!;
   const spin = rng() * Math.PI * 2;
   let r: number = S.brazierR;
@@ -122,7 +122,7 @@ export function lilyPadCrags(s: Shrine, up: readonly boolean[]): Crag[] {
 /** 6 trees on free montículos (seeded order); the first 2 stand on a bare stump 6 m tall. */
 export function generateAmberTrees(t: Terrain, seed: number): AmberTree[] {
   const rng = createRng(seed ^ 0xa3be7);
-  const { frog, candles, peat, mounds } = claimed(t, seed);
+  const { frog, candles, peat, mounds } = claimedMounds(t, seed);
   const free = mounds.map((_, i) => i).filter((i) => i !== frog && i !== candles && i !== peat && dry(t, mounds[i]!.x, mounds[i]!.z));
   for (let i = free.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));

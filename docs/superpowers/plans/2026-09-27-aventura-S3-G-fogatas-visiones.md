@@ -35,7 +35,7 @@
 
 **Files:** Create `src/shared/fogatas.ts` + test; Modify `src/shared/sim/marchito.ts`.
 
-- [ ] **Step 1: failing tests.** `generateFogatas(t, seed)` gives 4 fogatas with ids 0–3, each on dry ground inside the swamp, on a montículo no shrine/frog uses, ≥ 2.5 m from every amber tree, ≥ 20 m apart, the same for the same seed. `VISION.swamp(name)` names the player; `VISION.knot(names)` names who burnt it.
+- [ ] **Step 1: failing tests.** `generateFogatas(t, seed)` gives 4 fogatas with ids 0–3, each on dry ground inside the swamp, on a montículo no shrine/frog uses, ≥ 2.5 m from every amber tree, ≥ 10 m apart, the same for the same seed. `VISION.swamp(name)` names the player; `VISION.knot(names)` names who burnt it.
 - [ ] **Step 2: implement** (`FOGATA = { count: 4, light: 4, reach: 3, channel: 5, drift: 1.5, arrive: 2 }`).
 - [ ] **Step 3:** green, self-review, commit `feat(aventura): reglas de las fogatas del Pantano`.
 
