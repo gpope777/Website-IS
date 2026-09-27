@@ -42,7 +42,7 @@ function totals(sim: WorldSim): Record<string, number> {
 
 describe('el Puesto (T6-A, server)', () => {
   it('protocol 59; decodeClient checks the stall messages', () => {
-    expect(PROTOCOL_VERSION).toBe(60);
+    expect(PROTOCOL_VERSION).toBe(61);
     expect(decodeClient('{"t":"stallPlace","x":1,"z":2,"rot":0}')).toEqual({ t: 'stallPlace', x: 1, z: 2, rot: 0 });
     expect(decodeClient('{"t":"stallSet","shelf":3,"give":"pearl","n":1,"want":"berries","m":6}')).toEqual({ t: 'stallSet', shelf: 3, give: 'pearl', n: 1, want: 'berries', m: 6 });
     expect(decodeClient('{"t":"stallSet","shelf":4,"give":"pearl","n":1,"want":"berries","m":6}')).toBeNull();

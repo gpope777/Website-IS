@@ -48,7 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
-import { buy, canPlaceStall, collectTill, newStall, pickUp, restock, setShelf, STALL, takeShelf, type ShopResult, type Stall } from '../shop';
+import { buy, canPlaceStall, collectTill, newStall, offerInv, pickUp, restock, setShelf, STALL, takeShelf, trade, TRADE, type ShopResult, type Stall, type TradeLine } from '../shop';
 import { addKillXp, BOSS_KINDS, bossesOf, canLearn, FEAT_FAST, FEAT_HAT, FEAT_HEART, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
@@ -306,7 +306,13 @@ interface Live {
   pull?: { id: number; at: number } | null;
   /** T6-B: sim time this player may buy again (live-only). */
   buyReadyAt?: number;
+  /** T6-C: sim time this player may ask for a trade again, and the "No"s in a row per target (live-only). */
+  askReadyAt?: number;
+  noes?: Record<string, { n: number; until: number }>;
 }
+
+/** T6-C: an open trade (live-only: a restart drops it, and nothing moved before the close). */
+interface Trade { a: string; b: string; open: boolean; la: TradeLine[]; lb: TradeLine[]; okA: boolean; okB: boolean; at: number }
 
 type Beast = 'deer' | 'fish' | 'frog' | 'dragon' | 'star';
 const roundsOf = (beast: Beast): readonly { speed: number; width: number }[] => (beast === 'fish' ? FISH.rounds : beast === 'frog' ? FROG.rounds : beast === 'dragon' ? DRAGON.rounds : beast === 'star' ? ESTRELLA.rounds : MOUNT.rounds);
@@ -568,6 +574,10 @@ export class WorldSim {
   private readonly bossHurt = new Set<string>();
   private wasNight = false; // false on load so a night-time load still spawns wolves
   private outbox: Outgoing[] = [];
+  /** T6-C: open trades (live-only). */
+  private trades: Trade[] = [];
+  /** T6-C: a trade closed: the room saves the row right away. */
+  private saveSoon = false;
   private readonly rng: () => number;
 
   constructor(saved: SavedWorld) {
@@ -704,6 +714,7 @@ export class WorldSim {
     if (!l) return;
     l.awayFor = 0;
     l.anim = 'idle';
+    this.cancelTradeOf(name, `${name} se fue`);
     l.guard = newGuard();
   }
 
@@ -784,6 +795,16 @@ export class WorldSim {
         return this.onBuy(p, msg.stall, msg.shelf);
       case 'stallTill':
         return this.onStall(p, (s, inv) => collectTill(s, inv));
+      case 'tradeAsk':
+        return this.onTradeAsk(p, l, msg.to);
+      case 'tradeAnswer':
+        return this.onTradeAnswer(p, msg.yes);
+      case 'tradeOffer':
+        return this.onTradeOffer(p, msg.lines);
+      case 'tradeOk':
+        return this.onTradeOk(p);
+      case 'tradeCancel':
+        return this.cancelTradeOf(p.name, `${p.name} no quiere`);
       case 'hello':
         return; // the room handles hello
     }
@@ -792,6 +813,7 @@ export class WorldSim {
   step(dt: number): void {
     this.time += dt;
     this.checkRanks();
+    this.checkTrades();
     const night = isNight(dayFraction(this.time));
 
     for (const [name, l] of this.live) {
@@ -1410,6 +1432,116 @@ export class WorldSim {
       const o = this.players.get(s.owner);
       if (o) o.soldSince = (o.soldSince ?? 0) + 1;
     }
+  }
+
+  /** T6-C: true once after a trade closed; the room persists at once. */
+  takeSave(): boolean {
+    const v = this.saveSoon;
+    this.saveSoon = false;
+    return v;
+  }
+
+  private tradeOf(name: string): Trade | undefined {
+    return this.trades.find((t) => t.a === name || t.b === name);
+  }
+
+  private sendTrade(t: Trade): void {
+    for (const side of [0, 1] as const) {
+      const me = side ? t.b : t.a;
+      this.outbox.push({ to: me, msg: { t: 'trade', tr: { with: side ? t.a : t.b, asker: !side, open: t.open, mine: structuredClone(side ? t.lb : t.la), theirs: structuredClone(side ? t.la : t.lb), okMine: side ? t.okB : t.okA, okTheirs: side ? t.okA : t.okB } } });
+    }
+  }
+
+  private closeTrade(t: Trade, why: string | null): void {
+    this.trades = this.trades.filter((x) => x !== t);
+    for (const n of [t.a, t.b]) {
+      this.outbox.push({ to: n, msg: { t: 'trade', tr: null } });
+      if (why) this.tell(n, why);
+    }
+  }
+
+  private cancelTradeOf(name: string, why: string): void {
+    const t = this.tradeOf(name);
+    if (t) this.closeTrade(t, `Cambio cancelado: ${why}.`);
+  }
+
+  /** T6-C: can this player trade right now (alive, connected, outside the dungeons)? */
+  private canTrade(name: string): boolean {
+    const p = this.players.get(name);
+    const l = this.live.get(name);
+    return !!p && !!l && l.awayFor === null && !p.dead && !inAnyDungeon(p.x, p.z);
+  }
+
+  /** T6-C: every step: a trade ends when someone is gone, dead, in a dungeon, >6 m away, or after 60 s. */
+  private checkTrades(): void {
+    for (const t of [...this.trades]) {
+      const pa = this.players.get(t.a)!;
+      const pb = this.players.get(t.b)!;
+      const bad = !this.canTrade(t.a) ? t.a : !this.canTrade(t.b) ? t.b : null;
+      if (bad) this.closeTrade(t, `Cambio cancelado: ${bad} no puede.`);
+      else if (Math.hypot(pa.x - pb.x, pa.z - pb.z) > TRADE.leash) this.closeTrade(t, 'Cambio cancelado: demasiado lejos.');
+      else if (this.time - t.at >= TRADE.timeout) this.closeTrade(t, 'Cambio cancelado: se acabó el tiempo.');
+    }
+  }
+
+  private onTradeAsk(p: SavedPlayer, l: Live, to: string): void {
+    if (to === p.name || (l.askReadyAt ?? 0) > this.time || !this.canTrade(p.name) || this.tradeOf(p.name)) return;
+    const q = this.players.get(to);
+    if (!q) return;
+    l.askReadyAt = this.time + TRADE.askEvery;
+    const no = l.noes?.[to];
+    if (no && no.until > this.time) return this.tell(p.name, `${to} no quiere cambiar ahora.`);
+    if (!this.canTrade(to)) return this.tell(p.name, `${to} no puede cambiar ahora.`);
+    if (this.tradeOf(to)) return this.tell(p.name, `${to} ya está cambiando.`);
+    if (Math.hypot(q.x - p.x, q.z - p.z) > TRADE.reach) return this.tell(p.name, `Acércate a ${to}.`);
+    const t: Trade = { a: p.name, b: to, open: false, la: [], lb: [], okA: false, okB: false, at: this.time };
+    this.trades.push(t);
+    this.sendTrade(t);
+    this.tell(to, `${p.name} quiere cambiar.`);
+  }
+
+  private onTradeAnswer(p: SavedPlayer, yes: boolean): void {
+    const t = this.tradeOf(p.name);
+    if (!t || t.open || t.b !== p.name) return;
+    const al = this.live.get(t.a);
+    const noes = al ? (al.noes ??= {}) : {};
+    if (yes) {
+      delete noes[p.name];
+      t.open = true;
+      return this.sendTrade(t);
+    }
+    const n = (noes[p.name]?.n ?? 0) + 1;
+    noes[p.name] = n >= TRADE.noMax ? { n: 0, until: this.time + TRADE.noWait } : { n, until: 0 };
+    this.closeTrade(t, null);
+    this.tell(t.a, `${p.name} dice que no.`);
+  }
+
+  private onTradeOffer(p: SavedPlayer, lines: TradeLine[]): void {
+    const t = this.tradeOf(p.name);
+    if (!t || !t.open) return;
+    if (!hasAll(p.inv, offerInv(lines))) return this.tell(p.name, 'No tienes tanto.');
+    if (t.a === p.name) t.la = lines;
+    else t.lb = lines;
+    t.okA = t.okB = false;
+    this.sendTrade(t);
+  }
+
+  /** T6-C: Vale. With both, check everything again and move it all in this call, or nothing. */
+  private onTradeOk(p: SavedPlayer): void {
+    const t = this.tradeOf(p.name);
+    if (!t || !t.open) return;
+    if (t.a === p.name) t.okA = true;
+    else t.okB = true;
+    if (!t.okA || !t.okB) return this.sendTrade(t);
+    const pa = this.players.get(t.a)!;
+    const pb = this.players.get(t.b)!;
+    if (!this.canTrade(t.a) || !this.canTrade(t.b) || Math.hypot(pa.x - pb.x, pa.z - pb.z) > TRADE.leash) return this.closeTrade(t, 'Cambio cancelado.');
+    const r = trade(pa.inv, pb.inv, t.la, t.lb);
+    if (!r.ok) return this.closeTrade(t, `A ${r.side ? t.b : t.a} no le llega: ${ITEM_LABELS[r.item].toLowerCase()}.`);
+    pa.inv = r.a;
+    pb.inv = r.b;
+    this.saveSoon = true;
+    this.closeTrade(t, 'Hecho.');
   }
 
   private onLook(p: SavedPlayer, color: number, hat: number): void {
@@ -4880,6 +5012,7 @@ export class WorldSim {
     if (p.dead) return;
     p.dead = true;
     p.vitals = { ...p.vitals, health: 0 };
+    this.cancelTradeOf(p.name, `${p.name} ha caído`);
     const l = this.live.get(p.name);
     if (l) {
       l.deadAt = this.time;

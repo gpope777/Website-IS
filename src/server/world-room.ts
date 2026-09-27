@@ -48,6 +48,7 @@ export class WorldRoom extends DurableObject<Env> {
     }
     this.sim?.handle(name, msg);
     this.flush();
+    if (this.sim?.takeSave()) this.persist(); // T6-C: a trade touches two people: save it now
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
