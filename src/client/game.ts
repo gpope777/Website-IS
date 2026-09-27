@@ -72,6 +72,9 @@ const ANTENON_IMG = '/enemies/enemy3.png';
 const ANTENON_ASPECT = 512 / 353;
 /** El Marchito in person: the tallest of the nephew's drawings, dyed dark. */
 const MARCHITO_IMG = '/enemies/enemy12.png';
+/** La Gata Araña, the swamp's lieutenant (enemy2.png has real transparency). */
+const GATA_IMG = '/enemies/enemy2.png';
+const GATA_ASPECT = 408 / 512;
 
 interface Remote {
   actor: Puppet;
@@ -471,9 +474,10 @@ export class Game {
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
       if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
+      else if (w.kind === 'lieut1' && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
       else if (w.kind === 'boss2' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.coast.boss?.exposed ? 0xffe9a0 : 0xffffff);
       else if (r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.boss?.weak ? 0x9fc4ff : 0xffffff);
       else if (w.kind === 'elite2' && !r.actor.root.getObjectByName('shield')) {
