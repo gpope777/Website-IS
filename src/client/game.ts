@@ -1,6 +1,7 @@
 import { weatherAt, weatherLine, wetAt, type Weather } from '../shared/weather';
 import { rankLine, rankUpText, RANK_FLASH } from './rank-ui';
-import { dawnCrossed, stormDim, WeatherFx } from './scene/weather';
+import { dawnCrossed, precipKind, stormDim, WeatherFx } from './scene/weather';
+import { AmbientLife } from './scene/ambient';
 import { NAMES } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
@@ -72,7 +73,7 @@ const OFFER_KEY = 'bosque.tierOffer';
 
 import { DayLight } from './scene/sky';
 import { LIFE_UNIFORMS, patchCaustics, patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
-import { biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
+import { biomeOf, biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
 import { buildCrags, buildVine } from './scene/crags';
@@ -418,6 +419,8 @@ export class Game {
   private readonly lookTarget = newLook();
   private lookFresh = false;
   private patchIn = 0;
+  /** V2-D: birds, fireflies, crabs, fish and biome particles. */
+  private life: AmbientLife | null = null;
   /** V2-D: the underwater tint over the canvas. */
   private readonly underDiv = document.createElement('div');
   private body: Body | null = null;
@@ -759,6 +762,9 @@ export class Game {
     this.corruptKey = '';
     this.heal = new HealWaves();
     this.scene.add(this.corruptionMeshes.group);
+    this.life?.group.removeFromParent();
+    this.life = new AmbientLife(this.terrain, seed, this.tier);
+    this.scene.add(this.life.group);
     this.scene.add(this.ground, buildSea(this.terrain, seed, t), (this.grass = new GrassField(this.terrain, seed, t, this.tier)).group, this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
     this.rebuildClimbables();
     const solid = this.climbList;
@@ -1986,6 +1992,7 @@ export class Game {
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
     this.light.dome.follow(this.camera, this.camera.far);
     this.worldShaders(b.x, b.z, dt);
+    this.life?.update({ x: b.x, z: b.z, groundY: terrain.heightAt(b.x, b.z), biome: biomeOf(b.x, b.z), frac, purified: this.purify > 0.5, precip: precipKind(here, terrain.heightAt(b.x, b.z)) !== null, daylight: this.light.daylight, t: performance.now() / 1000, dt, px: this.renderer.domElement.height, cam: this.camera.position });
     this.packNear();
     if (this.guardian?.root.visible) this.guardian.update(dt);
     this.renderer.render(this.scene, this.camera);
