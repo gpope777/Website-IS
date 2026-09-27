@@ -17,6 +17,8 @@ import { FISH, fishFloor, fishStepOk } from '../fish';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
+import { VIENTO } from '../viento';
+import type { Wolf } from './wolves';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -2814,5 +2816,141 @@ describe('coast dungeon (S2-F)', () => {
     expect(snap(sim, 'Ana').self.viento).toBe(false);
     const again = new WorldSim(sim.save());
     expect(again.getPlayer('Ana')!.viento).toBeUndefined();
+  });
+});
+
+describe('Viento (S2-F)', () => {
+  const C = COAST_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const gust = (sim: WorldSim, x: number, z: number, name = 'Ana') => sim.handle(name, { t: 'power', x, z, kind: 'viento' });
+  function windy(...names: string[]) {
+    const sim = setup(...(names.length ? names : ['Ana']));
+    sim.getPlayer('Ana')!.viento = true;
+    return sim;
+  }
+  const ahead = (sim: WorldSim) => {
+    const p = sim.getPlayer('Ana')!;
+    return [p.x, p.z + 2] as const;
+  };
+
+  it('needs the power, and has its own cooldown', () => {
+    const sim = setup('Ana');
+    gust(sim, 0, 2);
+    expect(texts(sim)).toContain('Aún no tienes ese poder');
+    sim.getPlayer('Ana')!.viento = true;
+    sim.getPlayer('Ana')!.enredadera = true;
+    gust(sim, 0, 2);
+    expect(snap(sim, 'Ana').self.windLeft).toBe(VIENTO.cooldown);
+    expect(snap(sim, 'Ana').self.powerLeft).toBe(0);
+    msgs(sim);
+    gust(sim, 0, 2);
+    expect(texts(sim).some((t) => t.startsWith('El viento aún no vuelve'))).toBe(true);
+  });
+
+  it('pushes, stuns and scratches a beast in front; not one behind', () => {
+    const sim = windy();
+    const w = wolfAt(sim, 0, 4);
+    const back = { ...w, id: 7777, z: w.z - 8 } as Wolf;
+    (sim as unknown as { wolves: Wolf[] }).wolves.push(back);
+    const hp = w.hp;
+    const z0 = w.z;
+    gust(sim, ...ahead(sim));
+    expect(w.z - z0).toBeCloseTo(VIENTO.push, 0);
+    expect(w.stun).toBeGreaterThan(0);
+    expect(w.hp).toBeLessThan(hp);
+    expect(back.hp).toBe(hp);
+    expect(back.stun).toBe(0);
+  });
+
+  it('the sea takes pushed beasts, three per gust at most', () => {
+    const sim = windy();
+    let zd = HALF + 60;
+    while (depthAt(sim.terrain, 0, zd) < 6) zd += 1;
+    const w = wolfAt(sim, 0, 0);
+    put(sim, 'Ana', 0, zd - 10);
+    const pack = [w, ...[1, 2, 3].map((i) => ({ ...w, id: 8000 + i }) as Wolf)];
+    (sim as unknown as { wolves: Wolf[] }).wolves = pack;
+    for (const x of pack) Object.assign(x, { x: 0, z: zd - 6, hp: 60, stun: 0 });
+    gust(sim, 0, zd - 8);
+    expect(pack.filter((x) => x.hp <= 0).length).toBe(VIENTO.waterKills);
+    expect(texts(sim)).toContain('Se los lleva el mar');
+  });
+
+  it('bosses and El Marchito barely move', () => {
+    const sim = windy();
+    const w = wolfAt(sim, 0, 4);
+    w.kind = 'elite';
+    const z0 = w.z;
+    gust(sim, ...ahead(sim));
+    expect(w.z - z0).toBeCloseTo(VIENTO.heavyPush, 0);
+  });
+
+  it('slides the coast block over the channel onto the plate: gate 2 opens; the fan opens gate 1', () => {
+    const sim = windy();
+    const e = sim.coastEntrance;
+    put(sim, 'Ana', e.x, e.z + 3);
+    sim.handle('Ana', { t: 'dungeon', act: 8 });
+    put(sim, 'Ana', C.x, C.fan.z - 4);
+    gust(sim, C.x, C.fan.z);
+    expect(snap(sim, 'Ana').dungeon.coast.gates[1]).toBe(true);
+    const b = insideCoast(C.blockStart);
+    const plate = insideCoast(C.plate);
+    for (let i = 0; i < 4 && !snap(sim, 'Ana').dungeon.coast.plate; i++) {
+      const v = snap(sim, 'Ana').dungeon.coast.block;
+      put(sim, 'Ana', v.x, v.z - 2);
+      sim.step(VIENTO.cooldown + 0.1);
+      gust(sim, plate.x, plate.z);
+      sim.step(0.1);
+    }
+    expect(b.z).toBeLessThan(C.channel[0]); // it started on the near side
+    expect(snap(sim, 'Ana').dungeon.coast.plate).toBe(true);
+    expect(snap(sim, 'Ana').dungeon.coast.gates[2]).toBe(true);
+  });
+
+  it('Islote: a gust turns the wheels alone; Marea: a gust slides the pumice', () => {
+    const sim = windy();
+    const fan = sim.shrines.find((s) => s.kind === 'fan')!;
+    const w0 = fan.parts[0]!;
+    put(sim, 'Ana', w0.x - 3, w0.z);
+    gust(sim, w0.x, w0.z);
+    expect(snap(sim, 'Ana').shrines.find((v) => v.id === fan.id)!.open).toBe(true);
+    const tide = sim.shrines.find((s) => s.kind === 'tide')!;
+    const blk = snap(sim, 'Ana').shrines.find((v) => v.id === tide.id)!.block!;
+    put(sim, 'Ana', blk.x, blk.z - 3);
+    sim.step(VIENTO.cooldown + 0.1);
+    gust(sim, blk.x, blk.z);
+    const after = snap(sim, 'Ana').shrines.find((v) => v.id === tide.id)!.block!;
+    expect(after.z - blk.z).toBeCloseTo(VIENTO.slide, 0);
+  });
+
+  it('a gust at a coast root (≤5 m) cleanses it; never the coast Raíz-madre', () => {
+    const sim = windy();
+    const z7 = sim.zones.find((x) => x.id === 7)!;
+    put(sim, 'Ana', z7.x - 3, z7.z);
+    gust(sim, z7.x, z7.z);
+    expect(sim.corrupt()).not.toContain(7);
+    const z6 = sim.zones.find((x) => x.id === 6)!;
+    put(sim, 'Ana', z6.x - 3, z6.z);
+    sim.step(VIENTO.cooldown + 0.1);
+    gust(sim, z6.x, z6.z);
+    expect(sim.corrupt()).toContain(6);
+  });
+
+  it('gliding, the first gust lifts you up to 6 m; the second in the same flight does not', () => {
+    const sim = windy();
+    const p = sim.getPlayer('Ana')!;
+    const g = sim.terrain.heightAt(0, 0);
+    p.y = g + 3.9;
+    const up = (y: number) => {
+      sim.step(0.2);
+      sim.handle('Ana', { t: 'move', x: p.x, y, z: p.z, yaw: 0, anim: 'glide' });
+      return p.y === y;
+    };
+    expect(up(g + 6)).toBe(false);
+    gust(sim, 0, 2);
+    expect(up(g + 9)).toBe(true);
+    sim.step(VIENTO.boostFor + VIENTO.cooldown);
+    gust(sim, 0, 2);
+    expect(up(g + 12)).toBe(false);
   });
 });

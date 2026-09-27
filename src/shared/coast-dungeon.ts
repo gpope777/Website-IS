@@ -26,7 +26,7 @@ export const COAST_DUNGEON = {
   altarReach: 2.5,
   /** Gate 1 is the fan itself. */
   fan: { x: 0, z: 56 },
-  blockStart: { x: 4, z: 61 },
+  blockStart: { x: 4, z: 63 },
   /** The channel's z span; feet only over the bridge (x from the west wall to `bridgeX`). */
   channel: [66, 76],
   bridgeX: -9.5,

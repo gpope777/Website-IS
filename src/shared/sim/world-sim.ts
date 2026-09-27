@@ -1,5 +1,6 @@
 import { NAMES } from '../names';
-import { CIENAGA, deepStepOk, depthAt, inCienaga } from '../coast';
+import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
+import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, WATER_LEVEL, type Terrain } from '../terrain';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
@@ -392,7 +393,7 @@ export class WorldSim {
       case 'shrine':
         return this.onShrine(p, msg.id, msg.part);
       case 'power':
-        return this.onPower(p, l, msg.x, msg.z);
+        return msg.kind === 'viento' ? this.onGust(p, l, msg.x, msg.z) : this.onPower(p, l, msg.x, msg.z);
       case 'mount':
         return this.onMount(p, l, msg.act, msg.at);
       case 'dungeon':
@@ -613,7 +614,8 @@ export class WorldSim {
     // ponytail: above ground + 4 and away from crags you may only go down (falling or gliding).
     // Hovering at a constant height passes; fine for co-op, add a sink-rate check if it's abused.
     // Riders cannot climb (no crag allowance) nor swim.
-    const yOk = m.y > ground - 1 && (m.y < ground + 4 || (!l.riding && m.y < cragCeiling) || m.y <= p.y);
+    const lifted = this.time < l.boostUntil && m.y <= l.boostCeil; // a gust's lift while gliding
+    const yOk = m.y > ground - 1 && (m.y < ground + 4 || (!l.riding && m.y < cragCeiling) || m.y <= p.y || lifted);
     const dryOk = !l.riding || this.terrain.heightAt(m.x, m.z) >= WATER_LEVEL - 0.6;
     // The sea past 4 m turns swimmers back (they may only head shallower); gliders fly over it.
     const swimming = m.y < WATER_LEVEL - 0.5;
@@ -631,6 +633,7 @@ export class WorldSim {
     }
     this.accept(p, l, m);
     if (l.riding) p.steed = { x: r2(p.x), z: r2(p.z) };
+    if (m.y <= ground + 0.5) l.boosted = false; // landed (or swimming): the next flight may lift again
   }
 
   private accept(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
@@ -813,7 +816,6 @@ export class WorldSim {
       }
       if (b.held || Math.hypot(b.x - p.x, b.z - p.z) > SHRINE.partReach) return;
       b.held = p.name;
-      // S2-F: a Viento gust will also slide the block.
       return this.tell(p.name, 'Piedra pómez. Flota, pero pesa. A para soltarla');
     }
     if (s.kind !== 'levers' && s.kind !== 'sunken' && s.kind !== 'fan') return;
@@ -827,7 +829,6 @@ export class WorldSim {
       st.openUntil = this.time + SHRINE.openFor;
       return this.tell(p.name, 'Algo se abre en el santuario');
     }
-    // S2-F: a Viento gust will turn the fan-gate on its own.
     if (s.kind === 'fan') return this.tell(p.name, `La verja-molino no se mueve. Quizá con ${NAMES.powerWind.toLowerCase()}… o con tres manos`);
     return this.tell(p.name, s.kind === 'sunken' ? 'La palanca cede. Falta la otra, y hay prisa' : 'La palanca cede. Falta la otra');
   }
@@ -847,7 +848,7 @@ export class WorldSim {
     this.vines = [...others, { ...plan, owner: p.name, until: this.time + ENREDADERA.life }];
     l.powerReadyAt = this.time + ENREDADERA.cooldown;
     this.tell(p.name, 'Crece una enredadera');
-    // Coast roots wither to Viento, not Enredadera (S2-F).
+    // Coast roots wither to Viento, not Enredadera (see onGust).
     const zn = this.zones.find((z) => z.id !== 0 && !isCoastZone(z.id) && !this.cleansed.has(z.id) && Math.hypot(z.x - plan.x, z.z - plan.z) <= CORRUPTION.cleanseReach);
     if (zn) this.cleanse(zn.id, 'La raíz marchita se seca. El bosque respira');
     const knot = inside(DUNGEON.knot);
@@ -860,6 +861,90 @@ export class WorldSim {
       b.rooted = BOSS.rootFor;
       b.weak = Math.max(b.weak, BOSS.rootFor);
       this.say(`La enredadera atrapa al ${NAMES.bossForestShort}. El papel se desdobla`);
+    }
+  }
+
+  /** Viento: a gust in a cone. Pushes, stuns and scratches enemies (the sea takes beasts), slides pumice, turns fans, cleanses coast roots, lifts a glider once per flight. */
+  private onGust(p: SavedPlayer, l: Live, x: number, z: number): void {
+    if (p.dead) return;
+    if (!p.viento) return this.tell(p.name, 'Aún no tienes ese poder');
+    if (this.time + EPS < l.windReadyAt) return this.tell(p.name, `El viento aún no vuelve (${Math.ceil(l.windReadyAt - this.time - EPS)} s)`);
+    l.windReadyAt = this.time + VIENTO.cooldown;
+    const dir = gustDir(p.x, p.z, x, z);
+    const hits = (tx: number, tz: number, range: number = VIENTO.range) => inGust(p.x, p.z, dir, tx, tz, range);
+    const ground = Math.max(this.terrain.heightAt(p.x, p.z), WATER_LEVEL);
+    if (!l.boosted && p.y > ground + 1.5 && !l.riding && !l.fish && this.seatOf(p.name) === null) {
+      l.boosted = true;
+      l.boostCeil = p.y + VIENTO.boost + 0.5;
+      l.boostUntil = this.time + VIENTO.boostFor;
+    }
+    this.gustEnemies(p, dir, hits);
+    this.gustThings(p, dir, hits);
+  }
+
+  private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.boss ? [this.boss] : []), ...(this.marchito ? [this.marchito] : [])];
+    let drowned = 0;
+    for (const w of foes) {
+      if (w.hp <= 0 || !hits(w.x, w.z)) continue;
+      const heavy = w.kind !== 'wolf' && w.kind !== 'brute';
+      const was = this.terrain.heightAt(w.x, w.z);
+      let to = slide(w.x, w.z, dir, heavy ? VIENTO.heavyPush : VIENTO.push);
+      if (!inAnyDungeon(w.x, w.z)) to = clampMap(to.x, to.z, 3);
+      w.x = to.x;
+      w.z = to.z;
+      w.y = this.terrain.heightAt(w.x, w.z);
+      w.stun = Math.max(w.stun, VIENTO.stun);
+      if (w === this.marchito) {
+        this.wearMarchito(p.name, VIENTO.damage);
+        continue;
+      }
+      this.onGusted(w);
+      if (w === this.boss && this.boss.weak <= 0) continue; // folded paper shrugs off the scratch
+      if (!heavy && drowned < VIENTO.waterKills && depthAt(this.terrain, w.x, w.z) > SWIM_MAX_DEPTH) {
+        drowned++;
+        hitWolf(w, w.hp);
+        this.say('Se los lleva el mar');
+        continue;
+      }
+      const fall = !heavy && w.y < was - VIENTO.ledge ? VIENTO.ledgeDamage : 0;
+      this.strike(p.name, w, VIENTO.damage + fall);
+    }
+  }
+
+  /** Hook for enemies that react to wind (the bruto escudado turns around). */
+  private onGusted(_w: Wolf): void {}
+
+  private gustThings(p: SavedPlayer, dir: Dir, hits: (x: number, z: number, range?: number) => boolean): void {
+    const C = COAST_DUNGEON;
+    const g = this.coastLive;
+    if (inCoastDungeon(p.x, p.z)) {
+      const fan = insideCoast(C.fan);
+      if (!g.fan && hits(fan.x, fan.z)) {
+        g.fan = true;
+        this.say('El molino gira con la ráfaga. La verja se abre');
+      }
+      if (hits(g.block.x, g.block.z)) {
+        const to = slide(g.block.x, g.block.z, dir, VIENTO.slide);
+        g.block.x = Math.max(C.x - C.halfW + 1, Math.min(C.x + C.halfW - 1, to.x));
+        g.block.z = Math.max(C.gatesZ[1] + 1, Math.min(C.gatesZ[2] - 1, to.z));
+      }
+    }
+    this.shrines.forEach((s, id) => {
+      const st = this.shrineLive[id]!;
+      if (s.kind === 'tide' && st.block && !st.block.held && hits(st.block.x, st.block.z)) {
+        const to = slide(st.block.x, st.block.z, dir, VIENTO.slide);
+        Object.assign(st.block, { x: r2(to.x), z: r2(to.z) });
+      }
+      if (s.kind === 'fan' && !this.shrineOpen(id) && s.parts.some((w) => hits(w.x, w.z))) {
+        st.pulled = st.pulled.map(() => this.time);
+        st.openUntil = this.time + SHRINE.openFor;
+        this.tell(p.name, 'El viento gira las tres ruedas a la vez. Algo se abre en el santuario');
+      }
+    });
+    for (const zn of this.zones) {
+      if (!isCoastZone(zn.id) || zn.id === COAST_ZONES.root || this.cleansed.has(zn.id)) continue;
+      if (hits(zn.x, zn.z, VIENTO.rootReach)) this.cleanse(zn.id, 'El viento arranca la raíz marchita. La costa respira');
     }
   }
 

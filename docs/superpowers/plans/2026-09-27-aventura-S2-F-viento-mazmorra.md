@@ -44,7 +44,7 @@ export function slide(x, z, dir, dist): { x: number; z: number };
 
 export const COAST_DUNGEON = { x: HALF + 300, z0: 0, z1: 180, halfW: 12, floor: 30, pad: 10, entryZ: 5, exitReach: 2.5,
   gatesZ: [32, 56, 86, 150], levers: [{ x: -9, z: 22 }, { x: 9, z: 22 }], leverReach: 2.5, leverWindow: 6,
-  altarZ: 44, altarReach: 2.5, fan: { x: 0, z: 56 }, blockStart: { x: 4, z: 61 }, channel: [66, 76], bridgeX: -9.5,
+  altarZ: 44, altarReach: 2.5, fan: { x: 0, z: 56 }, blockStart: { x: 4, z: 63 }, channel: [66, 76], bridgeX: -9.5,
   plate: { x: 4, z: 81 }, plateRadius: 1.6, pit: [96, 116], pitDepth: 20, fallBelow: 4, fallBack: 93, fallDamage: 10,
   eliteRoomZ: 120, eliteZ: 136, bossRoomZ: 150, trunkR: 4, enterReach: 5 } as const;
 export function inCoastDungeon(x, z, pad = 0): boolean;
