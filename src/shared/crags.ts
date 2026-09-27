@@ -17,7 +17,7 @@ export interface Crag {
   top: number;
 }
 
-export const CRAG = { cell: 60, chance: 0.45, minH: 7, maxH: 14, minR: 2.4, maxR: 3.8, spawnClear: 30, maxDensity: 0.45 } as const;
+export const CRAG = { cell: 60, chance: 0.7, minH: 7, maxH: 14, minR: 2.4, maxR: 3.8, spawnClear: 30, maxDensity: 0.55 } as const;
 
 /** One cell every 60 m; every cell consumes exactly 4 rng values so one rule change can't reshuffle the map. */
 export function generateCrags(terrain: Terrain, seed: number): Crag[] {

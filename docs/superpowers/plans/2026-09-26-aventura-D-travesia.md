@@ -85,7 +85,7 @@ describe('crags', () => {
 ```ts
 // crags.ts
 export interface Crag { id: number; x: number; z: number; r: number; base: number; top: number }
-export const CRAG = { cell: 60, chance: 0.45, minH: 7, maxH: 14, minR: 2.4, maxR: 3.8, spawnClear: 30, maxDensity: 0.45 } as const;
+export const CRAG = { cell: 60, chance: 0.7, minH: 7, maxH: 14, minR: 2.4, maxR: 3.8, spawnClear: 30, maxDensity: 0.55 } as const;
 
 /** One cell per 60 m, four rng draws per cell so a rule change can't reshuffle the map. */
 export function generateCrags(terrain: Terrain, seed: number): Crag[] {
