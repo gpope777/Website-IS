@@ -211,7 +211,7 @@ describe('resolveHit', () => {
     g.blockSince = 5 - BLOCK.parryWindow / 2;
     expect(resolveHit(g, 5, 10)).toEqual({ kind: 'parried' });
     g.blockSince = 4;
-    expect(resolveHit(g, 5, 10)).toEqual({ kind: 'blocked', dmg: 2 });
+    expect(resolveHit(g, 5, 10)).toEqual({ kind: 'blocked', dmg: expect.closeTo(2) });
   });
 });
 
@@ -263,9 +263,8 @@ describe('combat', () => {
     const sim = setup('Ana');
     const w = wolfAt(sim, 50); // far away while Ana raises her guard
     sim.handle('Ana', { t: 'block', on: true });
-    sim.time += 1;
     sim.handle('Ana', { t: 'block', on: false });
-    sim.handle('Ana', { t: 'block', on: true }); // within rearm: no fresh parry window
+    sim.handle('Ana', { t: 'block', on: true }); // re-raised within rearm: no fresh parry window
     const p = sim.getPlayer('Ana')!;
     w.x = p.x + 1;
     w.z = p.z;

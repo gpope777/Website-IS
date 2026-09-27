@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { HARVEST } from '../resources';
 import { STRUCTURE_HP } from '../items';
+import { BLOCK, BOW } from './combat';
+import { ENEMY } from './wolves';
 import type { ServerMsg } from '../protocol';
 import { AWAY_TIMEOUT, DAY_LENGTH, newWorld, WorldSim } from './world-sim';
 
@@ -434,5 +436,75 @@ describe('asedios', () => {
     expect(raiders.some((w) => w.kind === 'brute')).toBe(true);
     put(sim, 'Ana', raiders[0]!.x, raiders[0]!.z);
     expect(snap(sim, 'Ana').wolves[0]).toHaveProperty('kind');
+  });
+});
+
+function wolfAt(sim: WorldSim, dx: number, dz = 0) {
+  sim.time = DAY_LENGTH * 0.85;
+  sim.step(0.1);
+  const w = sim.wolfList[0]!;
+  const p = sim.getPlayer('Ana')!;
+  w.x = p.x + dx;
+  w.z = p.z + dz;
+  return w;
+}
+
+describe('combat', () => {
+  it('rolling through a bite takes no damage, then goes on cooldown', () => {
+    const sim = setup('Ana');
+    const w = wolfAt(sim, 1);
+    sim.handle('Ana', { t: 'roll' });
+    sim.step(0.1);
+    expect(sim.getPlayer('Ana')!.vitals.health).toBe(100);
+    expect(w.cooldown).toBeGreaterThan(0); // it did bite
+  });
+
+  it('a well-timed guard parries: no damage, the wolf is stunned and hurt', () => {
+    const sim = setup('Ana');
+    const w = wolfAt(sim, 1);
+    sim.handle('Ana', { t: 'block', on: true });
+    sim.step(0.1);
+    expect(sim.getPlayer('Ana')!.vitals.health).toBe(100);
+    expect(w.stun).toBeGreaterThan(1);
+    expect(w.hp).toBe(ENEMY.wolf.hp - BLOCK.parryDamage);
+    expect(sim.drain().some((o) => o.to === 'Ana' && o.msg.t === 'toast' && o.msg.text === 'Parada')).toBe(true);
+  });
+
+  it('a held guard only blocks most of the damage; spamming it does not re-arm the parry', () => {
+    const sim = setup('Ana');
+    const w = wolfAt(sim, 50); // far away while Ana raises her guard
+    sim.handle('Ana', { t: 'block', on: true });
+    sim.handle('Ana', { t: 'block', on: false });
+    sim.handle('Ana', { t: 'block', on: true }); // re-raised within rearm: no fresh parry window
+    const p = sim.getPlayer('Ana')!;
+    w.x = p.x + 1;
+    w.z = p.z;
+    sim.step(0.1);
+    expect(p.vitals.health).toBeCloseTo(100 - ENEMY.wolf.damage * (1 - BLOCK.reduce));
+    expect(w.stun).toBe(0);
+  });
+
+  it('shoots what is in front and in range, with a cooldown', () => {
+    const sim = setup('Ana');
+    const w = wolfAt(sim, 0, 10); // yaw 0 faces +z
+    sim.handle('Ana', { t: 'shoot', id: w.id });
+    sim.handle('Ana', { t: 'shoot', id: w.id }); // cooldown
+    expect(w.hp).toBe(ENEMY.wolf.hp - BOW.damage);
+    sim.time += 1;
+    sim.getPlayer('Ana')!.yaw = Math.PI; // turned away
+    sim.handle('Ana', { t: 'shoot', id: w.id });
+    expect(w.hp).toBe(ENEMY.wolf.hp - BOW.damage);
+    sim.getPlayer('Ana')!.yaw = 0;
+    w.z = sim.getPlayer('Ana')!.z + BOW.range + 2; // too far
+    sim.handle('Ana', { t: 'shoot', id: w.id });
+    expect(w.hp).toBe(ENEMY.wolf.hp - BOW.damage);
+  });
+
+  it('dead players cannot roll, block or shoot', () => {
+    const sim = setup('Ana');
+    const w = wolfAt(sim, 0, 5);
+    sim.getPlayer('Ana')!.dead = true;
+    sim.handle('Ana', { t: 'shoot', id: w.id });
+    expect(w.hp).toBe(ENEMY.wolf.hp);
   });
 });

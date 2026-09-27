@@ -4,6 +4,7 @@ import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { addItem, BUILD_COST, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
 import { r2, type Anim, type ClientMsg, type PlayerView, type SelfState, type ServerMsg, type Structure, type WolfView } from '../protocol';
+import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
@@ -69,6 +70,8 @@ interface Live {
   harvestReadyAt: number;
   punchReadyAt: number;
   fix: boolean;
+  /** Live-only combat state (roll i-frames, guard, bow cooldown). Never saved. */
+  guard: Guard;
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
@@ -154,7 +157,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard() };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -166,6 +169,7 @@ export class WorldSim {
     if (!l) return;
     l.awayFor = 0;
     l.anim = 'idle';
+    l.guard = newGuard();
   }
 
   handle(name: string, msg: ClientMsg): void {
@@ -187,6 +191,12 @@ export class WorldSim {
         return this.onRespawn(p, l);
       case 'tend':
         return this.onTend(p, msg.id);
+      case 'roll':
+        return this.onRoll(p, l);
+      case 'block':
+        return this.onBlock(p, l, msg.on);
+      case 'shoot':
+        return this.onShoot(p, l, msg.id);
       case 'hello':
         return; // the room handles hello
     }
@@ -229,12 +239,12 @@ export class WorldSim {
       if (w.raid) {
         if (!goal) continue;
         const hit = stepRaider(w, targets, goal, this.terrain, dt, this.rng);
-        if (hit && 'player' in hit) this.bite(hit.player, raiderDamage(w));
+        if (hit && 'player' in hit) this.bite(hit.player, raiderDamage(w), w);
         else if (hit) this.damageStructure(hit.structure, raiderDamage(w));
         continue;
       }
       const bit = stepWolf(w, targets, this.terrain, dt, this.rng);
-      if (bit) this.bite(bit, ENEMY[w.kind].damage);
+      if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
     this.stepSpikes(dt);
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
@@ -388,6 +398,37 @@ export class WorldSim {
     this.tell(p.name, 'El Corazón late con más fuerza');
   }
 
+  private onRoll(p: SavedPlayer, l: Live): void {
+    const g = l.guard;
+    if (p.dead || this.time + EPS < g.rollReadyAt) return;
+    g.rollUntil = this.time + ROLL.iframes;
+    g.rollReadyAt = this.time + ROLL.cooldown;
+    g.blockSince = null;
+    l.anim = 'roll';
+  }
+
+  private onBlock(p: SavedPlayer, l: Live, on: boolean): void {
+    const g = l.guard;
+    if (!on || p.dead) {
+      g.blockSince = null;
+      return;
+    }
+    if (g.blockSince !== null) return;
+    // A guard raised too soon after the last one blocks but cannot parry: no free parry by spamming.
+    g.blockSince = this.time + EPS >= g.blockReadyAt ? this.time : this.time - BLOCK.parryWindow - 1;
+    g.blockReadyAt = this.time + BLOCK.rearm;
+  }
+
+  private onShoot(p: SavedPlayer, l: Live, id: number): void {
+    const w = this.wolves.find((x) => x.id === id);
+    const g = l.guard;
+    if (!w || w.hp <= 0 || p.dead || this.time + EPS < g.bowReadyAt) return;
+    if (Math.hypot(w.x - p.x, w.z - p.z) > BOW.range || !inCone(p.x, p.z, p.yaw, w.x, w.z, BOW.cone)) return;
+    g.bowReadyAt = this.time + BOW.cooldown;
+    l.anim = 'bow';
+    if (hitWolf(w, BOW.damage)) this.say(`${p.name} derrotó a ${ENEMY_LABELS[w.kind]}`);
+  }
+
   private onRespawn(p: SavedPlayer, l: Live): void {
     if (!p.dead) return;
     const sp = this.spawnFor(p.name);
@@ -396,6 +437,7 @@ export class WorldSim {
     p.y = this.terrain.heightAt(sp.x, sp.z);
     p.vitals = { ...RESPAWN_VITALS };
     p.dead = false;
+    l.guard = newGuard();
     l.fix = true;
     l.anchorX = p.x;
     l.anchorZ = p.z;
@@ -533,10 +575,18 @@ export class WorldSim {
     }
   }
 
-  private bite(name: string, dmg: number): void {
+  private bite(name: string, dmg: number, w: Wolf): void {
     const p = this.players.get(name);
     if (!p) return;
-    p.vitals = damage(p.vitals, dmg);
+    const l = this.live.get(name);
+    const out = l ? resolveHit(l.guard, this.time, dmg) : { kind: 'hit' as const, dmg };
+    if (out.kind === 'dodged') return;
+    if (out.kind === 'parried') {
+      w.stun = BLOCK.parryStun;
+      if (hitWolf(w, BLOCK.parryDamage)) this.say(`${name} derrotó a ${ENEMY_LABELS[w.kind]}`);
+      return this.tell(name, 'Parada');
+    }
+    p.vitals = damage(p.vitals, out.dmg);
     if (p.vitals.health <= 0) this.kill(p);
   }
 
