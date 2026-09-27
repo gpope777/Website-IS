@@ -29,3 +29,9 @@ describe('combat keys', () => {
     expect(KEY_ACTIONS.KeyX).toBe('lock');
   });
 });
+
+describe('power key', () => {
+  it('H casts the power', () => {
+    expect(KEY_ACTIONS.KeyH).toBe('power');
+  });
+});

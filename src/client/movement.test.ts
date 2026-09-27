@@ -3,7 +3,7 @@ import type { Terrain } from '../shared/terrain';
 import { HALF, WATER_LEVEL } from '../shared/terrain';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
-import { animFor, createBody, GLIDE, PLAYER_RADIUS, rollInput, SPEED, STAMINA, stepBody, type Body, type MoveInput } from './movement';
+import { animFor, createBody, GLIDE, PLAYER_RADIUS, rollInput, SPEED, STAMINA, staminaFor, stepBody, type Body, type MoveInput } from './movement';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const none = () => [];
@@ -243,6 +243,39 @@ describe('fast swimming', () => {
     expect(b.tired).toBe(true);
     expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(SPEED.swim, 1);
     run({ ...fwd, sprint: true }, 4, lake, none, 0, [], b);
+    expect(b.tired).toBe(false);
+  });
+});
+
+describe('Enredadera and orbs', () => {
+  const idle: MoveInput = { x: 0, z: 0, sprint: false, jump: false };
+  const rock: Crag = { id: 1000, x: 0, z: -3, r: 2, base: -1, top: 8, bare: true };
+
+  it('a bare rock cannot be grabbed, only bumped into', () => {
+    const { b } = run(fwd, 1, flat, none, 0, [rock]);
+    expect(b.climb).toBeNull();
+    expect(Math.hypot(b.x - rock.x, b.z - rock.z)).toBeGreaterThanOrEqual(rock.r + PLAYER_RADIUS - 1e-3);
+  });
+
+  it('you can still stand on top of a bare rock', () => {
+    const b = createBody(0, -3, flat);
+    b.y = rock.top;
+    run(idle, 1, flat, none, 0, [rock], b);
+    expect(b.y).toBeCloseTo(rock.top);
+  });
+
+  it('each orb adds stamina, and the meter refills to the bigger max', () => {
+    expect(staminaFor(0)).toBe(STAMINA.max);
+    expect(staminaFor(2)).toBe(STAMINA.max + 2 * STAMINA.perOrb);
+    const b = createBody(0, 0, flat);
+    expect(b.staminaMax).toBe(STAMINA.max);
+    b.staminaMax = staminaFor(2);
+    b.stamina = 0;
+    b.tired = true;
+    run(idle, STAMINA.max / STAMINA.regen + 0.2, flat, none, 0, [], b);
+    expect(b.tired).toBe(true);
+    run(idle, 2, flat, none, 0, [], b);
+    expect(b.stamina).toBe(staminaFor(2));
     expect(b.tired).toBe(false);
   });
 });

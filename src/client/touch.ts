@@ -48,7 +48,8 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'KeyZ', label: '🛡️', sub: 'bloquear', cls: 'pill', hold: 'block' },
   { code: 'KeyR', label: '🏹', sub: 'arco', cls: 'pill' },
   { code: 'KeyX', label: '🎯', sub: 'fijar', cls: 'pill' },
-  { code: 'KeyC', label: '🎥', sub: 'cámara', cls: 'pill' },
+  // The camera toggle lives in the Menú (and on C); its pill went to the power.
+  { code: 'KeyH', label: '🌿', sub: 'poder', cls: 'pill' },
 ];
 
 const STICK_RADIUS = 52; // px the knob can travel from centre

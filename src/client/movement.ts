@@ -20,8 +20,10 @@ export interface Body {
   onGround: boolean;
   /** Protocol yaw: atan2(dirX, dirZ). */
   facing: number;
-  /** 0..STAMINA.max. Client-side, like the roll dash. */
+  /** 0..staminaMax. Client-side, like the roll dash. */
   stamina: number;
+  /** STAMINA.max plus the shrine orbs (see staminaFor). */
+  staminaMax: number;
   /** Ran dry: no climbing, gliding or fast swimming until the meter is full again. */
   tired: boolean;
   /** The crag being climbed, if any. */
@@ -47,7 +49,7 @@ export interface StepResult {
 
 export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2, swimFast: 4 } as const;
 export const PLAYER_RADIUS = 0.45;
-export const STAMINA = { max: 100, regen: 30, climbMove: 10, climbHold: 3, leap: 20, glide: 4, swimFast: 12 } as const;
+export const STAMINA = { max: 100, regen: 30, climbMove: 10, climbHold: 3, leap: 20, glide: 4, swimFast: 12, perOrb: 20 } as const;
 /** Glide speed stays under the server's MAX_SPEED (9 m/s). */
 export const GLIDE = { speed: 7, sink: 1.6, minHeight: 1.5 } as const;
 /** Metres per second up/down (and around) a crag. */
@@ -57,6 +59,11 @@ const GRAVITY = 14;
 const JUMP_SPEED = 5.2;
 const LEAP = { out: 4, up: 4 } as const;
 
+/** Max stamina with this many upgrade orbs. */
+export function staminaFor(orbs: number): number {
+  return STAMINA.max + orbs * STAMINA.perOrb;
+}
+
 /** Stick input (camera-relative) that moves along `facing`: used for the roll dash. */
 export function rollInput(facing: number, camYaw: number): MoveInput {
   return { x: Math.sin(facing - camYaw), z: Math.cos(facing - camYaw), sprint: true, jump: false };
@@ -65,7 +72,7 @@ export function rollInput(facing: number, camYaw: number): MoveInput {
 export function createBody(x: number, z: number, terrain: Terrain): Body {
   return {
     x, y: Math.max(terrain.heightAt(x, z), SWIM_DEPTH), z, vx: 0, vz: 0, vy: 0, onGround: true, facing: 0,
-    stamina: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false,
+    stamina: STAMINA.max, staminaMax: STAMINA.max, tired: false, climb: null, gliding: false, jumpHeld: false,
   };
 }
 
@@ -142,8 +149,8 @@ export function stepBody(
     const d = Math.hypot(dx, dz);
     const min = PLAYER_RADIUS + cr.r;
     if (d >= min || d < 1e-4) continue;
-    // Pushing the stick at the rock grabs it (fallback B: only marked crags are climbable).
-    if (!swimming && !b.tired && moving && (wx * -dx + wz * -dz) / d > 0.5 * Math.hypot(wx, wz)) {
+    // Pushing the stick at the rock grabs it (fallback B: only marked crags are climbable; bare shrine rocks are not).
+    if (!cr.bare && !swimming && !b.tired && moving && (wx * -dx + wz * -dz) / d > 0.5 * Math.hypot(wx, wz)) {
       b.x = cr.x + (dx / d) * min;
       b.z = cr.z + (dz / d) * min;
       b.climb = cr;
@@ -200,8 +207,8 @@ export function stepBody(
 }
 
 function regen(b: Body, dt: number): void {
-  b.stamina = Math.min(STAMINA.max, b.stamina + STAMINA.regen * dt);
-  if (b.stamina === STAMINA.max) b.tired = false;
+  b.stamina = Math.min(b.staminaMax, b.stamina + STAMINA.regen * dt);
+  if (b.stamina === b.staminaMax) b.tired = false;
 }
 
 /** On a crag: stick forward/back = up/down, strafe = around it. */
