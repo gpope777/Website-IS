@@ -38,6 +38,8 @@ export const DRAGON = {
   /** In a raid, no landing this close to the Heart; the server's floor there (above ground). */
   heartNoLand: 30,
   raidFloor: 5,
+  /** The client holds this far up there. */
+  noLandY: 6,
   /** Rider seat above the dragon, and the cutout's width. */
   height: 1.2,
   width: 8,

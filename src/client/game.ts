@@ -9,6 +9,8 @@ import { depthAt } from '../shared/coast';
 import { FishMeshes, RaceRings, type FishPose } from './scene/fish';
 import { FrogMeshes, LilyPads, type FrogPose } from './scene/frog';
 import { FROG, frogPads, wildFrog } from '../shared/frog';
+import { DRAGON, dragonPos, leapOk, picoOf, type PicoCircle } from '../shared/dragon';
+import { DragonMeshes, DRAGON_SINK, type DragonPose } from './scene/dragon';
 import { WhaleMesh } from './scene/whale';
 import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
@@ -111,6 +113,8 @@ interface Remote {
   fish: boolean;
   /** A player on a frog. */
   frog: boolean;
+  /** A player on a dragon (S4-G). */
+  dragon: boolean;
   /** Sitting behind this rider. */
   seat: string | null;
   /** Aboard the whale. */
@@ -205,6 +209,12 @@ export class Game {
   private race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null = null;
   private frogMeshes: FrogMeshes | null = null;
   private lilyPads: LilyPads | null = null;
+  private dragonMeshes: DragonMeshes | null = null;
+  /** The wild dragon (while out) and parked ones in view. */
+  private dragonViews: SteedView[] = [];
+  private hasDragon = false;
+  private onDragon = false;
+  private pico: PicoCircle | null = null;
   /** The wild frog and parked ones in view. */
   private frogViews: SteedView[] = [];
   private hasFrog = false;
@@ -454,6 +464,9 @@ export class Game {
     this.frogMeshes = new FrogMeshes(t.shadows);
     this.lilyPads = new LilyPads(frogPads(this.terrain, seed, wildFrog(this.terrain, seed)));
     this.scene.add(this.frogMeshes.group, this.lilyPads.group);
+    this.pico = picoOf(this.terrain, seed);
+    this.dragonMeshes = new DragonMeshes(this.camera, this.pico);
+    this.scene.add(this.dragonMeshes.group);
     this.whaleMesh = new WhaleMesh(t.shadows);
     this.scene.add(this.whaleMesh.group);
     this.scene.add(this.dungeonMeshes.group);
@@ -561,6 +574,7 @@ export class Game {
     this.steeds = m.steeds;
     this.fishViews = m.fish;
     this.frogViews = m.frogs;
+    this.dragonViews = m.dragons ?? [];
     this.whaleView = m.whale;
     const key = m.corrupt.join(',');
     if (key !== this.corruptKey && this.ground) {
@@ -578,6 +592,7 @@ export class Game {
       r.ride = p.ride === 'deer' && !p.dead;
       r.fish = p.ride === 'fish' && !p.dead;
       r.frog = p.ride === 'frog' && !p.dead;
+      r.dragon = p.ride === 'dragon' && !p.dead;
       r.seat = p.dead ? null : p.seat;
       r.whale = p.ride === 'whale' && !p.dead;
       r.seen = m.time;
@@ -752,7 +767,7 @@ export class Game {
   private remote<K>(map: Map<K, Remote>, key: K, make: () => Puppet): Remote {
     let r = map.get(key);
     if (!r) {
-      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, fish: false, frog: false, seat: null, whale: false, speed: 0 };
+      r = { actor: make(), buf: new InterpBuffer(), anim: 'idle', seen: 0, ride: false, fish: false, frog: false, dragon: false, seat: null, whale: false, speed: 0 };
       this.scene.add(r.actor.root);
       map.set(key, r);
     }
@@ -798,11 +813,14 @@ export class Game {
     this.race = self.race;
     this.hasFrog = self.frog;
     this.onFrog = self.onFrog;
+    this.hasDragon = self.dragon;
+    this.onDragon = self.onDragon;
     this.whaleSeat = self.whaleSeat;
     if (this.body) this.body.whale = self.whaleSeat === 0;
     if (this.body) this.body.riding = self.riding;
     if (this.body) this.body.fish = self.onFish ? this.island : null;
     if (this.body) this.body.frog = self.onFrog;
+    if (this.body) this.body.dragon = self.onDragon;
     if (this.body) this.body.staminaMax = staminaFor(self.shrines.length);
     if (self.fix && this.body) {
       Object.assign(this.body, { x: self.x, y: self.y, z: self.z, vx: 0, vz: 0, vy: 0, climb: null, wall: false, gliding: false });
@@ -1030,9 +1048,12 @@ export class Game {
     const b = this.body;
     if (!b || this.dead) return null;
     const seated = new Set([...this.others.values()].flatMap((r) => (r.seat ? [r.seat] : [])));
-    const riders = [...this.others].flatMap(([name, r]) => (r.ride ? [{ name, x: r.actor.root.position.x, z: r.actor.root.position.z, full: seated.has(name) }] : []));
+    const landed = (r: Remote) => !!this.terrain && r.actor.root.position.y - DRAGON.height <= Math.max(this.terrain.heightAt(r.actor.root.position.x, r.actor.root.position.z), WATER_LEVEL) + 1.5;
+    const riders = [...this.others].flatMap(([name, r]) => (r.ride || (r.dragon && landed(r)) ? [{ name, x: r.actor.root.position.x, z: r.actor.root.position.z, full: seated.has(name) }] : []));
+    const pico = this.pico;
+    const onPico = !!pico && Math.hypot(b.x - pico.x, b.z - pico.z) <= DRAGON.rim && b.y >= pico.top - 2;
     const shallow = !!this.terrain && depthAt(this.terrain, b.x, b.z) < FISH.shore;
-    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews, hasFrog: this.hasFrog, onFrog: this.onFrog, frogs: this.frogViews, whale: this.whaleView, whaleSeat: this.whaleSeat });
+    return mountAction({ pos: b, tame: this.tame, riding: this.riding, hasSteed: this.hasSteed, steeds: this.steeds, me: this.myName, seat: this.seat, riders, hasFish: this.hasFish, onFish: this.onFish, racing: !!this.race, shallow, fishes: this.fishViews, hasFrog: this.hasFrog, onFrog: this.onFrog, frogs: this.frogViews, whale: this.whaleView, whaleSeat: this.whaleSeat, hasDragon: this.hasDragon, onDragon: this.onDragon, landed: b.onGround, onPico, dragons: this.dragonViews });
   }
 
   /** One tap on the taming ring: the server judges the needle at our estimate of its clock. */
@@ -1206,8 +1227,15 @@ export class Game {
     const driver = this.seat ? this.others.get(this.seat) : undefined;
     const wd = this.whaleDraw;
     b.wet = this.seed !== null && wetAt(weatherAt(this.seed, Math.floor(this.serverTime / DAY_LENGTH))); // mountain rock (S4-B)
+    const hs = this.heart && this.structures.position(this.heart.id);
+    b.noLand = !!this.raid && !!hs && Math.hypot(hs.x - b.x, hs.z - b.z) <= DRAGON.heartNoLand;
     let res: ReturnType<typeof stepBody>;
-    if (this.whaleSeat !== null && this.whaleSeat > 0 && wd) {
+    if (this.tame?.beast === 'dragon' && this.pico) {
+      // On the wild dragon's back: it flies its circle (the server carries us the same way).
+      const d = dragonPos(this.pico, this.serverTime);
+      Object.assign(b, { x: d.x, y: d.y + DRAGON.height, z: d.z, vx: 0, vz: 0, vy: 0, onGround: false, climb: null, wall: false, gliding: false, facing: d.yaw });
+      res = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
+    } else if (this.whaleSeat !== null && this.whaleSeat > 0 && wd) {
       // A whale passenger: the server seats us; follow the whale we draw.
       const off = seatOffset(this.whaleSeat, wd.yaw);
       Object.assign(b, { x: wd.x + off.x, y: WATER_LEVEL, z: wd.z + off.z, vx: 0, vz: 0, vy: 0, onGround: true, climb: null, wall: false, gliding: false });
@@ -1229,7 +1257,7 @@ export class Game {
     if (now < this.attackUntil) anim = 'attack';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
-    if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.whaleSeat !== null) anim = 'idle';
+    if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.onDragon || this.whaleSeat !== null) anim = 'idle';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
 
@@ -1252,7 +1280,7 @@ export class Game {
     const wild = this.steeds.find((s) => s.owner === null);
     if (this.me) {
       if (this.tame?.beast === 'deer' && wild) this.me.setPose(wild.x, wild.y + MOUNT.height, wild.z, wild.yaw);
-      else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : this.onFrog || this.tame?.beast === 'frog' ? FROG.height : 0), b.z, b.facing);
+      else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : this.onFrog || this.tame?.beast === 'frog' ? FROG.height : this.onDragon ? DRAGON.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.setCapa(this.capa);
       this.me.setTorch(this.torch);
@@ -1270,6 +1298,7 @@ export class Game {
     this.syncSteeds(dt, wild);
     this.syncFish(dt);
     this.syncFrogs();
+    this.syncDragons(dt);
     this.syncWhale(dt);
 
     for (const m of this.mountainMeshes) {
@@ -1307,6 +1336,7 @@ export class Game {
     this.caveMeshes?.animate(this.serverTime, dt, this.stoneStructs.filter((s) => s.kind === 'pillar'));
     this.flameFx.update(dt);
     this.gustFx.update(dt);
+    this.rig.far = this.onDragon || this.tame?.beast === 'dragon'; // flying: pull the camera back (no extra draw distance)
     this.rig.apply(this.camera, b, terrain);
     if (this.tame) {
       // The deer bucks: shake the camera a little.
@@ -1359,6 +1389,25 @@ export class Game {
     this.hud.setRace(race ? (race.beast === 'frog' ? `Nenúfar ${race.i + 1}/${FROG.pads} · ${left} s` : `Anillo ${race.i + 1}/${FISH.rings} · ${left} s`) : null);
   }
 
+  /** Wild and parked dragons, one under every dragon rider (us included), and the leap marker on the Pico. */
+  private syncDragons(dt: number): void {
+    const b = this.body!;
+    const t = this.terrain;
+    if (!t || !this.pico) return;
+    const feet = (x: number, y: number, z: number) => Math.max(Math.max(t.heightAt(x, z), WATER_LEVEL), y - DRAGON_SINK);
+    const poses: DragonPose[] = this.dragonViews.map((d) => ({ key: d.owner ?? '~wild', x: d.x, y: feet(d.x, d.y, d.z), z: d.z, yaw: d.yaw, wild: d.owner === null }));
+    if (this.onDragon) poses.push({ key: `ride:${this.myName}`, x: b.x, y: feet(b.x, b.y, b.z), z: b.z, yaw: b.facing, wild: false });
+    for (const [name, r] of this.others) {
+      if (!r.dragon) continue;
+      const p = r.actor.root.position;
+      const y = p.y - DRAGON.height;
+      poses.push({ key: `ride:${name}`, x: p.x, y: feet(p.x, y, p.z), z: p.z, yaw: r.actor.root.rotation.y, wild: false });
+    }
+    const wild = this.dragonViews.find((d) => d.owner === null);
+    const open = wild && !this.hasDragon && !this.tame && leapOk(this.pico, this.serverTime, b) ? wild : null;
+    this.dragonMeshes?.sync(poses, dt, open);
+  }
+
   /** Wild and parked frogs, and one under every frog rider (us included). */
   private syncFrogs(): void {
     const b = this.body!;
@@ -1399,7 +1448,7 @@ export class Game {
     const s = r.buf.at(rt);
     if (s) {
       const before = r.actor.root.position.clone();
-      r.actor.setPose(s.x, s.y + (r.whale ? WHALE.height : r.ride || r.seat ? MOUNT.height : r.fish ? FISH.height : r.frog ? FROG.height : 0), s.z, s.yaw);
+      r.actor.setPose(s.x, s.y + (r.whale ? WHALE.height : r.ride || r.seat ? MOUNT.height : r.fish ? FISH.height : r.frog ? FROG.height : r.dragon ? DRAGON.height : 0), s.z, s.yaw);
       r.speed = dt > 0 ? Math.hypot(r.actor.root.position.x - before.x, r.actor.root.position.z - before.z) / dt : 0;
     }
     r.actor.play(r.anim);
@@ -1428,10 +1477,12 @@ export class Game {
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
     const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(this.body, this.mountainDoor, this.dungeon.mountain, this.hasStone));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
+    if (ma?.act === 17) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio (mantener) · Subir`);
     if (ma?.act === 14) return this.hud.setPrompt(`E / M · ${ma.label} · Espacio · Salto alto`);
-    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 || ma.act === 11 || ma.act === 14 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
+    if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 || ma.act === 11 || ma.act === 14 || ma.act === 17 ? `E / M · ${ma.label}` : `E · ${ma.label}`);
     const b = this.body;
     if (this.onFish) return this.hud.setPrompt('Espacio (mantener) · Bucear');
+    if (this.onDragon) return this.hud.setPrompt('Espacio (mantener) · Subir · suelta para bajar');
     if (b?.climb || b?.wall) return this.hud.setPrompt('Espacio · Saltar');
     if (b?.gliding) return this.hud.setPrompt('Espacio · Cerrar planeador');
     const res = this.nearestResource();

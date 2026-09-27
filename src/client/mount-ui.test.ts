@@ -87,3 +87,20 @@ describe('la Rana', () => {
     expect(mountAction({ ...base, hasFrog: true, onFrog: true })).toEqual({ act: 14, label: 'Bajar de la rana' });
   });
 });
+
+describe('el Dragón', () => {
+  const wildDragon = { owner: null, x: 20, y: 80, z: 0, yaw: 0 };
+  const myDragon = { owner: 'Ana', x: 3, y: 0, z: 0, yaw: 0 };
+  it('leaps from the Pico when the wild dragon is out and you have none', () => {
+    expect(mountAction({ ...base, onPico: true, dragons: [wildDragon] })).toEqual({ act: 15, label: 'Saltar al dragón' });
+    expect(mountAction({ ...base, onPico: true, dragons: [] })).toBeNull();
+    expect(mountAction({ ...base, onPico: true, hasDragon: true, dragons: [wildDragon] })).toBeNull();
+  });
+  it('gets on your dragon; gets off only once landed', () => {
+    expect(mountAction({ ...base, hasDragon: true, dragons: [myDragon] })).toEqual({ act: 16, label: 'Montar el dragón' });
+    expect(mountAction({ ...base, hasDragon: true, dragons: [{ ...myDragon, x: 9 }] })).toBeNull();
+    expect(mountAction({ ...base, hasDragon: true, onDragon: true, landed: true })).toEqual({ act: 17, label: 'Bajar del dragón' });
+    expect(mountAction({ ...base, hasDragon: true, onDragon: true, landed: false })).toBeNull();
+    expect(mountAction({ ...base, tame: { ...tame, beast: 'dragon' } })).toEqual({ act: 1, label: '¡Ahora!' });
+  });
+});

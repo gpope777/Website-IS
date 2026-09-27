@@ -3,6 +3,7 @@ import type { Terrain } from '../shared/terrain';
 import { coastFeatures, createTerrain, HALF, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk, inBravas, wildFish } from '../shared/fish';
 import { FROG, frogStepOk } from '../shared/frog';
+import { DRAGON } from '../shared/dragon';
 import { seatOffset, WHALE, whaleStepOk, wildWhale } from '../shared/whale';
 import { CIENAGA, depthAt, SWIM_MAX_DEPTH } from '../shared/coast';
 import { BOG, inBog, ZARZAL } from '../shared/swamp';
@@ -658,3 +659,40 @@ describe('las Montañas', () => {
   });
 });
 
+
+describe('flying el Dragón', () => {
+  const dragonBody = (x = 0, z = 0, y = 0) => {
+    const b = createBody(x, z, flat);
+    b.dragon = true;
+    b.y = y;
+    return b;
+  };
+
+  it('15 m/s along the stick; B held climbs 4 m/s, released sinks 2 m/s; no stamina', () => {
+    const { b } = run({ ...fwd, jump: true }, 2, flat, none, 0, [], dragonBody());
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(DRAGON.fly, 0);
+    expect(b.y).toBeCloseTo(DRAGON.climb * 2, 0);
+    expect(b.stamina).toBe(STAMINA.max);
+    const y0 = b.y;
+    run(fwd, 1, flat, none, 0, [], b);
+    expect(b.y).toBeCloseTo(y0 - DRAGON.sink, 0);
+  });
+
+  it('never above ground + 35; lands on the ground', () => {
+    const { b } = run({ ...fwd, jump: true }, 12, flat, none, 0, [], dragonBody());
+    expect(b.y).toBeLessThanOrEqual(DRAGON.ceil + 1e-6);
+    run(fwd, 20, flat, none, 0, [], b);
+    expect(b.y).toBe(0);
+    expect(b.onGround).toBe(true);
+  });
+
+  it('the fog turns it back, and near the Heart in a raid it keeps 6 m up', () => {
+    const b = dragonBody(0, -HALF - 199, 10);
+    run({ ...fwd, jump: true }, 1, flat, none, 0, [], b);
+    expect(b.z).toBeGreaterThanOrEqual(-HALF - 200);
+    const c = dragonBody(0, 0, 10);
+    c.noLand = true;
+    run(fwd, 10, flat, none, 0, [], c);
+    expect(c.y).toBeCloseTo(6, 1);
+  });
+});

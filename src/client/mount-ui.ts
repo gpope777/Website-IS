@@ -2,6 +2,7 @@ import { MOUNT, ringAngle } from '../shared/mount';
 import { FISH } from '../shared/fish';
 import { FROG } from '../shared/frog';
 import { WHALE } from '../shared/whale';
+import { DRAGON } from '../shared/dragon';
 import type { SteedView, TameView, WhaleView } from '../shared/protocol';
 
 export interface MountCtx {
@@ -27,6 +28,12 @@ export interface MountCtx {
   hasFrog?: boolean;
   onFrog?: boolean;
   frogs?: readonly SteedView[];
+  /** El Dragón: owns one, rides it, is on the ground, stands on the Pico's top, and dragons in view (wild: owner null). */
+  hasDragon?: boolean;
+  onDragon?: boolean;
+  landed?: boolean;
+  onPico?: boolean;
+  dragons?: readonly SteedView[];
   /** La Ballena (always in the snapshot) and our seat on it. */
   whale?: WhaleView | null;
   whaleSeat?: number | null;
@@ -40,6 +47,10 @@ export function mountAction(c: MountCtx): { act: number; label: string } | null 
   const w = c.whale;
   const dw = w ? Math.hypot(w.x - c.pos.x, w.z - c.pos.z) : Infinity;
   if (c.onFrog) return { act: 14, label: 'Bajar de la rana' };
+  if (c.onDragon) return c.landed ? { act: 17, label: 'Bajar del dragón' } : null;
+  const dragons = c.dragons ?? [];
+  if (c.hasDragon && !c.riding && !c.onFish && dragons.some((s) => s.owner === c.me && Math.hypot(s.x - c.pos.x, s.z - c.pos.z) <= DRAGON.reach)) return { act: 16, label: 'Montar el dragón' };
+  if (!c.hasDragon && c.onPico && !c.riding && !c.onFish && dragons.some((s) => s.owner === null)) return { act: 15, label: 'Saltar al dragón' };
   if (w && !c.riding && !c.racing) {
     if (w.tamed && dw <= WHALE.reach && w.seats.includes(null)) return { act: 10, label: 'Subir a la ballena' };
     if (!w.tamed && !w.diving && dw <= WHALE.tameReach) return { act: 9, label: 'Domar la ballena' };

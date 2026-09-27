@@ -1,6 +1,7 @@
 import { clampMap, WATER_LEVEL, type Islet, type Terrain } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk } from '../shared/fish';
 import { FROG, frogHop, frogMoveOk } from '../shared/frog';
+import { DRAGON, dragonCeil, inFog } from '../shared/dragon';
 import { seatOffset, WHALE, whaleStepOk } from '../shared/whale';
 import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
@@ -56,6 +57,10 @@ export interface Body {
   frog: boolean;
   /** Seconds until the frog can jump again. */
   hopCd: number;
+  /** On the dragon (from the server, S4-G): B held climbs, released sinks, within a band over the ground. */
+  dragon?: boolean;
+  /** A raid near the Heart: the dragon keeps DRAGON.noLandY up (the server refuses lower). */
+  noLand?: boolean;
   /** Metres of Viento lift still to rise, and whether this flight already used its lift. */
   lift: number;
   boosted: boolean;
@@ -146,6 +151,7 @@ export function stepBody(
   if (b.wall) return stepWall(b, input, dt, terrain, jumpEdge, bounds);
   if (b.fish) return stepFish(b, b.fish, input, camYaw, dt, terrain, bounds);
   if (b.whale) return stepWhale(b, input, camYaw, dt, terrain, bounds);
+  if (b.dragon) return stepDragon(b, input, camYaw, dt, terrain, bounds);
   if (b.frog) return stepFrog(b, input, camYaw, dt, terrain, nearby, crags, bounds, jumpEdge);
 
   const hereH = terrain.heightAt(b.x, b.z);
@@ -460,6 +466,44 @@ function stepFrog(b: Body, input: MoveInput, camYaw: number, dt: number, terrain
   Object.assign(b, { gliding: false, climb: null, wall: false });
   regen(b, dt);
   return { ...RESULT_IDLE, moving, running: input.sprint && moving, steep };
+}
+
+/** On the dragon: 15 m/s along the stick, B held climbs, released sinks; ceiling ground + 35 (y ≤ 120); never into the fog. */
+function stepDragon(b: Body, input: MoveInput, camYaw: number, dt: number, terrain: Terrain, bounds: Bounds): StepResult {
+  let ix = input.x;
+  let iz = input.z;
+  const mag = Math.hypot(ix, iz);
+  if (mag > 1) {
+    ix /= mag;
+    iz /= mag;
+  }
+  const moving = mag > 0.01;
+  const s = Math.sin(camYaw);
+  const c = Math.cos(camYaw);
+  const wx = ix * c + iz * s;
+  const wz = -ix * s + iz * c;
+  const k = Math.min(1, 4 * dt);
+  b.vx += (wx * DRAGON.fly - b.vx) * k;
+  b.vz += (wz * DRAGON.fly - b.vz) * k;
+  if (moving) b.facing = Math.atan2(wx, wz);
+  const to = bounds(b.x, b.z, b.x + b.vx * dt, b.z + b.vz * dt);
+  if (inFog(to.z)) {
+    b.vz = Math.max(0, b.vz); // the muro de niebla: north is closed
+    to.z = b.z;
+  }
+  b.x = to.x;
+  b.z = to.z;
+  const ground = Math.max(terrain.heightAt(b.x, b.z), WATER_LEVEL);
+  const floor = b.noLand ? ground + DRAGON.noLandY : ground;
+  const ceil = dragonCeil(ground);
+  let y = b.y + (input.jump ? DRAGON.climb : -DRAGON.sink) * dt;
+  if (input.jump && y > ceil) y = b.y > ceil ? b.y - DRAGON.sink * dt : ceil; // at the ceiling: hold; above it (off a cliff): sink
+  b.y = Math.max(y, floor);
+  b.vy = 0;
+  b.onGround = b.y <= ground + 0.01;
+  Object.assign(b, { gliding: false, climb: null, wall: false });
+  regen(b, dt);
+  return { ...RESULT_IDLE, moving };
 }
 
 /** Piloting the whale: 5 m/s (7 sprinting), on the surface, never where the sea is under 3 m (aguas bravas are fine). */
