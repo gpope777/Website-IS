@@ -2529,6 +2529,8 @@ export class WorldSim {
   private flameFinal(p: SavedPlayer, hits: (x: number, z: number, range?: number) => boolean): void {
     const b = this.towerFinal;
     this.castFinal(p.name, 'fire', (x, z) => hits(x, z));
+    // Phase 3: the flame on el Corazón Negro counts as a blow (scratches it, stops a heal).
+    if (b?.core && b.phase === 3 && b.core.hp > 0 && hits(b.core.x, b.core.z, FUEGO.range + FINAL.coreBody)) return this.strikeCore(p.name, FUEGO.damage, false);
     if (!b || b.hp <= 0 || b.phase !== 1 || !hits(b.x, b.z, FUEGO.range + FINAL.body)) return;
     const r = burnRoots(b, p.x, p.z);
     if (r === 'catch') this.sayTower('Las raíces prenden…');

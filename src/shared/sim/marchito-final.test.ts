@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BOW } from './combat';
 import { weaponMult } from '../items';
+import { FUEGO } from '../fuego';
 import { breakBrote, broteOpen, castOnBrote, burnRoots, createFinal, FINAL, finalFactor, finalMult, hitCore, hitFinal, plateSpot, staggerFinal, startPull, stepFinal, type FinalBoss } from './marchito-final';
 import { createRng } from '../rng';
 
@@ -210,7 +211,7 @@ describe('phase 3 — el Corazón Negro', () => {
  * - rolls out of every swipe and root line (1.5 s without attacking);
  * - walks 4.5 m/s, needs 3 s at each brote to see what it wants; a rayo costs 6 s every 14 s in phase 2 (and ruins a pull);
  * - powers on their real cooldowns: Llamarada 5 s, Enredadera 12 s, Viento 6 s, Piedra 3 s;
- * - phase 3: waits by the body, drops a pillar on the core's way home (right one time in three), reacts to a heal in 2 s.
+ * - phase 3: a Llamarada whenever the core is within 6 m (a blow: scratches, stops a heal); waits by the body, drops a pillar on the core's way home (right one time in three), reacts to a heal in 2 s.
  * Budget (Decidido por Claude): phase 1 ~2.3 min, phase 2 ~1.5 min, phase 3 ~2.8 min → ~6.7 min (6–10 accepted).
  */
 function soloKillTime(seed = 7): { total: number; phases: number[] } {
@@ -310,6 +311,11 @@ function soloKillTime(seed = 7): { total: number; phases: number[] } {
         const s = Math.min(d - S.reach + 0.5, S.walk * dt);
         me.x += ((c.x - me.x) / d) * s;
         me.z += ((c.z - me.z) / d) * s;
+      }
+      if (d <= FUEGO.range && t >= flameAt) {
+        // The Llamarada on the core counts as a blow (scratch; stops a heal).
+        flameAt = t + FUEGO.cooldown;
+        hitCore(b, FUEGO.damage, false);
       }
       if (exposed && d <= S.reach && t >= meleeAt) {
         meleeAt = t + S.meleeEvery;

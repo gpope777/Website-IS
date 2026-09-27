@@ -269,6 +269,24 @@ describe('phase 3 — el Corazón Negro and the victory (S5-F)', () => {
     expect(p.vitals.health).toBeLessThan(h0 - 1);
   });
 
+  it('a Llamarada on the core counts as a blow: it scratches it and stops a heal', () => {
+    const sim = inCopa('Ana');
+    const b = phase3(sim);
+    const c = b.core!;
+    cooldowns(sim);
+    c.stun = 3;
+    put(sim, 'Ana', c.x, c.z - 3);
+    const hp = c.hp;
+    sim.handle('Ana', { t: 'power', kind: 'fuego', x: c.x, z: c.z });
+    expect(c.hp).toBeCloseTo(hp - 6);
+    c.stun = 0;
+    c.mode = 'heal';
+    cooldowns(sim);
+    put(sim, 'Ana', c.x, c.z - 3);
+    sim.handle('Ana', { t: 'power', kind: 'fuego', x: c.x, z: c.z });
+    expect(c.mode).toBe('run');
+  });
+
   it('the core at 0: ending saved, a vision with the names, and the Copa is calm after', () => {
     const sim = inCopa('Ana');
     const b = phase3(sim);
