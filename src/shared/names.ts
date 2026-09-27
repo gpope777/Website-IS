@@ -91,4 +91,15 @@ export const NAMES = {
     mochila: 'Mochila honda',
     pastor: 'Pastor',
   },
+  /** P4-C: colour and hat. */
+  look: 'Aspecto',
+  colorNames: ['Naranja', 'Azul', 'Verde', 'Rojo', 'Morado', 'Hueso', 'Carbón', 'Rosa'],
+  hatNames: {
+    hoja: 'Hoja',
+    caracola: 'Caracola',
+    ambar: 'Corona de ámbar',
+    cuarzo: 'Cuernos de cuarzo',
+    aureola: 'Aureola blanca',
+    estrella: 'Estrella',
+  },
 } as const;

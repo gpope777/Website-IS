@@ -151,3 +151,49 @@ export function canLearn(skills: readonly string[], id: SkillId, rank: number): 
   if (i > 0 && !skills.includes(branch.skills[i - 1]!)) return 'order';
   return skillPoints(rank, skills) > 0 ? 'ok' : 'points';
 }
+
+/** P4-C: player colours (the robot's `Main` material). [0] is the model's own orange. */
+export const COLORS: readonly number[] = [0xc9951e, 0x3f7fd0, 0x4fae4a, 0xc84040, 0x8a5cc8, 0xe8e2d0, 0x2e2e36, 0xe07fb0];
+
+/** P4-C: hat n (1–6) is HAT_IDS[n − 1]; 0 = none. The Proeza hats come in P4-D. */
+export const HAT_IDS = ['hoja', 'caracola', 'ambar', 'cuarzo', 'aureola', 'estrella'] as const;
+export type HatId = (typeof HAT_IDS)[number];
+export interface Look { color: number; hat: number }
+export const DEFAULT_LOOK: Look = { color: 0, hat: 0 };
+
+const isIndex = (n: unknown, max: number): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= max;
+export const isLook = (color: unknown, hat: unknown): boolean => isIndex(color, COLORS.length - 1) && isIndex(hat, HAT_IDS.length);
+
+/** What each hat asks (the Aspecto screen). */
+export const HAT_HINTS: Record<HatId, string> = {
+  hoja: 'Se gana con Rango 2',
+  caracola: `Se gana con ${NAMES.powerWind}`,
+  ambar: 'Se gana con la Capa 3',
+  cuarzo: `Se gana con ${NAMES.powerStone}`,
+  aureola: `Se gana venciendo a ${NAMES.villain}`,
+  estrella: `Se gana domando ${NAMES.legendary}`,
+};
+
+/** Milestones never go back, so a hat never re-locks. `ending` = El Marchito fell in this world. */
+export function hatUnlocked(p: ProgressSource, hat: number): boolean {
+  const id: HatId | undefined = HAT_IDS[hat - 1];
+  switch (id) {
+    case undefined:
+      return hat === 0;
+    case 'hoja':
+      return rankOf(totalXp(p)) >= 2;
+    case 'caracola':
+      return !!p.viento;
+    case 'ambar':
+      return (p.capaLvl ?? 0) >= 3;
+    case 'cuarzo':
+      return !!p.piedra;
+    case 'aureola':
+      return !!p.ending;
+    case 'estrella':
+      return !!p.star;
+  }
+  return false;
+}
+
+export const unlockedHats = (p: ProgressSource): number[] => HAT_IDS.map((_, i) => i + 1).filter((h) => hatUnlocked(p, h));
