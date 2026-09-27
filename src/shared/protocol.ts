@@ -4,7 +4,7 @@ import type { Crag } from './crags';
 import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 
-export const PROTOCOL_VERSION = 54;
+export const PROTOCOL_VERSION = 55;
 
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
@@ -84,7 +84,7 @@ export interface MarchitoView { will: number; max: number; laughing: boolean; /*
 export interface PillarView { broken: boolean[]; roots: boolean[]; anchor: boolean; miasma: number; burns: number; lid: boolean }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; /** Has Piedra (from the mountain dungeon altar). */ piedra: boolean; /** Whole seconds until Piedra can be cast again. */ stoneLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** S5-H: the steed is la Estrella. */ star: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Owns a tamed dragon (S4-G). */ dragon: boolean; /** On the dragon. */ onDragon: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; /** Has Piedra (from the mountain dungeon altar). */ piedra: boolean; /** Whole seconds until Piedra can be cast again. */ stoneLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** S5-H: the steed is la Estrella. */ star: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Owns a tamed dragon (S4-G). */ dragon: boolean; /** On the dragon. */ onDragon: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null; /** P4-A: total Savia. */ xp: number; /** P4-A: Rango 1–8. */ rank: number }
 
 export const POWER_KINDS = ['enredadera', 'viento', 'fuego', 'piedra'] as const;
 export type PowerKind = (typeof POWER_KINDS)[number];
@@ -150,7 +150,9 @@ export type ServerMsg =
   /** El Marchito speaks: a few lines shown as a vision card. */
   | { t: 'vision'; lines: string[] }
   /** S5-G: the ending — the long vision's cards one by one, then the scrolling credits (once per player). */
-  | { t: 'ending'; cards: string[]; credits: string[] };
+  | { t: 'ending'; cards: string[]; credits: string[] }
+  /** P4-A: `name` reached Rango `rank` (a card for them, a green flash for everyone). */
+  | { t: 'rankUp'; name: string; rank: number };
 
 export const NAME_RE = /^[\p{L}\p{N} _-]{1,16}$/u;
 export const PIN_RE = /^\d{4}$/;

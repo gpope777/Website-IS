@@ -48,6 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
+import { addKillXp, killXp, PROGRESS, rankOf, totalXp } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
@@ -145,6 +146,10 @@ export interface SavedPlayer {
   credits?: boolean;
   /** S5-H: the steed is la Estrella (not the deer). Optional. */
   star?: boolean;
+  /** P4-A: Savia the save can't reconstruct (kills, lieutenants, zones, pillars, raids, the whale). Optional. */
+  xp?: number;
+  /** P4-A: kill Savia today (daily cap). Optional. */
+  killDay?: { day: number; xp: number };
 }
 
 export interface SavedWorld {
@@ -220,6 +225,8 @@ export interface Outgoing {
 }
 
 interface Live {
+  /** P4-A: the Rango last told (live-only; set on connect, so loading never flashes). */
+  rank?: number;
   /** Carrying a torch from the Candiles post (spent on one brazier or fogata). */
   torch?: boolean;
   /** A fogata channel in progress: where to, when it lands, where it started and the health then. Live-only. */
@@ -650,6 +657,7 @@ export class WorldSim {
       l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, windReadyAt: 0, boostCeil: -Infinity, boostUntil: 0, boosted: false, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false, frog: false, dragon: false };
       this.live.set(name, l);
     }
+    l.rank = rankOf(this.xpOf(p));
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
     if (this.ending && !p.credits) {
       // S5-G: whoever missed the kill gets the credits on their first login after.
@@ -731,6 +739,7 @@ export class WorldSim {
 
   step(dt: number): void {
     this.time += dt;
+    this.checkRanks();
     const night = isNight(dayFraction(this.time));
 
     for (const [name, l] of this.live) {
@@ -1995,6 +2004,7 @@ export class WorldSim {
       if (bl) this.hint(name, bl, 'El gorro para casi todo. Un pilar en su embestida, o párale');
     }
     if (!hitWolf(w, dmg)) return;
+    this.xpForKill(name, w);
     this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
     const thorns = w.raid ? 0 : thornDrop(w.kind, w.x, w.z, w.kind === 'rayo' ? this.rng() : 0);
     if (thorns > 0 && by) {
@@ -3123,6 +3133,7 @@ export class WorldSim {
     this.whaleTame = null;
     this.whaleTamed = true;
     this.whaleIdle = 0;
+    for (const o of crew) this.gainXp(o, PROGRESS.whale);
     this.say('La ballena es del mundo. A junto a ella para subir');
   }
 
@@ -3806,6 +3817,8 @@ export class WorldSim {
       weapon: p.weaponLvl ?? 0,
       whaleSeat: this.seatOf(p.name),
       travel: l.travel ? Math.max(0, Math.ceil(l.travel.at - this.time - EPS)) : null,
+      xp: this.xpOf(p),
+      rank: rankOf(this.xpOf(p)),
     };
   }
 
@@ -3996,6 +4009,7 @@ export class WorldSim {
     const zn = pillarZone(id);
     if (zn !== null) this.cleanse(zn, 'La ceniza de alrededor se aclara');
     const c = this.pillarSpots.cores[id]!;
+    this.xpNear(c.x, c.z, PROGRESS.near, PROGRESS.pillar);
     const near = this.activeNames().filter((nm) => {
       const o = this.players.get(nm);
       return !!o && !o.dead && Math.hypot(o.x - c.x, o.z - c.z) <= 40;
@@ -4042,6 +4056,8 @@ export class WorldSim {
     if (this.cleansed.has(id) || !this.zones.some((z) => z.id === id)) return;
     this.cleansed.add(id);
     this.say(text);
+    const zn = this.zones.find((z) => z.id === id)!;
+    this.xpNear(zn.x, zn.z, zn.r + 10, PROGRESS.zone);
   }
 
   private stepRaid(night: boolean): void {
@@ -4110,6 +4126,7 @@ export class WorldSim {
       if (heart && heart.hp > 0) {
         this.raidLevel++;
         this.say(`Sobrevivieron la noche. Nivel de asedio ${this.raidLevel}`);
+        for (const nm of this.activeNames()) this.gainXp(this.players.get(nm)!, PROGRESS.raid);
       }
     }
   }
@@ -4540,6 +4557,47 @@ export class WorldSim {
 
   private vision(lines: string[]): void {
     this.outbox.push({ to: null, msg: { t: 'vision', lines } });
+  }
+
+  /** P4-A: total Savia (milestones from the save + the stored rest). */
+  private xpOf(p: SavedPlayer): number {
+    return totalXp({ ...p, ending: this.ending });
+  }
+
+  private gainXp(p: SavedPlayer, n: number): void {
+    if (n > 0) p.xp = (p.xp ?? 0) + n;
+  }
+
+  /** Savia to every connected, living player within `r` m. */
+  private xpNear(x: number, z: number, r: number, n: number): void {
+    for (const nm of this.activeNames()) {
+      const o = this.players.get(nm);
+      if (o && !o.dead && Math.hypot(o.x - x, o.z - z) <= r) this.gainXp(o, n);
+    }
+  }
+
+  /** A kill through strike: small Savia under the daily cap; a lieutenant or the Torre's Flecha gives 50 to all near. */
+  private xpForKill(name: string, w: Wolf): void {
+    if (w.kind === 'lieut1' || w.kind === 'lieut2' || w.kind === 'lieut3') return this.xpNear(w.x, w.z, PROGRESS.near, PROGRESS.lieut);
+    const p = this.players.get(name);
+    if (!p || killXp(w.kind) === 0) return;
+    const r = addKillXp(p.killDay, Math.floor(this.time / DAY_LENGTH), w.kind);
+    p.killDay = r.killDay;
+    this.gainXp(p, r.gain);
+  }
+
+  /** P4-A: whoever climbed a Rango: one rankUp to all (the client shows the card to them, the flash to everyone). */
+  private checkRanks(): void {
+    for (const [name, l] of this.live) {
+      if (l.awayFor !== null) continue;
+      const p = this.players.get(name);
+      if (!p) continue;
+      const r = rankOf(this.xpOf(p));
+      if (l.rank === undefined) l.rank = r;
+      if (r <= l.rank) continue;
+      l.rank = r;
+      this.outbox.push({ to: null, msg: { t: 'rankUp', name, rank: r } });
+    }
   }
 
   private say(text: string): void {
