@@ -90,6 +90,7 @@ describe('el Árbol-torre (S5-H)', () => {
     expect(t.heightAt(TOWER.x + 3, TOWER.z)).toBe(base.heightAt(TOWER.x + 3, TOWER.z) + 140);
     expect(t.heightAt(TOWER.x + 12, TOWER.z)).toBe(base.heightAt(TOWER.x + 12, TOWER.z));
     expect(inLookout(TOWER.x, TOWER.z + LOOKOUT.r - 0.1)).toBe(true);
-    expect(lookoutTop(base).y).toBe(base.heightAt(TOWER.x, TOWER.z) + LOOKOUT.h);
+    expect(lookoutTop(base).y).toBeCloseTo(base.heightAt(TOWER.x, TOWER.z) + LOOKOUT.h, 1);
+    expect(lookoutTop(t).y).toBe(lookoutTop(base).y);
   });
 });

@@ -73,9 +73,9 @@ export function inLookout(x: number, z: number): boolean {
   return Math.hypot(x - TOWER.x, z - TOWER.z) <= LOOKOUT.r;
 }
 
-/** The top's centre. */
+/** The top's centre. Measured just off the disc (the plateau is flat), so a raised terrain gives the same top. */
 export function lookoutTop(t: Terrain): { x: number; y: number; z: number } {
-  return { x: TOWER.x, y: t.heightAt(TOWER.x, TOWER.z) + LOOKOUT.h, z: TOWER.z };
+  return { x: TOWER.x, y: t.heightAt(TOWER.x + LOOKOUT.r + 1, TOWER.z) + LOOKOUT.h, z: TOWER.z };
 }
 
 /** The terrain with the top disc raised while `open()`: standing up there is ordinary ground. */

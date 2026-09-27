@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOWER } from './corrupt-lands';
-import { LOOKOUT } from './ending';
+import { lookoutTop } from './ending';
 import { createTerrain, inMountains, inSwamp, WATER_LEVEL } from './terrain';
 import { FOGATA, generateFogatas } from './fogatas';
 import { claimedMounds, generateAmberTrees } from './swamp-shrines';
@@ -14,7 +14,7 @@ describe('fogatas del Pantano (S3 §9)', () => {
       const all = generateFogatas(t, seed);
       expect(all.map((x) => x.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
       expect(FOGATA.count).toBe(8);
-      expect(all[7]).toMatchObject({ lookout: true, x: TOWER.x, z: TOWER.z, y: t.heightAt(TOWER.x, TOWER.z) + LOOKOUT.h });
+      expect(all[7]).toMatchObject({ lookout: true, x: TOWER.x, z: TOWER.z, y: lookoutTop(t).y });
       expect(all.slice(4, 6).every((x) => x.refugio && inMountains(x.x, x.z))).toBe(true);
       expect(f.map((x) => x.id)).toEqual([0, 1, 2, 3]);
       const { frog, candles, peat, mounds } = claimedMounds(t, seed);

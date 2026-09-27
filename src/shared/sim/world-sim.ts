@@ -43,7 +43,8 @@ import { createAtalaya, createCucurucho, CUCURUCHO, hatFront, stepAtalaya, stepC
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
-import { creditLines, ENDING, endingCards, endingWave, lateCards } from '../ending';
+import { creditLines, ENDING, endingCards, endingWave, lateCards, LOOKOUT, lookoutTop, withLookout } from '../ending';
+import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
@@ -142,6 +143,8 @@ export interface SavedPlayer {
   piedra?: boolean;
   /** S5-G: has seen the ending's credits (live, or on the first login after). Optional. */
   credits?: boolean;
+  /** S5-H: the steed is la Estrella (not the deer). Optional. */
+  star?: boolean;
 }
 
 export interface SavedWorld {
@@ -275,8 +278,8 @@ interface Live {
   pull?: { id: number; at: number } | null;
 }
 
-type Beast = 'deer' | 'fish' | 'frog' | 'dragon';
-const roundsOf = (beast: Beast): readonly { speed: number; width: number }[] => (beast === 'fish' ? FISH.rounds : beast === 'frog' ? FROG.rounds : beast === 'dragon' ? DRAGON.rounds : MOUNT.rounds);
+type Beast = 'deer' | 'fish' | 'frog' | 'dragon' | 'star';
+const roundsOf = (beast: Beast): readonly { speed: number; width: number }[] => (beast === 'fish' ? FISH.rounds : beast === 'frog' ? FROG.rounds : beast === 'dragon' ? DRAGON.rounds : beast === 'star' ? ESTRELLA.rounds : MOUNT.rounds);
 
 export function newWorld(seed: number, salt: string): SavedWorld {
   return { version: 1, seed, salt, time: DAY_LENGTH * 0.33, nextStructureId: 1, structures: [], resources: {}, players: [], raidLevel: 0 };
@@ -468,6 +471,8 @@ export class WorldSim {
   ending: boolean;
   /** S5-G: the killers' names and the post-ending raids toggle (saved). */
   private endingNames: string[] = [];
+  /** S5-H: the last day the full moon was announced (live-only). */
+  private moonToldDay = -1;
   raidsOff = false;
   /** Invasion 3 is under way tonight (from its dusk to dawn); `dark` once night fell. Live-only. */
   private inv3: { dark: boolean } | null = null;
@@ -535,7 +540,7 @@ export class WorldSim {
     this.seed = saved.seed;
     this.salt = saved.salt;
     this.time = saved.time;
-    this.terrain = withGrieta(withEscalera(withDungeon(createTerrain(saved.seed)), () => this.escalera), () => this.ending);
+    this.terrain = withLookout(withGrieta(withEscalera(withDungeon(createTerrain(saved.seed)), () => this.escalera), () => this.ending), () => this.ending);
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
@@ -590,6 +595,7 @@ export class WorldSim {
     this.ending = saved.ending ?? false;
     this.endingNames = saved.endingNames ?? [];
     this.raidsOff = saved.raidsOff ?? false;
+    if (this.ending) this.fogatas[FOGATA.lookout] = true; // S5-H: the top of el Árbol-torre
     this.rescue = rescueSite(this.terrain, saved.seed);
     this.anchors = [0, 1, 2].map((i) => saved.anchors?.[i] ?? false);
     this.buildAnchors();
@@ -885,7 +891,7 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ride: ol.dragon ? 'dragon' : ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0 });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ...(ol.riding && o.star ? { star: true } : {}), ride: ol.dragon ? 'dragon' : ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0 });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
@@ -925,7 +931,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: this.ending ? LOOKOUT.h : towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, estrella: this.estrellaView(near), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -1095,7 +1101,7 @@ export class WorldSim {
     // El Zarzal slows walkers and riders; the bog slows walkers (same whole-window rule).
     const thorny = zarzalAt(this.terrain, l.anchorX, l.anchorZ, this.zarzalBurnt) && zarzalAt(this.terrain, m.x, m.z, this.zarzalBurnt);
     const bogged = !mounted && inBog(this.terrain, l.anchorX, l.anchorZ) && inBog(this.terrain, m.x, m.z);
-    const base = thorny ? ZARZAL.speed : l.riding ? MOUNT.maxSpeed : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
+    const base = thorny ? ZARZAL.speed : l.riding ? (p.star ? ESTRELLA.maxSpeed : MOUNT.maxSpeed) : l.frog ? FROG.maxSpeed : mounted ? l.graceCap : wading ? CIENAGA.speed : bogged ? MAX_SPEED * BOG.k : MAX_SPEED;
     // El tobogán (S4-H): a belly slide on snow, downhill over the whole window, may go up to 16.
     const sliding = m.anim === 'slide' && !l.riding && !l.frog && slideMoveOk(this.terrain, l.anchorX, l.anchorZ, m.x, m.z);
     const cap = sliding ? Math.max(base, SNOWSLIDE.maxSpeed) : base;
@@ -2227,6 +2233,13 @@ export class WorldSim {
     const d = this.towerDoor;
     if (act === 26) {
       if (!near(d.x, d.z, T.doorReach)) return;
+      if (this.ending) {
+        // S5-H: the Torre is done; its door takes you up to the lookout.
+        if (l.dragon || l.riding || l.frog || l.fish || l.tame || l.seat) return this.tell(p.name, 'Bájate antes de subir');
+        const top = lookoutTop(this.terrain);
+        this.teleport(p, l, top.x + FOGATA.arrive, top.z);
+        return this.tell(p.name, `Subes a la cima de ${NAMES.treeTower}. Desde aquí se ve todo el bosque. Y se planea lejos`);
+      }
       if (!this.towerOpen) return this.tell(p.name, this.pillarsBroken.every(Boolean) ? 'Una raíz cierra la puerta. Él vendrá antes' : 'Una raíz cierra la puerta. Rompan los Pilares');
       if (l.dragon || l.riding || l.frog || l.fish || l.tame) return this.tell(p.name, 'Bájate antes de entrar');
       this.teleport(p, l, T.x, T.entryZ + 1.5);
@@ -2514,6 +2527,7 @@ export class WorldSim {
     // Every zone clean at once (0–21), with one toast.
     for (const z of this.zones) this.cleansed.add(z.id);
     this.say('Todas las raíces marchitas se secan a la vez');
+    this.fogatas[FOGATA.lookout] = true; // S5-H: the top of el Árbol-torre
     // The long vision and the credits to everyone online; the rest get them on their next login (connect).
     const msg: ServerMsg = { t: 'ending', cards: endingCards(who), credits: creditLines(who) };
     for (const n of this.live.keys()) {
@@ -2738,6 +2752,7 @@ export class WorldSim {
     if (l.seat) return; // sitting behind someone: only getting off
     if (this.seatOf(p.name) !== null) return act === 11 ? this.leaveWhale(p, l) : undefined; // aboard: only getting off
     if (act === 1 && !l.tame && this.whaleTame) return this.whaleTap(p, at);
+    if (act === 18) return this.tameEstrella(p, l);
     if (act >= 15) return this.onDragonAct(p, l, act);
     if (act >= 12) return this.onFrogAct(p, l, act);
     if (act >= 9) return this.onWhaleAct(p, l, act);
@@ -2780,6 +2795,13 @@ export class WorldSim {
         p.frog = { x: r2(p.x), z: r2(p.z) };
         l.frog = true;
         return this.tell(p.name, 'La rana es tuya. B para el salto alto, A para bajar');
+      }
+      if (t.beast === 'star') {
+        const had = !!p.steed && !p.star;
+        p.steed = { x: r2(p.x), z: r2(p.z) };
+        p.star = true;
+        l.riding = true;
+        return this.tell(p.name, `${upFirst(NAMES.legendary)} es tuya. Corre más que nada en el bosque${had ? '. Tu ciervo vuelve a su claro' : ''}. A para bajar`);
       }
       p.steed = { x: r2(p.x), z: r2(p.z) };
       l.riding = true;
@@ -2868,7 +2890,7 @@ export class WorldSim {
     for (const [n, ol] of this.live) if (ol.seat === p.name) this.dismount(this.players.get(n)!, ol);
     l.riding = false;
     l.rodeUntil = this.time + MOUNT.grace;
-    l.graceCap = MOUNT.maxSpeed;
+    l.graceCap = p.star ? ESTRELLA.maxSpeed : MOUNT.maxSpeed;
     p.steed = { x: r2(p.x), z: r2(p.z) };
   }
 
@@ -3210,13 +3232,36 @@ export class WorldSim {
   }
 
   /** The wild deer plus every parked (not ridden) tamed one in view. */
+  /** S5-H: la Estrella is out (after the ending, on a full-moon night). */
+  private estrellaIsOut(): boolean {
+    return estrellaOut(Math.floor(this.time / DAY_LENGTH), isNight(dayFraction(this.time)), this.ending);
+  }
+
+  /** The wild Estrella, while she rolls in la Ceniza and is in view. */
+  private estrellaView(near: (x: number, z: number) => boolean): SteedView | null {
+    if (!this.estrellaIsOut()) return null;
+    const e = estrellaAt(this.time);
+    return near(e.x, e.z) ? { owner: null, x: r2(e.x), y: r2(this.terrain.heightAt(e.x, e.z)), z: r2(e.z), yaw: r2(e.yaw) } : null;
+  }
+
+  /** Act 18: start taming la Estrella (the ring, 4 rounds). She replaces your deer. */
+  private tameEstrella(p: SavedPlayer, l: Live): void {
+    if (!this.estrellaIsOut() || l.tame || l.riding || l.fish || l.frog || l.dragon || l.race || inAnyDungeon(p.x, p.z)) return;
+    const e = estrellaAt(this.time);
+    if (Math.hypot(e.x - p.x, e.z - p.z) > ESTRELLA.reach) return;
+    if (p.star) return this.tell(p.name, `Ya tienes a ${NAMES.legendary}`);
+    if (this.time + EPS < l.tameReadyAt) return this.tell(p.name, 'Aún gira demasiado rápido');
+    this.nextRound(l, 0, 'star', e.x, e.z);
+    this.tell(p.name, `${upFirst(NAMES.legendary)} gira. Pulsa cuando la aguja pase por la zona`);
+  }
+
   private steedViews(near: (x: number, z: number) => boolean): SteedView[] {
     const out: SteedView[] = [];
     if (near(this.wild.x, this.wild.z)) out.push({ owner: null, x: r2(this.wild.x), y: r2(this.wild.y), z: r2(this.wild.z), yaw: 0 });
     for (const o of this.players.values()) {
       const st = o.steed;
       if (!st || this.live.get(o.name)?.riding || !near(st.x, st.z)) continue;
-      out.push({ owner: o.name, x: st.x, y: r2(this.terrain.heightAt(st.x, st.z)), z: st.z, yaw: 0 });
+      out.push({ owner: o.name, x: st.x, y: r2(this.terrain.heightAt(st.x, st.z)), z: st.z, yaw: 0, ...(o.star ? { star: true } : {}) });
     }
     return out;
   }
@@ -3744,6 +3789,7 @@ export class WorldSim {
       tame: this.tameView(p, l),
       riding: l.riding,
       steed: !!p.steed,
+      star: !!p.star,
       seat: l.seat,
       fish: !!p.fish,
       onFish: l.fish,
@@ -4001,6 +4047,11 @@ export class WorldSim {
   private stepRaid(night: boolean): void {
     const heart = this.heart();
     const f = dayFraction(this.time);
+    const day = Math.floor(this.time / DAY_LENGTH);
+    if (this.ending && fullMoon(day) && !night && f >= RAID.warnAt && this.moonToldDay !== day) {
+      this.moonToldDay = day;
+      this.say(`Luna llena esta noche. Algo rueda por ${NAMES.ash}`);
+    }
     const scout = this.swampSeen ? undefined : this.activeNames().find((n) => {
       const p = this.players.get(n);
       return !!p && !p.dead && inSwamp(p.x, p.z);
