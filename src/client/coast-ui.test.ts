@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coastAction, shrinePartAt } from './coast-ui';
+import { coastAction, rescueAction, shrinePartAt } from './coast-ui';
 import type { Shrine } from '../shared/shrines';
 import type { Chest } from '../shared/coast-shrines';
 
@@ -43,5 +43,16 @@ describe('shrinePartAt', () => {
     expect(shrinePartAt([sunk], [], [], { x: 8, y: -6, z: 40 }, 'Ana')).toMatchObject({ part: 2, label: 'Tirar de la palanca' });
     expect(shrinePartAt([sunk], [{ id: 4, open: true, parts: [] }], [], { x: 0, y: 0, z: 0 }, 'Ana')).toMatchObject({ part: 0, label: 'Tomar el orbe' });
     expect(shrinePartAt([sunk], [], [], { x: 0, y: 0, z: 0 }, 'Ana')).toMatchObject({ part: 0, label: 'La verja está cerrada' });
+  });
+});
+
+describe('rescueAction (S2-H)', () => {
+  const cage = { x: 50, z: 400 };
+  it('frees the Tragón beside the cage once every anchor is broken', () => {
+    expect(rescueAction({ x: 51, z: 400 }, cage, { anchors: [0, 0, 0] })).toEqual({ label: 'Liberar al Tragón' });
+    expect(rescueAction({ x: 51, z: 400 }, cage, { anchors: [0, 90, 150] })).toEqual({ label: 'La jaula aguanta: quedan 2 anclas' });
+    expect(rescueAction({ x: 51, z: 400 }, cage, { anchors: [0, 0, 150] })).toEqual({ label: 'La jaula aguanta: queda 1 ancla' });
+    expect(rescueAction({ x: 70, z: 400 }, cage, { anchors: [0, 0, 0] })).toBeNull();
+    expect(rescueAction({ x: 51, z: 400 }, cage, null)).toBeNull();
   });
 });

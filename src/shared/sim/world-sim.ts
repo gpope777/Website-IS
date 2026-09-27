@@ -2138,7 +2138,7 @@ export class WorldSim {
     const c = this.rescue.cage;
     if (this.invasion2 !== 'taken' || p.dead || Math.hypot(c.x - p.x, c.z - p.z) > RESCUE.freeReach) return;
     const left = this.anchors.filter((b) => !b).length;
-    if (left) return this.tell(p.name, `La jaula aguanta: quedan ${left} ${left === 1 ? 'ancla' : 'anclas'} en los islotes`);
+    if (left) return this.tell(p.name, `La jaula aguanta: ${left === 1 ? 'queda 1 ancla' : `quedan ${left} anclas`} en los islotes`);
     this.invasion2 = 'rescued';
     this.anchorFoes = [];
     this.say(`${p.name} abre la jaula. El ${NAMES.bossForestShort} vuelve al ${NAMES.heart}, con rabia`);

@@ -1,7 +1,8 @@
 import { CHEST, type Chest } from '../shared/coast-shrines';
 import { UPGRADE } from '../shared/items';
 import { NAMES } from '../shared/names';
-import type { ShrineView } from '../shared/protocol';
+import type { CageView, ShrineView } from '../shared/protocol';
+import { RESCUE } from '../shared/rescue';
 import { SHRINE, type Shrine } from '../shared/shrines';
 import { HEART } from '../shared/sim/world-sim';
 
@@ -25,6 +26,14 @@ export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: strin
   const h = x.heart;
   if (h && x.pearls >= c.pearl && x.weapon < UPGRADE.max && Math.hypot(h.x - p.x, h.z - p.z) <= HEART.tendReach) return { t: 'upgrade', label: UPGRADE_LABEL };
   return null;
+}
+
+/** The root cage within reach while the Tragón is taken: free it, or hear how many anchors still hold. The server re-checks. */
+export function rescueAction(pos: { x: number; z: number }, cage: { x: number; z: number }, view: CageView | null): { label: string } | null {
+  if (!view || Math.hypot(cage.x - pos.x, cage.z - pos.z) > RESCUE.freeReach) return null;
+  const left = view.anchors.filter((hp) => hp > 0).length;
+  if (!left) return { label: `Liberar al ${NAMES.bossForestShort}` };
+  return { label: `La jaula aguanta: ${left === 1 ? 'queda 1 ancla' : `quedan ${left} anclas`}` };
 }
 
 /** Lever, wheel or pumice block within reach (part ≥ 1), or an orb you have not taken yet (part 0). */

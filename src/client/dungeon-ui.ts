@@ -52,7 +52,9 @@ export function eliteBarText(view: DungeonView): string | null {
 /** El Marchito's bar while he is in the base. */
 export function marchitoBarText(v: MarchitoView | null): string | null {
   if (!v) return null;
-  return v.laughing ? `${NAMES.villain} se ríe` : `${NAMES.villain} · voluntad ${v.will}/${v.max}`;
+  if (v.laughing) return `${NAMES.villain} se ríe`;
+  if (v.grab) return `${NAMES.villain} envuelve al ${NAMES.bossForestShort} · ${Math.round(v.grab * 100)} % · voluntad ${v.will}/${v.max}`;
+  return `${NAMES.villain} · voluntad ${v.will}/${v.max}`;
 }
 
 export function bossBarText(view: DungeonView): string | null {

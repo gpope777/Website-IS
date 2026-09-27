@@ -3345,7 +3345,7 @@ describe('the rescue (S2-H)', () => {
     put(held, 'Ana', c.x + 1, c.z);
     held.handle('Ana', { t: 'rescue' });
     expect(held.invasion2).toBe('taken');
-    expect(texts(msgs(held))[0]).toContain('quedan 1 ancla');
+    expect(texts(msgs(held))[0]).toContain('queda 1 ancla');
     const { sim, h } = taken([true, true, true]);
     put(sim, 'Ana', c.x + RESCUE.freeReach + 2, c.z);
     sim.handle('Ana', { t: 'rescue' });

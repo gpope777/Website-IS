@@ -207,6 +207,7 @@ export class Hud {
        <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 ${NAMES.powerVine} (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
        <p>El ciervo salvaje (un halo dorado en el bosque): E / A junto a él para domarlo; pulsa cuando la aguja cruce la zona, tres veces · E / M montar y bajar · Shift: galope</p>
        <p>${NAMES.villain}: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
+       <p>Si ${NAMES.villain} se lleva al ${NAMES.bossForestShort}: está en una jaula de raíces en el fondo del mar, junto a la isla. Rompe las tres anclas (una por islote; el ${NAMES.powerWind} pega triple) y pulsa E / A junto a la jaula</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
        <button data-a="resume">Seguir jugando</button>
        <p>La ${NAMES.forestRoot}: palancas, un nudo que abre la ${NAMES.powerVine}, una losa (un compañero o el bloque encima), una linterna para el brasero y un ${NAMES.eliteForest}: cuando se agache, apártate o rueda. E / A coge y suelta</p>

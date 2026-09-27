@@ -44,7 +44,10 @@ import { GraveMeshes } from './scene/graves';
 import { buildCrags, buildVine } from './scene/crags';
 import { ShrineMeshes } from './scene/shrines';
 import { ChestMeshes } from './scene/chests';
-import { coastAction, shrinePartAt } from './coast-ui';
+import { coastAction, rescueAction, shrinePartAt } from './coast-ui';
+import { RescueMeshes } from './scene/rescue';
+import { rescueSite, type RescueSite } from '../shared/rescue';
+import type { CageView } from '../shared/protocol';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
 import { buildTerrainMesh, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
 import { CorruptionMeshes } from './scene/corruption';
@@ -167,6 +170,12 @@ export class Game {
   private ground: THREE.Mesh | null = null;
   private farGround: THREE.Mesh | null = null;
   private corruptionMeshes: CorruptionMeshes | null = null;
+  /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
+  private rescueMeshes: RescueMeshes | null = null;
+  private rescueSpot: RescueSite | null = null;
+  private cage: CageView | null = null;
+  /** Standing anchors in view: targets for punches, arrows and the lock (no actor). */
+  private anchorTargets: AimTarget[] = [];
   /** Last corrupt-ids key applied to the ground tint. */
   private corruptKey = '';
   private dungeon: DungeonView = emptyDungeonView();
@@ -345,6 +354,9 @@ export class Game {
     this.farGround = buildTerrainMesh(this.terrain, farPatch!); // far sea: coarse; tinted for the island/islet zones
     this.scene.add(this.farGround);
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
+    this.rescueSpot = rescueSite(this.terrain, seed);
+    this.rescueMeshes = new RescueMeshes(this.rescueSpot, this.terrain);
+    this.scene.add(this.rescueMeshes.group);
     this.corruptKey = '';
     this.scene.add(this.corruptionMeshes.group);
     this.scene.add(this.ground, buildWater(), buildGrass(this.terrain, t.grass, seed), this.resMeshes.group, buildCrags(this.crags, t.shadows), this.shrineMeshes.group);
@@ -410,7 +422,11 @@ export class Game {
       r.whale = p.ride === 'whale' && !p.dead;
       r.seen = m.time;
     }
+    this.cage = m.cage ?? null;
+    this.rescueMeshes?.sync(this.cage);
+    this.anchorTargets = m.wolves.filter((w) => w.kind === 'anchor').map((w) => ({ id: w.id, x: w.x, z: w.z }));
     for (const w of m.wolves) {
+      if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
         w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
@@ -606,7 +622,7 @@ export class Game {
       const p = w.actor.root.position;
       out.push({ id, x: p.x, z: p.z });
     }
-    return out;
+    return [...out, ...this.anchorTargets];
   }
 
   /** Protocol yaw of where the camera looks (camera forward is (-sin yaw, -cos yaw)). */
@@ -714,6 +730,7 @@ export class Game {
     if (da) return this.conn.send({ t: 'dungeon', act: da.act });
     const ca = this.coastAct();
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
+    if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
     if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
@@ -721,11 +738,9 @@ export class Game {
       return this.conn.send({ t: 'attack', id: locked.id });
     }
     let best: { id: number; d: number } | null = null;
-    for (const [id, w] of this.wolves) {
-      if (w.anim === 'dead') continue;
-      const p = w.actor.root.position;
-      const d = Math.hypot(p.x - b.x, p.z - b.z);
-      if (d <= PUNCH.reach && (!best || d < best.d)) best = { id, d };
+    for (const e of this.enemies()) {
+      const d = Math.hypot(e.x - b.x, e.z - b.z);
+      if (d <= PUNCH.reach && (!best || d < best.d)) best = { id: e.id, d };
     }
     if (best) return this.conn.send({ t: 'attack', id: best.id });
     if (ma) return this.conn.send({ t: 'mount', act: ma.act });
@@ -767,6 +782,13 @@ export class Game {
   /** Lever, wheel or pumice block within reach (part ≥ 1), or an orb you have not taken yet (part 0). The server re-checks. */
   private shrinePart(): { id: number; part: number; open: boolean; label: string } | null {
     return shrinePartAt(this.shrines, this.shrineViews, this.cleared, this.body!, this.myName);
+  }
+
+  /** The root cage within reach while the Tragón is taken. */
+  private rescueAct(): { label: string } | null {
+    const b = this.body;
+    if (!b || this.dead || !this.rescueSpot) return null;
+    return rescueAction(b, this.rescueSpot.cage, this.cage);
   }
 
   /** A sunken chest within reach, or the weapon upgrade at the Heart. */
@@ -927,6 +949,7 @@ export class Game {
     this.structures.animate(performance.now() / 1000);
     this.shrineMeshes?.animate(performance.now() / 1000);
     this.chestMeshes?.animate(performance.now() / 1000);
+    if (this.cage) this.rescueMeshes?.animate(performance.now() / 1000);
     this.dungeonMeshes?.animate(performance.now() / 1000);
     this.coastMeshes?.animate(performance.now() / 1000, dt);
     this.gustFx.update(dt);
@@ -1024,6 +1047,8 @@ export class Game {
     if (sp) return this.hud.setPrompt(sp.part === 0 && !sp.open ? sp.label : `E · ${sp.label}`);
     const ca = this.coastAct();
     if (ca) return this.hud.setPrompt(`E · ${ca.label}`);
+    const ra = this.rescueAct();
+    if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
     const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind));
     if (da) return this.hud.setPrompt(`E · ${da.label}`);
     if (ma) return this.hud.setPrompt(ma.act === 3 || ma.act === 5 || ma.act === 8 || ma.act === 11 ? `E / M · ${ma.label}` : `E · ${ma.label}`);

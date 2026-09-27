@@ -58,6 +58,7 @@ describe('marchitoBarText', () => {
     expect(marchitoBarText(null)).toBeNull();
     expect(marchitoBarText({ will: 320, max: 400, laughing: false })).toBe('El Marchito · voluntad 320/400');
     expect(marchitoBarText({ will: 320, max: 400, laughing: true })).toBe('El Marchito se ríe');
+    expect(marchitoBarText({ will: 432, max: 432, laughing: false, grab: 0.4 })).toBe('El Marchito envuelve al Tragón · 40 % · voluntad 432/432');
   });
 });
 
