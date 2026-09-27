@@ -1,5 +1,6 @@
 import { DUNGEON } from '../dungeon';
 import { COAST_DUNGEON } from '../coast-dungeon';
+import { SWAMP_DUNGEON } from '../swamp-dungeon';
 import { ENEMY, type Wolf, type WolfTarget } from './wolves';
 
 /**
@@ -7,7 +8,7 @@ import { ENEMY, type Wolf, type WolfTarget } from './wolves';
  * brute, and from mid range it crouches (a long, readable wind-up) and charges in a straight line.
  * Roll through the charge, or step aside.
  */
-export const ELITE = { id: 900_001, shieldId: 900_002, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
+export const ELITE = { id: 900_001, shieldId: 900_002, peatId: 900_003, exposedFor: 3, windup: 1.1, chargeSpeed: 13, chargeFor: 0.9, chargeDamage: 30, chargeHit: 1.8, chargeMin: 5, chargeMax: 14, chargeCooldown: 5, corpseTime: 4 } as const;
 
 export interface Elite extends Wolf {
   /** Seconds left crouching before the charge (the telegraph). */
@@ -41,6 +42,12 @@ export function createElite(): Elite {
 export function createShielded(): Elite {
   const C = COAST_DUNGEON;
   return { ...createElite(), id: ELITE.shieldId, kind: 'elite2', x: C.x, y: C.floor, z: C.eliteZ, box: { x: C.x, halfW: C.halfW, z0: C.eliteRoomZ, z1: C.bossRoomZ } };
+}
+
+/** The swamp dungeon's mini-boss: the same brute, peat-soaked; it regrows in its room's mud pools (spec S3 §10.2). */
+export function createPeat(): Elite {
+  const S = SWAMP_DUNGEON;
+  return { ...createElite(), id: ELITE.peatId, kind: 'elite3', hp: ENEMY.elite3.hp, x: S.x, y: S.floor, z: S.eliteZ, box: { x: S.x, halfW: S.halfW, z0: S.eliteRoomZ, z1: S.bossRoomZ } };
 }
 
 /** Whether a hit from (x, z) lands on its shield: from its front half, while not exposed. */

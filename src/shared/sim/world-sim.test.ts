@@ -4240,3 +4240,99 @@ describe('Fuego (S3-E)', () => {
     expect(snap(sim, 'Ana').dungeon.swamp.gates[2]).toBe(true);
   });
 });
+
+describe('bruto de turba and hoguera (S3-E)', () => {
+  const S = SWAMP_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  function room() {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.fuego = true;
+    const e = sim.swampEntrance;
+    put(sim, 'Ana', e.x, e.z - 3);
+    sim.handle('Ana', { t: 'dungeon', act: 13 });
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.eliteRoomZ + 2, y: S.floor });
+    sim.step(0.1);
+    return sim;
+  }
+  const peat = (sim: WorldSim) => (sim as unknown as { peat: (Wolf & { box: { z0: number; z1: number } }) | null }).peat;
+
+  it('rises in its own room, stays there, and resets when the room empties', () => {
+    const sim = room();
+    const e = peat(sim)!;
+    expect(e.kind).toBe('elite3');
+    expect(e.hp).toBe(ENEMY.elite3.hp);
+    expect(snap(sim, 'Ana').dungeon.swamp.elite!.max).toBe(480);
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    expect(e.z).toBeGreaterThanOrEqual(S.eliteRoomZ);
+    expect(e.z).toBeLessThan(S.bossRoomZ);
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: 40 });
+    sim.step(0.1);
+    expect(peat(sim)).toBeNull();
+  });
+
+  it('regrows in a mud pool unless burning', () => {
+    const sim = room();
+    const e = peat(sim)!;
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x + 11, z: S.bossRoomZ - 2 }); // far corner, out of reach
+    const pool = { x: S.x + S.pools[0].x, z: S.pools[0].z };
+    const hold = () => Object.assign(e, { x: pool.x, z: pool.z, stun: 5, windup: 0, charge: 0 });
+    hold();
+    e.hp = 300;
+    for (let i = 0; i < 10; i++) {
+      hold();
+      sim.step(0.1);
+    }
+    expect(e.hp).toBeCloseTo(300 + S.regen, 0);
+    e.burn = 2;
+    const before = e.hp;
+    for (let i = 0; i < 10; i++) {
+      hold();
+      sim.step(0.1);
+    }
+    expect(e.hp).toBeLessThan(before);
+  });
+
+  it('down, gate 3 opens; the boss room is quiet (S3-F)', () => {
+    const sim = room();
+    peat(sim)!.hp = 0;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[3]).toBe(true);
+    msgs(sim);
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.bossRoomZ + 5 });
+    sim.step(0.1);
+    sim.step(0.1);
+    expect(msgs(sim).filter((m) => m.t === 'toast' && m.text === 'Algo zumba en la oscuridad. Aún duerme')).toHaveLength(1);
+  });
+
+  it('a hoguera needs Fuego; it burns the first beast, scares wolves near it, rearms and wears', () => {
+    const sim = setup('Ana');
+    calmCoast(sim);
+    const h = plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { wood: 4, amber: 2 };
+    sim.handle('Ana', { t: 'place', kind: 'fire', x: p.x - 2, z: p.z, rot: 0 });
+    expect(texts(sim)).toContain(`Hace falta el ${NAMES.powerFire}`);
+    p.fuego = true;
+    sim.handle('Ana', { t: 'place', kind: 'fire', x: p.x - 2, z: p.z, rot: 0 });
+    const fire = sim.save().structures.find((s) => s.kind === 'fire')!;
+    expect(fire.hp).toBe(STRUCTURE_HP.fire);
+    expect(sim.getPlayer('Ana')!.inv).toEqual({});
+    stepTo(sim, 0.81);
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    const [a, b, c] = sim.wolfList.filter((x) => x.raid && x.kind === 'wolf');
+    Object.assign(a!, { x: fire.x, z: fire.z });
+    Object.assign(b!, { x: fire.x + 3, z: fire.z });
+    sim.step(0.1);
+    expect(a!.burn).toBeGreaterThan(0);
+    expect(b!.flee).toBeGreaterThan(0);
+    const live = () => sim.save().structures.find((s) => s.id === fire.id);
+    expect(live()!.hp).toBe(STRUCTURE_HP.fire - HOGUERA.wear);
+    Object.assign(c!, { x: fire.x, z: fire.z, burn: 0 });
+    sim.step(0.1);
+    expect(c!.burn ?? 0).toBe(0);
+    for (let i = 0; i < HOGUERA.rearm * 10; i++) sim.step(0.1);
+    Object.assign(c!, { x: fire.x, z: fire.z, burn: 0, flee: 0 });
+    sim.step(0.1);
+    expect(c!.burn).toBeGreaterThan(0);
+  });
+});

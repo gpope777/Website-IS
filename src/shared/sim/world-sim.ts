@@ -2,7 +2,7 @@ import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, zarzalAt } from '../swamp';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
-import { FUEGO, inFlame } from '../fuego';
+import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { createRng } from '../rng';
 import { clampMap, coastFeatures, createTerrain, type Islet, inForest, inMap, inSwamp, WATER_LEVEL, type Terrain } from '../terrain';
 import { GATA, gataLeads, hasteNear, stepGata } from './lieutenant';
@@ -11,9 +11,9 @@ import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
 import { allZones, coastRaidBrutes, COAST_ZONES, CORRUPTION, isCoastZone, isSwampZone, SWAMP_ZONES, nearestZone, raidDirFrom, zoneAt, type Zone } from '../corruption';
 import { clampStep, DUNGEON, generateEntrance, inAnyDungeon, inBossRoom, inDungeon, inEliteRoom, inside, leverPos, withDungeon } from '../dungeon';
-import { inMud, insideSwamp, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
+import { inMud, inMudPool, inPeatRoom, insideSwamp, inSwampBossRoom, inSwampDungeon, plankAt, plankCrags, SWAMP_DUNGEON, swampEntrance } from '../swamp-dungeon';
 import { COAST_DUNGEON, coastEntrance, inChasm, inCoastBossRoom, inCoastDungeon, insideCoast, inShieldRoom } from '../coast-dungeon';
-import { createElite, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
+import { createElite, createPeat, createShielded, ELITE, shieldBlocks, stepElite, type Elite } from './elite';
 import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
@@ -268,6 +268,8 @@ export class WorldSim {
   private elite: Elite | null = null;
   /** The bruto escudado in the coast interior. */
   private shield: Elite | null = null;
+  /** The bruto de turba in the swamp interior. */
+  private peat: Elite | null = null;
   /** The coast interior (live-only, like the forest one): levers, gates, the pumice block, the bruto escudado. */
   private readonly coastLive = {
     pulled: [null, null] as (number | null)[],
@@ -328,6 +330,8 @@ export class WorldSim {
   private vines: (Crag & { owner: string; until: number })[] = [];
   private nextVineId: number = ENREDADERA.idBase;
   private regenClock = 0;
+  /** Live-only: sim time each hoguera can catch again. */
+  private readonly fireReady = new Map<number, number>();
   /** Live-only: sim time each net can catch again. */
   private readonly netReady = new Map<number, number>();
   private wolves: Wolf[] = [];
@@ -571,11 +575,13 @@ export class WorldSim {
     this.stepGataFall(dt);
     this.stepSpikes(dt);
     this.stepNets();
+    this.stepFires();
     this.stepDungeon();
     this.stepCoastDungeon();
     this.stepSwampDungeon();
     this.stepEliteFight(dt);
     this.stepShieldFight(dt);
+    this.stepPeatFight(dt);
     this.stepBossFight(dt);
     this.stepAntenonFight(dt);
     this.stepAlly(dt);
@@ -612,6 +618,8 @@ export class WorldSim {
     const b2 = this.boss2;
     if (b2 && near(b2.x, b2.z)) wolves.push({ id: b2.id, kind: b2.kind, x: r2(b2.x), y: r2(b2.y), z: r2(b2.z), yaw: r2(b2.yaw), anim: b2.anim, raid: false });
     if (sh && near(sh.x, sh.z)) wolves.push({ id: sh.id, kind: sh.kind, x: r2(sh.x), y: r2(sh.y), z: r2(sh.z), yaw: r2(sh.yaw), anim: sh.anim, raid: false });
+    const pe = this.peat;
+    if (pe && near(pe.x, pe.z)) wolves.push({ id: pe.id, kind: pe.kind, x: r2(pe.x), y: r2(pe.y), z: r2(pe.z), yaw: r2(pe.yaw), anim: pe.anim, raid: false, ...(pe.burn && pe.hp > 0 ? { burning: true as const } : {}) });
     const el = this.elite;
     if (el && near(el.x, el.z)) wolves.push({ id: el.id, kind: el.kind, x: r2(el.x), y: r2(el.y), z: r2(el.z), yaw: r2(el.yaw), anim: el.anim, raid: false });
     for (const a of this.anchorFoes) if (a.hp > 0 && near(a.x, a.z)) wolves.push({ id: a.id, kind: a.kind, x: r2(a.x), y: r2(a.y), z: r2(a.z), yaw: 0, anim: 'idle', raid: false });
@@ -811,6 +819,7 @@ export class WorldSim {
       this.outbox.push({ to: p.name, msg: { t: 'toast', text } });
     };
     if (p.dead) return;
+    if (kind === 'fire' && !p.fuego) return toast(`Hace falta el ${NAMES.powerFire}`);
     if (!hasAll(p.inv, BUILD_COST[kind])) return toast('Faltan materiales');
     if (kind === 'heart' && this.heart()) return toast('Ya hay un Corazón en este mundo');
     if (Math.hypot(x - p.x, z - p.z) > BUILD_REACH) return toast('Demasiado lejos');
@@ -1071,7 +1080,7 @@ export class WorldSim {
   }
 
   private gustEnemies(p: SavedPlayer, dir: Dir, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     let drowned = 0;
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
@@ -1122,7 +1131,7 @@ export class WorldSim {
   }
 
   private flameEnemies(p: SavedPlayer, hits: (x: number, z: number) => boolean): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : []), ...(this.boss ? [this.boss] : []), ...(this.boss2 ? [this.boss2] : []), ...(this.marchito ? [this.marchito] : []), ...this.anchorFoes];
     for (const w of foes) {
       if (w.hp <= 0 || !hits(w.x, w.z)) continue;
       this.strike(p.name, w, FUEGO.damage);
@@ -1193,7 +1202,7 @@ export class WorldSim {
 
   /** Burning beasts lose 3 PV/s; fleeing timers run down. */
   private stepBurning(dt: number): void {
-    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : [])];
+    const foes: Wolf[] = [...this.wolves, ...(this.elite ? [this.elite] : []), ...(this.shield ? [this.shield] : []), ...(this.peat ? [this.peat] : [])];
     for (const w of foes) {
       if (w.flee) w.flee = Math.max(0, w.flee - dt);
       if (!w.burn) continue;
@@ -1290,6 +1299,7 @@ export class WorldSim {
     if (anchor) return anchor;
     if (this.elite && this.elite.id === id) return this.elite;
     if (this.shield && this.shield.id === id) return this.shield;
+    if (this.peat && this.peat.id === id) return this.peat;
     if (this.boss2 && this.boss2.id === id) return this.boss2;
     return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
   }
@@ -1992,7 +2002,7 @@ export class WorldSim {
       thorn: Math.min(w.thorn, FUEGO.burns),
       lamps: w.lampAt.map((t) => t != null && (w.lamps || this.time - t <= S.lampWindow + EPS)),
       planks: w.planks.map((pl) => this.time >= pl.downUntil),
-      elite: null,
+      elite: this.peat && this.peat.hp > 0 ? { hp: Math.round(this.peat.hp), max: ENEMY.elite3.hp, charging: this.peat.windup > 0 || this.peat.charge > 0, burning: (this.peat.burn ?? 0) > 0 } : null,
     };
     return { gate: g.gate, gates: this.gates(), levers: pulled, purified: this.purified, boss, plate: g.pressed, block: carry(g.block), lantern: carry(g.lantern), lit: g.lit, elite, coast, swamp };
   }
@@ -2110,6 +2120,39 @@ export class WorldSim {
     }
     const hit = stepElite(this.shield, fighters, dt);
     if (hit) this.bite(hit.name, hit.dmg, this.shield);
+  }
+
+  /** The bruto de turba, like the other elites; in a mud pool it regrows unless burning. Once down, gate 3 opens. The boss room waits for S3-F. */
+  private stepPeatFight(dt: number): void {
+    const g = this.swampLive;
+    if (!g.bossSaid && this.targets().some((t) => !t.dead && inSwampBossRoom(t.x, t.z))) {
+      g.bossSaid = true;
+      this.say('Algo zumba en la oscuridad. Aún duerme');
+    }
+    const e = this.peat;
+    if (e && e.hp <= 0) {
+      if (!g.eliteDown) {
+        g.eliteDown = true;
+        this.say(`El ${NAMES.eliteSwamp} se deshace en barro seco. La última verja se abre`);
+      }
+      e.deadFor += dt;
+      if (e.deadFor >= ELITE.corpseTime) this.peat = null;
+      return;
+    }
+    if (g.eliteDown) return;
+    const fighters = this.targets().filter((t) => !t.dead && inPeatRoom(t.x, t.z));
+    if (!fighters.length) {
+      this.peat = null;
+      return;
+    }
+    if (!this.peat) {
+      this.peat = createPeat();
+      this.say(`Un ${NAMES.eliteSwamp} se levanta del barro. En los charcos se rehace; el fuego lo seca`);
+    }
+    const pe = this.peat;
+    const hit = stepElite(pe, fighters, dt);
+    if (hit) this.bite(hit.name, hit.dmg, pe);
+    if (pe.hp > 0 && !pe.burn && inMudPool(pe.x, pe.z)) pe.hp = Math.min(ENEMY.elite3.hp, pe.hp + SWAMP_DUNGEON.regen * dt);
   }
 
   /** Vines wither on time; walls near one regrow ("living walls"), reported once a second. */
@@ -2482,6 +2525,20 @@ export class WorldSim {
       this.damageStructure(s.id, NET.wear);
     }
     for (const id of this.netReady.keys()) if (!this.structures.some((s) => s.id === id)) this.netReady.delete(id);
+  }
+
+  /** A hoguera sets the first beast in it burning and sends wolves near it running, then rearms. */
+  private stepFires(): void {
+    for (const s of this.structures.filter((x) => x.kind === 'fire')) {
+      if (this.time + EPS < (this.fireReady.get(s.id) ?? 0)) continue;
+      const w = this.wolves.find((x) => x.hp > 0 && !x.burn && Math.hypot(x.x - s.x, x.z - s.z) <= HOGUERA.radius);
+      if (!w) continue;
+      w.burn = FUEGO.burnFor;
+      for (const o of this.wolves) if (o.hp > 0 && o.kind === 'wolf' && Math.hypot(o.x - s.x, o.z - s.z) <= HOGUERA.scare) this.scare(o, s.x, s.z);
+      this.fireReady.set(s.id, this.time + HOGUERA.rearm);
+      this.damageStructure(s.id, HOGUERA.wear);
+    }
+    for (const id of this.fireReady.keys()) if (!this.structures.some((s) => s.id === id)) this.fireReady.delete(id);
   }
 
   private bite(name: string, dmg: number, w: Wolf): void {
