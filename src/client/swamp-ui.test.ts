@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
+import { fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { shrinePartAt } from './coast-ui';
 import type { AmberTree } from '../shared/swamp-shrines';
 import type { Shrine } from '../shared/shrines';
@@ -59,5 +59,18 @@ describe('fogatas (S3-G)', () => {
   it('the Menú lists lit fogatas only at the Heart', () => {
     expect(fogataTargets([true, false, false, true], true)).toEqual([0, 3]);
     expect(fogataTargets([true, false, false, true], false)).toEqual([]);
+  });
+});
+
+describe('fogataCalls (S5-B)', () => {
+  const spots = [{ id: 0, x: 0, z: 0 }, { id: 6, x: 100, z: 0 }];
+  const lit = [true, false, false, false, false, false, true];
+  const all = { deer: true, frog: true, fish: true };
+  it('only at the lit Ceniza fogata, only the beasts you own', () => {
+    expect(fogataCalls({ x: 101, z: 0 }, spots, lit, all)).toEqual(['deer', 'frog', 'fish']);
+    expect(fogataCalls({ x: 101, z: 0 }, spots, lit, { deer: false, frog: true, fish: false })).toEqual(['frog']);
+    expect(fogataCalls({ x: 110, z: 0 }, spots, lit, all)).toEqual([]);
+    expect(fogataCalls({ x: 1, z: 0 }, spots, lit, all)).toEqual([]);
+    expect(fogataCalls({ x: 101, z: 0 }, spots, [true], all)).toEqual([]);
   });
 });

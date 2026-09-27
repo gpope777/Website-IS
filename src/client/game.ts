@@ -68,7 +68,7 @@ import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
-import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
+import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
 import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
@@ -99,6 +99,9 @@ const TRIANGULO_IMG = '/enemies/enemy7.png';
 const TRIANGULO_ASPECT = 455 / 469;
 /** El Zancudo (enemy9.png has real transparency); thin lines, so drawn 6 m wide (spec S3 §14.4). */
 const ZANCUDO_IMG = '/enemies/enemy9.png';
+/** El rayo marchito (enemy11.png, RGBA 460 × 485, 72 % transparent): a 2 m purple paper bolt (spec S5 §7.2). */
+const RAYO_IMG = '/enemies/enemy11.png';
+const RAYO_ASPECT = 460 / 485;
 const ZANCUDO_ASPECT = 358 / 291;
 const CUCURUCHO_IMG = '/enemies/enemy13.png';
 const CUCURUCHO_ASPECT = 556 / 601;
@@ -630,9 +633,11 @@ export class Game {
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
       );
-      if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
+      // The rayo flashes white during its 0.8 s tell and goes pale when a gust grounds it (anim idle).
+      if (w.kind === 'rayo' && r.actor instanceof PaperActor) r.actor.setTint(w.anim === 'attack' ? 0xffffff : w.anim === 'idle' ? 0xe8dca0 : 0xb48ad8);
+      else if (w.kind === 'marchito' && r.actor instanceof PaperActor) r.actor.setTint(m.marchito?.laughing ? 0xb89ac8 : 0x7a5a8c);
       else if ((w.kind === 'lieut1' || w.kind === 'lieut2') && r.actor instanceof PaperActor) r.actor.setTint(0xffffff);
       else if (w.kind === 'boss3' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.swamp.boss?.grounded ? 0xffe9a0 : 0xffffff);
       else if (w.kind === 'boss4' && r.actor instanceof PaperActor) r.actor.setTint(m.dungeon.mountain.boss?.stuck ? 0xffe9a0 : m.dungeon.mountain.boss?.windup ? 0xff9a8a : 0xffffff);
@@ -896,6 +901,10 @@ export class Game {
         trap: TRAP_LABEL[this.trap],
         fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
         onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
+        calls: this.body ? fogataCalls(this.body, this.fogataSpots, this.fogatasLit, { deer: this.hasSteed, frog: this.hasFrog, fish: this.hasFish }).map((beast) => ({ beast, label: CALL_LABEL[beast] })) : [],
+        onCall: (beast: string) => {
+          if (beast === 'deer' || beast === 'frog' || beast === 'fish') this.conn.send({ t: 'call', beast });
+        },
         onTrap: () => {
           this.trap = nextTrap(this.trap, this.hasFire, this.hasStone);
           this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
