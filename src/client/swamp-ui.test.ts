@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { swampAction } from './swamp-ui';
+import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
 import { shrinePartAt } from './coast-ui';
 import type { AmberTree } from '../shared/swamp-shrines';
 import type { Shrine } from '../shared/shrines';
@@ -41,5 +41,19 @@ describe('shrinePartAt (swamp)', () => {
 
   it('the peat wall says it only burns', () => {
     expect(shrinePartAt([peat], views, [], { x: 100.5, y: 0, z: 0 }, 'Ana')).toMatchObject({ id: 8, part: 0, open: false, label: 'Raíces de turba. Solo arden' });
+  });
+});
+
+describe('fogatas (S3-G)', () => {
+  const spots = [{ id: 0, x: 0, z: 0 }, { id: 1, x: 50, z: 0 }];
+  it('A lights with a torch, travels when lit, hints without fire', () => {
+    expect(fogataAction({ x: 1, z: 0 }, spots, [false, false], true)).toEqual({ t: 'fogata', id: 0, label: 'Encender la fogata' });
+    expect(fogataAction({ x: 1, z: 0 }, spots, [false, false], false)).toEqual({ t: 'hint', label: 'Hace falta fuego' });
+    expect(fogataAction({ x: 1, z: 0 }, spots, [true, false], false)).toMatchObject({ t: 'travel', to: 'heart', label: 'Volver al Corazón del Bosque' });
+    expect(fogataAction({ x: 10, z: 0 }, spots, [true, false], true)).toBeNull();
+  });
+  it('the Menú lists lit fogatas only at the Heart', () => {
+    expect(fogataTargets([true, false, false, true], true)).toEqual([0, 3]);
+    expect(fogataTargets([true, false, false, true], false)).toEqual([]);
   });
 });

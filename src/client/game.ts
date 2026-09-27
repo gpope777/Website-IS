@@ -54,9 +54,11 @@ import { RescueMeshes } from './scene/rescue';
 import { rescueSite, type RescueSite } from '../shared/rescue';
 import type { CageView } from '../shared/protocol';
 import { generateChests, generateCoastShrines, type Chest } from '../shared/coast-shrines';
+import { FogataMeshes } from './scene/fogatas';
+import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
-import { swampAction } from './swamp-ui';
+import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
 import { buildTerrainMesh, buildThorns, buildWater, terrainPatches, tintTerrain } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
@@ -205,6 +207,11 @@ export class Game {
   private amber = 0;
   private capa = 0;
   private torch = false;
+  /** Swamp fogatas (from the seed), which are lit, and seconds left of our channel (from the server). */
+  private fogataSpots: Fogata[] = [];
+  private fogatasLit: boolean[] = [];
+  private fogataMeshes: FogataMeshes | null = null;
+  private travelLeft: number | null = null;
   private padKey = '';
   private shrineViews: ShrineView[] = [];
   /** Shrines this player cleared (from the server). */
@@ -384,6 +391,9 @@ export class Game {
     this.amberTrees = generateAmberTrees(this.terrain, seed);
     this.amberMeshes = new AmberMeshes(this.amberTrees, t.shadows);
     this.scene.add(this.amberMeshes.group);
+    this.fogataSpots = generateFogatas(this.terrain, seed);
+    this.fogataMeshes = new FogataMeshes(this.fogataSpots);
+    this.scene.add(this.fogataMeshes.group);
     this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
     this.steedMeshes = new SteedMeshes(t.shadows);
     this.scene.add(this.steedMeshes.group);
@@ -468,6 +478,8 @@ export class Game {
     }
     this.swampMeshes?.sync(m.dungeon.swamp, this.hasFire);
     this.zarzalKnot?.sync(m.zarzalBurnt);
+    this.fogatasLit = m.fogatas;
+    this.fogataMeshes?.sync(m.fogatas);
     if (this.body) this.body.thornsOpen = m.zarzalBurnt;
     this.dungeonMeshes?.sync(m.dungeon, this.hasPower);
     this.coastMeshes?.sync(m.dungeon.coast, this.hasWind);
@@ -641,6 +653,8 @@ export class Game {
     this.amber = self.inv.amber ?? 0;
     this.capa = self.capa;
     this.torch = self.torch;
+    if (self.travel !== null && self.travel !== this.travelLeft) this.hud.toast(`Viajando… ${self.travel} s`);
+    this.travelLeft = self.travel;
     this.amberMeshes?.sync(self.amber);
     this.cleared = self.shrines;
     this.opened = self.chests;
@@ -717,6 +731,8 @@ export class Game {
         onCamera: () => this.rig.toggle(),
         onLeave: () => this.onLeave(),
         trap: TRAP_LABEL[this.trap],
+        fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
+        onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
         onTrap: () => {
           this.trap = nextTrap(this.trap, this.hasFire);
           this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
@@ -864,6 +880,10 @@ export class Game {
     if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
     const sa = this.swampAct();
     if (sa?.t === 'amber') return this.conn.send({ t: 'amber', id: sa.id });
+    const fa = this.fogataAct();
+    if (fa?.t === 'fogata') return this.conn.send({ t: 'fogata', id: fa.id });
+    if (fa?.t === 'travel') return this.conn.send({ t: 'travel', to: 'heart' });
+    if (fa?.t === 'hint') return this.hud.toast(fa.label);
     if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
     this.attackUntil = performance.now() + 450;
     const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
@@ -932,6 +952,20 @@ export class Game {
     if (!b || this.dead) return null;
     const h = this.heart && this.structures.position(this.heart.id);
     return coastAction({ pos: b, chests: this.chests, opened: this.opened, heart: h ? { x: h.x, z: h.z } : null, pearls: this.pearls, weapon: this.weapon });
+  }
+
+  /** A swamp fogata within reach (light it, or go back to the Heart). */
+  private fogataAct(): ReturnType<typeof fogataAction> {
+    const b = this.body;
+    if (!b || this.dead) return null;
+    return fogataAction(b, this.fogataSpots, this.fogatasLit, this.torch);
+  }
+
+  /** Standing at the Heart (for the Menú's fogata list). */
+  private atHeart(): boolean {
+    const b = this.body;
+    const h = this.heart && this.structures.position(this.heart.id);
+    return !!b && !!h && Math.hypot(h.x - b.x, h.z - b.z) <= HEART.tendReach;
   }
 
   /** A ripe amber tree within reach, or a Capa level at the Heart. */
@@ -1112,6 +1146,7 @@ export class Game {
     this.shrineMeshes?.animate(performance.now() / 1000);
     this.chestMeshes?.animate(performance.now() / 1000);
     this.amberMeshes?.animate(performance.now() / 1000);
+    this.fogataMeshes?.animate(performance.now() / 1000);
     if (this.cage) this.rescueMeshes?.animate(performance.now() / 1000);
     this.dungeonMeshes?.animate(performance.now() / 1000);
     this.coastMeshes?.animate(performance.now() / 1000, dt);
@@ -1231,6 +1266,8 @@ export class Game {
     if (ca) return this.hud.setPrompt(`E · ${ca.label}`);
     const sa = this.swampAct();
     if (sa) return this.hud.setPrompt(`E · ${sa.label}`);
+    const fa = this.fogataAct();
+    if (fa) return this.hud.setPrompt(fa.t === 'hint' ? `${NAMES.fogata[0]!.toUpperCase()}${NAMES.fogata.slice(1)} apagada · ${fa.label}` : `E · ${fa.label}`);
     const ra = this.rescueAct();
     if (ra) return this.hud.setPrompt(`E · ${ra.label}`);
     const da = this.body && (dungeonAction(this.body, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(this.body, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(this.body, this.swampDoor, this.dungeon.swamp, this.hasFire));

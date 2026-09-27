@@ -197,7 +197,8 @@ export class Hud {
     if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
   }
 
-  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void }): void {
+  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void }): void {
+    const trips = (h.fogatas ?? []).map((id) => `<button class="secondary" data-a="fogata${id}">Ir a la ${NAMES.fogata} ${id + 1} (5 s, de día)</button>`).join('');
     const options = (Object.keys(TIER_LABELS) as Tier[])
       .map((t) => `<option value="${t}" ${t === tier ? 'selected' : ''}>${TIER_LABELS[t]}</option>`)
       .join('');
@@ -216,10 +217,12 @@ export class Hud {
        <p>Poderes: H lanza el elegido (🌿 ${NAMES.powerVine} / 🌬️ ${NAMES.powerWind} / 🔥 ${NAMES.powerFire}) · J cambia · en táctil, mantén pulsado el botón de poder medio segundo para cambiar. El ${NAMES.powerWind} (altar de la ${NAMES.coastRoot}) empuja bestias (el mar se las lleva), desliza la piedra pómez, gira molinos, arranca raíces marchitas de la costa y, planeando, te sube una vez por vuelo</p>
        <p>El ${NAMES.powerFire} (altar de la ${NAMES.swampRoot}, en medio de la Laguna Negra): 🔥 una llamarada corta. Quema bestias (los lobos huyen), enciende braseros y lámparas de gas, y quema espinas, turba y raíces marchitas del pantano</p>
        <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · U hoguera (con el ${NAMES.powerFire}: quema a la primera bestia y espanta lobos) · 🗡️ pone la elegida</p>
+       <p>Fogatas del ${NAMES.biomeSwamp.replace(/^el /, '')}: enciéndelas con el ${NAMES.powerFire} o una antorcha de los Candiles. De día, E / A junto a una encendida te lleva al ${NAMES.heart} en 5 s; desde el ${NAMES.heart}, este menú te lleva a ellas. Un golpe o moverte lo corta</p>
+       ${trips}
        <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
        <button class="secondary" data-a="camera">Cambiar cámara</button>
        <button class="secondary" data-a="leave">Salir</button>`,
-      { resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
+      { ...Object.fromEntries((h.fogatas ?? []).map((id) => [`fogata${id}`, () => { h.onFogata?.(id); this.hideOverlay(); }])), resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
     );
     this.menuOpen = true;
     this.overlay.querySelector('select')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));
