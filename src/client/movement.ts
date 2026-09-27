@@ -45,9 +45,11 @@ export interface StepResult {
   gliding: boolean;
 }
 
-export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2 } as const;
+export const SPEED = { walk: 3.8, run: 7.5, swim: 2.2, swimFast: 4 } as const;
 export const PLAYER_RADIUS = 0.45;
-export const STAMINA = { max: 100, regen: 30, climbMove: 10, climbHold: 3, leap: 20 } as const;
+export const STAMINA = { max: 100, regen: 30, climbMove: 10, climbHold: 3, leap: 20, glide: 4, swimFast: 12 } as const;
+/** Glide speed stays under the server's MAX_SPEED (9 m/s). */
+export const GLIDE = { speed: 7, sink: 1.6, minHeight: 1.5 } as const;
 /** Metres per second up/down (and around) a crag. */
 export const CLIMB_SPEED = 2.2;
 const SWIM_DEPTH = WATER_LEVEL - 0.6;
@@ -87,7 +89,14 @@ export function stepBody(
   b.jumpHeld = input.jump;
   if (b.climb) return stepClimb(b, input, dt, terrain, jumpEdge);
 
-  const swimming = terrain.heightAt(b.x, b.z) < SWIM_DEPTH;
+  const hereH = terrain.heightAt(b.x, b.z);
+  const swimming = hereH < SWIM_DEPTH;
+  if (swimming || b.onGround) b.gliding = false;
+  else if (jumpEdge) {
+    // A fresh jump press in the air toggles the glider (B on touch).
+    const below = Math.max(hereH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
+    b.gliding = !b.gliding && !b.tired && b.y - below > GLIDE.minHeight;
+  }
   let ix = input.x;
   let iz = input.z;
   const mag = Math.hypot(ix, iz);
@@ -97,7 +106,8 @@ export function stepBody(
   }
   const moving = mag > 0.01;
   const running = input.sprint && moving && !swimming;
-  const speed = swimming ? SPEED.swim : running ? SPEED.run : SPEED.walk;
+  const swimFast = swimming && input.sprint && moving && !b.tired;
+  const speed = b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : running ? SPEED.run : SPEED.walk;
 
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
   const s = Math.sin(camYaw);
@@ -105,9 +115,12 @@ export function stepBody(
   const wx = ix * c + iz * s;
   const wz = -ix * s + iz * c;
 
-  const k = Math.min(1, (b.onGround ? 12 : 3) * dt);
-  b.vx += (wx * speed - b.vx) * k;
-  b.vz += (wz * speed - b.vz) * k;
+  // The glider keeps drifting along the facing when the stick is idle.
+  const dx0 = b.gliding && !moving ? Math.sin(b.facing) : wx;
+  const dz0 = b.gliding && !moving ? Math.cos(b.facing) : wz;
+  const k = Math.min(1, (b.onGround ? 12 : b.gliding ? 2 : 3) * dt);
+  b.vx += (dx0 * speed - b.vx) * k;
+  b.vz += (dz0 * speed - b.vz) * k;
 
   let nx = b.x + b.vx * dt;
   let nz = b.z + b.vz * dt;
@@ -152,7 +165,8 @@ export function stepBody(
     b.y = WATER_LEVEL - 0.9;
     b.vy = 0;
     b.onGround = true;
-    regen(b, dt);
+    if (swimFast) spend(b, STAMINA.swimFast * dt);
+    else regen(b, dt);
     return { ...RESULT_IDLE, moving, swimming: true };
   }
   const ground = Math.max(terrainH, SWIM_DEPTH, cragTopAt(crags, b.x, b.z, b.y) ?? -Infinity);
@@ -160,7 +174,12 @@ export function stepBody(
     b.vy = JUMP_SPEED;
     b.onGround = false;
   }
-  b.vy -= GRAVITY * dt;
+  if (b.gliding) {
+    spend(b, STAMINA.glide * dt);
+    if (b.tired) b.gliding = false;
+  }
+  if (b.gliding) b.vy = -GLIDE.sink;
+  else b.vy -= GRAVITY * dt;
   const ny = b.y + b.vy * dt;
   if (ny <= ground) {
     b.y = ground;
@@ -173,8 +192,11 @@ export function stepBody(
     b.y = ny;
     b.onGround = false;
   }
-  if (b.onGround) regen(b, dt);
-  return { ...RESULT_IDLE, moving, running };
+  if (b.onGround) {
+    b.gliding = false;
+    regen(b, dt);
+  }
+  return { ...RESULT_IDLE, moving, running, gliding: b.gliding };
 }
 
 function regen(b: Body, dt: number): void {
@@ -237,6 +259,7 @@ function stepClimb(b: Body, input: MoveInput, dt: number, terrain: Terrain, jump
 
 export function animFor(r: StepResult, b: Body): Anim {
   if (r.climbing) return 'climb';
+  if (r.gliding) return 'glide';
   if (r.swimming) return 'swim';
   if (!b.onGround) return 'jump';
   if (!r.moving) return 'idle';

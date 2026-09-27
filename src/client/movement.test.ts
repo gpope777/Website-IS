@@ -3,7 +3,7 @@ import type { Terrain } from '../shared/terrain';
 import { HALF, WATER_LEVEL } from '../shared/terrain';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
-import { animFor, createBody, PLAYER_RADIUS, rollInput, SPEED, STAMINA, stepBody, type Body, type MoveInput } from './movement';
+import { animFor, createBody, GLIDE, PLAYER_RADIUS, rollInput, SPEED, STAMINA, stepBody, type Body, type MoveInput } from './movement';
 
 const flat: Terrain = { heightAt: () => 0, density: () => 0.5 };
 const none = () => [];
@@ -152,5 +152,97 @@ describe('climbing', () => {
     expect(b.climb).toBeNull();
     expect(b.onGround).toBe(true);
     expect(b.y).toBe(0);
+  });
+});
+
+describe('glider', () => {
+  const idle: MoveInput = { x: 0, z: 0, sprint: false, jump: false };
+  const press: MoveInput = { ...fwd, jump: true };
+  function high() {
+    const b = createBody(0, 0, flat);
+    b.y = 20;
+    b.onGround = false;
+    return b;
+  }
+
+  it('a fresh jump press in the air opens it: slow sink, forward drift', () => {
+    const b = high();
+    const { r } = run(press, 0, flat, none, 0, [], b);
+    expect(b.gliding).toBe(true);
+    const out = run(fwd, 1, flat, none, 0, [], b);
+    expect(b.vy).toBeCloseTo(-GLIDE.sink);
+    expect(Math.hypot(b.vx, b.vz)).toBeGreaterThan(GLIDE.speed * 0.8);
+    expect(b.y).toBeGreaterThan(20 - GLIDE.sink * 1.2);
+    expect(b.stamina).toBeLessThan(STAMINA.max);
+    expect(animFor(out.r, b)).toBe('glide');
+    expect(r.gliding).toBe(true);
+  });
+
+  it('keeps drifting along the facing with the stick idle', () => {
+    const b = high();
+    run(press, 0, flat, none, 0, [], b);
+    run(idle, 1, flat, none, 0, [], b);
+    expect(b.z).toBeLessThan(-4); // facing -z from the press
+  });
+
+  it('closes on a second press, on landing, and when stamina runs out', () => {
+    const b = high();
+    run(press, 0, flat, none, 0, [], b);
+    run(fwd, 0.1, flat, none, 0, [], b);
+    run(press, 0, flat, none, 0, [], b);
+    expect(b.gliding).toBe(false);
+
+    const c = high();
+    run(press, 0, flat, none, 0, [], c);
+    run(fwd, 15, flat, none, 0, [], c);
+    expect(c.onGround).toBe(true);
+    expect(c.gliding).toBe(false);
+
+    const d = high();
+    d.stamina = 2;
+    run(press, 0, flat, none, 0, [], d);
+    run(fwd, 1, flat, none, 0, [], d);
+    expect(d.gliding).toBe(false);
+    expect(d.tired).toBe(true);
+  });
+
+  it('holding jump does not open it, and it needs some height', () => {
+    const b = high();
+    b.jumpHeld = true;
+    run(press, 0.2, flat, none, 0, [], b);
+    expect(b.gliding).toBe(false);
+
+    const low = createBody(0, 0, flat);
+    run(press, 0.05, flat, none, 0, [], low); // jump from the ground...
+    run(fwd, 0, flat, none, 0, [], low);
+    run(press, 0, flat, none, 0, [], low); // ...and press again at once: too low
+    expect(low.gliding).toBe(false);
+  });
+
+  it('grabs a crag it glides into', () => {
+    const crag: Crag = { id: 0, x: 0, z: -6, r: 2, base: -1, top: 30 };
+    const b = high();
+    run(press, 0, flat, none, 0, [crag], b);
+    run(fwd, 1.5, flat, none, 0, [crag], b);
+    expect(b.climb).toBe(crag);
+    expect(b.gliding).toBe(false);
+  });
+});
+
+describe('fast swimming', () => {
+  const lake: Terrain = { heightAt: () => -10, density: () => 0.5 };
+  it('sprinting in water is faster and costs stamina', () => {
+    const { b } = run({ ...fwd, sprint: true }, 1, lake);
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(SPEED.swimFast, 1);
+    expect(b.stamina).toBeLessThan(STAMINA.max);
+  });
+  it('a tired swimmer is back to the slow stroke and recovers', () => {
+    const b = createBody(0, 0, lake);
+    b.stamina = 3;
+    run({ ...fwd, sprint: true }, 1, lake, none, 0, [], b);
+    expect(b.tired).toBe(true);
+    expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(SPEED.swim, 1);
+    run({ ...fwd, sprint: true }, 4, lake, none, 0, [], b);
+    expect(b.tired).toBe(false);
   });
 });
