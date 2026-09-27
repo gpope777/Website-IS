@@ -4,6 +4,7 @@ import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
 import { cragsNear, generateCrags, type Crag } from '../crags';
 import { ENREDADERA, planVine } from '../enredadera';
 import { clampStep, DUNGEON, generateEntrance, inBossRoom, inDungeon, leverPos, withDungeon } from '../dungeon';
+import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
 import { addItem, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -54,6 +55,8 @@ export interface SavedPlayer {
   shrines?: number[];
   /** Has Enredadera (dungeon altar). Optional: older saves have none (see the constructor migration). */
   enredadera?: boolean;
+  /** Tamed deer and where it is parked. Optional: older saves have none. */
+  steed?: { x: number; z: number };
 }
 
 export interface SavedWorld {
@@ -99,6 +102,10 @@ interface Live {
   powerReadyAt: number;
   /** Sim time of death; null when alive or after a reconnect (no revive then). Never saved. */
   deadAt: number | null;
+  /** Taming round in progress (live-only). `start` and `zone` are rounded as the client sees them. */
+  tame: { round: number; start: number; zone: number } | null;
+  /** Sim time the deer lets you try again. */
+  tameReadyAt: number;
 }
 
 export function newWorld(seed: number, salt: string): SavedWorld {
@@ -118,6 +125,8 @@ export class WorldSim {
   readonly shrines: readonly Shrine[];
   /** The Raíz-madre's trunk in the world (the dungeon entrance). */
   readonly entrance: { x: number; y: number; z: number };
+  /** Where the wild deer grazes (it never leaves: every player tames their own). */
+  readonly wild: { x: number; y: number; z: number };
   time: number;
   /** Live-only: root lever pull times and whether the gate opened (stays open until the room restarts). */
   private readonly dungeonLive = { pulled: [null, null] as (number | null)[], gate: false };
@@ -156,6 +165,7 @@ export class WorldSim {
     this.crags = generateCrags(this.terrain, saved.seed);
     this.shrines = generateShrines(this.terrain, saved.seed, this.crags);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, this.shrines);
+    this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...this.shrines, this.entrance]);
     this.shrineLive = this.shrines.map(() => ({ pulled: [null, null], openUntil: -Infinity, pressed: false }));
     for (const p of saved.players) this.players.set(p.name, structuredClone(p));
     // Plan F moved Enredadera from the first shrine orb to the dungeon altar: players who already had it keep it.
@@ -212,7 +222,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0 };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, tame: null, tameReadyAt: 0 };
       this.live.set(name, l);
     }
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
@@ -258,6 +268,8 @@ export class WorldSim {
         return this.onShrine(p, msg.id, msg.part);
       case 'power':
         return this.onPower(p, l, msg.x, msg.z);
+      case 'mount':
+        return this.onMount(p, l, msg.act, msg.at);
       case 'dungeon':
         return this.onDungeon(p, l, msg.act);
       case 'hello':
@@ -315,6 +327,7 @@ export class WorldSim {
     this.stepSpikes(dt);
     this.stepBossFight(dt);
     this.stepAlly(dt);
+    this.stepTaming();
     this.wolves = this.wolves.filter((w) => w.deadFor < WOLF.corpseTime);
   }
 
@@ -665,6 +678,67 @@ export class WorldSim {
     }
   }
 
+  private onMount(p: SavedPlayer, l: Live, act: number, at: number | undefined): void {
+    if (p.dead) return;
+    if (act === 0) {
+      if (l.tame || Math.hypot(this.wild.x - p.x, this.wild.z - p.z) > MOUNT.reach) return;
+      if (p.steed) return this.tell(p.name, 'Ya tienes montura');
+      if (this.time + EPS < l.tameReadyAt) return this.tell(p.name, 'El ciervo aún resopla');
+      this.nextRound(l, 0);
+      return this.tell(p.name, 'El ciervo se encabrita. Pulsa cuando la aguja pase por la zona');
+    }
+    if (act === 1) {
+      const t = l.tame;
+      if (!t || at === undefined) return;
+      const round = MOUNT.rounds[t.round]!;
+      const timely = at >= t.start - EPS && at >= this.time - MOUNT.early && at <= this.time + MOUNT.late;
+      if (!timely || !inZone(ringAngle(round.speed, at - t.start), t.zone, this.tameWidth(p, t.round))) return this.throwOff(p, l);
+      if (t.round + 1 < MOUNT.rounds.length) {
+        this.nextRound(l, t.round + 1);
+        return this.tell(p.name, 'Aguanta');
+      }
+      l.tame = null;
+      p.steed = { x: r2(this.wild.x), z: r2(this.wild.z) };
+      return this.tell(p.name, 'El ciervo es tuyo. A junto a él para montar');
+    }
+  }
+
+  private nextRound(l: Live, round: number): void {
+    l.tame = { round, start: r2(this.time), zone: r2(this.rng() * Math.PI * 2) };
+  }
+
+  private throwOff(p: SavedPlayer, l: Live): void {
+    l.tame = null;
+    l.tameReadyAt = this.time + MOUNT.retry;
+    this.tell(p.name, 'Te tira al suelo. Otra vez');
+  }
+
+  /** Zone width for this round; a friend near the deer calms it. */
+  private tameWidth(p: SavedPlayer, round: number): number {
+    const w = MOUNT.rounds[round]!.width;
+    for (const [n, ol] of this.live) {
+      const o = this.players.get(n)!;
+      if (n !== p.name && !o.dead && ol.awayFor === null && Math.hypot(o.x - this.wild.x, o.z - this.wild.z) <= MOUNT.calmReach) return w * MOUNT.calmWidth;
+    }
+    return w;
+  }
+
+  private tameView(p: SavedPlayer, l: Live): SelfState['tame'] {
+    const t = l.tame;
+    if (!t) return null;
+    return { round: t.round, rounds: MOUNT.rounds.length, start: t.start, speed: MOUNT.rounds[t.round]!.speed, zone: t.zone, width: r2(this.tameWidth(p, t.round)) };
+  }
+
+  /** Dying, wandering off or waiting too long ends a taming. */
+  private stepTaming(): void {
+    for (const [name, l] of this.live) {
+      if (!l.tame) continue;
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null) l.tame = null;
+      else if (Math.hypot(this.wild.x - p.x, this.wild.z - p.z) > MOUNT.leash || this.time - l.tame.start > MOUNT.roundTimeout) this.throwOff(p, l);
+    }
+  }
+
   /** Server-side move (dungeon door): the client snaps to it through `fix`. */
   private teleport(p: SavedPlayer, l: Live, x: number, z: number): void {
     p.x = r2(x);
@@ -765,9 +839,9 @@ export class WorldSim {
       shrines: [...(p.shrines ?? [])],
       powerLeft: Math.max(0, Math.ceil(l.powerReadyAt - this.time - EPS)),
       power: !!p.enredadera,
-      tame: null,
+      tame: this.tameView(p, l),
       riding: false,
-      steed: false,
+      steed: !!p.steed,
     };
   }
 

@@ -8,6 +8,7 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, leverPos } from '../dungeon';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
+import { MOUNT } from '../mount';
 import { PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
 
 function setup(...names: string[]) {
@@ -1165,5 +1166,106 @@ describe('purified defender', () => {
     Object.assign(w, { x: h.x + 4, z: h.z });
     for (let i = 0; i < 15; i++) sim.step(0.1);
     expect(w.hp).toBeLessThanOrEqual(full - ALLY.damage);
+  });
+});
+
+describe('taming the deer', () => {
+  const atWild = (sim: WorldSim, name: string, dx = 1) => put(sim, name, sim.wild.x + dx, sim.wild.z);
+  /** Wait until the needle reaches the zone centre and tap at exactly that sim time. */
+  const tapPerfect = (sim: WorldSim, name: string) => {
+    const t = snap(sim, name).self.tame!;
+    const at = t.start + t.zone / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle(name, { t: 'mount', act: 1, at });
+  };
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+
+  it('starts only within reach of the wild deer', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', sim.wild.x + MOUNT.reach + 2, sim.wild.z);
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    const t = snap(sim, 'Ana').self.tame!;
+    expect(t).toMatchObject({ round: 0, rounds: 3, speed: MOUNT.rounds[0].speed, width: MOUNT.rounds[0].width });
+  });
+
+  it('three good taps tame it; each round is faster and narrower', () => {
+    const sim = setup('Ana');
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    tapPerfect(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.tame).toMatchObject({ round: 1, speed: MOUNT.rounds[1].speed, width: MOUNT.rounds[1].width });
+    tapPerfect(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.tame!.round).toBe(2);
+    tapPerfect(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.tame).toBeNull();
+    expect(self.steed).toBe(true);
+    expect(sim.getPlayer('Ana')!.steed).toBeDefined();
+    expect(texts(sim)).toContain('El ciervo es tuyo. A junto a él para montar');
+  });
+
+  it('a tap outside the zone throws you off and the deer needs a moment', () => {
+    const sim = setup('Ana');
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    const t = snap(sim, 'Ana').self.tame!;
+    const at = t.start + (t.zone + Math.PI) / t.speed; // opposite side of the ring
+    while (sim.time < at) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 1, at });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(texts(sim)).toContain('Te tira al suelo. Otra vez');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    for (let i = 0; i < 21; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    expect(snap(sim, 'Ana').self.tame).not.toBeNull();
+  });
+
+  it('a tap time far from now fails, even if it would hit the zone', () => {
+    const sim = setup('Ana');
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    const t = snap(sim, 'Ana').self.tame!;
+    const period = (2 * Math.PI) / t.speed;
+    const at = t.start + t.zone / t.speed + period; // a later lap
+    while (sim.time < at - period + 0.2) sim.step(0.1); // "now" is a whole lap before
+    sim.handle('Ana', { t: 'mount', act: 1, at });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(sim.getPlayer('Ana')!.steed).toBeUndefined();
+  });
+
+  it('waiting too long or walking off throws you', () => {
+    const sim = setup('Ana');
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    for (let i = 0; i < MOUNT.roundTimeout * 10 + 2; i++) sim.step(0.1);
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    for (let i = 0; i < 25; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    expect(snap(sim, 'Ana').self.tame).not.toBeNull();
+    atWild(sim, 'Ana', MOUNT.leash + 1);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+  });
+
+  it('a friend near the deer widens the zone', () => {
+    const sim = setup('Ana', 'Leo');
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    expect(snap(sim, 'Ana').self.tame!.width).toBe(MOUNT.rounds[0].width);
+    atWild(sim, 'Leo', -2);
+    expect(snap(sim, 'Ana').self.tame!.width).toBeCloseTo(MOUNT.rounds[0].width * MOUNT.calmWidth, 2);
+  });
+
+  it('you only tame one', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.steed = { x: 0, z: 0 };
+    atWild(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 0 });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(texts(sim)).toContain('Ya tienes montura');
   });
 });
