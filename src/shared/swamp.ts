@@ -10,7 +10,15 @@ export const BOG = { k: 0.6, deep: 0.6 } as const;
 /** The swamp fog blends in over this many metres. */
 export const FOG_BLEND = 20;
 
-export function zarzalAt(t: Terrain, x: number, z: number): boolean {
+/**
+ * The Zarzal knot (spec S3 §3.2): a withered root on the forest's west rim, the point closest to spawn.
+ * Three Llamaradas within `FUEGO.rootReach` burn it; then the thorns within `gap` m of its z stop, for everyone.
+ */
+export const ZARZAL_KNOT = { x: -HALF + 8, z: 120, gap: 5 } as const;
+
+/** Thorns at (x, z)? Once the knot is `burnt`, not in its gap. */
+export function zarzalAt(t: Terrain, x: number, z: number, burnt = false): boolean {
+  if (burnt && Math.abs(z - ZARZAL_KNOT.z) < ZARZAL_KNOT.gap) return false;
   return x > ZARZAL.x0 && x < ZARZAL.x1 && z > SWAMP.z0 && z < SWAMP.z1 && WATER_LEVEL - t.heightAt(x, z) < ZARZAL.dry;
 }
 

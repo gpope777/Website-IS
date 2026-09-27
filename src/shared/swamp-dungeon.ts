@@ -5,7 +5,7 @@ import type { Crag } from './crags';
  * La Raíz-madre del Pantano (spec S3 §10): a third interior off the map, along +z.
  * Hall with two levers → gate 0 → Fuego altar → gate 1 (thorns: burn them) → the dark gas hall
  * (light its 3 lamps within 10 s) → gate 2 → the sinking boardwalk over the mud (no gate: the mud is
- * the obstacle) → the bruto de turba (it regrows in its mud pools unless burning) → gate 3 → the boss room (S3-F).
+ * the obstacle) → the bruto de turba (it regrows in its mud pools unless burning) → gate 3 → El Zancudo's room (4 gas vents).
  */
 export const SWAMP_DUNGEON = {
   x: HALF + 450,
@@ -55,6 +55,14 @@ export const SWAMP_DUNGEON = {
   poolR: 3,
   regen: 10,
   bossRoomZ: 150,
+  /** El Zancudo's gas vents, in drift order (a Llamarada on the one under it drops it). */
+  vents: [
+    { x: -5, z: 158 },
+    { x: 5, z: 158 },
+    { x: 5, z: 172 },
+    { x: -5, z: 172 },
+  ],
+  ventR: 1.2,
   trunkR: 4,
   enterReach: 5,
   plankId: 1300,

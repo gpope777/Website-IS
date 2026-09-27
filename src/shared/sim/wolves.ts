@@ -48,8 +48,10 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   anchor: { hp: 150, run: 0, damage: 0, reach: 0, biteCooldown: 99 },
   /** La Gata Araña, the swamp's lieutenant (see sim/lieutenant.ts): wolf speed, bites 12 every 2 s. */
   lieut1: { hp: 300, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
+  /** El Zancudo, the swamp dungeon's boss (see sim/zancudo.ts): hovers, dives for 14 every ~9 s. */
+  boss3: { hp: 380, run: 3, damage: 14, reach: 1.8, biteCooldown: 8 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la ') };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), boss3: NAMES.bossSwamp.replace(/^El /, 'el ') };
 
 export interface Wolf {
   id: number;

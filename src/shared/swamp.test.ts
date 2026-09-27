@@ -4,7 +4,7 @@ import { generateCrags } from './crags';
 import { coastFeatures } from './terrain';
 import { deepStepOk, depthAt } from './coast';
 import { fishStepOk } from './fish';
-import { inBog, swampFog, zarzalAt } from './swamp';
+import { inBog, swampFog, ZARZAL_KNOT, zarzalAt } from './swamp';
 
 const SEEDS = [1, 42, 777, 12345];
 const depth = (t: ReturnType<typeof createTerrain>, x: number, z: number) => WATER_LEVEL - t.heightAt(x, z);
@@ -107,6 +107,18 @@ describe('swamp rules', () => {
     expect(zarzalAt(t, -HALF - 20, RIVER.z)).toBe(false);
     expect(zarzalAt(t, -HALF - 80, 100)).toBe(false);
     expect(zarzalAt(t, -HALF - 40, 20)).toBe(false);
+  });
+
+  it('once the knot burns, a 10 m gap in el Zarzal stops biting (only there)', () => {
+    const z = ZARZAL_KNOT.z;
+    const thorny = [-HALF - 40, -HALF - 30, -HALF - 20, -HALF].filter((x) => zarzalAt(t, x, z));
+    expect(thorny.length).toBeGreaterThan(0);
+    for (const x of thorny) {
+      expect(zarzalAt(t, x, z, true)).toBe(false);
+      expect(zarzalAt(t, x, z + ZARZAL_KNOT.gap + 0.5, true)).toBe(zarzalAt(t, x, z + ZARZAL_KNOT.gap + 0.5));
+    }
+    expect(zarzalAt(t, -HALF - 40, 100, true)).toBe(true);
+    expect(zarzalAt(t, ZARZAL_KNOT.x, z)).toBe(false);
   });
 
   it('the bog is the ankle-deep swamp water outside the thorns', () => {
