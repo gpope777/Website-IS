@@ -537,3 +537,37 @@ Criterios para decidir sin preguntar (sacados de respuestas pasadas): opción m�
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: entrar al Pantano, buscar las 4 manchas; tomar un orbe del Pantano y ver cuál desaparece. Forzar el 3.er asedio (en una partida de prueba, `raidN: 2` en el guardado): ¿se ve la Gata en la niebla del atardecer?, ¿se nota el aura?, ¿300 PV es mucho con arma nivel 0? Constantes: `SWAMP_ZONES` en `corruption.ts`, `GATA` en `sim/lieutenant.ts`.
+
+## Slice 3 · S3-E — mazmorra del Pantano y el Fuego — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S3-E-fuego-mazmorra.md` (7331ed0).
+- Commits: 72c2887 (T1 reglas: `src/shared/fuego.ts`, `src/shared/swamp-dungeon.ts`), 6a3ce70 (T2 mazmorra en el servidor, protocolo v29), fa76e52 (T3 la Llamarada), 15b8048 (T4 bruto de turba y hoguera), 8f06bec (T5 cliente).
+- Tests: npm test 573 (antes 545), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 29**. Campo guardado nuevo opcional `SavedPlayer.fuego`: las partidas viejas cargan.
+- Cómo funciona:
+  - **Entrada:** tronco hundido de la **Raíz-madre del Pantano**, 5 m al norte del centro de la Laguna Negra (el centro es la raíz marchita de la zona 10). Agua honda: se llega en pez, en ballena o en el aire con la rana. A / E a ≤9 m → dentro (el pez se queda esperando en el tronco). Al salir apareces nadando junto al tronco.
+  - **Interior** en `x = HALF + 450`, 24 × 180 m, suelo a 30 m, cálido:
+    1. **Palancas** (6 s) → verja 0.
+    2. **Altar del Fuego** (A / E) → `fuego` guardado.
+    3. **Verja de espinas** (verja 1): tres Llamaradas la queman ("Las espinas humean (1/3)").
+    4. **Sala del gas** (verja 2): 3 lámparas de gas apagadas (la sala solo tiene su luz). Encendidas las tres en ≤10 s, se abre. Las dos primeras están juntas y caen con una sola Llamarada; la tercera, 13 m más allá.
+    5. **Pasarela que se hunde** (sin verja): 10 tablas sobre 30 m de barro. Cada tabla se hunde **1,2 s** después de que alguien la pisa y vuelve a los **4 s**. Caer al barro → de vuelta a la verja de la sala del gas, −10 PV ("El barro te traga y te escupe atrás…").
+    6. **Bruto de turba** (480 PV): la carga del bruto reforzado. En los dos **charcos** de su sala se rehace **10 PV/s** salvo que arda. Al caer, verja 3.
+    7. **Sala del jefe:** vacía y lista para S3-F ("Algo zumba en la oscuridad. Aún duerme").
+  - **Fuego** (H / botón de poder): **Llamarada**, cono de 6 m y 60°, 5 s de enfriamiento propio. Bestias: −6 y **arden** 3 PV/s durante 4 s; los **lobos** que arden huyen 2 s. Brutos, élites y la Gata arden sin huir. Jefes y El Marchito solo reciben el golpe.
+  - **Cambio de poder:** J / mantener el botón cicla 🌿 → 🌬️ → 🔥 saltando los que no tienes.
+  - **Hoguera:** tercera trampa del Menú ("Trampa: estacas / red de raíces / hoguera"; solo aparece con Fuego) y tecla **U**. 4 madera + 2 ámbar, 60 PV, necesita el Fuego ("Hace falta el Fuego"). La primera bestia que entra arde; los lobos a ≤4 m huyen 2 s; se rearma en 8 s; cada vez −10 PV. No calienta (es trampa, no fogata).
+  - **Marcas `// S3-E` resueltas:** una Llamarada enciende un brasero de **Candiles** sin antorcha (3 Llamaradas en 10 s abren; cada brasero aguanta 12 s); tres Llamaradas queman la pared de **Turba** (el santuario queda abierto mientras la sala viva); una Llamarada a ≤5 m de la raíz de las zonas **11–13** la limpia ("El fuego seca la raíz marchita. El pantano respira"). La 10 no: eso es de El Zancudo (S3-F).
+- Decidido por Claude — revisar:
+  - **Cuatro verjas físicas + la pasarela** como quinto obstáculo sin verja (igual que la sima de la Costa).
+  - **Sin losa con bloque de raíz** en la pasarela: el spec la da como atajo opcional; las tablas solas bastan.
+  - Las tablas son discos "crag" pelados (como los nenúfares): el cliente se sube con la física de siempre. El servidor usa franjas de 3 m para saber en qué tabla estás; en la junta entre dos tablas el cliente puede caer un pelo antes que el servidor.
+  - Las dos primeras lámparas comparten Llamarada: con 5 s de enfriamiento, tres lámparas separadas no caben en 10 s.
+  - Solo huyen los **lobos** (Llamarada y hoguera).
+  - La pared de Turba quemada es estado vivo (como todos los puzles de santuario): vuelve si la sala se reinicia; el orbe tomado sigue tomado.
+  - Protocolo v29 de una vez para todo el plan (acts 13–17, `power.kind 'fuego'`, `DungeonView.swamp`, `SelfState.fuego/fireLeft`, `EnemyKind 'elite3'`, `WolfView.burning`, `StructureKind 'fire'`).
+  - El bruto de turba es el zorro a escala 2,4 con un manto de turba (una caja). Las bestias que arden llevan una llamita naranja encima (material compartido, sin partículas).
+  - Cambios de regla con tests adaptados (ninguno borrado): `decodeClient` acepta `dungeon` hasta 17 (el test que rechazaba 13 ahora rechaza 18) y `power.kind 'fuego'` (el test que lo rechazaba usa ahora `'rayo'`); versión de protocolo → 29.
+- **Marcas pendientes:** `// S3-F` (vencer a El Zancudo limpia la 10; el nudo del Zarzal y los respiraderos de gas arden con la Llamarada, en `flameThings`), `// S3-G` (las fogatas, en el mismo sitio).
+- Rendimiento móvil: interior de ~60 mallas pequeñas + 4 luces fijas y 3 luces de lámpara que solo se encienden al prenderlas (fuera de la mazmorra no se ven). La hoguera no tiene luz propia.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: en pez hasta el tronco de la Laguna y A. Palancas, altar (J / mantener → 🔥). Tres Llamaradas a las espinas. Sala del gas: Llamarada a las dos lámparas juntas y correr a la tercera (¿10 s es justo?). Pasarela: ¿1,2 s por tabla da para cruzar corriendo? ¿se entiende por qué caes? Bruto de turba: dejarlo en un charco y ver que se cura; quemarlo. Fuera: Candiles solo con Fuego, la pared de Turba, una raíz morada del Pantano. De noche: Llamarada a lobos (¿huyen?) y una hoguera cerca del Corazón. Constantes: `FUEGO`/`HOGUERA` en `src/shared/fuego.ts`, `SWAMP_DUNGEON` en `src/shared/swamp-dungeon.ts`, `ENEMY.elite3`.
