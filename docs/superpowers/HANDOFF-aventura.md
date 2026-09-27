@@ -368,3 +368,28 @@ PR draft: https://github.com/gpope777/Website-IS/pull/2 (NO merge: merge a main 
 - Verificado en navegador: no (solo tests + check + build).
 - Bloqueos: ninguno.
 - Qué probar: en ballena hasta la isla, A junto al tronco. Palancas, altar (J / mantener el botón para cambiar a 🌬️). Ráfaga al molino. Tres ráfagas a la pómez hasta la losa, cruzando por el puente. En la sima: correr, saltar al vacío, B para planear y H a medio camino (¿llega?). Bruto escudado: pegar de frente (nada), ráfaga y pegar rápido. Fuera: ráfaga a las ruedas del Islote, a la pómez de Marea y a una raíz morada de la playa. De noche, en la orilla, empujar lobos al mar. Constantes: `VIENTO` en `src/shared/viento.ts`, `COAST_DUNGEON` en `src/shared/coast-dungeon.ts`, `ELITE.exposedFor`.
+
+## Slice 2 · S2-G — El Antenón y el defensor del viento — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-aventura-S2-G-antenon.md` (5b5009d).
+- Commits: f8004f5 (T1 reglas: `src/shared/sim/antenon.ts`, pilares de coral), 08f11d1 (T2 el combate en el servidor, protocolo v20), 72dfa16 (T3 el Antenón blanco), 2041b0f (T4 cliente).
+- Tests: npm test 434 (antes 417), test:workers 12, check + build verdes. PROTOCOL_VERSION = 20. Campo guardado nuevo opcional `SavedWorld.purified2`: las partidas viejas cargan.
+- Dibujo: `public/enemies/enemy3.png` (512 × 353) **tiene transparencia de verdad** (69 % de píxeles con alfa 0, esquinas transparentes). No hizo falta recortar el blanco. Va por `PaperActor` como el Tragón (4 m de alto).
+- Cómo funciona:
+  - **Sala del jefe** de la mazmorra de la Costa (z 150–180, tras la verja 3). Ya no dice "Algo duerme bajo la marea": al entrar, **El Antenón despierta**. Cuatro **pilares de coral** (rosas, radio 1 m) en (±5, 160) y (±5, 172); nadie los atraviesa.
+  - **360 PV** y **cáscara de marea**: golpes, flechas y ráfagas no le hacen nada ("La cáscara de marea aguanta. Empújalo contra el coral, o párale") salvo si está **expuesto**:
+    - **5 s** si una ráfaga del Viento lo **empuja contra un pilar** (el empuje de jefe, 2 m, avanza en pasos de 0,25 m; si toca coral se para ahí: "¡Contra el coral! La cáscara se abre", y queda aturdido 1 s). Una ráfaga en suelo libre solo lo mueve.
+    - **3 s** tras una **parada**.
+  - **Ataques anunciados:** **barrido de antenas** (si estás a ≤3,5 m: 0,8 s de aviso con un anillo rojo de 4 m en el suelo, 10 de daño a todos dentro; rodar lo esquiva) y **carga** (a 5–14 m: 1,0 s de aviso con una franja roja en la dirección fijada, luego 12 m/s durante 0,8 s, 14 de daño, una vez por jugador; se para en pilares y muros). La barra dice "El Antenón 360/360 · cáscara / ¡expuesto! / ¡barrido! / ¡carga!". Expuesto se tiñe dorado.
+  - **Balance:** quieto a su lado recibes 10 cada ~4,3 s → aguantas **~43 s** con 100 PV (test: < 100 de daño en 30 s).
+  - Sala vacía → desaparece y vuelve con la vida llena.
+  - **Al vencerlo:** `purified2 = true`, se limpia la **zona 6** (la Raíz-madre de la Costa): `coastRaidBrutes` pasa a 0, se acaban los brutos de más y el "Algo sube de la costa". **Visión** del Marchito con los nombres de los presentes ("Primero el papel, ahora la cáscara. Ana.").
+  - **Antenón blanco:** pequeño, junto al Corazón (2,5 m al oeste; el Tragón está al este). Cada **8 s**, si hay asaltantes a ≤12 m del Corazón, los empuja **a todos 6 m hacia fuera** y los aturde 1 s ("El Antenón sopla…"); estacas y red hacen el resto. No pega, no muere. Destello blanco del cono al soplar.
+- Decisiones/desvíos:
+  - "Empujado contra un pilar" = el empuje de 2 m toca coral en el camino. Hay que atraerlo cerca de un pilar y soplar desde el otro lado.
+  - La ráfaga siempre lo empuja; el arañazo de 5 solo entra si ya está expuesto (como el papel del Tragón).
+  - El defensor no ahoga (sin agua cerca del Corazón no importa; así no toca el tope de 3).
+  - `snap.ally2` aparte de `snap.ally` (no una lista): menos cambio.
+  - Cambios de regla con tests adaptados (ninguno borrado): el test de S2-F "la sala del jefe espera, en calma" ahora espera que El Antenón despierte; versión de protocolo en los tests → 20.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: pasar el bruto escudado y entrar en la sala. Atraerlo junto a un pilar, colocarse al otro lado y 🌬️: ¿se lee que se abre? Parar el barrido con 🛡️ justo antes del golpe. Rodar el anillo rojo; apartarse de la franja de la carga. ¿El dibujo se ve bien de tamaño en móvil? Tras vencerlo: la visión, la mancha de la isla limpia, de noche el Antenón blanco soplando junto al Tragón. Constantes: `ANTENON` y `ANTENON_ALLY` en `src/shared/sim/antenon.ts`, `COAST_DUNGEON.pillars`, `ENEMY.boss2`.
