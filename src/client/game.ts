@@ -72,6 +72,7 @@ import { fogataAction, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
 import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
+import { VillainTower } from './scene/villain-tower';
 import { buildPines, buildTerrainMesh, buildThorns, buildWater, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, tintTerrain, type MountainChunk } from './scene/terrain-mesh';
 import { swampFog } from '../shared/swamp';
 import { CorruptionMeshes } from './scene/corruption';
@@ -280,6 +281,8 @@ export class Game {
   /** S5-A: las Tierras Corruptas' chunks, in one group shown only north of CORRUPT_SHOW_Z or flying. */
   private corruptMeshes: { chunk: MountainChunk; detail: THREE.Mesh; silhouette: THREE.Mesh }[] = [];
   private readonly corruptGroup = new THREE.Group();
+  /** S5-A: El Marchito's tower (real near it, a sky copy from everywhere else). */
+  private villainTower: VillainTower | null = null;
   private corruptionMeshes: CorruptionMeshes | null = null;
   /** Invasion 2's cage and anchors (spots from the seed) and the last cage view (null = the Tragón is home). */
   private rescueMeshes: RescueMeshes | null = null;
@@ -512,6 +515,8 @@ export class Game {
     });
     this.corruptGroup.visible = false;
     this.scene.add(this.corruptGroup);
+    this.villainTower = new VillainTower(this.terrain);
+    this.scene.add(this.villainTower.group);
     this.zarzalKnot = new ZarzalKnot(this.terrain);
     this.umbral = new UmbralMeshes(plain);
     this.scene.add(this.umbral.group);
@@ -1380,6 +1385,7 @@ export class Game {
     }
     this.hud.setRing(this.tame ? { needle: ringNeedle(this.tame, this.serverTime), zone: this.tame.zone, width: this.tame.width, round: this.tame.round, rounds: this.tame.rounds } : null);
     this.updatePrompt();
+    this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
     this.renderer.render(this.scene, this.camera);
   }
 
