@@ -2,7 +2,7 @@ import { NAMES } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { weatherAt, wetAt } from '../weather';
-import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked } from '../mountains';
+import { altitudeCold, climbableAt, COLD, smoothAt, STEEP, STEEP_TEXT, steepBlocked, UMBRAL, withEscalera } from '../mountains';
 import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
@@ -32,7 +32,7 @@ import { r2, type Anim, type ClientMsg, type DungeonView, type GraveView, type P
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
-import { createCucurucho, CUCURUCHO, hatFront, stepCucurucho, stickCucurucho, type Cucurucho } from './cucurucho';
+import { createAtalaya, createCucurucho, CUCURUCHO, hatFront, stepAtalaya, stepCucurucho, stickCucurucho, type Atalaya, type Cucurucho } from './cucurucho';
 import { ANTENON, createAntenon, createGustAlly, pushAntenon, stepAntenon, stepGustAlly, type Antenon, type GustAlly } from './antenon';
 import { RESCUE, rescueSite, type RescueSite } from '../rescue';
 import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
@@ -133,6 +133,8 @@ export interface SavedWorld {
   zarzalBurnt?: boolean;
   /** El Cucurucho was beaten and its white copy keeps an atalaya by the Heart. Optional: older saves have none. */
   purified4?: boolean;
+  /** La Escalera del Umbral raised: a ramp up los Peldaños for everyone. Optional: older saves have none. */
+  escalera?: boolean;
   /** El Marchito's first invasion: owed (the Tragón fell) or already happened. Optional: older saves have none. */
   invasion?: 'pending' | 'done';
   /** Invasion 2 (Slice 2 §8): owed since someone tamed a fish, the Tragón taken, or rescued. Optional: older saves have none. */
@@ -365,6 +367,11 @@ export class WorldSim {
   /** El Cucurucho beaten (saved); the boss itself is live-only. */
   purified4: boolean;
   private boss4: Cucurucho | null = null;
+  /** The white Cucurucho's atalaya by the Heart; live-only, rebuilt from `purified4`. */
+  private ally4: Atalaya | null = null;
+  /** La Escalera del Umbral raised (saved); the Umbral's cracks so far are live-only. */
+  escalera: boolean;
+  private umbralCasts = 0;
   /** Swamp fogatas (from the seed) and which are lit (saved). */
   readonly fogataSpots: readonly Fogata[];
   private fogatas: boolean[];
@@ -418,7 +425,7 @@ export class WorldSim {
     this.seed = saved.seed;
     this.salt = saved.salt;
     this.time = saved.time;
-    this.terrain = withDungeon(createTerrain(saved.seed));
+    this.terrain = withEscalera(withDungeon(createTerrain(saved.seed)), () => this.escalera);
     this.resources = generateResources(this.terrain, saved.seed);
     this.crags = generateCrags(this.terrain, saved.seed);
     const forest = generateShrines(this.terrain, saved.seed, this.crags);
@@ -455,6 +462,7 @@ export class WorldSim {
     this.purified3 = saved.purified3 ?? false;
     this.zarzalBurnt = saved.zarzalBurnt ?? false;
     this.purified4 = saved.purified4 ?? false;
+    this.escalera = saved.escalera ?? false;
     this.fogataSpots = generateFogatas(this.terrain, saved.seed);
     this.fogatas = this.fogataSpots.map((_, i) => saved.fogatas?.[i] ?? false);
     this.invasion = saved.invasion ?? 'none';
@@ -689,6 +697,7 @@ export class WorldSim {
     this.stepAlly(dt);
     this.stepAlly2(dt);
     this.stepAlly3(dt);
+    this.stepAlly4(dt);
     this.stepRace();
     this.stepTaming();
     this.stepWhaleTame();
@@ -739,7 +748,7 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), whale: this.whaleView(), marchito, corrupt: this.corrupt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -768,6 +777,7 @@ export class WorldSim {
       ...(this.purified3 ? { purified3: true } : {}),
       ...(this.zarzalBurnt ? { zarzalBurnt: true } : {}),
       ...(this.purified4 ? { purified4: true } : {}),
+      ...(this.escalera ? { escalera: true } : {}),
       ...(this.fogatas.some(Boolean) ? { fogatas: [...this.fogatas] } : {}),
       ...(this.invasion === 'none' ? {} : { invasion: this.invasion }),
       ...(this.invasion2 === 'none' ? {} : { invasion2: this.invasion2 }),
@@ -1470,6 +1480,7 @@ export class WorldSim {
     if (!p.piedra) return this.tell(p.name, 'Aún no tienes ese poder');
     const ready = l.stoneReadyAt ?? 0;
     if (this.time + EPS < ready) return this.tell(p.name, `La roca aún no responde (${Math.ceil(ready - this.time - EPS)} s)`);
+    if (!this.escalera && Math.hypot(p.x - UMBRAL.x, p.z - UMBRAL.z) <= UMBRAL.reach) return this.crackUmbral(p, l);
     const at = pillarSpot(p.x, p.z, x, z);
     const inside = inAnyDungeon(p.x, p.z);
     const through = clampStep(p.x, p.z, at.x, at.z, this.gates(), this.coastGates(), this.swampGates(), this.mountainGates());
@@ -1492,6 +1503,16 @@ export class WorldSim {
     }
     const root = this.zones.find((zn) => isMountainZone(zn.id) && zn.id !== MOUNTAIN_ZONES.root && !this.cleansed.has(zn.id) && Math.hypot(zn.x - at.x, zn.z - at.z) <= PIEDRA.rootReach);
     if (root) this.cleanse(root.id, 'La roca aplasta la raíz marchita. La montaña respira');
+  }
+
+  /** Piedra at the Umbral block: it cracks; the third crack raises la Escalera del Umbral for everyone, for good. */
+  private crackUmbral(p: SavedPlayer, l: Live): void {
+    l.stoneReadyAt = this.time + PIEDRA.cooldown;
+    this.umbralCasts++;
+    if (this.umbralCasts < UMBRAL.casts) return this.tell(p.name, `La roca cruje (${this.umbralCasts}/${UMBRAL.casts})`);
+    this.escalera = true;
+    this.say(`${upFirst(NAMES.stairs)} se alza en ${NAMES.mountainGate}. Ahora se sube a pie`);
+    // S4-H: the Escalera vision.
   }
 
   /** A pillar goes back into the ground. */
@@ -1616,6 +1637,17 @@ export class WorldSim {
     }
     this.ally3 ??= createFarol(h, (x, z) => this.terrain.heightAt(x, z));
     if (stepFarol(this.ally3, h, this.wolves, isNight(dayFraction(this.time)), dt)) this.say(`El farol de ${NAMES.bossSwamp} brilla. Los lobos huyen del ${NAMES.heart}`);
+  }
+
+  /** The white Cucurucho keeps an atalaya by a living Heart; at night it stones the nearest raider every 6 s. */
+  private stepAlly4(dt: number): void {
+    const h = this.heart();
+    if (!this.purified4 || !h || h.hp <= 0) {
+      this.ally4 = null;
+      return;
+    }
+    this.ally4 ??= createAtalaya(h, (x, z) => this.terrain.heightAt(x, z));
+    stepAtalaya(this.ally4, this.wolves, isNight(dayFraction(this.time)), dt);
   }
 
   /** Wolves, raiders or the boss. */
