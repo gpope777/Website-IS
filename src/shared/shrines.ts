@@ -2,7 +2,7 @@ import { createRng } from './rng';
 import { inForest, WATER_LEVEL, type Terrain } from './terrain';
 import type { Crag } from './crags';
 
-export type ShrineKind = 'levers' | 'plate' | 'ledge' | 'tide' | 'sunken' | 'fan';
+export type ShrineKind = 'levers' | 'plate' | 'ledge' | 'tide' | 'sunken' | 'fan' | 'candles' | 'lilies' | 'peat';
 /** The forest's three (coast shrines come from coast-shrines.ts). */
 export const SHRINE_KINDS: readonly ShrineKind[] = ['levers', 'plate', 'ledge'];
 export const SHRINE_LABELS: Record<ShrineKind, string> = {
@@ -12,6 +12,9 @@ export const SHRINE_LABELS: Record<ShrineKind, string> = {
   tide: 'Santuario de la Marea',
   sunken: 'Santuario Hundido',
   fan: 'Santuario del Islote',
+  candles: 'Santuario de los Candiles',
+  lilies: 'Santuario de los Nenúfares',
+  peat: 'Santuario de la Turba',
 };
 
 export const SHRINE = {
@@ -40,7 +43,8 @@ export interface Shrine {
   /** Ground height at the centre. */
   y: number;
   orb: { x: number; y: number; z: number };
-  /** Levers (2), the plate (1); coast: tide = [plate, pumice start], sunken = [beach lever, seabed lever], fan = 3 wheels. */
+  /** Levers (2), the plate (1); coast: tide = [plate, pumice start], sunken = [beach lever, seabed lever], fan = 3 wheels;
+   *  swamp: candles = [3 braziers, torch post], lilies = 7 pads from the shore to the platform (the pillar), peat = []. */
   parts: { x: number; z: number }[];
   /** The bare rock of the ledge shrine. */
   pillar: Crag | null;

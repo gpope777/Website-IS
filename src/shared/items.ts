@@ -1,10 +1,10 @@
 import { NAMES } from './names';
-export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl';
+export type ItemId = 'wood' | 'stone' | 'berries' | 'pearl' | 'amber';
 export type Inventory = Partial<Record<ItemId, number>>;
 
-export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl'];
+export const ITEMS: readonly ItemId[] = ['wood', 'stone', 'berries', 'pearl', 'amber'];
 const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
-export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s` };
+export const ITEM_LABELS: Record<ItemId, string> = { wood: 'Madera', stone: 'Piedra', berries: 'Bayas', pearl: `${cap(NAMES.pearl)}s`, amber: cap(NAMES.amber) };
 
 export type StructureKind = 'campfire' | 'wall' | 'heart' | 'spikes' | 'roots';
 export const STRUCTURE_KINDS: readonly StructureKind[] = ['campfire', 'wall', 'heart', 'spikes', 'roots'];
@@ -26,6 +26,13 @@ export const UPGRADE = { cost: { pearl: 3, stone: 10, wood: 5 }, step: 0.15, max
 
 export function weaponMult(lvl: number): number {
   return 1 + UPGRADE.step * Math.max(0, Math.min(UPGRADE.max, Math.floor(lvl)));
+}
+
+/** Capa de corteza (spec S3 §6.3): amber from the swamp; −10 % damage taken per level, never the terrain bites. */
+export const CAPA = { cost: { amber: 3, wood: 10, berries: 5 }, step: 0.1, max: 3 } as const;
+
+export function capaMult(lvl: number): number {
+  return 1 - CAPA.step * Math.max(0, Math.min(CAPA.max, Math.floor(lvl)));
 }
 
 export function count(inv: Inventory, item: ItemId): number {

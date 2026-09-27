@@ -44,3 +44,15 @@ describe('weapon upgrade', () => {
     expect(UPGRADE.cost.pearl).toBe(3);
   });
 });
+
+describe('Capa de corteza', () => {
+  it('takes 10 % off per level, up to 3, and costs amber', async () => {
+    const { capaMult, CAPA, ITEM_LABELS } = await import('./items');
+    const { NAMES } = await import('./names');
+    expect(capaMult(0)).toBe(1);
+    expect(capaMult(3)).toBeCloseTo(0.7, 6);
+    expect(capaMult(9)).toBeCloseTo(0.7, 6);
+    expect(CAPA.cost).toEqual({ amber: 3, wood: 10, berries: 5 });
+    expect(ITEM_LABELS.amber.toLowerCase()).toBe(NAMES.amber);
+  });
+});
