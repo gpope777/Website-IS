@@ -5,6 +5,7 @@ import { cragTopAt, type Crag } from '../shared/crags';
 import type { Anim } from '../shared/protocol';
 import { MOUNT } from '../shared/mount';
 import { CIENAGA, deepStepOk, inCienaga } from '../shared/coast';
+import { BOG, inBog, ZARZAL, zarzalAt } from '../shared/swamp';
 import { VIENTO } from '../shared/viento';
 
 /** Camera-relative: x = strafe right, z = back (so forward is -1). Magnitude ≤ 1 after normalising. */
@@ -147,7 +148,10 @@ export function stepBody(
   const running = input.sprint && moving && !swimming;
   const swimFast = swimming && input.sprint && moving && !b.tired;
   const wading = !b.riding && b.onGround && inCienaga(b.x, b.z);
-  const speed = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
+  const base = b.riding ? (input.sprint ? MOUNT.run : MOUNT.walk) : b.gliding ? GLIDE.speed : swimFast ? SPEED.swimFast : swimming ? SPEED.swim : wading ? CIENAGA.speed : running ? SPEED.run : SPEED.walk;
+  // El Zarzal holds walkers and deer to a crawl; the swamp's bog slows walkers (the server checks both).
+  const grounded = b.onGround && !swimming;
+  const speed = grounded && zarzalAt(terrain, b.x, b.z) ? Math.min(base, ZARZAL.speed) : grounded && !b.riding && inBog(terrain, b.x, b.z) ? base * BOG.k : base;
 
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
   const s = Math.sin(camYaw);

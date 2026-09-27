@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Terrain } from '../shared/terrain';
-import { coastFeatures, createTerrain, HALF, WATER_LEVEL } from '../shared/terrain';
+import { coastFeatures, createTerrain, HALF, RIVER, WATER_LEVEL } from '../shared/terrain';
 import { FISH, fishFloor, fishStepOk, inBravas, wildFish } from '../shared/fish';
 import { seatOffset, WHALE, whaleStepOk, wildWhale } from '../shared/whale';
 import { CIENAGA, depthAt, SWIM_MAX_DEPTH } from '../shared/coast';
+import { BOG, inBog, ZARZAL } from '../shared/swamp';
 import { ColliderGrid } from './colliders';
 import type { Crag } from '../shared/crags';
 import { MOUNT } from '../shared/mount';
@@ -332,6 +333,45 @@ describe('the coast', () => {
     deer.riding = true;
     run(south, 1, t, none, 0, [], deer);
     expect(Math.hypot(deer.vx, deer.vz)).toBeCloseTo(MOUNT.run, 0);
+  });
+
+  it('el Zarzal holds walkers and the deer to 3 m/s', () => {
+    const west: MoveInput = { x: -1, z: 0, sprint: true, jump: false };
+    const { b } = run(west, 1, t, none, 0, [], createBody(-HALF - 30, 100, t));
+    expect(Math.hypot(b.vx, b.vz)).toBeLessThanOrEqual(ZARZAL.speed + 0.01);
+    const deer = createBody(-HALF - 30, 100, t);
+    deer.riding = true;
+    run(west, 1, t, none, 0, [], deer);
+    expect(Math.hypot(deer.vx, deer.vz)).toBeLessThanOrEqual(ZARZAL.speed + 0.01);
+  });
+
+  it('the bog slows walkers to 60 %', () => {
+    let z = 60;
+    while (!(inBog(t, -HALF - 90, z) && inBog(t, -HALF - 90, z + 1))) z++;
+    const b = createBody(-HALF - 90, z, t);
+    const walk: MoveInput = { ...south, sprint: false };
+    for (let i = 0; i < 7; i++) stepBody(b, walk, 0, 1 / 60, t, none);
+    const v = Math.hypot(b.vx, b.vz);
+    expect(v).toBeLessThanOrEqual(SPEED.walk * BOG.k + 0.01);
+    expect(v).toBeGreaterThan(SPEED.walk * BOG.k * 0.7);
+    const r = createBody(-HALF - 90, z, t);
+    for (let i = 0; i < 7; i++) stepBody(r, south, 0, 1 / 60, t, none);
+    expect(Math.hypot(r.vx, r.vz)).toBeLessThanOrEqual(SPEED.run * BOG.k + 0.01);
+  });
+
+  it('in the river a swimmer drifts down to the sea but cannot swim up it', () => {
+    const east: MoveInput = { x: 1, z: 0, sprint: false, jump: false };
+    const west: MoveInput = { x: -1, z: 0, sprint: false, jump: false };
+    const down = run(east, 1, t, none, 0, [], createBody(-HALF - 20, RIVER.z, t)).b;
+    expect(down.x).toBeGreaterThan(-HALF - 19);
+    const up = run(west, 1, t, none, 0, [], createBody(-HALF - 20, RIVER.z, t)).b;
+    expect(up.x).toBeCloseTo(-HALF - 20, 1);
+  });
+
+  it('the map edge lets you walk from the forest into the swamp', () => {
+    const west: MoveInput = { x: -1, z: 0, sprint: false, jump: false };
+    const { b } = run(west, 3, flat, none, 0, [], createBody(-HALF + 3, 100, flat));
+    expect(b.x).toBeLessThan(-HALF - 3);
   });
 
   it('the current stops a swimmer heading out to the deep sea', () => {

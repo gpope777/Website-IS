@@ -62,8 +62,9 @@ export function inMap(x: number, z: number, pad: number): boolean {
 /** The nearest point of the map (union of the two rectangles). */
 export function clampMap(x: number, z: number, pad: number): { x: number; z: number } {
   const clampTo = (r: ReturnType<typeof mainRect>) => ({ x: Math.max(r.x0, Math.min(r.x1, x)), z: Math.max(r.z0, Math.min(r.z1, z)) });
+  if (inMap(x, z, pad)) return { x, z };
   const a = clampTo(mainRect(pad));
-  if (x >= -HALF) return a;
+  if (x >= -HALF + pad) return a;
   const b = clampTo(swampRect(pad));
   return Math.hypot(a.x - x, a.z - z) <= Math.hypot(b.x - x, b.z - z) ? a : b;
 }
