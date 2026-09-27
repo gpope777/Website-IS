@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { NAMES } from '../shared/names';
 import { DUNGEON, inside, leverPos } from '../shared/dungeon';
 import type { DungeonView } from '../shared/protocol';
-import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText, cucuruchoBarText } from './dungeon-ui';
+import { antenonBarText, bossBarText, dungeonAction, eliteBarText, emptyDungeonView, mountainDungeonAction, rockBarText, cucuruchoBarText, flechaBarText, towerDungeonAction } from './dungeon-ui';
+import { towerEntrance, TOWER_DUNGEON as TD } from '../shared/tower-dungeon';
 import { dungeonBlockCell, insideMountain, mountainEntrance, MOUNTAIN_DUNGEON as M } from '../shared/mountain-dungeon';
 
 const entrance = { x: 100, y: 2, z: 0 };
@@ -185,5 +186,23 @@ describe('Invasion 3 on the client (S5-D)', () => {
     const f = (id: number, kind: string, x: number, y: number) => ({ id, kind, x, y, z: 0 });
     expect(clawPick(r, [f(1, 'wolf', 1, 10), f(2, 'rayo', 4, 10), f(3, 'rayo', 2, 11)])).toBe(3);
     expect(clawPick(r, [f(1, 'rayo', 3, 5)])).toBeNull();
+  });
+});
+
+describe('towerDungeonAction and flechaBarText (S5-E)', () => {
+  const door = towerEntrance();
+  it('offers the door outside, the way out at the entry, nothing elsewhere', () => {
+    expect(towerDungeonAction({ x: door.x, z: door.z + 2 }, door, true)).toEqual({ act: 26, label: `Entrar en ${NAMES.villainTower}` });
+    expect(towerDungeonAction({ x: door.x, z: door.z + 2 }, door, false)).toEqual({ act: 26, label: 'La puerta' });
+    expect(towerDungeonAction({ x: door.x, z: door.z + 20 }, door, true)).toBeNull();
+    expect(towerDungeonAction({ x: TD.x, z: TD.entryZ }, door, true)).toEqual({ act: 27, label: `Salir de ${NAMES.villainTower}` });
+    expect(towerDungeonAction({ x: TD.x, z: 100 }, door, true)).toBeNull();
+  });
+
+  it('shows La Flecha’s PV, her line and when she is stuck', () => {
+    const v = emptyDungeonView().tower;
+    expect(flechaBarText(v)).toBeNull();
+    expect(flechaBarText({ ...v, flecha: { hp: 300, max: 470, aiming: true, stuck: false } })).toBe(`${NAMES.lieutenant3} 300/470 · ¡raya!`);
+    expect(flechaBarText({ ...v, flecha: { hp: 300, max: 470, aiming: false, stuck: true } })).toBe(`${NAMES.lieutenant3} 300/470 · ¡clavada!`);
   });
 });

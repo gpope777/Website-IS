@@ -4,7 +4,8 @@ import { COAST_DUNGEON, inCoastDungeon, insideCoast } from '../shared/coast-dung
 import { inSwampDungeon, insideSwamp, SWAMP_DUNGEON } from '../shared/swamp-dungeon';
 import { dungeonBlockCell, inMountainDungeon, insideMountain, MOUNTAIN_DUNGEON } from '../shared/mountain-dungeon';
 import { AIR } from '../shared/dragon';
-import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, MountainDungeonView, SwampDungeonView } from '../shared/protocol';
+import { inTowerDungeon, TOWER_DUNGEON } from '../shared/tower-dungeon';
+import type { CarryView, CoastDungeonView, DungeonView, MarchitoView, MountainDungeonView, SwampDungeonView, TowerDungeonView } from '../shared/protocol';
 
 /** Before the first snapshot: everything shut, the block and lantern where they start. */
 export function emptyDungeonView(): DungeonView {
@@ -183,4 +184,21 @@ export function rockBarText(view: MountainDungeonView): string | null {
   if (!e) return null;
   const name = NAMES.eliteMountain.charAt(0).toUpperCase() + NAMES.eliteMountain.slice(1);
   return `${name} ${e.hp}/${e.max}${e.exposed ? ' · expuesto' : e.charging ? ' · ¡carga!' : ''}`;
+}
+
+/** The contextual A / E at the tower (acts 26–27): the door (the server says if it is shut) and the way out. Every floor is solved with a power. */
+export function towerDungeonAction(pos: { x: number; z: number }, door: { x: number; z: number }, open: boolean): { act: number; label: string } | null {
+  const T = TOWER_DUNGEON;
+  const near = (x: number, z: number, r: number) => Math.hypot(x - pos.x, z - pos.z) <= r;
+  const name = NAMES.villainTower;
+  if (!inTowerDungeon(pos.x, pos.z)) return near(door.x, door.z, T.doorReach) ? { act: 26, label: open ? `Entrar en ${name}` : 'La puerta' } : null;
+  if (near(T.x, T.entryZ, T.exitReach)) return { act: 27, label: `Salir de ${name}` };
+  return null;
+}
+
+/** La Flecha's bar in the tower: her red line, stuck in a column. */
+export function flechaBarText(view: TowerDungeonView): string | null {
+  const f = view.flecha;
+  if (!f) return null;
+  return `${NAMES.lieutenant3} ${f.hp}/${f.max}${f.stuck ? ' · ¡clavada!' : f.aiming ? ' · ¡raya!' : ''}`;
 }
