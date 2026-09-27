@@ -7,7 +7,7 @@ import { gustDir, inGust, slide, VIENTO, type Dir } from '../viento';
 import { FUEGO, HOGUERA, inFlame } from '../fuego';
 import { PIEDRA, pillarSpot, pushDir, structureCrags, TOWER } from '../piedra';
 import { createRng } from '../rng';
-import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, corruptFeatures, WATER_LEVEL, waterLevel, type Terrain } from '../terrain';
+import { clampMap, coastFeatures, createTerrain, type Islet, HALF, inForest, inMap, inMountains, inSwamp, inCorrupt, CORRUPT_LANDS, MOUNTAINS, mountainDepth, corruptFeatures, WATER_LEVEL, waterLevel, type Terrain } from '../terrain';
 import { ASH_RUN, ashHurts, LAKE_PILLAR, lidUp, PILLAR, pillarSites, THICKET, thicketHurts, type PillarSites } from '../pillars';
 import { FLECHA, flechaLeads, GATA, gataLeads, hasteNear, rockTarget, stepFlecha, stepGata, stepTriangulo, TRIANGULO, triLeads } from './lieutenant';
 import { generateResources, HARVEST, type ResourceSpawn } from '../resources';
@@ -48,7 +48,7 @@ import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
 import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
-import { addKillXp, canLearn, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
+import { addKillXp, BOSS_KINDS, bossesOf, canLearn, FEAT_FAST, FEAT_HAT, FEAT_HEART, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
 import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaider, stepWolf, WOLF, type EnemyKind, type RaidGoal, type Wolf, type WolfTarget } from './wolves';
 
 export const DAY_LENGTH = 6 * 60;
@@ -154,6 +154,14 @@ export interface SavedPlayer {
   skills?: string[];
   /** P4-C: colour and hat. Optional: older saves wear the default. */
   look?: { color: number; hat: number };
+  /** P4-D: boss kinds beaten (BOSS_KINDS). Optional: old saves infer the dungeon ones from the powers. */
+  bosses?: string[];
+  /** P4-D: kills by strike (wolf, brute, rayo). Optional. */
+  kills?: Record<string, number>;
+  /** P4-D: raids held (dawn with the Heart alive). Optional. */
+  raidsHeld?: number;
+  /** P4-D: Proezas done (ids 1–6). Optional. */
+  feats?: number[];
 }
 
 export interface SavedWorld {
@@ -229,6 +237,10 @@ export interface Outgoing {
 }
 
 interface Live {
+  /** P4-D Proezas (live-only): fish race start; Nenúfares run dry from pad 0; a cold night climb. */
+  raceAt?: number;
+  lily?: boolean;
+  cold?: boolean;
   /** P4-A: the Rango last told (live-only; set on connect, so loading never flashes). */
   rank?: number;
   /** Carrying a torch from the Candiles post (spent on one brazier or fogata). */
@@ -543,6 +555,9 @@ export class WorldSim {
   private rockIn = 0;
   /** Seconds left of a raid fleeing after she fell. */
   private raidFlee = 0;
+  /** P4-D: the Heart's lowest share this raid; who got hurt in the Tragón's fight. */
+  private raidLow = 1;
+  private readonly bossHurt = new Set<string>();
   private wasNight = false; // false on load so a night-time load still spawns wolves
   private outbox: Outgoing[] = [];
   private readonly rng: () => number;
@@ -761,7 +776,9 @@ export class WorldSim {
     for (const [name, l] of this.live) {
       const p = this.players.get(name)!;
       if (p.dead || l.awayFor !== null) continue; // away players are frozen: the world sleeps for them
-      p.vitals = tickVitals(p.vitals, { night, nearFire: this.nearFire(p.x, p.z), cold: altitudeCold(this.terrain, p.x, p.z) }, dt);
+      const warm = this.nearFire(p.x, p.z);
+      p.vitals = tickVitals(p.vitals, { night, nearFire: warm, cold: altitudeCold(this.terrain, p.x, p.z) }, dt);
+      this.coldFeat(p, l, night, warm);
       if (!l.riding && !l.seat && inCienaga(p.x, p.z) && p.y < this.terrain.heightAt(p.x, p.z) + 1.5) {
         p.vitals = damage(p.vitals, CIENAGA.dps * dt);
         this.hint(p.name, l, 'El barro marchito muerde. A lomos del ciervo no');
@@ -2064,6 +2081,7 @@ export class WorldSim {
     }
     if (!hitWolf(w, dmg)) return;
     this.xpForKill(name, w);
+    this.countKill(name, w);
     this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
     const thorns = w.raid ? 0 : thornDrop(w.kind, w.x, w.z, w.kind === 'rayo' ? this.rng() : 0);
     if (thorns > 0 && by) {
@@ -2077,6 +2095,7 @@ export class WorldSim {
     const fighters = this.targets().filter((t) => !t.dead && inBossRoom(t.x, t.z));
     if (this.boss && this.boss.hp <= 0 && !this.purified) {
       this.purified = true;
+      for (const t of fighters) if (!this.bossHurt.has(t.name)) this.gainFeat(this.players.get(t.name)!, 1);
       this.say(`El ${NAMES.bossForestShort} se deshace en papel limpio. Ahora cuida el Corazón`);
       this.cleanse(0, `La ${NAMES.forestRoot} deja de supurar morado`);
       this.vision(VISION.purified(joinNames(this.activeNames())));
@@ -2098,6 +2117,7 @@ export class WorldSim {
     }
     if (!this.boss) {
       this.boss = createBoss();
+      this.bossHurt.clear();
       this.say(`El ${NAMES.bossForest} despierta. El papel doblado no se rompe: párale o enrédalo`);
     }
     const b = this.boss;
@@ -2591,6 +2611,10 @@ export class WorldSim {
     this.clearCopaRayos();
     const names = this.targets().filter((t) => !t.dead && inCopa(t.x, t.z)).map((t) => t.name);
     this.endingNames = names.length ? names : this.activeNames();
+    for (const n of this.endingNames) {
+      const o = this.players.get(n);
+      if (o && (o.weaponLvl ?? 0) <= 4) this.gainFeat(o, 6);
+    }
     const who = joinNames(this.endingNames);
     this.say(`${upFirst(NAMES.blackHeart)} se parte. ${NAMES.villain} se encoge hasta ser una ramita`);
     // Every zone clean at once (0–21), with one toast.
@@ -3013,6 +3037,7 @@ export class WorldSim {
     if (p.fish) return this.tell(p.name, 'Ya tienes pez');
     if (this.time + EPS < l.raceReadyAt) return this.tell(p.name, 'El pez aún recela');
     l.race = { i: 0, deadline: this.time + FISH.ringTime, beast: 'fish' };
+    l.raceAt = this.time;
     this.tell(p.name, `Sale disparado. Pasa por los ${FISH.rings} anillos, ${FISH.ringTime} s cada uno`);
   }
 
@@ -3034,6 +3059,7 @@ export class WorldSim {
         r.deadline = this.time + (frog ? FROG.padTime : FISH.ringTime);
         if (r.i < list.length) continue;
         l.race = null;
+        if (!frog && l.raceAt !== undefined && this.time - l.raceAt <= FEAT_FAST * FISH.rings * FISH.ringTime + EPS) this.gainFeat(p, 2);
         this.nextRound(l, 0, r.beast, ring.x, ring.z);
         this.tell(p.name, frog ? 'La alcanzas. Ahora, cálmala' : 'Lo alcanzas. Ahora, cálmalo');
       } else if (this.time > r.deadline + EPS) {
@@ -3795,6 +3821,7 @@ export class WorldSim {
     const s = this.shrines[id]!;
     const st = this.shrineLive[id]!;
     const top = WATER_LEVEL + S.padTop;
+    this.lilyFeat(s, st.pads, top);
     st.pads.forEach((q, i) => {
       if (this.time < q.downUntil) return;
       const pad = s.parts[i]!;
@@ -3881,6 +3908,17 @@ export class WorldSim {
       skills: (p.skills ?? []).filter((x): x is SkillId => (SKILL_IDS as readonly string[]).includes(x)),
       look: this.lookOf(p),
       hats: unlockedHats({ ...p, ending: this.ending }),
+      book: {
+        feats: [...(p.feats ?? [])],
+        bosses: bossesOf(p).length,
+        kills: { wolf: p.kills?.wolf ?? 0, brute: p.kills?.brute ?? 0, rayo: p.kills?.rayo ?? 0 },
+        raids: p.raidsHeld ?? 0,
+        zones: this.cleansed.size,
+        zonesMax: this.zones.length,
+        shrinesMax: this.shrines.length,
+        chestsMax: this.chests.length,
+        day: Math.floor(this.time / DAY_LENGTH) + 1,
+      },
     };
   }
 
@@ -4126,6 +4164,7 @@ export class WorldSim {
     const heart = this.heart();
     const f = dayFraction(this.time);
     const day = Math.floor(this.time / DAY_LENGTH);
+    if (this.raid?.phase === 'active' && heart) this.raidLow = Math.min(this.raidLow, heart.hp / STRUCTURE_HP.heart);
     if (this.ending && fullMoon(day) && !night && f >= RAID.warnAt && this.moonToldDay !== day) {
       this.moonToldDay = day;
       this.say(`Luna llena esta noche. Algo rueda por ${NAMES.ash}`);
@@ -4177,6 +4216,7 @@ export class WorldSim {
     }
     if (night && !this.wasNight && this.raid?.phase === 'warn' && heart) {
       this.raid.phase = 'active';
+      this.raidLow = 1;
       this.spawnRaiders(heart, this.raid.dir);
     }
     if (!night && this.wasNight && this.raid) {
@@ -4188,7 +4228,13 @@ export class WorldSim {
       if (heart && heart.hp > 0) {
         this.raidLevel++;
         this.say(`Sobrevivieron la noche. Nivel de asedio ${this.raidLevel}`);
-        for (const nm of this.activeNames()) this.gainXp(this.players.get(nm)!, PROGRESS.raid);
+        const held = this.raidLow >= FEAT_HEART;
+        for (const nm of this.activeNames()) {
+          const o = this.players.get(nm)!;
+          this.gainXp(o, PROGRESS.raid);
+          o.raidsHeld = (o.raidsHeld ?? 0) + 1;
+          if (held) this.gainFeat(o, 5);
+        }
       }
     }
   }
@@ -4383,6 +4429,7 @@ export class WorldSim {
 
   /** Damage a player can't dodge any more (Capa still counts). */
   private hurt(p: SavedPlayer, dmg: number): void {
+    if (this.boss && this.boss.hp > 0 && inBossRoom(p.x, p.z)) this.bossHurt.add(p.name);
     p.vitals = damage(p.vitals, dmg * capaMult(p.capaLvl ?? 0));
     if (p.vitals.health <= 0) this.kill(p);
   }
@@ -4659,6 +4706,61 @@ export class WorldSim {
       if (r <= l.rank) continue;
       l.rank = r;
       this.outbox.push({ to: null, msg: { t: 'rankUp', name, rank: r } });
+    }
+  }
+
+  /** P4-D: a Proeza, once; its hat if it has one. */
+  private gainFeat(p: SavedPlayer, id: number): void {
+    if (p.feats?.includes(id)) return;
+    p.feats = [...(p.feats ?? []), id];
+    const hat = FEAT_HAT[id];
+    this.tell(p.name, `${NAMES.feat}: ${NAMES.featNames[id - 1]}.${hat ? ` Nuevo sombrero: ${NAMES.hatNames[HAT_IDS[hat - 1]!]}` : ''}`);
+  }
+
+  /** P4-D: the Libro's counters on a killing blow (kills to the striker; a boss to all near, like its Savia). */
+  private countKill(name: string, w: Wolf): void {
+    if (w.kind === 'wolf' || w.kind === 'brute' || w.kind === 'rayo') {
+      const p = this.players.get(name);
+      if (p) p.kills = { ...p.kills, [w.kind]: (p.kills?.[w.kind] ?? 0) + 1 };
+      return;
+    }
+    if (!(BOSS_KINDS as readonly string[]).includes(w.kind)) return;
+    for (const nm of this.activeNames()) {
+      const o = this.players.get(nm);
+      if (o && !o.dead && Math.hypot(o.x - w.x, o.z - w.z) <= PROGRESS.near && !o.bosses?.includes(w.kind)) o.bosses = [...(o.bosses ?? []), w.kind];
+    }
+  }
+
+  /** P4-D Pies secos: pad 0 → the last pad, never in the water, never on the frog. */
+  private lilyFeat(s: { parts: { x: number; z: number }[] }, pads: { downUntil: number }[], top: number): void {
+    const S = SWAMP_SHRINE;
+    for (const [name, l] of this.live) {
+      const p = this.players.get(name)!;
+      if (p.dead || l.awayFor !== null) continue;
+      if (l.frog || p.y < WATER_LEVEL - 0.4) {
+        l.lily = false;
+        continue;
+      }
+      const on = (i: number) => this.time >= pads[i]!.downUntil && Math.hypot(s.parts[i]!.x - p.x, s.parts[i]!.z - p.z) <= S.padR + 0.3 && p.y > top - 0.5 && p.y < top + 1.5;
+      if (on(0)) l.lily = true;
+      if (l.lily && on(pads.length - 1)) {
+        l.lily = false;
+        this.gainFeat(p, 3);
+      }
+    }
+  }
+
+  /** P4-D Solo contra el frío: at nightfall below the Cumbre, never warm since, and up there before dawn. */
+  private coldFeat(p: SavedPlayer, l: Live, night: boolean, warm: boolean): void {
+    const high = inMountains(p.x, p.z) && mountainDepth(p.z) >= MOUNTAINS.cumbre;
+    if (!night || warm) {
+      l.cold = false;
+      return;
+    }
+    if (!this.wasNight) l.cold = !high;
+    if (l.cold && high) {
+      l.cold = false;
+      this.gainFeat(p, 4);
     }
   }
 

@@ -107,6 +107,7 @@ export const NAMES = {
   },
   /** P4-D: the Libro and the Proezas. */
   book: 'Libro',
+  feat: 'Proeza',
   feats: 'Proezas',
   featNames: ['Sin un rasguño', 'Pez veloz', 'Pies secos', 'Solo contra el frío', 'Noche entera', 'Corazón quieto'],
 } as const;

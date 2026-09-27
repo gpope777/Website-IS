@@ -174,9 +174,9 @@ export const HAT_HINTS: Record<HatId, string> = {
   cuarzo: `Se gana con ${NAMES.powerStone}`,
   aureola: `Se gana venciendo a ${NAMES.villain}`,
   estrella: `Se gana domando ${NAMES.legendary}`,
-  papel: `Se gana con la Proeza ${NAMES.featNames[0]}`,
-  nieve: `Se gana con la Proeza ${NAMES.featNames[3]}`,
-  marchita: `Se gana con la Proeza ${NAMES.featNames[5]}`,
+  papel: `Se gana con la ${NAMES.feat} ${NAMES.featNames[0]}`,
+  nieve: `Se gana con la ${NAMES.feat} ${NAMES.featNames[3]}`,
+  marchita: `Se gana con la ${NAMES.feat} ${NAMES.featNames[5]}`,
 };
 
 /** Milestones never go back, so a hat never re-locks. `ending` = El Marchito fell in this world. */
