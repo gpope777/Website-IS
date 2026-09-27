@@ -4844,7 +4844,64 @@ describe('mountain shrines and refugios (S4-C)', () => {
     expect(ana.vitals.warmth).toBeGreaterThanOrEqual(50);
   });
 
-  it('decodes shrine parts up to 7', () => {
-    expect(PROTOCOL_VERSION).toBe(35);
+  it('protocol version moved on', () => {
+    expect(PROTOCOL_VERSION).toBe(36);
+  });
+});
+
+describe('quartz and weapon levels 4–5 (S4-C)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const atVein = (sim: WorldSim, name: string, id: number, up = 0) => {
+    const v = sim.quartzVeins[id]!;
+    put(sim, name, v.x, v.z);
+    sim.getPlayer(name)!.y = v.y + up;
+    sim.handle(name, { t: 'quartz', id });
+  };
+
+  it('2 cuarzo per vein, per player, back after 2 days; not from below', () => {
+    const sim = setup('Ana', 'Leo');
+    expect(sim.quartzVeins).toHaveLength(10);
+    atVein(sim, 'Ana', 3, -4);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBeUndefined();
+    atVein(sim, 'Ana', 3);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(2);
+    expect(texts(sim)).toContain('Cuarzo: 2');
+    expect(snap(sim, 'Ana').self.quartz).toEqual([3]);
+    atVein(sim, 'Ana', 3);
+    expect(texts(sim)).toContain('Aún no ha vuelto a brillar');
+    atVein(sim, 'Leo', 3);
+    expect(sim.getPlayer('Leo')!.inv.quartz).toBe(2);
+    (sim as unknown as { time: number }).time += 2 * DAY_LENGTH;
+    atVein(sim, 'Ana', 3);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(4);
+    const again = new WorldSim(sim.save());
+    expect(again.getPlayer('Ana')!.quartz?.[3]).toBeDefined();
+  });
+
+  it('levels 4 and 5 cost 3 cuarzo + 10 piedra + 5 madera; 5 is the top', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.weaponLvl = 3;
+    p.inv = { quartz: 6, stone: 30, wood: 30 };
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(4);
+    expect(texts(sim)).toContain(`El ${NAMES.heart} templa tu arma: +60 % de daño`);
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(5);
+    expect(p.inv).toEqual({ stone: 10, wood: 20 });
+    p.inv = { quartz: 6, stone: 30, wood: 30 };
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(texts(sim)).toContain('El arma ya no da más de sí');
+    expect(snap(sim, 'Ana').self.weapon).toBe(5);
+  });
+
+  it('old saves without quartz load', () => {
+    const sim = setup('Ana');
+    const save = sim.save();
+    delete (save.players[0] as { quartz?: unknown }).quartz;
+    const again = new WorldSim(save);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self.quartz).toEqual([]);
   });
 });

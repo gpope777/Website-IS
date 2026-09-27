@@ -22,7 +22,7 @@ import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
 import { generateShrines, SHRINE, SHRINE_LABELS, type Shrine } from '../shrines';
-import { blockCell, blocksCentre, blocksSolved, BLOCKS, corniceLedges, generateMountainShrines, MOUNTAIN_SHRINE, QUARTZ, type Cell } from '../mountain-shrines';
+import { blockCell, blocksCentre, blocksSolved, BLOCKS, corniceLedges, generateMountainShrines, generateQuartzVeins, MOUNTAIN_SHRINE, QUARTZ, type Cell, type QuartzVein } from '../mountain-shrines';
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
@@ -96,6 +96,8 @@ export interface SavedPlayer {
   weaponLvl?: number;
   /** Amber tree id → sim time you last harvested it. Optional: older saves have none. */
   amber?: Record<number, number>;
+  /** Quartz vein id → sim time you last took it. Optional: older saves have none. */
+  quartz?: Record<number, number>;
   /** Capa de corteza level 0–3. Optional: older saves have none. */
   capaLvl?: number;
   /** Has Viento (coast dungeon altar). Optional: older saves have none. */
@@ -225,6 +227,8 @@ export class WorldSim {
   readonly shrines: readonly Shrine[];
   /** Sunken chests on the deep seabed (seeded; one each per player). */
   readonly chests: readonly Chest[];
+  /** Quartz veins up the paredes (seeded; per player). */
+  readonly quartzVeins: readonly QuartzVein[];
   /** Cornisa's 2 bare resting ledges (seeded). */
   readonly ledges: readonly Crag[];
   /** Amber trees on the swamp's montículos (seeded; per player). */
@@ -386,6 +390,7 @@ export class WorldSim {
     this.ledges = corniceLedges(this.terrain, saved.seed);
     this.chests = generateChests(this.terrain, saved.seed);
     this.amberTrees = generateAmberTrees(this.terrain, saved.seed);
+    this.quartzVeins = generateQuartzVeins(this.terrain, saved.seed);
     this.entrance = generateEntrance(this.terrain, saved.seed, this.crags, forest);
     this.wild = generateWild(this.terrain, saved.seed, [...this.crags, ...forest, this.entrance]);
     this.island = coastFeatures(saved.seed).island;
@@ -526,6 +531,8 @@ export class WorldSim {
         return this.onRescue(p);
       case 'amber':
         return this.onAmber(p, msg.id);
+      case 'quartz':
+        return this.onQuartz(p, msg.id);
       case 'capa':
         return this.onCapa(p);
       case 'fogata':
@@ -929,6 +936,17 @@ export class WorldSim {
     p.amber = { ...p.amber, [id]: r2(this.time) };
     p.inv = addItem(p.inv, 'amber', AMBER.yield);
     this.tell(p.name, `${ITEM_LABELS.amber}: ${AMBER.yield}`);
+  }
+
+  /** Quartz (S4 §5.2): 2 per vein, per player, back after 2 days; you must be up beside it (climbing or on the frog). */
+  private onQuartz(p: SavedPlayer, id: number): void {
+    const v = this.quartzVeins[id];
+    if (!v || p.dead || Math.hypot(v.x - p.x, v.z - p.z) > QUARTZ.reach || p.y < v.y - QUARTZ.below) return;
+    const at = p.quartz?.[id];
+    if (at !== undefined && this.time - at < QUARTZ.regrowDays * DAY_LENGTH) return this.tell(p.name, 'Aún no ha vuelto a brillar');
+    p.quartz = { ...p.quartz, [id]: r2(this.time) };
+    p.inv = addItem(p.inv, 'quartz', QUARTZ.yield);
+    this.tell(p.name, `${ITEM_LABELS.quartz}: ${QUARTZ.yield}`);
   }
 
   // ---------------------------------------------------------------- fogatas (S3 §9)
@@ -2562,6 +2580,7 @@ export class WorldSim {
       frog: !!p.frog,
       onFrog: l.frog,
       torch: !!l.torch,
+      quartz: this.quartzVeins.filter((v) => p.quartz?.[v.id] !== undefined && this.time - p.quartz[v.id]! < QUARTZ.regrowDays * DAY_LENGTH).map((v) => v.id),
       amber: this.amberTrees.filter((t) => p.amber?.[t.id] !== undefined && this.time - p.amber[t.id]! < AMBER.regrowDays * DAY_LENGTH).map((t) => t.id),
       capa: p.capaLvl ?? 0,
       chests: [...(p.chests ?? [])],
