@@ -59,4 +59,4 @@ export function trade(a: Inventory, b: Inventory, la: readonly TradeLine[], lb: 
 
 ### Task 4: Ship
 
-- [ ] Full suite green; push; HANDOFF: "## Tiendas · T6-C — …"; one short comment on PR #3.
+- [x] Full suite green; push; HANDOFF: "## Tiendas · T6-C — …"; one short comment on PR #3.

@@ -1201,3 +1201,29 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar: con dos jugadores, Ana pone perlas a la venta; Bea compra hasta vaciar el estante; Ana vacía la Caja; Ana sale, Bea compra, Ana entra y ve el aviso; Menú → Puestos.
 - Lo siguiente: T6-C (trueque directo; v61).
+
+## Tiendas · T6-C — Trueque directo — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-tiendas-T6-C-trueque.md` (c79692b).
+- Commits: bb9a206 (T1 reglas puras: `TRADE`, `linesOk`, `offerInv`, `trade` en `src/shared/shop.ts`), 3669170 (T2 servidor, protocolo v61, guardado inmediato), 35e35bf (T3 cliente: Cambiar con A y ventana de dos columnas).
+- Tests: npm test 1091 (antes 1077), test:workers 12, check + build verdes. **PROTOCOL_VERSION = 61**. Sin campos guardados nuevos: los trueques abiertos viven solo en memoria. Mensajes nuevos: `tradeAsk {to}`, `tradeAnswer {yes}`, `tradeOffer {lines}`, `tradeOk`, `tradeCancel`; servidor: `trade {tr}`. Las partidas viejas cargan igual.
+- Cómo funciona:
+  - **A junto a otro jugador** (≤4 m) cuando no hay nada más que hacer con A (cosechar, montar, Puesto… ganan) → le pregunta. El otro ve "Ana quiere cambiar." con **Ver** / **No**.
+  - Ventana: "Tú das" / "Bea da". Hasta **3 líneas** (materiales distintos, 1–99), con − / material / + / Quitar / Añadir. **Vale**. Cualquier cambio quita los dos Vale. Regalar = poner algo solo en un lado.
+  - Con los dos Vale el servidor vuelve a comprobarlo todo (mochilas, ≤6 m, vivos, fuera de mazmorras) y mueve todo de golpe, o cancela sin tocar nada ("A Ana no le llega: perlas."). Tras un trueque la sala **guarda la fila en el acto** (`takeSave()` → `persist()`).
+  - Se cancela solo: >6 m, muerte, desconexión, mazmorra, 60 s, o Cancelar.
+  - Ritmo: 1 petición cada 5 s; tras 3 "No" seguidos del mismo, 60 s sin poder preguntarle ("Bea no quiere cambiar ahora.").
+- **Conservación:** test puro de 500 pares aleatorios, y 40 × 120 pasos por `handle()` con 2–3 jugadores (pedir, contestar, ofrecer, Vale, cancelar, moverse, irse, volver, morir, saltos de tiempo): mochilas + tumbas + Puestos no cambian; cada mochila o no cambia o cambia exactamente por un trueque entero; nada baja de 0. El decodificador solo acepta los 7 materiales (probado con `rank`, `hat`…).
+- Decidido por Claude — revisar:
+  - Los 60 s cuentan desde la petición, ventana incluida.
+  - Materiales distintos por lado y 1–99 por línea.
+  - La oferta se comprueba al ponerla ("No tienes tanto.") y otra vez al cerrar.
+  - Trueques solo en memoria: un reinicio de la sala los cancela (nada se movió aún).
+  - El contador de "No" es por pareja y solo en memoria; se reinicia con un "Ver" o tras la espera.
+  - Solo impiden cambiar estar muerto, fuera o en mazmorra; montado se puede.
+  - `NAMES.trade = 'Cambiar'` añadido a `names.ts` (el spec lo pedía; faltaba).
+  - Los tests puros van en `src/shared/trade.test.ts` (no en `shop.test.ts`).
+  - Cambio de regla con tests adaptados (ninguno borrado): versión 60 → 61 en los tests de versión.
+- Verificado en navegador: no (solo tests + check + build).
+- Bloqueos: ninguno.
+- Qué probar: dos jugadores juntos; A → pregunta; Ver; poner perlas contra bayas; cambiar una línea y ver que se quitan los Vale; los dos Vale; alejarse a mitad; decir No tres veces.
+- Lo siguiente: T6-D (Buhonero, biomas y Encargos; v62).
