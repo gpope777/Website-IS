@@ -24,6 +24,8 @@ export interface TouchHandlers {
   onPause: () => void;
   /** P7-C: 🎒 opens the bag. */
   onBag?: () => void;
+  /** P7-D: a dotted pill was tapped. */
+  onPillSeen?: (i: number) => void;
 }
 
 interface ButtonDef {
@@ -78,6 +80,7 @@ export class TouchControls {
 
   private powerPill: HTMLElement | null = null;
   private readonly pills: HTMLElement[] = [];
+  private menuBtn: HTMLElement | null = null;
 
   constructor(parent: HTMLElement, private readonly input: InputState, private readonly h: TouchHandlers) {
     this.root = div('touch-layer');
@@ -105,12 +108,18 @@ export class TouchControls {
     for (const b of PILL_BUTTONS) {
       const el = this.button(b);
       if (b.code === 'KeyH') this.powerPill = el;
+      const i = this.pills.length;
+      // P7-D: the "new" dot goes on the first tap.
+      el.addEventListener('pointerdown', () => {
+        if (el.classList.contains('new')) this.h.onPillSeen?.(i);
+      });
       this.pills.push(el);
       pills.appendChild(el);
     }
 
     const system = div('touch-system');
-    const menu = this.button({ code: '', label: 'MENÚ', cls: 'sys' });
+    const menu = this.button({ code: '', label: 'MENÚ', cls: 'sys menu-btn' });
+    this.menuBtn = menu;
     menu.addEventListener('pointerup', (e) => {
       e.preventDefault();
       h.onPause();
@@ -154,6 +163,15 @@ export class TouchControls {
     this.pills.forEach((p, i) => {
       const hide = !shown[i];
       if (p.classList.contains('gone') !== hide) p.classList.toggle('gone', hide);
+    });
+  }
+
+  /** P7-D: "new" dots on MENÚ and on pills that just appeared. */
+  setDots(menu: boolean, pills: readonly boolean[]): void {
+    this.menuBtn?.classList.toggle('new', menu);
+    this.pills.forEach((p, i) => {
+      const on = !!pills[i];
+      if (p.classList.contains('new') !== on) p.classList.toggle('new', on);
     });
   }
 

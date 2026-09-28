@@ -14,8 +14,9 @@ export const MENU_TABS: readonly { id: MenuTab; label: string }[] = [
 ];
 export const isMenuTab = (v: unknown): v is MenuTab => MENU_TABS.some((t) => t.id === v);
 
-export function tabsHtml(active: MenuTab): string {
-  return `<nav class="tabs" role="tablist">${MENU_TABS.map((t) => `<button role="tab" class="tab${t.id === active ? ' on' : ''}" aria-selected="${t.id === active}" data-tab="${t.id}">${t.label}</button>`).join('')}</nav>`;
+/** P7-D: `dots` marks tabs with something new (●). */
+export function tabsHtml(active: MenuTab, dots: Partial<Record<MenuTab, boolean>> = {}): string {
+  return `<nav class="tabs" role="tablist">${MENU_TABS.map((t) => `<button role="tab" class="tab${t.id === active ? ' on' : ''}${dots[t.id] ? ' new' : ''}" aria-selected="${t.id === active}" data-tab="${t.id}">${t.label}</button>`).join('')}</nav>`;
 }
 
 export interface HelpCard {

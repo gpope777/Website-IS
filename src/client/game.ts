@@ -119,14 +119,21 @@ import { underwater, WATER } from './scene/water-data';
 import { pillarAction } from './corrupt-ui';
 import { pillarSites, type PillarSites } from '../shared/pillars';
 import { buildPines, buildTerrainMesh, buildThorns, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, type MountainChunk } from './scene/terrain-mesh';
-import { swampFog } from '../shared/swamp';
+import { inBog, swampFog, ZARZAL_KNOT, zarzalAt } from '../shared/swamp';
+import { GuideUi } from './guide-ui';
+import { generateWild } from '../shared/mount';
+import { UMBRAL } from '../shared/mountains';
+import { cenizaFogata } from '../shared/corrupt-lands';
+import { estrellaAt } from '../shared/estrella';
+import { isNight } from '../shared/survival';
+import { RIM_LINE } from '../shared/corrupt-lands';
 import { CorruptionMeshes } from './scene/corruption';
 import { allZones, type Zone } from '../shared/corruption';
 import { ResourceMeshes } from './scene/vegetation';
 import { GrassField } from './scene/grass';
 import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
-import { helpCards, isMenuTab } from './menu-ui';
+import { helpCards, isMenuTab, type MenuTab } from './menu-ui';
 import { deathCause, discover, parseSeen, pillsShown, SEEN_KEY, type Seen } from './hud-model';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
@@ -249,6 +256,8 @@ export class Game {
   private readonly conn: Connection;
   private readonly keyboard: Keyboard;
   private readonly touch: TouchControls | null;
+  /** P7-D: Qué sigue, consejos y puntos de nuevo. */
+  private readonly guide: GuideUi;
   private tier: Tier = loadTier();
   /** V2-A: first game (no saved tier) → frame times of the first seconds in the world. */
   private probe: number[] | null = hasSavedTier() ? null : [];
@@ -568,8 +577,14 @@ export class Game {
           },
           onPause: () => this.onAction('menu'),
           onBag: () => this.showBag(),
+          onPillSeen: (i) => this.guide.ackPill(i),
         })
       : null;
+    this.guide = new GuideUi(this.hud, this.touch, !!this.touch, () => ({ guide: this.settings.guide, tips: this.settings.tips }));
+    this.hud.onGoalTap = () => {
+      this.guide.touchLine(performance.now());
+      this.openMenu('ayuda');
+    };
     root.classList.toggle('touch', !!this.touch);
     this.hud.setAccess(textScale(this.settings.text), this.settings.marks);
     this.touch?.setPills(pillsShown(this.seen, { heart: false, power: false }));
@@ -735,6 +750,8 @@ export class Game {
         return this.hud.toast(m.text);
       case 'vision':
         return this.hud.showVision(m.lines);
+      case 'echo':
+        return this.hud.showEcho(m.lines);
       case 'ending':
         return this.hud.showEnding(m.cards, m.credits);
       case 'rankUp': {
@@ -874,6 +891,7 @@ export class Game {
     this.scene.add(this.zarzalKnot.group);
     this.corruptionMeshes = new CorruptionMeshes(this.zones, this.terrain);
     this.rescueSpot = rescueSite(this.terrain, seed);
+    this.buildPlaces(seed, forest);
     this.rescueMeshes = new RescueMeshes(this.rescueSpot, this.terrain);
     this.scene.add(this.rescueMeshes.group);
     this.corruptKey = '';
@@ -1264,7 +1282,8 @@ export class Game {
   /** La Escalera del Umbral changes the terrain: redraw the mountain chunks once (cheap, rare). */
   private rebuildMountains(): void {
     const t = this.terrain;
-    if (!t) return;
+    const { pico, rescueSpot, pillarSpots } = this;
+    if (!t || !pico || !rescueSpot || !pillarSpots) return;
     for (const m of [...this.mountainMeshes, ...this.corruptMeshes]) {
       for (const [mesh, patch] of [[m.detail, m.chunk.detail], [m.silhouette, m.chunk.silhouette]] as const) {
         const fresh = buildTerrainMesh(t, patch);
@@ -1485,7 +1504,56 @@ export class Game {
         /* private window */
       }
     }
-    this.touch?.setPills(pillsShown(this.seen, { heart: !!m.heart, power: s.power || s.viento || s.fuego || s.piedra }));
+    const pills = pillsShown(this.seen, { heart: !!m.heart, power: s.power || s.viento || s.fuego || s.piedra });
+    this.touch?.setPills(pills);
+    // P7-D: the guide, tips and dots.
+    const t = this.terrain;
+    this.guide.heartAt = this.heartSpot();
+    this.guide.update(m, {
+      yaw: this.rig.yaw,
+      cards: helpCards(this.seen, !!this.touch).map((c) => c.title),
+      pills: this.touch ? pills : [],
+      veteran: (s.rank ?? 1) > 1 || s.shrines.length > 0,
+      tip: {
+        seen: this.seen,
+        air: !!t && s.y - t.heightAt(s.x, s.z) > 2.5 && !s.riding && !s.onFish && !s.onFrog && !s.onDragon,
+        night: isNight(dayFraction(m.time)),
+        cold: s.vitals.warmth < 40,
+        raid: !!m.raid,
+        bog: !!t && inBog(t, s.x, s.z),
+        zarzal: !!t && zarzalAt(t, s.x, s.z, m.zarzalBurnt),
+        lowHp: !s.dead && s.vitals.health < 25,
+      },
+    });
+  }
+
+  /** P7-D: the seed places the guide points at. */
+  private buildPlaces(seed: number, forest: readonly Shrine[]): void {
+    const t = this.terrain;
+    const { pico, rescueSpot, pillarSpots } = this;
+    if (!t || !pico || !rescueSpot || !pillarSpots) return;
+    const est = estrellaAt(0);
+    this.guide.places = {
+      shrines: this.shrines.map((s) => ({ id: s.id, x: s.x, z: s.z })),
+      forestDoor: { x: this.entrance.x, z: this.entrance.z },
+      coastDoor: this.coastDoor,
+      swampDoor: this.swampDoor,
+      mountainDoor: this.mountainDoor,
+      deer: generateWild(t, seed, [...this.crags, ...forest, this.entrance]),
+      fish: wildFish(t, seed),
+      frog: wildFrog(t, seed),
+      whale: { x: 0, z: 0 },
+      pico: { x: pico.x, z: pico.z },
+      cage: rescueSpot.cage,
+      knot: { x: ZARZAL_KNOT.x, z: ZARZAL_KNOT.z },
+      umbral: { x: UMBRAL.x, z: UMBRAL.z },
+      rim: { x: 0, z: RIM_LINE + 10 },
+      ceniza: cenizaFogata(t),
+      pillars: pillarSpots.cores.map((c) => ({ x: c.x, z: c.z })),
+      tower: { x: TOWER.x, z: TOWER.z },
+      estrella: { x: est.x, z: est.z },
+    };
+    this.guide.zoneCentres = new Map(this.zones.map((z) => [z.id, { x: z.x, z: z.z }]));
   }
 
   /** P7-C: 🎒 (touch) or Menú › Jugar › Mochila. */
@@ -1583,8 +1651,11 @@ export class Game {
   }
 
   /** P7-C: the tabbed Menú, on the tab used last. Sub-screens (Libro, Oficios, Aspecto, Puestos, 🎒) come back here. */
-  private openMenu(): void {
-    const tab = isMenuTab(this.settings.tab) ? this.settings.tab : 'jugar';
+  private openMenu(want?: MenuTab): void {
+    const tab = want ?? (isMenuTab(this.settings.tab) ? this.settings.tab : 'jugar');
+    if (want) this.setSettings({ tab: want });
+    const dots = this.guide.dots;
+    this.guide.ackTab(tab);
     const camera = (m: string) => (m === 'third' ? 'Cambiar a primera persona' : 'Cambiar a tercera persona');
     this.hud.showMenu(
       this.tier,
@@ -1623,7 +1694,13 @@ export class Game {
           this.trap = nextTrap(this.trap, this.hasFire, this.hasStone);
           this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
         },
-        onTab: (t) => this.setSettings({ tab: t }),
+        onTab: (t) => {
+          this.setSettings({ tab: t });
+          this.guide.ackTab(t);
+        },
+        dots: { ...dots, [tab]: false },
+        guide: { on: this.settings.guide, onChange: (on) => this.setSettings({ guide: on }) },
+        tips: { on: this.settings.tips, onChange: (on) => this.setSettings({ tips: on }) },
         onBag: () => this.showBag(() => this.openMenu()),
         help: helpCards(this.seen, !!this.touch),
         camera: camera(this.rig.mode),
@@ -2362,6 +2439,7 @@ export class Game {
     this.life?.update({ x: b.x, z: b.z, groundY: terrain.heightAt(b.x, b.z), biome: biomeOf(b.x, b.z), frac, purified: this.purify > 0.5, precip: precipKind(here, terrain.heightAt(b.x, b.z)) !== null, daylight: this.light.daylight, t: performance.now() / 1000, dt, px: this.renderer.domElement.height, cam: this.camera.position });
     this.packNear();
     if (this.guardian?.root.visible) this.guardian.update(dt);
+    this.guide.frame(this.camera, this.rig.yaw, innerWidth, innerHeight, performance.now());
     this.renderer.render(this.scene, this.camera);
   }
 

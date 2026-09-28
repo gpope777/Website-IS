@@ -41,6 +41,11 @@ export interface MenuHandlers {
   sens?: { value: number; onChange: (v: number) => void };
   text?: { value: string; options: [string, string][]; onChange: (v: string) => void };
   marks?: { on: boolean; onChange: (on: boolean) => void };
+  /** P7-D: "Mostrar Qué sigue" and "Consejos". */
+  guide?: { on: boolean; onChange: (on: boolean) => void };
+  tips?: { on: boolean; onChange: (on: boolean) => void };
+  /** P7-D: tabs with something new. */
+  dots?: Partial<Record<MenuTab, boolean>>;
 }
 
 const FATAL: Record<ErrorCode, string> = {
@@ -84,6 +89,46 @@ export class Hud {
     return !this.overlay.hidden;
   }
 
+  /** P7-D: "Qué sigue": one line at the top centre, a tip under it, and an arrow on the screen edge. */
+  private readonly goal = el('button', 'goal');
+  private readonly goalTip = el('div', 'goal-tip');
+  private readonly edge = el('div', 'edge-arrow');
+  private goalText = '';
+  onGoalTap: () => void = () => {};
+
+  setGoal(text: string | null, alpha = 1): void {
+    const t = text ?? '';
+    if (t !== this.goalText) {
+      this.goalText = t;
+      this.goal.textContent = t;
+      this.goal.hidden = !t;
+    }
+    const a = String(alpha);
+    if (this.goal.style.opacity !== a) this.goal.style.opacity = a;
+  }
+
+  setTip(text: string | null): void {
+    const t = text ?? '';
+    if (this.goalTip.textContent !== t) this.goalTip.textContent = t;
+    this.goalTip.hidden = !t;
+  }
+
+  /** Screen px and degrees (0 = up), or null to hide. */
+  setArrow(a: { x: number; y: number; deg: number } | null): void {
+    if (!a) {
+      if (!this.edge.hidden) this.edge.hidden = true;
+      return;
+    }
+    this.edge.hidden = false;
+    this.edge.style.transform = `translate(${a.x.toFixed(0)}px, ${a.y.toFixed(0)}px) translate(-50%, -50%) rotate(${a.deg.toFixed(0)}deg)`;
+  }
+
+  /** P7-D: El eco del bosque — the vision card, but green and quiet. */
+  showEcho(lines: string[]): void {
+    this.showVision(['Mientras no estabas:', ...lines], 6000, false);
+    this.visionCard.classList.add('echo');
+  }
+
   /** P7-A: red screen edge when hurt; a slow pulse under 25 % health. */
   private readonly hurtEdge = el('div', 'hurt-edge');
 
@@ -115,7 +160,17 @@ export class Hud {
     this.prompt.hidden = true;
     this.overlay.hidden = true;
     this.stamina.hidden = true;
-    this.root.append(stats, this.log, this.banner, this.prompt, this.top, this.stamina, this.hurtEdge);
+    this.goal.hidden = true;
+    this.goalTip.hidden = true;
+    this.edge.hidden = true;
+    this.edge.textContent = '▲';
+    this.goal.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.goal.style.opacity = '1';
+      this.onGoalTap();
+    });
+    this.root.append(stats, this.log, this.banner, this.prompt, this.top, this.stamina, this.hurtEdge, this.goal, this.goalTip, this.edge);
     this.ring.hidden = true;
     this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
     this.ring.addEventListener('pointerdown', (e) => {
@@ -232,6 +287,7 @@ export class Hud {
 
   showVision(lines: string[], ms = 3000 + 2500 * lines.length, toast = true): void {
     this.visionCard.innerHTML = '';
+    this.visionCard.classList.remove('echo');
     const roll = el('div', 'roll');
     for (const line of lines) {
       const p = el('p', '');
@@ -257,7 +313,7 @@ export class Hud {
   hideVision(): void {
     clearTimeout(this.visionTimer);
     this.visionCard.hidden = true;
-    this.visionCard.classList.remove('credits');
+    this.visionCard.classList.remove('credits', 'echo');
     const next = this.endingQueue.shift();
     if (next) this.showStep(next);
   }
@@ -338,6 +394,8 @@ export class Hud {
         ${h.sound ? `<label>Sonido</label>${sel('mute', [['0', 'Con sonido'], ['1', '🔇 Silencio (tecla .)']], yes(h.sound.mute))}${h.sound.vols.map((v) => `<label>${v.label}</label><input type="range" min="0" max="100" step="5" value="${v.value}" data-vol="${v.key}" />`).join('')}` : ''}
         ${h.text ? `<label>Tamaño de texto</label>${sel('text', h.text.options, h.text.value)}` : ''}
         ${h.marks ? `<label>Marcas de forma (además del color)</label>${sel('marks', [['1', 'Sí'], ['0', 'No']], yes(h.marks.on))}` : ''}
+        ${h.guide ? `<label>Mostrar "Qué sigue"</label>${sel('guide', [['1', 'Sí'], ['0', 'No']], yes(h.guide.on))}` : ''}
+        ${h.tips ? `<label>Consejos</label>${sel('tips', [['1', 'Sí'], ['0', 'No']], yes(h.tips.on))}` : ''}
       </div>`;
     } else if (tab === 'ayuda') {
       body = helpHtml(h.help ?? []);
@@ -366,14 +424,14 @@ export class Hud {
       trap: go(h.onTrap),
       leave: h.onLeave,
     };
-    this.panel(`<h2 class="menu-title">Menú</h2>${tabsHtml(tab)}<div class="tab-body">${body}</div>`, actions);
+    this.panel(`<h2 class="menu-title">Menú</h2>${tabsHtml(tab, h.dots)}<div class="tab-body">${body}</div>`, actions);
     this.overlay.querySelector('.panel')!.classList.add('menu');
     this.menuOpen = true;
     for (const b of this.overlay.querySelectorAll<HTMLElement>('[data-tab]')) {
       b.addEventListener('click', () => {
         const t = b.dataset.tab as MenuTab;
         h.onTab?.(t);
-        this.showMenu(tier, h, t);
+        this.showMenu(tier, { ...h, dots: { ...h.dots, [t]: false } }, t);
       });
     }
     const on = (f: string, fn: (v: string) => void, ev = 'change') => this.overlay.querySelector<HTMLInputElement>(`[data-f="${f}"]`)?.addEventListener(ev, (e) => fn((e.target as HTMLInputElement).value));
@@ -383,6 +441,8 @@ export class Hud {
     on('mute', (v) => h.sound?.onMute(v === '1'));
     on('text', (v) => h.text?.onChange(v));
     on('marks', (v) => h.marks?.onChange(v === '1'));
+    on('guide', (v) => h.guide?.onChange(v === '1'));
+    on('tips', (v) => h.tips?.onChange(v === '1'));
     on('sens', (v) => {
       h.sens?.onChange(Number(v));
       const o = this.overlay.querySelector('[data-o="sens"]');
