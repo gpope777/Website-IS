@@ -20,7 +20,7 @@ describe('decodeClient', () => {
   });
 
   it('rejects bad dungeon acts', () => {
-    bad(JSON.stringify({ t: 'dungeon', act: 13 })); // 8–12 are the coast Raíz-madre (S2-F; was 8 before)
+    bad(JSON.stringify({ t: 'dungeon', act: 29 })); // 8–12 the coast Raíz-madre (S2-F), 13–17 the swamp's (S3-E), 18–25 the mountain cave's (S4-E), 26–27 the tower (S5-E), 28 a brote (S5-F)
     bad(JSON.stringify({ t: 'dungeon', act: -1 }));
     bad(JSON.stringify({ t: 'dungeon', act: 1.5 }));
     bad(JSON.stringify({ t: 'dungeon' }));
@@ -54,7 +54,7 @@ describe('decodeClient', () => {
 
 describe('aventura protocol', () => {
   it("is the current version", () => {
-    expect(PROTOCOL_VERSION).toBe(22);
+    expect(PROTOCOL_VERSION).toBe(65);
   });
   it('decodes tend and rejects a bad id', () => {
     expect(decodeClient('{"t":"tend","id":3}')).toEqual({ t: 'tend', id: 3 });
@@ -93,7 +93,7 @@ describe('revive protocol', () => {
 
 describe('traversal protocol', () => {
   it('accepts climb and glide anims', () => {
-    for (const anim of ['climb', 'glide']) {
+    for (const anim of ['climb', 'glide', 'slide']) {
       expect(decodeClient(JSON.stringify({ t: 'move', x: 0, y: 0, z: 0, yaw: 0, anim }))).not.toBeNull();
     }
   });
@@ -104,12 +104,17 @@ describe('power and shrine protocol', () => {
     ok({ t: 'power', x: 1, z: 2 });
     ok({ t: 'shrine', id: 0, part: 2 });
     ok({ t: 'shrine', id: 5, part: 3 });
-    bad('{"t":"shrine","id":0,"part":4}');
+    ok({ t: 'shrine', id: 6, part: 4 });
+    ok({ t: 'shrine', id: 11, part: 7 }); // S4-C: Bloques' reset lever
+    ok({ t: 'quartz', id: 9 });
+    bad('{"t":"quartz","id":10}');
+    bad('{"t":"quartz","id":1.5}');
+    bad('{"t":"shrine","id":0,"part":8}'); // S4-C: parts go up to 7 (intentional)
     bad('{"t":"shrine","id":0,"part":-1}');
     bad('{"t":"shrine","id":0,"part":1.5}');
     bad('{"t":"power","x":"1","z":2}');
     bad('{"t":"power","x":1}');
-    expect(PROTOCOL_VERSION).toBe(22);
+    expect(PROTOCOL_VERSION).toBe(65);
   });
 });
 
@@ -127,9 +132,14 @@ describe('mount protocol', () => {
     ok({ t: 'mount', act: 8 });
     ok({ t: 'mount', act: 9 });
     ok({ t: 'mount', act: 11 });
-    bad('{"t":"mount","act":12}');
+    ok({ t: 'mount', act: 12 });
+    ok({ t: 'mount', act: 14 });
+    ok({ t: 'mount', act: 15 });
+    ok({ t: 'mount', act: 17 });
+    ok({ t: 'mount', act: 18 }); // S5-H: tame la Estrella
+    bad('{"t":"mount","act":19}');
     bad('{"t":"mount","act":-1}');
-    expect(PROTOCOL_VERSION).toBe(22);
+    expect(PROTOCOL_VERSION).toBe(65);
   });
 });
 
@@ -140,7 +150,7 @@ describe('chest and upgrade protocol', () => {
     bad('{"t":"chest","id":-1}');
     bad('{"t":"chest","id":1.5}');
     bad('{"t":"chest"}');
-    expect(PROTOCOL_VERSION).toBe(22);
+    expect(PROTOCOL_VERSION).toBe(65);
   });
 });
 
@@ -149,14 +159,73 @@ describe('S2-F protocol', () => {
     expect(decodeClient(JSON.stringify({ t: 'dungeon', act: 12 }))).toEqual({ t: 'dungeon', act: 12 });
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'viento' }))).toEqual({ t: 'power', x: 1, z: 2, kind: 'viento' });
     expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'enredadera' }))).toEqual({ t: 'power', x: 1, z: 2, kind: 'enredadera' });
-    expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'fuego' }))).toBeNull();
-    expect(PROTOCOL_VERSION).toBe(22);
+    expect(decodeClient(JSON.stringify({ t: 'power', x: 1, z: 2, kind: 'rayo' }))).toBeNull();
+    expect(PROTOCOL_VERSION).toBe(65);
   });
 });
 
 describe('rescue protocol (S2-H)', () => {
   it('decodes the cage release', () => {
     ok({ t: 'rescue' });
-    expect(PROTOCOL_VERSION).toBe(22);
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('amber and capa protocol (S3-C)', () => {
+  it('decodes amber and capa', () => {
+    ok({ t: 'amber', id: 3 });
+    ok({ t: 'capa' });
+    bad('{"t":"amber","id":-1}');
+    bad('{"t":"amber","id":"1"}');
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('swamp dungeon and Fuego protocol (S3-E)', () => {
+  it('decodes the swamp dungeon acts, Fuego and the hoguera', () => {
+    ok({ t: 'dungeon', act: 17 });
+    bad(JSON.stringify({ t: 'dungeon', act: 29 })); // S4-E: acts 18–25 are the mountain cave's; S5-E: 26–27 the tower's; S5-F: 28 pulls a brote
+    ok({ t: 'power', x: 1, z: 2, kind: 'fuego' });
+    ok({ t: 'place', kind: 'fire', x: 1, z: 2, rot: 0 });
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('fogatas protocol (S3-G)', () => {
+  it('decodes lighting and travel', () => {
+    ok({ t: 'fogata', id: 2 });
+    ok({ t: 'travel', to: 'heart' });
+    ok({ t: 'travel', to: 3 });
+    ok({ t: 'travel', to: 5 }); // S4-C: the mountain refugios
+    ok({ t: 'travel', to: 6 }); // S5-B: la Ceniza
+    ok({ t: 'travel', to: 7 }); // S5-H: the top of el Árbol-torre
+    ok({ t: 'fogata', id: 6 });
+    bad(JSON.stringify({ t: 'travel', to: 8 }));
+    bad(JSON.stringify({ t: 'travel', to: -1 }));
+    bad(JSON.stringify({ t: 'travel', to: 'casa' }));
+    bad(JSON.stringify({ t: 'fogata', id: 8 }));
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('mountain dungeon and Piedra protocol (S4-E)', () => {
+  it('decodes the cave acts, Piedra and the torre; a pillar is never placed', () => {
+    ok({ t: 'dungeon', act: 25 });
+    bad(JSON.stringify({ t: 'dungeon', act: 29 }));
+    ok({ t: 'power', x: 1, z: 2, kind: 'piedra' });
+    ok({ t: 'place', kind: 'tower', x: 1, z: 2, rot: 0 });
+    bad(JSON.stringify({ t: 'place', kind: 'pillar', x: 1, z: 2, rot: 0 }));
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('calling mounts at la Ceniza (S5-B)', () => {
+  it('decodes the three beasts only', () => {
+    ok({ t: 'call', beast: 'deer' });
+    ok({ t: 'call', beast: 'frog' });
+    ok({ t: 'call', beast: 'fish' });
+    bad(JSON.stringify({ t: 'call', beast: 'dragon' }));
+    bad(JSON.stringify({ t: 'call' }));
+    expect(PROTOCOL_VERSION).toBe(65);
   });
 });

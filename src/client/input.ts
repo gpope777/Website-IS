@@ -18,7 +18,7 @@ export function readMove(i: InputState): MoveInput {
   return { x: (i.right ? 1 : 0) - (i.left ? 1 : 0), z: (i.back ? 1 : 0) - (i.forward ? 1 : 0), sprint: i.sprint, jump: i.jump };
 }
 
-export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'net' | 'trap' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock' | 'power' | 'switch' | 'mount' | 'dismiss';
+export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'net' | 'trap' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock' | 'power' | 'switch' | 'mount' | 'dismiss' | 'fire' | 'tower' | 'mute';
 
 /** Also used by touch buttons, which fire these KeyboardEvent codes. */
 export const KEY_ACTIONS: Record<string, Action> = {
@@ -30,6 +30,10 @@ export const KEY_ACTIONS: Record<string, Action> = {
   KeyG: 'heart',
   KeyT: 'spikes',
   KeyY: 'net',
+  /** Hoguera (needs Fuego). */
+  KeyU: 'fire',
+  /** Torre (needs Piedra). */
+  KeyI: 'tower',
   /** Touch pill only: places the trap chosen in the Menú. */
   TouchTrap: 'trap',
   KeyC: 'camera',
@@ -43,6 +47,8 @@ export const KEY_ACTIONS: Record<string, Action> = {
   KeyM: 'mount',
   Escape: 'menu',
   Enter: 'dismiss',
+  /** P7-B: Silencio (M is already mount). */
+  Period: 'mute',
 };
 
 const HOLD: Record<string, keyof Omit<InputState, 'axis'>> = {
@@ -99,12 +105,12 @@ export class Keyboard {
 }
 
 /** The powers in switching order, and their pill icons. */
-export const POWER_ORDER = ['enredadera', 'viento'] as const;
+export const POWER_ORDER = ['enredadera', 'viento', 'fuego', 'piedra'] as const;
 export type PowerChoice = (typeof POWER_ORDER)[number];
-export const POWER_ICON: Record<PowerChoice, string> = { enredadera: '🌿', viento: '🌬️' };
+export const POWER_ICON: Record<PowerChoice, string> = { enredadera: '🌿', viento: '🌬️', fuego: '🔥', piedra: '🪨' };
 
 /** The next owned power after `cur` (itself when it is the only one). */
-export function nextPower(cur: PowerChoice, owns: Record<PowerChoice, boolean>): PowerChoice {
+export function nextPower(cur: PowerChoice, owns: Partial<Record<PowerChoice, boolean>>): PowerChoice {
   const i = POWER_ORDER.indexOf(cur);
   for (let k = 1; k <= POWER_ORDER.length; k++) {
     const p = POWER_ORDER[(i + k) % POWER_ORDER.length]!;

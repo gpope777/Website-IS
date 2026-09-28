@@ -1,21 +1,32 @@
-import { STRUCTURE_KINDS, type Inventory, type StructureKind } from './items';
+import { ITEMS, STRUCTURE_KINDS, type Inventory, type ItemId, type StructureKind } from './items';
+import { linesOk, MERCHANT, STALL, type Stall, type TradeLine } from './shop';
 import type { Vitals } from './survival';
 import type { Crag } from './crags';
+import { FOGATA } from './fogatas';
+import { QUARTZ } from './mountain-shrines';
+import { isLook, isSkill, type Look, type SkillId } from './progression';
 
-export const PROTOCOL_VERSION = 22;
+export const PROTOCOL_VERSION = 65;
 
-export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide'] as const;
+/** P7-A: a blow that landed near you (hit / killing blow / parry / guarded bite). `hp` = the struck one's HP left, 0–1. */
+export type FxKind = 'hit' | 'kill' | 'parry' | 'block';
+export interface FxView { id: number; dmg: number; kind: FxKind; by?: string; hp?: number }
+
+/** S5-A: the muro de niebla's state in the snapshot. */
+export type FogState = 'closed' | 'ready' | 'open';
+
+export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide', 'slide'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
-export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer or the giant fish. */ ride: 'deer' | 'fish' | 'whale' | null; /** Sitting behind this rider on their deer. */ seat: string | null }
-export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'elite2' | 'boss2' | 'marchito' | 'anchor';
-export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean }
+export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer or the giant fish. */ ride: 'deer' | 'fish' | 'whale' | 'frog' | 'dragon' | null; /** Sitting behind this rider on their deer. */ seat: string | null; /** Capa de corteza level (0–3): bark tint on the torso. */ capa: number; /** S5-H: riding la Estrella. */ star?: boolean; /** P4-C: colour and hat; absent = the default. */ look?: Look; /** P7-F: learning, at this tutorial step (absent = not learning). */ tut?: number }
+export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'elite2' | 'boss2' | 'marchito' | 'anchor' | 'lieut1' | 'elite3' | 'boss3' | 'lieut2' | 'elite4' | 'boss4' | 'rayo' | 'lieut3' | 'boss5' | 'core' | 'brote';
+export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean; /** Burning from a Llamarada or a hoguera. */ burning?: true; /** La Flecha's red line: where her clavada ends. */ aim?: { x: number; z: number }; /** La Flecha stuck in a wall. */ stuck?: true }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
 export interface RaidView { phase: 'warn' | 'active'; /** angle the raid comes from, around the Heart: x = sin, z = cos */ dir: number; level: number }
 export interface GraveView { id: number; owner: string; x: number; y: number; z: number }
 /** `parts` follow `Shrine.parts`: lever or wheel pulled / plate pressed. `block` = Marea's pumice block. */
-export interface ShrineView { id: number; open: boolean; parts: boolean[]; block?: CarryView }
+export interface ShrineView { id: number; open: boolean; parts: boolean[]; block?: CarryView; /** Bloques: where the 3 stone blocks sit now. */ blocks?: { x: number; z: number }[] }
 /** Something you can carry in the Raíz-madre: where it is and who holds it. */
 export interface CarryView { x: number; z: number; held: string | null }
 /** Live dungeon state: gates (`gate` = gate 0, the levers'), levers pulled, the plate, the block and lantern, the brazier, whether the boss was purified, and the bars while they fight. */
@@ -32,26 +43,60 @@ export interface DungeonView {
   elite: { hp: number; max: number; charging: boolean } | null;
   /** The coast Raíz-madre. */
   coast: CoastDungeonView;
+  /** The swamp Raíz-madre. */
+  swamp: SwampDungeonView;
+  /** The mountain cave. */
+  mountain: MountainDungeonView;
+  /** S5-E: la Torre. */
+  tower: TowerDungeonView;
 }
+/** The tower (S5-E): gates (pit, vents, braziers, plate, La Flecha), the two root bridges, vents clear right now, braziers lit, the plate weighted, La Flecha's bar, the white allies on their floors. */
+export interface TowerDungeonView { gates: boolean[]; bridges: boolean[]; vents: boolean[]; braziers: boolean[]; plate: boolean; flecha: { hp: number; max: number; aiming: boolean; stuck: boolean } | null; allies: (AllyView & { kind: 'tragon' | 'antenon' | 'zancudo' | 'cucurucho' })[]; /** S5-F: El Marchito in the Copa while he fights. */ final: FinalView | null }
+/** El Marchito's final fight (S5-F): phase, HP (the core's share in phase 3), the roots, the swipe's tell, root lines being told, the four brotes, a pull's progress (0–1), el Corazón Negro and its trail. */
+export interface FinalView {
+  phase: 1 | 2 | 3;
+  hp: number;
+  max: number;
+  catching: boolean;
+  bare: boolean;
+  green: boolean;
+  stagger: boolean;
+  swipe: boolean;
+  lines: { x0: number; z0: number; x1: number; z1: number }[];
+  brotes: { power: 'vine' | 'wind' | 'fire' | 'stone'; x: number; z: number; open: boolean; broken: boolean; steps: number; need: number }[];
+  pull: number | null;
+  core: { hp: number; max: number; stopped: boolean; healing: boolean } | null;
+  trail: { x: number; z: number }[];
+}
+/** The mountain interior: gates (levers, high plate, blocks, bruto de roca), levers pulled, the plate weighted, where the two blocks sit, and the bruto de roca's bar. */
+export interface MountainDungeonView { gates: boolean[]; levers: boolean[]; plate: boolean; blocks: { x: number; z: number }[]; elite: { hp: number; max: number; charging: boolean; exposed: boolean } | null; /** El Cucurucho while it fights: winding up, charging, hat stuck, the alud's marked circles. */ boss: { hp: number; max: number; windup: boolean; charging: boolean; stuck: boolean; alud: { x: number; z: number }[] } | null }
+/** The swamp interior: gates (levers, thorns, gas lamps, bruto de turba), levers pulled, Llamaradas the thorns took (0–3), lamps lit, boardwalk planks still up, and the bruto de turba's bar. */
+export interface SwampDungeonView { gates: boolean[]; levers: boolean[]; thorn: number; lamps: boolean[]; planks: boolean[]; elite: { hp: number; max: number; charging: boolean; burning: boolean } | null; /** El Zancudo while it fights: on the floor, winding a dive (its shadow), who it clings to. */ boss: { hp: number; max: number; grounded: boolean; diving: boolean; shadow: { x: number; z: number } | null; latch: string | null } | null; /** Gas vents flaring right now. */ vents: boolean[] }
 /** The coast interior: gates (levers, fan, plate, bruto escudado), levers pulled, the pumice block, the plate, and the bruto escudado's bar. */
 export interface CoastDungeonView { gates: boolean[]; levers: boolean[]; block: { x: number; z: number }; plate: boolean; elite: { hp: number; max: number; exposed: boolean; charging: boolean } | null; /** El Antenón while it fights; `tell` = the attack it is winding up. */ boss: { hp: number; max: number; exposed: boolean; tell: 'sweep' | 'charge' | null } | null }
 /** The purified boss guarding the Heart. */
 export interface AllyView { x: number; y: number; z: number; yaw: number; anim: WolfAnim }
 /** A deer (or giant fish) standing in the world: the wild one (`owner` null) or a parked, tamed one. */
-export interface SteedView { owner: string | null; x: number; y: number; z: number; yaw: number }
+export interface SteedView { owner: string | null; x: number; y: number; z: number; yaw: number; /** S5-H: a parked Estrella. */ star?: boolean }
 /** A taming round in progress: needle angle = ringAngle(speed, serverTime - start); tap inside `zone` ± width/2. */
-export interface TameView { round: number; rounds: number; start: number; speed: number; zone: number; width: number; beast: 'deer' | 'fish' | 'whale' }
+export interface TameView { round: number; rounds: number; start: number; speed: number; zone: number; width: number; beast: 'deer' | 'fish' | 'whale' | 'frog' | 'dragon' | 'star' }
 /** El Marchito in the base: voluntad left (he leaves at 0) and whether he is laughing on his way out. */
 /** La Ballena (one per world): wild or tamed, under water after a failed taming, and who sits where (0 = pilot). */
 export interface WhaleView { x: number; z: number; yaw: number; tamed: boolean; diving: boolean; seats: (string | null)[] }
 /** Invasion 2's root cage (spots come from the seed): each anchor's PV left, 0 = broken. */
 export interface CageView { anchors: number[] }
-export interface MarchitoView { will: number; max: number; laughing: boolean; /** Invasion 2: how far he has wrapped the Tragón (0–1). */ grab?: number }
+export interface MarchitoView { will: number; max: number; laughing: boolean; /** Invasion 2: how far he has wrapped the Tragón (0–1). */ grab?: number; /** Invasion 3: how far he has wrapped the Heart (0–1). */ channel?: number }
+/** S5-C: los 4 Pilares-raíz (0 Enredadera, 1 Viento, 2 Fuego, 3 Piedra): broken, the thicket's roots bridged, the lake anchor still holding, gusts on the miasma, Llamaradas on the cocoon, the Piedra lid up. */
+export interface PillarView { broken: boolean[]; roots: boolean[]; anchor: boolean; miasma: number; burns: number; lid: boolean }
+/** P7-D: what the guide can't see otherwise. inv: Invasions 1 and 3 (0 none, 1 owed, 2 over) and 2 (0 none, 1 owed, 2 taken, 3 rescued); bosses: forest, coast, swamp, mountain purified. */
+export interface StoryView { inv: [number, number, number]; bosses: [boolean, boolean, boolean, boolean] }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race: next ring index (rings come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number } | null; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–3). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; /** Has Piedra (from the mountain dungeon altar). */ piedra: boolean; /** Whole seconds until Piedra can be cast again. */ stoneLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** S5-H: the steed is la Estrella. */ star: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Owns a tamed dragon (S4-G). */ dragon: boolean; /** On the dragon. */ onDragon: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null; /** P4-A: total Savia. */ xp: number; /** P4-A: Rango 1–8. */ rank: number; /** P4-B: oficios learned. */ skills: SkillId[]; /** P4-C: colour and hat worn. */ look: Look; /** P4-C: hats unlocked (1–9). */ hats: number[]; /** P4-D: the Libro's counters. */ book: BookView; /** T6-D: tratos left today with the Buhonero. */ deals?: number; /** P7-A: damage taken since the last snapshot (absent = none). */ hurt?: number; /** P7-F: the tutorial step (1–8) while learning; `wait` = a raid (or night, for the wolf) holds it. */ tut?: { step: number; wait?: true } }
+/** P4-D: what the Libro shows beyond the rest of SelfState. Zones and day are world facts. */
+export interface BookView { feats: number[]; bosses: number; kills: { wolf: number; brute: number; rayo: number }; raids: number; zones: number; zonesMax: number; shrinesMax: number; chestsMax: number; day: number }
 
-export const POWER_KINDS = ['enredadera', 'viento'] as const;
+export const POWER_KINDS = ['enredadera', 'viento', 'fuego', 'piedra'] as const;
 export type PowerKind = (typeof POWER_KINDS)[number];
 
 export type ErrorCode = 'version' | 'pin' | 'rate' | 'noworld' | 'full' | 'bad' | 'replaced';
@@ -71,30 +116,91 @@ export type ClientMsg =
   | { t: 'revive'; name: string }
   /** Cast the chosen power at (x, z): absent kind = Enredadera (older clients). */
   | { t: 'power'; x: number; z: number; kind?: PowerKind }
-  /** part 0 = take the orb, 1/2 = pull lever 1/2 (Hundido: 2 = the seabed one), Islote: 1–3 = turn a wheel, Marea: 1 = pick up / drop the pumice block */
+  /** part 0 = take the orb, 1/2 = pull lever 1/2 (Hundido: 2 = the seabed one), Islote: 1–3 = turn a wheel, Marea: 1 = pick up / drop the pumice block, Candiles: 1–3 = light a brazier, 4 = take a torch */
   | { t: 'shrine'; id: number; part: number }
-  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier, 8 = enter the coast Raíz-madre, 9 = leave it, 10/11 = pull its levers, 12 = take Viento at its altar */
+  /** 0 = enter the Raíz-madre, 1 = leave it, 2/3 = pull root lever 1/2, 4 = take the power at the altar, 5 = pick up / drop the block, 6 = pick up / drop the lantern, 7 = light the brazier, 8 = enter the coast Raíz-madre, 9 = leave it, 10/11 = pull its levers, 12 = take Viento at its altar, 13 = enter the swamp Raíz-madre, 14 = leave it, 15/16 = pull its levers, 17 = take Fuego at its altar, 18 = enter the mountain cave, 19 = leave it, 20/21 = pull its levers, 22 = take Piedra at its altar, 23/24 = push its block 0/1, 25 = its reset lever */
   | { t: 'dungeon'; act: number }
-  /** 0 = start taming the wild deer, 1 = tap the ring at sim time `at`, 2 = get on your deer, 3 = get off, 4 = sit behind the nearest rider, 5 = get off the seat, 6 = start the fish's ring race, 7 = get on your fish, 8 = get off the fish, 9 = start taming the whale (needs 2+), 10 = board the whale, 11 = leave the whale */
+  /** 0 = start taming the wild deer, 1 = tap the ring at sim time `at`, 2 = get on your deer, 3 = get off, 4 = sit behind the nearest rider, 5 = get off the seat, 6 = start the fish's ring race, 7 = get on your fish, 8 = get off the fish, 9 = start taming the whale (needs 2+), 10 = board the whale, 11 = leave the whale, 12 = start the frog's lily-pad chase, 13 = get on your frog, 14 = get off the frog */
   | { t: 'mount'; act: number; at?: number }
   /** Open a sunken chest (diving, beside it). */
   | { t: 'chest'; id: number }
   /** Buy a weapon upgrade at the Heart. */
   | { t: 'upgrade' }
   /** Free the Tragón from the root cage (beside it, every anchor broken). */
-  | { t: 'rescue' };
+  | { t: 'rescue' }
+  /** Harvest an amber tree (beside it; on top of its stump for the high ones). */
+  | { t: 'amber'; id: number }
+  /** Take quartz from a mountain vein (climbing beside it). */
+  | { t: 'quartz'; id: number }
+  /** Buy a Capa de corteza level at the Heart. */
+  | { t: 'capa' }
+  /** Light a swamp fogata with the torch you carry (beside it). */
+  | { t: 'fogata'; id: number }
+  /** Start the 5 s channel: from a lit fogata to the Heart, or from the Heart to lit fogata `to` (day only). */
+  | { t: 'travel'; to: 'heart' | number }
+  /** At the lit Ceniza fogata (S5-B): bring your own parked deer, frog or fish there. */
+  | { t: 'call'; beast: CallBeast }
+  /** S5-C: start pulling Pilar-raíz `id`'s core (A held 3 s, beside it). */
+  | { t: 'pillar'; id: number }
+  /** S5-G: at the Heart after the ending, turn the post-ending raids on or off (world setting). */
+  | { t: 'raids'; on: boolean }
+  /** P4-B: spend a point on oficio `id` (in branch order). */
+  | { t: 'learn'; id: SkillId }
+  /** P4-B: at the Heart, 5 bayas, every oficio point back. */
+  | { t: 'forget' }
+  | { t: 'look'; color: number; hat: number }
+  /** T6-A: build your Puesto at (x, z). */
+  | { t: 'stallPlace'; x: number; z: number; rot: number }
+  /** T6-A: set shelf `shelf` of your Puesto to "n give por m want". */
+  | { t: 'stallSet'; shelf: number; give: ItemId; n: number; want: ItemId; m: number; /** T6-D: Vendo or Busco; absent keeps it. */ mode?: 'sell' | 'want' }
+  | { t: 'deliver'; stall: number; shelf: number }
+  | { t: 'deal'; id: number }
+  /** T6-A: Reponer: one tanda from your mochila onto the shelf. */
+  | { t: 'stallStock'; shelf: number }
+  /** T6-A: Quitar: the whole shelf back to your mochila. */
+  | { t: 'stallTake'; shelf: number }
+  /** T6-A: Recoger puesto: everything and its cost back. */
+  | { t: 'stallPick' }
+  /** T6-B: buy one tanda from shelf `shelf` of Puesto `stall`. */
+  | { t: 'buy'; stall: number; shelf: number }
+  /** T6-B: Vaciar caja: your Puesto's Caja to your mochila. */
+  | { t: 'stallTill' }
+  /** T6-C: trueque directo. Ask a player ≤4 m away; answer an ask; set your side (≤3 lines); Vale; cancel. */
+  | { t: 'tradeAsk'; to: string }
+  | { t: 'tradeAnswer'; yes: boolean }
+  | { t: 'tradeOffer'; lines: TradeLine[] }
+  | { t: 'tradeOk' }
+  | { t: 'tradeCancel' }
+  /** P7-F: Saltar tutorial / Repetir tutorial. */
+  | { t: 'tut'; act: 'skip' | 'repeat' };
+
+/** T6-C: one side's view of an open trade. `open` false = waiting for the answer (`asker` says who waits). */
+export interface TradeView { with: string; asker: boolean; open: boolean; mine: TradeLine[]; theirs: TradeLine[]; okMine: boolean; okTheirs: boolean }
+
+export type CallBeast = 'deer' | 'frog' | 'fish';
+export const CALL_BEASTS: readonly CallBeast[] = ['deer', 'frog', 'fish'];
 
 export type ServerMsg =
-  | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[] }
+  | { t: 'welcome'; you: string; seed: number; time: number; self: SelfState; structures: Structure[]; gone: number[]; /** T6-A: the Puestos. */ stalls?: Stall[] }
+  /** T6-A: a Puesto changed (or was picked up: `gone`). */
+  | { t: 'stall'; s: Stall; gone?: boolean }
+  /** T6-C: your trade changed (null = closed). */
+  | { t: 'trade'; tr: TradeView | null }
   | { t: 'error'; code: ErrorCode }
-  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** The root cage while the Tragón is taken. */ cage: CageView | null }
+  | { t: 'snap'; time: number; players: PlayerView[]; wolves: WolfView[]; self: SelfState; raid: RaidView | null; heart: HeartView | null; graves: GraveView[]; vines: Crag[]; shrines: ShrineView[]; dungeon: DungeonView; ally: AllyView | null; /** The purified Antenón by the Heart (anim 'attack' while it gusts). */ ally2: AllyView | null; /** The white Zancudo's farol by the Heart (anim 'attack' while it flares). */ ally3: AllyView | null; /** The white Cucurucho's atalaya by the Heart (anim 'attack' while it throws). */ ally4: AllyView | null; /** La Escalera del Umbral is up: a ramp in los Peldaños (see withEscalera). */ escalera: boolean; /** The Zarzal knot burnt: its gap is open ground. */ zarzalBurnt: boolean; /** Which swamp fogatas are lit (ids from the seed). */ fogatas: boolean[]; steeds: SteedView[]; /** The wild giant fish (owner null) and parked tamed ones. */ fish: SteedView[]; /** The wild frog (owner null) and parked tamed ones. */ frogs: SteedView[]; /** The wild dragon while it circles the Pico (owner null) and parked tamed ones. */ dragons: SteedView[]; /** S5-A: the fog north of the rim: closed, ready (the 4 Raíces-madre purified: a dragon rider opens it) or open. */ fog: FogState; /** S5-A: El Marchito's tower height (m). */ towerH: number; whale: WhaleView; marchito: MarchitoView | null; /** Corruption zone ids still corrupt (zones come from the seed). */ corrupt: number[]; /** S5-C: los Pilares-raíz. */ pillars: PillarView; /** S5-D: the tower's door is open (the dawn after Invasion 3). */ towerOpen: boolean; /** S5-G: El Marchito fell (white tower, el Guardián, la Grieta). */ ending: boolean; /** S5-G: the post-ending raids are turned off at the Heart. */ raidsOff: boolean; /** S5-H: the wild Estrella (full-moon nights after the ending), in view. */ estrella: SteedView | null; /** T6-D: where the Buhonero stands (null: not here). */ merchant?: { x: number; z: number } | null; /** The root cage while the Tragón is taken. */ cage: CageView | null; /** P7-A: blows since your last snapshot, within 40 m (absent = none). */ fx?: FxView[]; /** P7-D: the story so far, for the guide. */ story?: StoryView }
   | { t: 'hit'; id: number; hp: number }
   | { t: 'wrecked'; id: number }
   | { t: 'res'; id: number; gone: boolean }
   | { t: 'built'; s: Structure }
   | { t: 'toast'; text: string }
   /** El Marchito speaks: a few lines shown as a vision card. */
-  | { t: 'vision'; lines: string[] };
+  | { t: 'vision'; lines: string[] }
+  /** S5-G: the ending — the long vision's cards one by one, then the scrolling credits (once per player). */
+  | { t: 'ending'; cards: string[]; credits: string[] }
+  /** P4-A: `name` reached Rango `rank` (a card for them, a green flash for everyone). */
+  | { t: 'rankUp'; name: string; rank: number }
+  /** P7-D: "El eco del bosque": what others did while you were away (≤ 3 lines). */
+  | { t: 'echo'; lines: string[] };
 
 export const NAME_RE = /^[\p{L}\p{N} _-]{1,16}$/u;
 export const PIN_RE = /^\d{4}$/;
@@ -102,6 +208,9 @@ export const WORLD_RE = /^[a-z0-9-]{3,32}$/;
 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const id = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+const isShelf = (v: unknown): v is number => id(v) && v < STALL.shelves;
+const isAmount = (v: unknown): v is number => id(v) && v >= 1 && v <= STALL.nMax;
+const isItem = (v: unknown): v is ItemId => (ITEMS as readonly unknown[]).includes(v);
 
 function parse(raw: string): Record<string, unknown> | null {
   try {
@@ -158,11 +267,11 @@ export function decodeClient(raw: string): ClientMsg | null {
       if (m.kind === undefined) return { t: 'power', x: m.x, z: m.z };
       return (POWER_KINDS as readonly unknown[]).includes(m.kind) ? { t: 'power', x: m.x, z: m.z, kind: m.kind as PowerKind } : null;
     case 'shrine':
-      return id(m.id) && id(m.part) && (m.part as number) <= 3 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
+      return id(m.id) && id(m.part) && (m.part as number) <= 7 ? { t: 'shrine', id: m.id, part: m.part as number } : null;
     case 'dungeon':
-      return id(m.act) && (m.act as number) <= 12 ? { t: 'dungeon', act: m.act as number } : null;
+      return id(m.act) && (m.act as number) <= 28 ? { t: 'dungeon', act: m.act as number } : null;
     case 'mount':
-      if (!id(m.act) || (m.act as number) > 11) return null;
+      if (!id(m.act) || (m.act as number) > 18) return null;
       if (m.act === 1) return num(m.at) ? { t: 'mount', act: 1, at: m.at } : null;
       return { t: 'mount', act: m.act as number };
     case 'chest':
@@ -171,6 +280,65 @@ export function decodeClient(raw: string): ClientMsg | null {
       return { t: 'upgrade' };
     case 'rescue':
       return { t: 'rescue' };
+    case 'amber':
+      return id(m.id) ? { t: 'amber', id: m.id } : null;
+    case 'quartz':
+      return id(m.id) && m.id < QUARTZ.veins ? { t: 'quartz', id: m.id } : null;
+    case 'capa':
+      return { t: 'capa' };
+    case 'fogata':
+      return id(m.id) && m.id < FOGATA.count ? { t: 'fogata', id: m.id } : null;
+    case 'travel':
+      return m.to === 'heart' || (id(m.to) && m.to < FOGATA.count) ? { t: 'travel', to: m.to } : null;
+    case 'call':
+      return (CALL_BEASTS as readonly unknown[]).includes(m.beast) ? { t: 'call', beast: m.beast as CallBeast } : null;
+    case 'pillar':
+      return id(m.id) && m.id < 4 ? { t: 'pillar', id: m.id } : null;
+    case 'raids':
+      return typeof m.on === 'boolean' ? { t: 'raids', on: m.on } : null;
+    case 'learn':
+      return isSkill(m.id) ? { t: 'learn', id: m.id } : null;
+    case 'forget':
+      return { t: 'forget' };
+    case 'stallPlace': {
+      const { x, z, rot } = m;
+      return num(x) && num(z) && num(rot) ? { t: 'stallPlace', x, z, rot } : null;
+    }
+    case 'stallSet': {
+      const { shelf, give, n, want, m: mm } = m;
+      if (m.mode !== undefined && m.mode !== 'sell' && m.mode !== 'want') return null;
+      return isShelf(shelf) && isItem(give) && isItem(want) && isAmount(n) && isAmount(mm) ? { t: 'stallSet', shelf, give, n, want, m: mm, ...(m.mode ? { mode: m.mode as 'sell' | 'want' } : {}) } : null;
+    }
+    case 'deliver':
+      return id(m.stall) && isShelf(m.shelf) ? { t: 'deliver', stall: m.stall, shelf: m.shelf } : null;
+    case 'deal': {
+      const d = m.id;
+      return typeof d === 'number' && Number.isInteger(d) && d >= 0 && d < MERCHANT.deals.length ? { t: 'deal', id: d } : null;
+    }
+    case 'stallStock':
+      return isShelf(m.shelf) ? { t: 'stallStock', shelf: m.shelf } : null;
+    case 'stallTake':
+      return isShelf(m.shelf) ? { t: 'stallTake', shelf: m.shelf } : null;
+    case 'stallPick':
+      return { t: 'stallPick' };
+    case 'buy':
+      return id(m.stall) && isShelf(m.shelf) ? { t: 'buy', stall: m.stall, shelf: m.shelf } : null;
+    case 'stallTill':
+      return { t: 'stallTill' };
+    case 'tradeAsk':
+      return typeof m.to === 'string' && NAME_RE.test(m.to) ? { t: 'tradeAsk', to: m.to } : null;
+    case 'tradeAnswer':
+      return typeof m.yes === 'boolean' ? { t: 'tradeAnswer', yes: m.yes } : null;
+    case 'tradeOffer':
+      return linesOk(m.lines) ? { t: 'tradeOffer', lines: m.lines.map((l) => ({ item: l.item, n: l.n })) } : null;
+    case 'tradeOk':
+      return { t: 'tradeOk' };
+    case 'tradeCancel':
+      return { t: 'tradeCancel' };
+    case 'tut':
+      return m.act === 'skip' || m.act === 'repeat' ? { t: 'tut', act: m.act } : null;
+    case 'look':
+      return isLook(m.color, m.hat) ? { t: 'look', color: m.color as number, hat: m.hat as number } : null;
     default:
       return null;
   }

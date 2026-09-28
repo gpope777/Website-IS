@@ -1,6 +1,6 @@
 import { createRng } from './rng';
 import { depthAt, inCienaga } from './coast';
-import { HALF, inMap, WATER_LEVEL, type Islet, type Terrain } from './terrain';
+import { HALF, inMap, inSwamp, WATER_LEVEL, waterLevel, type Islet, type Terrain } from './terrain';
 
 /** El Pez Grande: the sea mount. Tamed with a ring race and then the deer's timing ring (spec §5.1). */
 export const FISH = {
@@ -10,8 +10,8 @@ export const FISH = {
   ringGap: [10, 14],
   /** A ring counts when you pass within this of its centre. */
   ringR: 2.2,
-  /** Seconds to reach each ring after the previous one. */
-  ringTime: 7,
+  /** Seconds to reach each ring after the previous one (P7-E: 7 → 8; the worst gap is ~5.4 s of plain swimming). */
+  ringTime: 8,
   /** Seconds before you can race again after it gets away. */
   retry: 3,
   rounds: [
@@ -92,5 +92,5 @@ export function fishFloor(t: Terrain, x: number, z: number): number {
 
 /** Can the fish be here? Wet, in the map, not in the Ciénaga nor the aguas bravas. */
 export function fishStepOk(t: Terrain, island: Islet, x: number, z: number): boolean {
-  return inMap(x, z, 2) && t.heightAt(x, z) < WATER_LEVEL - 0.3 && !inCienaga(x, z) && !inBravas(island, x, z);
+  return inMap(x, z, 2) && t.heightAt(x, z) < (inSwamp(x, z) ? WATER_LEVEL - 1 : waterLevel(t, x, z) - 0.3) && !inCienaga(x, z) && !inBravas(island, x, z);
 }

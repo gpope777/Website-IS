@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createVitals, damage, eatBerry, isNight, tickVitals } from './survival';
+import { RATES, createVitals, damage, eatBerry, isNight, tickVitals, type VitalsEnv } from './survival';
 
 const day = { night: false, nearFire: false };
 const night = { night: true, nearFire: false };
 
-function run(env: typeof day, seconds: number, v = createVitals()) {
+function run(env: VitalsEnv, seconds: number, v = createVitals()) {
   for (let t = 0; t < seconds; t += 0.1) v = tickVitals(v, env, 0.1);
   return v;
 }
@@ -19,6 +19,14 @@ describe('vitals', () => {
     const cold = run(night, 60);
     expect(cold.warmth).toBeLessThan(100);
     expect(run({ night: true, nearFire: true }, 20, cold).warmth).toBe(100);
+  });
+
+  it('altitude cold drains like night by day, twice at night; fire still warms', () => {
+    const d = run({ night: false, nearFire: false, cold: true }, 30);
+    expect(d.warmth).toBeCloseTo(100 - 30 * RATES.warmthNight, 0);
+    const n = run({ night: true, nearFire: false, cold: true }, 30);
+    expect(n.warmth).toBeCloseTo(100 - 60 * RATES.warmthNight, 0);
+    expect(run({ night: true, nearFire: true, cold: true }, 30, n).warmth).toBe(100);
   });
 
   it('starving and freezing hurt', () => {

@@ -38,14 +38,35 @@ export const ENEMY: Record<EnemyKind, EnemyDef> = {
   elite: { hp: 420, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
   /** The bruto escudado, the coast dungeon's mini-boss: the elite with a front shield (see sim/elite.ts). */
   elite2: { hp: 420, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
+  /** The bruto de turba, the swamp dungeon's mini-boss: the elite that regrows in mud (see sim/elite.ts). */
+  elite3: { hp: 480, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
   /** El Antenón, the coast dungeon's boss (see sim/antenon.ts). */
   boss2: { hp: 360, run: 2.6, damage: 10, reach: 4, biteCooldown: 3.5 },
   /** El Marchito in person (see sim/marchito.ts): hp is his voluntad (the 4-player cap; see marchitoWill), he never dies. */
   marchito: { hp: 660, run: 2.6, damage: 14, reach: 3, biteCooldown: 3 },
   /** An anchor of Invasion 2's root cage (see rescue.ts): a withered root that never moves or bites. */
   anchor: { hp: 150, run: 0, damage: 0, reach: 0, biteCooldown: 99 },
+  /** La Gata Araña, the swamp's lieutenant (see sim/lieutenant.ts): wolf speed, bites 12 every 2 s. */
+  lieut1: { hp: 300, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
+  /** El Triángulo, the mountains' lieutenant (see sim/lieutenant.ts): wolf speed, kicks 12 every 2 s. */
+  elite4: { hp: 500, run: 3.4, damage: 18, reach: 2.4, biteCooldown: 2 },
+  lieut2: { hp: 340, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
+  /** La Flecha, the Tierras' lieutenant (see sim/lieutenant.ts): wolf speed, kicks 12 every 2 s, and the clavada. */
+  lieut3: { hp: 360, run: WOLF.run, damage: 12, reach: 2, biteCooldown: 2 },
+  /** El Zancudo, the swamp dungeon's boss (see sim/zancudo.ts): hovers, dives for 14 every ~9 s. */
+  boss3: { hp: 380, run: 3, damage: 14, reach: 1.8, biteCooldown: 8 },
+  /** El Cucurucho, the mountain dungeon's boss (see sim/cucurucho.ts): pokes 8 every 4 s up close, charges from range. */
+  boss4: { hp: 420, run: 3, damage: 8, reach: 2.4, biteCooldown: 4 },
+  /** El rayo marchito, the flying common enemy of the Tierras (see sim/rayo.ts): hovers, dives for 10 every 3 s. */
+  rayo: { hp: 60, run: 9, damage: 10, reach: 1.6, biteCooldown: 3 },
+  /** El Marchito, the final boss in the Copa (see sim/marchito-final.ts): hp is the solo base (it scales with players). */
+  boss5: { hp: 1200, run: 0, damage: 18, reach: 5, biteCooldown: 10 },
+  /** El Corazón Negro, his core in phase 3: runs, never bites (its trail burns). */
+  core: { hp: 300, run: 7, damage: 0, reach: 0, biteCooldown: 99 },
+  /** One of the four brotes of phase 2: pulled out, not fought. */
+  brote: { hp: 1, run: 0, damage: 0, reach: 0, biteCooldown: 99 },
 };
-export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz' };
+export const ENEMY_LABELS: Record<EnemyKind, string> = { wolf: 'un lobo', brute: 'un bruto marchito', boss: `el ${NAMES.bossForest}`, elite: `el ${NAMES.eliteForest}`, elite2: `el ${NAMES.eliteCoast}`, elite3: `el ${NAMES.eliteSwamp}`, elite4: `el ${NAMES.eliteMountain}`, boss2: NAMES.bossCoast.replace(/^El /, 'el '), marchito: `${NAMES.villain}`, anchor: 'un ancla de raíz', lieut1: NAMES.lieutenant1.replace(/^La /, 'la '), lieut2: NAMES.lieutenant2.replace(/^El /, 'el '), lieut3: NAMES.lieutenant3.replace(/^La /, 'la '), boss3: NAMES.bossSwamp.replace(/^El /, 'el '), boss4: NAMES.bossMountain.replace(/^El /, 'el '), rayo: `un ${NAMES.flier}`, boss5: NAMES.villain, core: NAMES.blackHeart, brote: 'un brote' };
 
 export interface Wolf {
   id: number;
@@ -63,8 +84,31 @@ export interface Wolf {
   kind: EnemyKind;
   /** Seconds left stunned (after a parry). */
   stun: number;
+  /** P7-F: a practice wolf of this learner (outside the world's wolf list); `still` = the step-7 target. */
+  tut?: string;
+  still?: boolean;
   /** Seconds left slowed (standing on spikes): runs at SLOWED × speed. */
   slow?: number;
+  /** Speed factor from La Gata Araña's aura (1 or absent: none). */
+  haste?: number;
+  /** Seconds left burning (Fuego): 3 PV/s. */
+  burn?: number;
+  /** Seconds left running away from `fleeFrom` (a Llamarada, a hoguera). */
+  flee?: number;
+  fleeFrom?: { x: number; z: number };
+  /** Rayo marchito (sim/rayo.ts): dive phase, its timer and aim; seconds left grounded after a gust. */
+  dive?: 'tell' | 'dive' | 'climb';
+  diveT?: number;
+  diveX?: number;
+  diveZ?: number;
+  grounded?: number;
+  /** La Flecha (sim/lieutenant.ts): seconds to the next clavada; the red line's end and its tell left; the dash's end (`clav`); seconds stuck; who the dash already hit. */
+  clavIn?: number;
+  aim?: { x: number; z: number };
+  aimFor?: number;
+  clav?: { x: number; z: number; stuck: boolean };
+  stuck?: number;
+  dashHit?: string[];
 }
 
 /** Speed factor while slowed by spikes. */
@@ -105,7 +149,7 @@ export function stepWolf(w: Wolf, targets: WolfTarget[], terrain: Terrain, dt: n
     return null;
   }
   const def = ENEMY[w.kind];
-  const k = slowFactor(w, dt);
+  const k = slowFactor(w, dt) * (w.haste ?? 1);
   w.cooldown = Math.max(0, w.cooldown - dt);
 
   const huntable = (t: WolfTarget) => !t.dead && !t.fires;
@@ -219,7 +263,7 @@ export function stepRaider(w: Wolf, targets: WolfTarget[], goal: RaidGoal, terra
     w.anim = 'idle';
     return null;
   }
-  const run = ENEMY[w.kind].run * ((w.slow ?? 0) > 0 ? SLOWED : 1);
+  const run = ENEMY[w.kind].run * ((w.slow ?? 0) > 0 ? SLOWED : 1) * (w.haste ?? 1);
   const near = targets
     .filter((t) => !t.dead && Math.hypot(t.x - w.x, t.z - w.z) < RAID.aggro)
     .map((t) => ({ ...t, fires: false }));

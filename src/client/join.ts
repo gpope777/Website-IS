@@ -22,6 +22,7 @@ export function joinScreen(parent: HTMLElement, onJoin: (j: JoinInfo) => void): 
     <form class="panel">
       <h1>Bosque</h1>
       <p>Entra al mundo de tu familia. Tu progreso se guarda en el servidor.</p>
+      <p>Bosque. Juego cooperativo. Con auriculares se oye mejor.</p>
       <label for="j-world">Código del mundo</label>
       <input id="j-world" autocapitalize="off" autocomplete="off" spellcheck="false" />
       <label for="j-name">Tu nombre</label>

@@ -8,18 +8,31 @@ import { ENREDADERA } from '../enredadera';
 import { DUNGEON, inDungeon, inside, leverPos } from '../dungeon';
 import { ELITE } from './elite';
 import { CORRUPTION } from '../corruption';
-import { HALF, WATER_LEVEL } from '../terrain';
+import { weatherAt } from '../weather';
+import { CORRUPT_LANDS, corruptFeatures, HALF, LAGUNA, mountainFeatures, PELDANOS, RIVER, WATER_LEVEL } from '../terrain';
+import { RIM_LINE } from '../corrupt-lands';
+import { STEEP_TEXT } from '../mountains';
+const LAGUNA_EDGE = { x: LAGUNA.x, z: LAGUNA.z - LAGUNA.rz - 6 };
+import { inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { CIENAGA, depthAt } from '../coast';
 import { BOSS } from './boss';
 import { ALLY } from './ally';
 import { MOUNT } from '../mount';
 import { FISH, fishFloor, fishStepOk } from '../fish';
+import { FROG } from '../frog';
+import { AMBER, SWAMP_SHRINE } from '../swamp-shrines';
+import { corniceLedges, QUARTZ } from '../mountain-shrines';
+import { PROTOCOL_VERSION } from '../protocol';
 import { NAMES } from '../names';
 import { seatOffset, WHALE } from '../whale';
 import { COAST_DUNGEON, insideCoast } from '../coast-dungeon';
 import { VIENTO } from '../viento';
+import { insideSwamp, SWAMP_DUNGEON } from '../swamp-dungeon';
+import { FUEGO, HOGUERA } from '../fuego';
 import { ANTENON, ANTENON_ALLY } from './antenon';
+import { FAROL, ZANCUDO, type Zancudo } from './zancudo';
 import { RESCUE } from '../rescue';
+import { FOGATA, generateFogatas } from '../fogatas';
 import { coastRaidBrutes } from '../corruption';
 import type { Wolf } from './wolves';
 import { NET, PUNCH, AWAY_TIMEOUT, DAY_LENGTH, GRAVE, newWorld, REVIVE, WorldSim } from './world-sim';
@@ -881,7 +894,7 @@ describe('shrines', () => {
     const again = new WorldSim(saved);
     again.connect('Ana');
     expect(snap(again, 'Ana').self.shrines).toEqual([]);
-    expect(snap(again, 'Ana').shrines).toHaveLength(6); // S2-C: the coast's three follow the forest's (intentional change)
+    expect(snap(again, 'Ana').shrines).toHaveLength(12); // S2-C/S3-C/S4-C: the coast's, the swamp's and the mountains' three follow the forest's (intentional change)
   });
 });
 
@@ -2060,6 +2073,76 @@ describe('la Ciénaga and the deep sea', () => {
   });
 });
 
+describe('el Zarzal, the bog and the river', () => {
+  const THORN_X = -HALF - 40;
+  const Z = 100;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+
+  it('the thorns bite walkers and deer riders (~10 PV/s)', () => {
+    const sim = setup('Ana', 'Leo', 'Eva');
+    expect(zarzalAt(sim.terrain, THORN_X, Z)).toBe(true);
+    put(sim, 'Ana', THORN_X, Z);
+    put(sim, 'Leo', 5, 5);
+    put(sim, 'Eva', THORN_X, Z + 4);
+    sim.getPlayer('Eva')!.steed = { x: THORN_X, z: Z + 4 };
+    sim.handle('Eva', { t: 'mount', act: 2 });
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    const hp = (n: string) => sim.getPlayer(n)!.vitals.health;
+    expect(hp('Leo') - hp('Ana')).toBeGreaterThan(ZARZAL.dps * 5 - 4);
+    expect(hp('Leo') - hp('Ana')).toBeLessThanOrEqual(ZARZAL.dps * 5);
+    expect(hp('Leo') - hp('Eva')).toBeGreaterThan(ZARZAL.dps * 5 - 4);
+    expect(texts(sim).some((t) => t.includes('Las espinas no respetan al ciervo'))).toBe(true);
+  });
+
+  it('the thorns hold everyone to 3 m/s', () => {
+    const tryMove = (riding: boolean, dist: number) => {
+      const sim = setup('Ana');
+      put(sim, 'Ana', THORN_X, Z);
+      if (riding) {
+        sim.getPlayer('Ana')!.steed = { x: THORN_X, z: Z };
+        sim.handle('Ana', { t: 'mount', act: 2 });
+      }
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      const x = THORN_X - dist;
+      sim.handle('Ana', { t: 'move', x, y: sim.terrain.heightAt(x, Z), z: Z, yaw: 0, anim: 'walk' });
+      return sim.getPlayer('Ana')!.x === x;
+    };
+    expect(tryMove(false, 3)).toBe(true);
+    expect(tryMove(false, 8)).toBe(false);
+    expect(tryMove(true, 3)).toBe(true);
+    expect(tryMove(true, 8)).toBe(false);
+  });
+
+  it('walkers wade through the bog at 60 %', () => {
+    const sim0 = setup('Ana');
+    let bz = 60;
+    while (!(inBog(sim0.terrain, -HALF - 90, bz) && inBog(sim0.terrain, -HALF - 90, bz + 7))) bz++;
+    const tryMove = (dist: number) => {
+      const sim = setup('Ana');
+      put(sim, 'Ana', -HALF - 90, bz);
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      const z = bz + dist;
+      sim.handle('Ana', { t: 'move', x: -HALF - 90, y: sim.terrain.heightAt(-HALF - 90, z), z, yaw: 0, anim: 'walk' });
+      return sim.getPlayer('Ana')!.z === z;
+    };
+    expect(tryMove(4.5)).toBe(true);
+    expect(tryMove(7)).toBe(false);
+  });
+
+  it('swimmers go down the river to the sea, never up it', () => {
+    const sim = setup('Ana');
+    const x = -HALF - 20;
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x, z: RIVER.z, y: WATER_LEVEL - 0.9 });
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x: x - 1, y: WATER_LEVEL - 0.9, z: RIVER.z, yaw: 0, anim: 'swim' });
+    expect(p.x).toBe(x);
+    expect(texts(sim)).toContain('La corriente te devuelve');
+    sim.handle('Ana', { t: 'move', x: x + 1, y: WATER_LEVEL - 0.9, z: RIVER.z, yaw: 0, anim: 'swim' });
+    expect(p.x).toBe(x + 1);
+  });
+});
+
 describe('the deer carries two', () => {
   /** Leo rides his deer at (x, z); Ana (and Eva) stand beside him. */
   const pair = (x = 5, z = 5) => {
@@ -2395,7 +2478,8 @@ describe('sunken chests and the weapon upgrade', () => {
     sim.handle('Ana', { t: 'upgrade' });
     expect(snap(sim, 'Ana').self.weapon).toBe(3);
     expect(p.inv.pearl).toBe(11);
-    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'El arma ya no da más de sí' });
+    // S4-C: level 4 costs quartz, not pearls.
+    expect(msgs(sim)).toContainEqual({ t: 'toast', text: 'Faltan materiales' });
     expect(sim.save().players[0]!.weaponLvl).toBe(3);
     const w = wolfAt(sim, 0, 10);
     sim.handle('Ana', { t: 'shoot', id: w.id });
@@ -3365,5 +3449,1686 @@ describe('the rescue (S2-H)', () => {
     (sim as unknown as Priv).wolves.push(w);
     for (let i = 0; i < 3 && w.hp === 200; i++) sim.step(0.1);
     expect(w.hp).toBe(200 - ALLY.damage - ALLY.rage);
+  });
+});
+
+describe('taming la Rana', () => {
+  const atFrog = (sim: WorldSim, name: string, dx = 1) => put(sim, name, sim.frogHome.x + dx, sim.frogHome.z);
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const chase = (sim: WorldSim, name: string, upTo: number = FROG.pads) => {
+    for (let i = 0; i < upTo; i++) {
+      const r = sim.frogPads[i]!;
+      put(sim, name, r.x + 1, r.z);
+      sim.step(0.1);
+    }
+  };
+  const tapPerfect = (sim: WorldSim, name: string) => {
+    const t = snap(sim, name).self.tame!;
+    const at = t.start + t.zone / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle(name, { t: 'mount', act: 1, at });
+  };
+
+  it('A near the frog starts the lily-pad chase; far away does nothing', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana', FROG.reach + 3);
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toMatchObject({ i: 0, beast: 'frog' });
+    expect(texts(sim)).toContain('Salta al agua. Sigue los 3 nenúfares, 6 s cada uno');
+    expect(snap(sim, 'Ana').frogs.some((f) => f.owner === null)).toBe(true);
+  });
+
+  it('pads count in order; the last one starts the 3-round ring', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    const second = sim.frogPads[1]!;
+    put(sim, 'Ana', second.x, second.z);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.race!.i).toBe(0);
+    chase(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.race).toBeNull();
+    expect(self.tame).toMatchObject({ round: 0, rounds: 3, beast: 'frog', speed: FROG.rounds[0].speed });
+  });
+
+  it('too slow: it gets away, 3 s before another try', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    for (let i = 0; i < FROG.padTime * 10 + 2; i++) sim.step(0.1);
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    expect(texts(sim)).toContain('Se escapa');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    for (let i = 0; i < FROG.retry * 10 + 2; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).not.toBeNull();
+  });
+
+  it('three good taps: the frog is yours and you ride it', () => {
+    const sim = setup('Ana', 'Leo');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    chase(sim, 'Ana');
+    tapPerfect(sim, 'Ana');
+    tapPerfect(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.tame!.round).toBe(2);
+    tapPerfect(sim, 'Ana');
+    const self = snap(sim, 'Ana').self;
+    expect(self.tame).toBeNull();
+    expect(self.frog).toBe(true);
+    expect(self.onFrog).toBe(true);
+    expect(sim.getPlayer('Ana')!.frog).toBeDefined();
+    const last = sim.frogPads[FROG.pads - 1]!;
+    put(sim, 'Leo', last.x + 3, last.z);
+    expect(snap(sim, 'Leo').players.find((p) => p.name === 'Ana')!.ride).toBe('frog');
+  });
+
+  it('a bad tap sends it off; you only tame one frog', () => {
+    const sim = setup('Ana');
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    chase(sim, 'Ana');
+    const t = snap(sim, 'Ana').self.tame!;
+    const at = t.start + (t.zone + Math.PI) / t.speed;
+    while (sim.time < at) sim.step(0.1);
+    sim.handle('Ana', { t: 'mount', act: 1, at });
+    expect(snap(sim, 'Ana').self.tame).toBeNull();
+    expect(texts(sim)).toContain('Se sacude y se va. Otra vez');
+    sim.getPlayer('Ana')!.frog = { x: 0, z: 0 };
+    for (let i = 0; i < 40; i++) sim.step(0.1);
+    atFrog(sim, 'Ana');
+    sim.handle('Ana', { t: 'mount', act: 12 });
+    expect(snap(sim, 'Ana').self.race).toBeNull();
+    expect(texts(sim)).toContain('Ya tienes rana');
+  });
+
+  it('the fish race still says it is the fish', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', sim.fishHome.x + 1, sim.fishHome.z);
+    sim.handle('Ana', { t: 'mount', act: 6 });
+    expect(snap(sim, 'Ana').self.race).toMatchObject({ i: 0, beast: 'fish' });
+  });
+});
+
+describe('riding la Rana', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  /** A stretch of bog (x, z) → (x - 12, z) that stays bog, away from the thorns. */
+  const bogRun = (sim: WorldSim) => {
+    for (let z = 80; z < HALF + 40; z += 3)
+      for (let x = -HALF - 70; x > -HALF - 170; x -= 3) {
+        let ok = true;
+        for (let k = 0; k <= 12 && ok; k += 1) ok = inBog(sim.terrain, x - k, z);
+        if (ok) return { x, z };
+      }
+    throw new Error('no bog');
+  };
+  const rider = (at?: { x: number; z: number }) => {
+    const sim = setup('Ana');
+    const a = at ?? bogRun(sim);
+    put(sim, 'Ana', a.x, a.z);
+    sim.getPlayer('Ana')!.y = Math.max(sim.terrain.heightAt(a.x, a.z), WATER_LEVEL);
+    sim.getPlayer('Ana')!.frog = { ...a };
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    return sim;
+  };
+  const go = (sim: WorldSim, x: number, y: number, z: number) => {
+    const p = sim.getPlayer('Ana')!;
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    const before = { x: p.x, y: p.y, z: p.z };
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'idle' });
+    return p.x !== before.x || p.y !== before.y || p.z !== before.z;
+  };
+
+  it('gets on beside your own frog only; A gets off anywhere and it waits', () => {
+    const sim = setup('Ana');
+    const a = bogRun(sim);
+    sim.getPlayer('Ana')!.frog = { ...a };
+    put(sim, 'Ana', a.x + FROG.reach + 2, a.z);
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    expect(snap(sim, 'Ana').self.onFrog).toBe(false);
+    put(sim, 'Ana', a.x + 1, a.z);
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    expect(snap(sim, 'Ana').self.onFrog).toBe(true);
+    expect(snap(sim, 'Ana').frogs.some((f) => f.owner === 'Ana')).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 2 }); // no deer while on the frog
+    sim.handle('Ana', { t: 'mount', act: 7 }); // nor the fish
+    expect(snap(sim, 'Ana').self.riding).toBe(false);
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    sim.handle('Ana', { t: 'mount', act: 14 });
+    expect(snap(sim, 'Ana').self.onFrog).toBe(false);
+    expect(snap(sim, 'Ana').frogs.some((f) => f.owner === 'Ana')).toBe(true);
+  });
+
+  it('11 m/s through the bog is fine on the frog; 20 is not', () => {
+    const sim = rider();
+    const p = sim.getPlayer('Ana')!;
+    const y = WATER_LEVEL;
+    expect(go(sim, p.x - 11, y, p.z)).toBe(true);
+    const sim2 = rider();
+    const q = sim2.getPlayer('Ana')!;
+    expect(go(sim2, q.x - 12, y, q.z)).toBe(true);
+    const sim3 = rider();
+    const r = sim3.getPlayer('Ana')!;
+    for (let i = 0; i < 11; i++) sim3.step(0.1);
+    sim3.handle('Ana', { t: 'move', x: r.x - 20, y, z: r.z, yaw: 0, anim: 'idle' });
+    expect(snap(sim3, 'Ana').self.fix).toBe(true);
+  });
+
+  it('the high jump passes; flying far above does not', () => {
+    const sim = rider();
+    const p = sim.getPlayer('Ana')!;
+    expect(go(sim, p.x - 2, WATER_LEVEL + 7, p.z)).toBe(true);
+    const sim2 = rider();
+    const q = sim2.getPlayer('Ana')!;
+    expect(go(sim2, q.x - 2, WATER_LEVEL + 15, q.z)).toBe(false);
+  });
+
+  it('no water deeper than 2 m on the frog', () => {
+    const probe = setup('Ana');
+    let z = LAGUNA_EDGE.z;
+    while (probe.terrain.heightAt(LAGUNA.x, z) >= WATER_LEVEL - FROG.deep - 0.2) z += 0.5;
+    const shallow = { x: LAGUNA.x, z: z - 4 };
+    expect(probe.terrain.heightAt(shallow.x, shallow.z)).toBeGreaterThanOrEqual(WATER_LEVEL - FROG.deep);
+    const sim = rider(shallow);
+    expect(go(sim, LAGUNA.x, WATER_LEVEL, z)).toBe(false);
+    expect(go(sim, LAGUNA.x, WATER_LEVEL, z - 2)).toBe(true);
+  });
+
+  it('the Zarzal still bites and holds it to a crawl', () => {
+    const sim = setup('Ana');
+    let spot: { x: number; z: number } | null = null;
+    for (let x = -HALF - 5; x > -HALF - 55 && !spot; x -= 1) if (zarzalAt(sim.terrain, x, 100) && zarzalAt(sim.terrain, x - 8, 100)) spot = { x, z: 100 };
+    const s2 = rider(spot!);
+    const p = s2.getPlayer('Ana')!;
+    const hp = p.vitals.health;
+    expect(go(s2, p.x - 8, Math.max(s2.terrain.heightAt(p.x - 8, p.z), WATER_LEVEL), p.z)).toBe(false);
+    expect(p.vitals.health).toBeLessThan(hp);
+    expect(texts(s2).some((t) => t.includes('muerde'))).toBe(true);
+  });
+
+  it('death drops you off the frog', () => {
+    const sim = rider();
+    down(sim, 'Ana');
+    expect(snap(sim, 'Ana').self.onFrog).toBe(false);
+    expect(sim.getPlayer('Ana')!.frog).toBeDefined();
+  });
+});
+
+describe('swamp shrines (S3-C)', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const view = (sim: WorldSim, name: string, id: number) => snap(sim, name).shrines.find((v) => v.id === id)!;
+  const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const take = (sim: WorldSim, name: string, id: number, y?: number) => {
+    const s = sim.shrines[id]!;
+    put(sim, name, s.orb.x, s.orb.z);
+    if (y !== undefined) sim.getPlayer(name)!.y = y;
+    use(sim, name, id, 0);
+    return snap(sim, name).self.shrines.includes(id);
+  };
+  const standOn = (sim: WorldSim, name: string, p: { x: number; z: number }) => {
+    put(sim, name, p.x, p.z);
+    sim.getPlayer(name)!.y = WATER_LEVEL + SWAMP_SHRINE.padTop;
+  };
+
+  it('Candiles: a torch per brazier, all three lit at once open it', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'candles');
+    expect(s.id).toBe(6);
+    const [b0, b1, b2, post] = s.parts as [{ x: number; z: number }, { x: number; z: number }, { x: number; z: number }, { x: number; z: number }];
+    put(sim, 'Ana', b0.x, b0.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(texts(sim)).toContain('Hace falta fuego');
+    expect(view(sim, 'Ana', s.id).parts.slice(0, 3)).toEqual([false, false, false]);
+    put(sim, 'Ana', post.x, post.z);
+    use(sim, 'Ana', s.id, 4);
+    expect(snap(sim, 'Ana').self.torch).toBe(true);
+    use(sim, 'Ana', s.id, 4);
+    expect(texts(sim)).toContain('Ya llevas una antorcha');
+    for (const [i, b] of [b0, b1, b2].entries()) {
+      put(sim, 'Ana', b.x, b.z);
+      use(sim, 'Ana', s.id, i + 1);
+      expect(snap(sim, 'Ana').self.torch).toBe(false);
+      if (i < 2) {
+        put(sim, 'Ana', post.x, post.z);
+        use(sim, 'Ana', s.id, 4);
+      }
+    }
+    expect(view(sim, 'Ana', s.id).parts.slice(0, 3)).toEqual([true, true, true]);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    const amber = sim.getPlayer('Ana')!.inv.amber ?? 0;
+    expect(take(sim, 'Ana', s.id)).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(amber + 1);
+  });
+
+  it('Candiles: a brazier goes out after 12 s, and a torch is lost on death', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'candles');
+    const [b0, , , post] = s.parts as { x: number; z: number }[];
+    put(sim, 'Ana', post!.x, post!.z);
+    use(sim, 'Ana', s.id, 4);
+    put(sim, 'Ana', b0!.x, b0!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(true);
+    for (let i = 0; i < SWAMP_SHRINE.litFor * 10 + 2; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(false);
+    put(sim, 'Ana', post!.x, post!.z);
+    use(sim, 'Ana', s.id, 4);
+    sim.getPlayer('Ana')!.dead = true;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.torch).toBe(false);
+  });
+
+  it('Nenúfares: pads sink under you and come back; the last one opens the gate', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'lilies');
+    expect(s.id).toBe(7);
+    const pads = s.parts;
+    const padIds = () => sim.climbables().filter((c) => c.id >= SWAMP_SHRINE.padId && c.id < SWAMP_SHRINE.padId + 100).length;
+    expect(padIds()).toBe(SWAMP_SHRINE.pads);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(false);
+    standOn(sim, 'Ana', pads[0]!);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(true);
+    for (let i = 0; i < SWAMP_SHRINE.sinkAfter * 10 + 2; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(false);
+    expect(padIds()).toBe(SWAMP_SHRINE.pads - 1);
+    put(sim, 'Ana', pads[0]!.x + 20, pads[0]!.z);
+    for (let i = 0; i < SWAMP_SHRINE.downFor * 10 + 2; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).parts[0]).toBe(true);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    standOn(sim, 'Ana', pads[pads.length - 1]!);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
+  });
+
+  it('Turba: only fire burns the peat wall (not yet)', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'peat');
+    expect(s.id).toBe(8);
+    expect(take(sim, 'Ana', s.id)).toBe(false);
+    expect(texts(sim)).toContain('Raíces de turba. Esto solo arde. Vuelve luego');
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+  });
+
+  it('a swamp orb cleanses the nearest corrupt swamp zone (11–13), never 10 (rule change S3-D)', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'lilies');
+    standOn(sim, 'Leo', s.parts[s.parts.length - 1]!);
+    sim.step(0.1);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
+    expect(sim.corrupt()).not.toContain(13); // zone 13 sits on the Nenúfares shore
+    expect(sim.corrupt()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21].filter((i) => sim.zones.some((z) => z.id === i))); // Rule change (S5-C): + Tierras zones.
+  });
+
+  it('swamp orbs never cleanse the swamp root; with 11–13 clean they cleanse nothing', () => {
+    const w = newWorld(42, 'salt');
+    w.cleansed = [11, 12, 13];
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.createPlayer('Leo', 'h');
+    sim.connect('Ana');
+    sim.connect('Leo');
+    const s = kind(sim, 'lilies');
+    const before = sim.corrupt();
+    standOn(sim, 'Leo', s.parts[s.parts.length - 1]!);
+    sim.step(0.1);
+    expect(take(sim, 'Ana', s.id, s.pillar!.top)).toBe(true);
+    expect(sim.corrupt()).toEqual(before);
+    expect(before).toContain(10);
+  });
+
+  it('Enredadera at a swamp root cleanses nothing (Fuego does)', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const z = sim.zones.find((x) => x.id === 11)!;
+    put(sim, 'Ana', z.x - 3, z.z);
+    sim.handle('Ana', { t: 'power', x: z.x, z: z.z });
+    expect(sim.corrupt()).toContain(11);
+  });
+
+  it('new worlds have swamp zones 10–13 corrupt; old saves load with them corrupt', () => {
+    const sim = setup('Ana');
+    expect(sim.corrupt().slice(-12, -8)).toEqual([10, 11, 12, 13]); // Rule change (S4-D, S5-C): mountain and Tierras zones follow.
+    const w = newWorld(42, 'salt');
+    w.cleansed = [0, 6];
+    const old = new WorldSim(w);
+    expect(old.corrupt()).toEqual(expect.arrayContaining([10, 11, 12, 13]));
+    expect(old.corrupt()).not.toContain(6);
+  });
+
+  it('a night in a corrupt swamp zone brings extra beasts', () => {
+    const count = (clean: boolean) => {
+      const w = newWorld(42, 'salt');
+      if (clean) w.cleansed = [11];
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      const z = sim.zones.find((x) => x.id === 11)!;
+      put(sim, 'Ana', z.x, z.z);
+      stepTo(sim, 0.81);
+      return sim.wolfList.filter((x) => !x.raid).length;
+    };
+    expect(count(false)).toBeGreaterThan(count(true));
+  });
+
+  it('the frog hops over deep water onto the pads, and swims back only toward the shore', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'lilies');
+    const pad = s.parts[4]!;
+    standOn(sim, 'Ana', s.parts[2]!);
+    sim.getPlayer('Ana')!.frog = { x: s.parts[2]!.x, z: s.parts[2]!.z };
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    const p = sim.getPlayer('Ana')!;
+    const mid = { x: (p.x + pad.x) / 2, z: (p.z + pad.z) / 2 };
+    const go = (x: number, y: number, z: number) => {
+      for (let i = 0; i < 11; i++) sim.step(0.1);
+      const before = { x: p.x, z: p.z };
+      sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'idle' });
+      return p.x !== before.x || p.z !== before.z;
+    };
+    expect(go(mid.x, WATER_LEVEL + 5, mid.z)).toBe(true); // in the air
+    expect(go(pad.x, WATER_LEVEL + SWAMP_SHRINE.padTop, pad.z)).toBe(true); // on a pad
+    const plat = s.pillar!;
+    const len = Math.hypot(plat.x - pad.x, plat.z - pad.z);
+    const deep = { x: pad.x - ((plat.z - pad.z) / len) * 4, z: pad.z + ((plat.x - pad.x) / len) * 4 }; // 4 m to the side of the path
+    expect(depthAt(sim.terrain, deep.x, deep.z)).toBeGreaterThan(FROG.deep);
+    expect(go(deep.x, WATER_LEVEL, deep.z)).toBe(false); // floating out deeper: no
+    put(sim, 'Ana', deep.x, deep.z);
+    p.y = WATER_LEVEL;
+    const shore = s.parts[0]!;
+    const back = { x: deep.x + (shore.x - deep.x) * 0.3, z: deep.z + (shore.z - deep.z) * 0.3 };
+    expect(depthAt(sim.terrain, back.x, back.z)).toBeLessThan(depthAt(sim.terrain, deep.x, deep.z));
+    expect(go(back.x, WATER_LEVEL, back.z)).toBe(true); // back toward the shore: yes
+  });
+});
+
+describe('amber trees and the Capa de corteza (S3-C)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const low = (sim: WorldSim) => sim.amberTrees.find((t) => !t.stump)!;
+  const high = (sim: WorldSim) => sim.amberTrees.find((t) => t.stump)!;
+
+  it('harvests 2 ámbar per player, then waits 2 days to regrow', () => {
+    const sim = setup('Ana', 'Leo');
+    const t = low(sim);
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield);
+    expect(snap(sim, 'Ana').self.amber).toEqual([t.id]);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield);
+    expect(texts(sim)).toContain('Aún no ha vuelto a brotar');
+    put(sim, 'Leo', t.x - 1, t.z);
+    sim.handle('Leo', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Leo')!.inv.amber).toBe(AMBER.yield);
+    put(sim, 'Ana', t.x + 8, t.z);
+    sim.handle('Ana', { t: 'amber', id: low(sim).id + 99 });
+    (sim as unknown as { time: number }).time += AMBER.regrowDays * DAY_LENGTH;
+    expect(snap(sim, 'Ana').self.amber).toEqual([]);
+    sim.handle('Ana', { t: 'amber', id: t.id }); // too far
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield * 2);
+    expect(sim.save().players.find((p) => p.name === 'Ana')!.amber).toBeDefined();
+  });
+
+  it('a tree on a stump needs you on top of it; stumps are solid', () => {
+    const sim = setup('Ana');
+    const t = high(sim);
+    expect(sim.climbables().some((c) => c.id === t.stump!.id)).toBe(true);
+    put(sim, 'Ana', t.x + 1, t.z);
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBeUndefined();
+    sim.getPlayer('Ana')!.y = t.stump!.top;
+    sim.handle('Ana', { t: 'amber', id: t.id });
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(AMBER.yield);
+  });
+
+  it('buys Capa levels at the Heart, up to 3, and bites hurt less (not the thorns)', () => {
+    const sim = setup('Ana', 'Leo');
+    plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { amber: 2, wood: 50, berries: 50 };
+    sim.handle('Ana', { t: 'capa' });
+    expect(snap(sim, 'Ana').self.capa).toBe(0);
+    expect(texts(sim)).toContain('Faltan materiales');
+    p.inv = { amber: 12, wood: 50, berries: 50 };
+    sim.handle('Ana', { t: 'capa' });
+    expect(snap(sim, 'Ana').self.capa).toBe(1);
+    expect(p.inv).toEqual({ amber: 9, wood: 40, berries: 45 });
+    sim.handle('Ana', { t: 'capa' });
+    sim.handle('Ana', { t: 'capa' });
+    sim.handle('Ana', { t: 'capa' });
+    expect(snap(sim, 'Ana').self.capa).toBe(3);
+    expect(texts(sim)).toContain('Faltan materiales'); // S5: level 4 needs black thorns
+    expect(sim.save().players[0]!.capaLvl).toBe(3);
+    expect(snap(sim, 'Leo').players.find((v) => v.name === 'Ana')!.capa).toBe(3);
+    const w = wolfAt(sim, 1);
+    const hp = p.vitals.health;
+    (sim as unknown as { bite(n: string, d: number, w: Wolf): void }).bite('Ana', 10, w);
+    expect(p.vitals.health).toBeCloseTo(hp - 7, 5);
+    put(sim, 'Ana', p.x + 40, p.z);
+    sim.handle('Ana', { t: 'capa' }); // far: nothing
+    expect(p.inv.amber).toBe(3);
+  });
+
+  it('the Zarzal bites the same with a Capa', () => {
+    const sim = setup('Ana');
+    let spot: { x: number; z: number } | null = null;
+    for (let x = -HALF - 5; x > -HALF - 55 && !spot; x -= 1) if (zarzalAt(sim.terrain, x, 100)) spot = { x, z: 100 };
+    put(sim, 'Ana', spot!.x, spot!.z);
+    const p = sim.getPlayer('Ana')!;
+    p.capaLvl = 3;
+    const hp = p.vitals.health;
+    sim.step(0.5);
+    expect(hp - p.vitals.health).toBeGreaterThan(ZARZAL.dps * 0.5 * 0.95);
+  });
+
+  it('old saves without amber or capa load', () => {
+    const sim = setup('Ana');
+    const saved = sim.save();
+    delete saved.players[0]!.amber;
+    delete saved.players[0]!.capaLvl;
+    const again = new WorldSim(saved);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self.amber).toEqual([]);
+    expect(snap(again, 'Ana').self.capa).toBe(0);
+  });
+});
+
+describe('La Gata Araña (S3-D)', () => {
+  const night = (opts: { raidN?: number; swampSeen?: boolean; cleansed?: number[] }) => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, opts);
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    const heart = plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('La Gata Araña guía el asedio esta noche'));
+    stepTo(sim, 0.81);
+    return { sim, heart, warn, gata: sim.wolfList.find((x) => x.kind === 'lieut1') };
+  };
+
+  it('entering the swamp is remembered; the raid counter is saved', () => {
+    const sim = setup('Ana');
+    expect(sim.save().swampSeen).toBeUndefined();
+    put(sim, 'Ana', LAGUNA.x + LAGUNA.rx + 10, LAGUNA.z - LAGUNA.rz - 10);
+    sim.step(0.1);
+    expect(sim.save().swampSeen).toBe(true);
+    const { sim: s2 } = night({ raidN: 4 });
+    expect(s2.save().raidN).toBe(5);
+    expect(new WorldSim(newWorld(1, 's')).save().raidN).toBeUndefined(); // old saves: 0
+  });
+
+  it('leads the 3rd raid once the swamp is seen and zone 10 is corrupt', () => {
+    const a = night({ raidN: 2, swampSeen: true });
+    expect(a.warn).toBe(true);
+    expect(a.gata?.hp).toBe(300);
+    expect(a.gata?.raid).toBe(true);
+    for (const o of [{ raidN: 2 }, { raidN: 1, swampSeen: true }, { raidN: 2, swampSeen: true, cleansed: [10] }]) {
+      const b = night(o);
+      expect(b.warn).toBe(false);
+      expect(b.gata).toBeUndefined();
+    }
+  });
+
+  it('her aura hastens raiders within 8 m', () => {
+    const { sim, gata } = night({ raidN: 2, swampSeen: true });
+    const other = sim.wolfList.find((x) => x.raid && x.kind !== 'lieut1')!;
+    Object.assign(other, { x: gata!.x + 3, z: gata!.z });
+    sim.step(0.1);
+    expect(other.haste).toBe(1.2);
+    Object.assign(other, { x: gata!.x + 30, z: gata!.z });
+    sim.step(0.1);
+    expect(other.haste).toBe(1);
+  });
+
+  it('when she falls her pack flees, the near player gets 2 ámbar, the far one none, and a vision', () => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, { raidN: 2, swampSeen: true });
+    const sim = new WorldSim(w);
+    for (const n of ['Ana', 'Leo']) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    plantHeart(sim);
+    stepTo(sim, 0.81);
+    const gata = sim.wolfList.find((x) => x.kind === 'lieut1')!;
+    put(sim, 'Ana', gata.x + 5, gata.z);
+    put(sim, 'Leo', gata.x + 100, gata.z);
+    msgs(sim);
+    (gata as Wolf).hp = 0;
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Mi gata')))).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(2);
+    expect(sim.getPlayer('Leo')!.inv.amber ?? 0).toBe(0);
+    for (let i = 0; i < 32; i++) sim.step(0.1);
+    expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut1')).toEqual([]);
+  });
+});
+
+describe('swamp dungeon (S3-E)', () => {
+  const S = SWAMP_DUNGEON;
+  const act = (sim: WorldSim, name: string, a: number) => sim.handle(name, { t: 'dungeon', act: a });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : m.t === 'vision' ? m.lines : []));
+  function enter(sim: WorldSim, name = 'Ana') {
+    const e = sim.swampEntrance;
+    put(sim, name, e.x, e.z - 3);
+    act(sim, name, 13);
+  }
+  const move = (sim: WorldSim, name: string, x: number, z: number, y = S.floor) => sim.handle(name, { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+
+  it('A at the sunken trunk takes you inside (off the fish), and back out', () => {
+    const sim = setup('Ana');
+    act(sim, 'Ana', 13);
+    expect(sim.getPlayer('Ana')!.x).toBe(0);
+    const e = sim.swampEntrance;
+    put(sim, 'Ana', e.x, e.z - 4);
+    sim.getPlayer('Ana')!.fish = { x: e.x, z: e.z - 4 };
+    sim.handle('Ana', { t: 'mount', act: 7 });
+    expect(snap(sim, 'Ana').self.onFish).toBe(true);
+    act(sim, 'Ana', 13);
+    const p = sim.getPlayer('Ana')!;
+    expect(p.x).toBe(S.x);
+    expect(p.y).toBe(S.floor);
+    expect(snap(sim, 'Ana').self.onFish).toBe(false);
+    expect(texts(sim).some((t) => t.includes(NAMES.swampRoot))).toBe(true);
+    act(sim, 'Ana', 14);
+    expect(Math.hypot(p.x - e.x, p.z - e.z)).toBeLessThan(S.trunkR + S.enterReach);
+  });
+
+  it('two levers open gate 0; the altar wakes Fuego (saved)', () => {
+    const sim = setup('Ana', 'Bea');
+    enter(sim, 'Ana');
+    enter(sim, 'Bea');
+    act(sim, 'Ana', 17);
+    expect(sim.getPlayer('Ana')!.fuego).toBeUndefined();
+    const l0 = insideSwamp(S.levers[0]);
+    const l1 = insideSwamp(S.levers[1]);
+    put(sim, 'Ana', l0.x, l0.z);
+    put(sim, 'Bea', l1.x, l1.z);
+    act(sim, 'Ana', 15);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[0]).toBe(false);
+    sim.step(1);
+    act(sim, 'Bea', 16);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[0]).toBe(true);
+    put(sim, 'Ana', S.x, S.altarZ);
+    act(sim, 'Ana', 17);
+    expect(snap(sim, 'Ana').self.fuego).toBe(true);
+    expect(sim.save().players.find((p) => p.name === 'Ana')!.fuego).toBe(true);
+  });
+
+  it('a shut gate stops walkers', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    put(sim, 'Ana', S.x, 31.5);
+    sim.step(1.1);
+    move(sim, 'Ana', S.x, 32.5);
+    expect(sim.getPlayer('Ana')!.z).toBe(31.5);
+    expect(snap(sim, 'Ana').self.fix).toBe(true);
+  });
+
+  it('a plank sinks 1.2 s after someone stands on it and comes back 4 s later', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    const p = sim.getPlayer('Ana')!;
+    Object.assign(p, { x: S.x, z: S.mud[0] + 1, y: S.floor });
+    sim.step(0.1);
+    sim.step(1.0);
+    expect(snap(sim, 'Ana').dungeon.swamp.planks[0]).toBe(true);
+    sim.step(0.2);
+    expect(snap(sim, 'Ana').dungeon.swamp.planks[0]).toBe(false);
+    Object.assign(p, { x: S.x, z: S.mud[0] + 10 }); // off it, on plank 3
+    sim.step(S.downFor);
+    expect(snap(sim, 'Ana').dungeon.swamp.planks[0]).toBe(true);
+  });
+
+  it('the mud sends you back to the gas hall gate, 10 PV poorer', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    put(sim, 'Ana', S.x + 5, 100);
+    const p = sim.getPlayer('Ana')!;
+    expect(p.y).toBe(S.floor - S.mudDepth);
+    const hp = p.vitals.health;
+    sim.step(0.1);
+    expect(p.z).toBe(S.fallBack);
+    expect(p.y).toBe(S.floor);
+    expect(p.vitals.health).toBeCloseTo(hp - S.fallDamage, 0);
+    expect(texts(sim).some((t) => t.startsWith('El barro te traga'))).toBe(true);
+  });
+
+  it('warm inside; old saves load without fuego', () => {
+    const sim = setup('Ana');
+    enter(sim);
+    expect(snap(sim, 'Ana').self.fuego).toBe(false);
+    const again = new WorldSim(sim.save());
+    expect(again.getPlayer('Ana')!.fuego).toBeUndefined();
+  });
+});
+
+describe('Fuego (S3-E)', () => {
+  const S = SWAMP_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const flame = (sim: WorldSim, x: number, z: number, name = 'Ana') => sim.handle(name, { t: 'power', x, z, kind: 'fuego' });
+  const view = (sim: WorldSim, id: number) => snap(sim, 'Ana').shrines.find((v) => v.id === id)!;
+  function fiery(...names: string[]) {
+    const sim = setup(...(names.length ? names : ['Ana']));
+    sim.getPlayer('Ana')!.fuego = true;
+    return sim;
+  }
+  const cool = (sim: WorldSim) => sim.step(FUEGO.cooldown + 0.05);
+
+  it('needs the power, and has its own cooldown', () => {
+    const sim = setup('Ana');
+    flame(sim, 0, 2);
+    expect(texts(sim)).toContain('Aún no tienes ese poder');
+    Object.assign(sim.getPlayer('Ana')!, { fuego: true, viento: true });
+    flame(sim, 0, 2);
+    expect(snap(sim, 'Ana').self.fireLeft).toBe(FUEGO.cooldown);
+    expect(snap(sim, 'Ana').self.windLeft).toBe(0);
+    msgs(sim);
+    flame(sim, 0, 2);
+    expect(texts(sim).some((t) => t.startsWith('El fuego aún no prende'))).toBe(true);
+  });
+
+  it('scorches and sets a wolf ahead burning; it runs; one behind is untouched', () => {
+    const sim = fiery();
+    const w = wolfAt(sim, 0, 4);
+    const back = { ...w, id: 7777, z: w.z - 8 } as Wolf;
+    (sim as unknown as { wolves: Wolf[] }).wolves.push(back);
+    const p = sim.getPlayer('Ana')!;
+    const hp = w.hp;
+    flame(sim, p.x, p.z + 2);
+    expect(w.hp).toBe(hp - FUEGO.damage);
+    expect(w.burn).toBe(FUEGO.burnFor);
+    expect(snap(sim, 'Ana').wolves.find((x) => x.id === w.id)!.burning).toBe(true);
+    const d0 = Math.hypot(w.x - p.x, w.z - p.z);
+    for (let i = 0; i < 10; i++) sim.step(0.1);
+    expect(Math.hypot(w.x - p.x, w.z - p.z)).toBeGreaterThan(d0 + 3);
+    for (let i = 0; i < 40; i++) sim.step(0.1);
+    expect(w.hp).toBeCloseTo(hp - FUEGO.damage - FUEGO.burnDps * FUEGO.burnFor, 0);
+    expect(back.hp).toBe(hp);
+  });
+
+  it('a brute burns but holds its ground', () => {
+    const sim = fiery();
+    const w = wolfAt(sim, 0, 4);
+    w.kind = 'brute';
+    w.hp = 140;
+    const p = sim.getPlayer('Ana')!;
+    flame(sim, p.x, p.z + 2);
+    expect(w.burn).toBe(FUEGO.burnFor);
+    expect(w.flee ?? 0).toBe(0);
+  });
+
+  it('Candiles: a Llamarada lights a brazier without a torch; three open it', () => {
+    const sim = fiery();
+    const s = sim.shrines.find((x) => x.kind === 'candles')!;
+    const braziers = s.parts.slice(0, 3);
+    for (const [i, b] of braziers.entries()) {
+      put(sim, 'Ana', s.x, s.z);
+      const d = Math.hypot(b.x - s.x, b.z - s.z);
+      put(sim, 'Ana', b.x + ((s.x - b.x) / d) * 3, b.z + ((s.z - b.z) / d) * 3);
+      flame(sim, b.x, b.z);
+      expect(view(sim, s.id).parts[i]).toBe(true);
+      if (i < 2) cool(sim);
+    }
+    expect(view(sim, s.id).open).toBe(true);
+  });
+
+  it('Turba: three Llamaradas burn the peat wall; its orb gives amber', () => {
+    const sim = fiery();
+    const s = sim.shrines.find((x) => x.kind === 'peat')!;
+    put(sim, 'Ana', s.x, s.z - 4);
+    flame(sim, s.x, s.z);
+    expect(texts(sim)).toContain(`La turba humea (1/${FUEGO.burns})`);
+    cool(sim);
+    flame(sim, s.x, s.z);
+    expect(view(sim, s.id).open).toBe(false);
+    cool(sim);
+    flame(sim, s.x, s.z);
+    expect(view(sim, s.id).open).toBe(true);
+    expect(view(sim, s.id).parts).toEqual([true, true, true]);
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    expect(snap(sim, 'Ana').self.shrines).toContain(s.id);
+    expect(sim.getPlayer('Ana')!.inv.amber).toBe(1);
+  });
+
+  it('a Llamarada at a swamp root (11) cleanses it; zone 10 never', () => {
+    const sim = fiery();
+    const z11 = sim.zones.find((x) => x.id === 11)!;
+    put(sim, 'Ana', z11.x - 3, z11.z);
+    flame(sim, z11.x, z11.z);
+    expect(sim.corrupt()).not.toContain(11);
+    expect(texts(sim)).toContain('El fuego seca la raíz marchita. El pantano respira');
+    const z10 = sim.zones.find((x) => x.id === 10)!;
+    cool(sim);
+    put(sim, 'Ana', z10.x - 3, z10.z);
+    flame(sim, z10.x, z10.z);
+    expect(sim.corrupt()).toContain(10);
+  });
+
+  it('three Llamaradas burn the thorn gate; the gas lamps lit within 10 s open the next', () => {
+    const sim = fiery();
+    const e = sim.swampEntrance;
+    put(sim, 'Ana', e.x, e.z - 3);
+    sim.handle('Ana', { t: 'dungeon', act: 13 });
+    const at = (x: number, z: number) => Object.assign(sim.getPlayer('Ana')!, { x: S.x + x, z, y: S.floor });
+    at(0, S.thorn.z - 3);
+    flame(sim, S.x, S.thorn.z);
+    cool(sim);
+    flame(sim, S.x, S.thorn.z);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[1]).toBe(false);
+    expect(snap(sim, 'Ana').dungeon.swamp.thorn).toBe(2);
+    cool(sim);
+    flame(sim, S.x, S.thorn.z);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[1]).toBe(true);
+    // Lamps: the first two share a Llamarada; the third comes too late, then in time.
+    cool(sim);
+    at(0, 62);
+    flame(sim, S.x, 67);
+    expect(snap(sim, 'Ana').dungeon.swamp.lamps).toEqual([true, true, false]);
+    for (let i = 0; i < (S.lampWindow + 1) * 10; i++) sim.step(0.1);
+    const lamp = S.lamps[2];
+    at(lamp.x + 3, lamp.z);
+    flame(sim, S.x + lamp.x, lamp.z);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[2]).toBe(false);
+    cool(sim);
+    at(0, 62);
+    flame(sim, S.x, 67);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[2]).toBe(true);
+  });
+});
+
+describe('bruto de turba and hoguera (S3-E)', () => {
+  const S = SWAMP_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  function room() {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.fuego = true;
+    const e = sim.swampEntrance;
+    put(sim, 'Ana', e.x, e.z - 3);
+    sim.handle('Ana', { t: 'dungeon', act: 13 });
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.eliteRoomZ + 2, y: S.floor });
+    sim.step(0.1);
+    return sim;
+  }
+  const peat = (sim: WorldSim) => (sim as unknown as { peat: (Wolf & { box: { z0: number; z1: number } }) | null }).peat;
+
+  it('rises in its own room, stays there, and resets when the room empties', () => {
+    const sim = room();
+    const e = peat(sim)!;
+    expect(e.kind).toBe('elite3');
+    expect(e.hp).toBe(ENEMY.elite3.hp);
+    expect(snap(sim, 'Ana').dungeon.swamp.elite!.max).toBe(480);
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    expect(e.z).toBeGreaterThanOrEqual(S.eliteRoomZ);
+    expect(e.z).toBeLessThan(S.bossRoomZ);
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: 40 });
+    sim.step(0.1);
+    expect(peat(sim)).toBeNull();
+  });
+
+  it('regrows in a mud pool unless burning', () => {
+    const sim = room();
+    const e = peat(sim)!;
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x + 11, z: S.bossRoomZ - 2 }); // far corner, out of reach
+    const pool = { x: S.x + S.pools[0].x, z: S.pools[0].z };
+    const hold = () => Object.assign(e, { x: pool.x, z: pool.z, stun: 5, windup: 0, charge: 0 });
+    hold();
+    e.hp = 300;
+    for (let i = 0; i < 10; i++) {
+      hold();
+      sim.step(0.1);
+    }
+    expect(e.hp).toBeCloseTo(300 + S.regen, 0);
+    e.burn = 2;
+    const before = e.hp;
+    for (let i = 0; i < 10; i++) {
+      hold();
+      sim.step(0.1);
+    }
+    expect(e.hp).toBeLessThan(before);
+  });
+
+  it('down, gate 3 opens; El Zancudo wakes in the boss room (S3-F)', () => {
+    const sim = room();
+    peat(sim)!.hp = 0;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.swamp.gates[3]).toBe(true);
+    msgs(sim);
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.bossRoomZ + 5 });
+    sim.step(0.1);
+    sim.step(0.1);
+    expect(msgs(sim).filter((m) => m.t === 'toast' && m.text.startsWith(`${NAMES.bossSwamp} despierta`))).toHaveLength(1);
+  });
+
+  it('a hoguera needs Fuego; it burns the first beast, scares wolves near it, rearms and wears', () => {
+    const sim = setup('Ana');
+    calmCoast(sim);
+    const h = plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.inv = { wood: 4, amber: 2 };
+    sim.handle('Ana', { t: 'place', kind: 'fire', x: p.x - 2, z: p.z, rot: 0 });
+    expect(texts(sim)).toContain(`Hace falta el ${NAMES.powerFire}`);
+    p.fuego = true;
+    sim.handle('Ana', { t: 'place', kind: 'fire', x: p.x - 2, z: p.z, rot: 0 });
+    const fire = sim.save().structures.find((s) => s.kind === 'fire')!;
+    expect(fire.hp).toBe(STRUCTURE_HP.fire);
+    expect(sim.getPlayer('Ana')!.inv).toEqual({});
+    stepTo(sim, 0.81);
+    put(sim, 'Ana', h.x + 150, h.z + 150);
+    const [a, b, c] = sim.wolfList.filter((x) => x.raid && x.kind === 'wolf');
+    Object.assign(a!, { x: fire.x, z: fire.z });
+    Object.assign(b!, { x: fire.x + 3, z: fire.z });
+    sim.step(0.1);
+    expect(a!.burn).toBeGreaterThan(0);
+    expect(b!.flee).toBeGreaterThan(0);
+    const live = () => sim.save().structures.find((s) => s.id === fire.id);
+    expect(live()!.hp).toBe(STRUCTURE_HP.fire - HOGUERA.wear);
+    Object.assign(c!, { x: fire.x, z: fire.z, burn: 0 });
+    sim.step(0.1);
+    expect(c!.burn ?? 0).toBe(0);
+    for (let i = 0; i < HOGUERA.rearm * 10; i++) sim.step(0.1);
+    Object.assign(c!, { x: fire.x, z: fire.z, burn: 0, flee: 0 });
+    sim.step(0.1);
+    expect(c!.burn).toBeGreaterThan(0);
+  });
+});
+
+describe('El Zancudo (S3-F)', () => {
+  const S = SWAMP_DUNGEON;
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  function room(...names: string[]) {
+    const sim = setup(...(names.length ? names : ['Ana']));
+    for (const n of names.length ? names : ['Ana']) Object.assign(sim.getPlayer(n)!, { x: S.x, z: S.bossRoomZ + 3, y: S.floor });
+    sim.step(0.1);
+    const priv = sim as unknown as { boss3: Zancudo | null; cleansed: Set<number>; purified3: boolean };
+    const b = () => priv.boss3!;
+    b().diveReady = 99;
+    return { sim, b, priv };
+  }
+  const near = (sim: WorldSim, b: Zancudo, dz = -1.5) => Object.assign(sim.getPlayer('Ana')!, { x: b.x, z: b.z + dz, y: S.floor });
+
+  it('wakes when someone enters its room and resets when it empties', () => {
+    const { sim, b } = room();
+    expect(b().kind).toBe('boss3');
+    expect(snap(sim, 'Ana').dungeon.swamp.boss).toMatchObject({ hp: ENEMY.boss3.hp, max: 380, grounded: false });
+    expect(snap(sim, 'Ana').wolves.some((w) => w.kind === 'boss3')).toBe(true);
+    b().hp = 50;
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.altarZ });
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss).toBeNull();
+    Object.assign(sim.getPlayer('Ana')!, { x: S.x, z: S.bossRoomZ + 3 });
+    sim.step(0.1);
+    expect(b().hp).toBe(ENEMY.boss3.hp);
+  });
+
+  it('flying, punches miss and arrows do half', () => {
+    const { sim, b } = room();
+    near(sim, b());
+    sim.step(1);
+    msgs(sim);
+    sim.handle('Ana', { t: 'attack', id: b().id });
+    expect(b().hp).toBe(ENEMY.boss3.hp);
+    expect(texts(sim).some((t) => t.startsWith('Vuela alto'))).toBe(true);
+    const p = sim.getPlayer('Ana')!;
+    p.yaw = Math.atan2(b().x - p.x, b().z - p.z);
+    sim.handle('Ana', { t: 'shoot', id: b().id });
+    expect(b().hp).toBeCloseTo(ENEMY.boss3.hp - BOW.damage * ZANCUDO.airMult);
+  });
+
+  it('a Llamarada on the vent under it drops it 5 s; a punch then lands in full', () => {
+    const { sim, b } = room();
+    const v = insideSwamp(S.vents[b().vent]!);
+    Object.assign(b(), { x: v.x, z: v.z, drift: 99 });
+    sim.getPlayer('Ana')!.fuego = true;
+    Object.assign(sim.getPlayer('Ana')!, { x: v.x, z: v.z - 3 });
+    msgs(sim);
+    sim.handle('Ana', { t: 'power', x: v.x, z: v.z, kind: 'fuego' });
+    expect(b().grounded).toBeCloseTo(ZANCUDO.ventFall);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss?.grounded).toBe(true);
+    expect(snap(sim, 'Ana').dungeon.swamp.vents[b().vent]).toBe(true);
+    const hp = b().hp;
+    near(sim, b());
+    sim.step(1);
+    sim.handle('Ana', { t: 'attack', id: b().id });
+    expect(hp - b().hp).toBeCloseTo(PUNCH.damage);
+  });
+
+  it('a vent it is not over only flares', () => {
+    const { sim, b } = room();
+    const i = (b().vent + 2) % 4;
+    const v = insideSwamp(S.vents[i]!);
+    Object.assign(b(), { drift: 99 });
+    sim.getPlayer('Ana')!.fuego = true;
+    Object.assign(sim.getPlayer('Ana')!, { x: v.x, z: v.z - 3 });
+    sim.handle('Ana', { t: 'power', x: v.x, z: v.z, kind: 'fuego' });
+    expect(b().grounded).toBe(0);
+    expect(snap(sim, 'Ana').dungeon.swamp.vents[i]).toBe(true);
+  });
+
+  it('a landed dive latches on and drains; a roll shakes it off', () => {
+    const { sim, b } = room();
+    const p = sim.getPlayer('Ana')!;
+    b().diveReady = 0;
+    sim.step(0.05);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss?.diving).toBe(true);
+    const hp0 = p.vitals.health;
+    for (let i = 0; i < 22; i++) sim.step(0.05);
+    expect(b().latch).toBe('Ana');
+    expect(p.vitals.health).toBeLessThan(hp0 - ZANCUDO.diveDamage + 1);
+    const hp1 = p.vitals.health;
+    sim.step(1);
+    expect(p.vitals.health).toBeLessThan(hp1 - 3);
+    sim.handle('Ana', { t: 'roll' });
+    expect(b().latch).toBeNull();
+  });
+
+  it('parrying its dive grounds it 3 s', () => {
+    const { sim, b } = room();
+    b().diveReady = 0;
+    sim.step(0.05);
+    sim.step(ZANCUDO.diveWindup - 0.15);
+    sim.handle('Ana', { t: 'block', on: true });
+    sim.step(0.2);
+    expect(b().grounded).toBeGreaterThan(2);
+    expect(b().latch).toBeNull();
+  });
+
+  it('beaten: purified for good, zone 10 clean (no more Gata), a vision with names', () => {
+    const { sim, b, priv } = room();
+    expect(snap(sim, 'Ana').corrupt).toContain(10);
+    b().hp = 0;
+    msgs(sim);
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(priv.purified3).toBe(true);
+    expect(snap(sim, 'Ana').corrupt).not.toContain(10);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Ana')))).toBe(true);
+    expect(sim.save().purified3).toBe(true);
+    sim.step(ZANCUDO.corpseTime + 1);
+    expect(snap(sim, 'Ana').dungeon.swamp.boss).toBeNull();
+    expect(new WorldSim(sim.save()).purified3).toBe(true);
+  });
+
+  it('old saves load without purified3', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(sim.purified3).toBe(false);
+    expect('purified3' in sim.save()).toBe(false);
+  });
+});
+
+describe('the white Zancudo and the Zarzal knot (S3-F)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  it('none before it is beaten; with purified3 and a Heart its farol sends wolves near the Heart running at night', () => {
+    const sim = setup('Ana');
+    calmCoast(sim);
+    const h = plantHeart(sim);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally3).toBeNull();
+    sim.purified3 = true;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').ally3).toMatchObject({ x: h.x, z: h.z + FAROL.home });
+    put(sim, 'Ana', 150, 150);
+    sim.heart()!.hp = 100_000;
+    stepTo(sim, 0.81);
+    const w = sim.wolfList.find((x) => x.raid && x.kind === 'wolf')!;
+    Object.assign(w, { x: h.x + 4, z: h.z, flee: 0 });
+    for (let i = 0; i < FAROL.every * 10 + 5 && !w.flee; i++) {
+      if (!w.flee) Object.assign(w, { x: h.x + 4, z: h.z });
+      sim.step(0.1);
+    }
+    expect(w.flee).toBeGreaterThan(0);
+  });
+
+  it('three Llamaradas burn the knot: a gap in the thorns opens for everyone, and stays', () => {
+    const sim = setup('Ana', 'Leo');
+    const K = ZARZAL_KNOT;
+    const p = sim.getPlayer('Ana')!;
+    p.fuego = true;
+    put(sim, 'Ana', K.x + 3, K.z);
+    msgs(sim);
+    for (let i = 1; i <= FUEGO.burns; i++) {
+      sim.handle('Ana', { t: 'power', x: K.x, z: K.z, kind: 'fuego' });
+      if (i < FUEGO.burns) expect(texts(sim).some((t) => t.includes(`(${i}/${FUEGO.burns})`))).toBe(true);
+      sim.step(FUEGO.cooldown + 0.05);
+    }
+    expect(sim.zarzalBurnt).toBe(true);
+    expect(snap(sim, 'Ana').zarzalBurnt).toBe(true);
+    expect(sim.save().zarzalBurnt).toBe(true);
+    let x = -HALF - 5;
+    while (x > -HALF - 55 && !zarzalAt(sim.terrain, x, K.z)) x -= 1;
+    expect(zarzalAt(sim.terrain, x, K.z)).toBe(true);
+    put(sim, 'Leo', x, K.z);
+    const leo = sim.getPlayer('Leo')!;
+    const hp = leo.vitals.health;
+    sim.step(0.5);
+    expect(leo.vitals.health).toBeGreaterThan(hp - 1);
+    expect(new WorldSim(sim.save()).zarzalBurnt).toBe(true);
+  });
+
+  it('old saves load with the knot whole', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(sim.zarzalBurnt).toBe(false);
+    expect('zarzalBurnt' in sim.save()).toBe(false);
+  });
+});
+
+describe('fogatas del Pantano and swamp visions (S3-G)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const live = (sim: WorldSim, name: string) => (sim as unknown as { live: Map<string, { torch?: boolean; riding: boolean }> }).live.get(name)!;
+  const lit = (sim: WorldSim) => (sim as unknown as { fogatas: boolean[] }).fogatas;
+  function atFogata(id: number, ...names: string[]) {
+    const sim = setup(...names);
+    const f = generateFogatas(sim.terrain, 42)[id]!;
+    put(sim, names[0]!, f.x + 1.5, f.z);
+    msgs(sim);
+    return { sim, f };
+  }
+
+  it('a Llamarada within 4 m lights one for the world; it glows in the snap and is saved', () => {
+    const { sim, f } = atFogata(1, 'Ana', 'Leo');
+    sim.getPlayer('Ana')!.fuego = true;
+    sim.handle('Ana', { t: 'power', x: f.x, z: f.z, kind: 'fuego' });
+    expect(texts(sim).some((t) => t.includes('fogata'))).toBe(true);
+    expect(snap(sim, 'Leo').fogatas).toEqual([false, true, false, false, false, false, false, false]);
+    expect(sim.save().fogatas).toEqual([false, true, false, false, false, false, false, false]);
+    expect(new WorldSim(sim.save()).save().fogatas).toEqual([false, true, false, false, false, false, false, false]);
+  });
+
+  it('a torch lights one and is spent; without one, nothing', () => {
+    const { sim } = atFogata(0, 'Ana');
+    sim.handle('Ana', { t: 'fogata', id: 0 });
+    expect(texts(sim)).toContain('Hace falta fuego');
+    expect(lit(sim)[0]).toBe(false);
+    live(sim, 'Ana').torch = true;
+    sim.handle('Ana', { t: 'fogata', id: 0 });
+    expect(lit(sim)[0]).toBe(true);
+    expect(snap(sim, 'Ana').self.torch).toBe(false);
+  });
+
+  it('by day, 5 s at a lit fogata take you to the Heart', () => {
+    const sim = setup('Ana');
+    const h = plantHeart(sim);
+    const f = generateFogatas(sim.terrain, 42)[2]!;
+    lit(sim)[2] = true;
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    sim.step(1);
+    expect(snap(sim, 'Ana').self.travel).toBe(FOGATA.channel - 1);
+    for (let i = 0; i < 45; i++) sim.step(0.1);
+    const p = sim.getPlayer('Ana')!;
+    expect(Math.hypot(p.x - h.x, p.z - h.z)).toBeLessThan(3);
+    const s = snap(sim, 'Ana').self;
+    expect(s.fix).toBe(true);
+    expect(s.travel).toBeNull();
+  });
+
+  it('from the Heart to a lit fogata; refused to a dark one', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const f = generateFogatas(sim.terrain, 42)[3]!;
+    msgs(sim);
+    sim.handle('Ana', { t: 'travel', to: 3 });
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    lit(sim)[3] = true;
+    sim.handle('Ana', { t: 'travel', to: 3 });
+    for (let i = 0; i < 55; i++) sim.step(0.1);
+    const p = sim.getPlayer('Ana')!;
+    expect(Math.hypot(p.x - f.x, p.z - f.z)).toBeLessThan(FOGATA.reach);
+  });
+
+  it('refused at night, when far, when dark, when mounted, or without a Heart', () => {
+    const sim = setup('Ana');
+    const f = generateFogatas(sim.terrain, 42)[0]!;
+    const home = { ...sim.getPlayer('Ana')! };
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    lit(sim)[0] = true;
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(snap(sim, 'Ana').self.travel).toBeNull(); // no Heart
+    put(sim, 'Ana', home.x, home.z);
+    plantHeart(sim);
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    msgs(sim);
+    live(sim, 'Ana').riding = true;
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(texts(sim)).toContain('Baja de la montura primero');
+    live(sim, 'Ana').riding = false;
+    put(sim, 'Ana', f.x + 8, f.z);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    sim.time = DAY_LENGTH * 0.85;
+    msgs(sim);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    expect(texts(sim).some((t) => t.includes('noche'))).toBe(true);
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+  });
+
+  it('damage or walking away cancels the channel', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const f = generateFogatas(sim.terrain, 42)[1]!;
+    lit(sim)[1] = true;
+    put(sim, 'Ana', f.x + 1.5, f.z);
+    msgs(sim);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    sim.step(1);
+    sim.getPlayer('Ana')!.vitals.health -= 5;
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    expect(texts(sim).some((t) => t.includes('interrump'))).toBe(true);
+    sim.handle('Ana', { t: 'travel', to: 'heart' });
+    sim.step(1);
+    put(sim, 'Ana', f.x + 4, f.z);
+    sim.step(0.1);
+    expect(snap(sim, 'Ana').self.travel).toBeNull();
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    const p = sim.getPlayer('Ana')!;
+    expect(Math.hypot(p.x - f.x, p.z - f.z)).toBeLessThan(6);
+  });
+
+  it('old saves load with every fogata dark and save none', () => {
+    const sim = new WorldSim(newWorld(42, 'salt'));
+    expect(lit(sim)).toEqual([false, false, false, false, false, false, false, false]);
+    expect('fogatas' in sim.save()).toBe(false);
+  });
+
+  it('first steps into the swamp bring a vision, once per world', () => {
+    const sim = setup('Ana');
+    const f = generateFogatas(sim.terrain, 42)[0]!;
+    msgs(sim);
+    put(sim, 'Ana', f.x, f.z);
+    sim.step(0.1);
+    const v = msgs(sim).filter((m) => m.t === 'vision');
+    expect(v).toHaveLength(1);
+    expect(JSON.stringify(v[0])).toContain('Ana');
+    sim.step(0.1);
+    expect(msgs(sim).some((m) => m.t === 'vision')).toBe(false);
+  });
+
+  it('burning the Zarzal knot brings a vision', () => {
+    const sim = setup('Ana');
+    const K = ZARZAL_KNOT;
+    sim.getPlayer('Ana')!.fuego = true;
+    put(sim, 'Ana', K.x + 3, K.z);
+    msgs(sim);
+    let seen = false;
+    for (let i = 0; i < FUEGO.burns; i++) {
+      sim.handle('Ana', { t: 'power', x: K.x, z: K.z, kind: 'fuego' });
+      seen ||= msgs(sim).some((m) => m.t === 'vision' && m.lines.join(' ').includes('Ana'));
+      sim.step(FUEGO.cooldown + 0.05);
+    }
+    expect(seen).toBe(true);
+  });
+});
+
+describe('las Montañas: the steep rule on the server', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const zd = (d: number) => -HALF - d;
+  const moveTo = (sim: WorldSim, x: number, z: number, y = sim.terrain.heightAt(x, z)) => {
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+    const p = sim.getPlayer('Ana')!;
+    return p.x === x && p.z === z;
+  };
+
+  it('walkers cannot walk up los Peldaños; down is fine', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, -HALF + 0.5);
+    expect(moveTo(sim, 0, zd(PELDANOS.first + PELDANOS.run + 1))).toBe(false);
+    expect(texts(sim)).toContain('Roca lisa. Sin agarre');
+    put(sim, 'Ana', 0, zd(PELDANOS.first + PELDANOS.run + 1));
+    expect(moveTo(sim, 0, -HALF + 0.5)).toBe(true);
+  });
+
+  it('walkers cross the seam onto flat ground', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, -HALF + 1);
+    expect(moveTo(sim, 0, -HALF - 0.5)).toBe(true);
+  });
+
+  it('the deer does not climb a pared', () => {
+    const sim = setup('Ana');
+    const p = mountainFeatures(42).paredes[0]!;
+    const out = p.x + p.rt + p.w + 1;
+    put(sim, 'Ana', out, p.z);
+    sim.getPlayer('Ana')!.steed = { x: out, z: p.z };
+    sim.handle('Ana', { t: 'mount', act: 2 });
+    expect(moveTo(sim, out - 4, p.z)).toBe(false);
+    expect(texts(sim)).toContain('El ciervo no trepa');
+  });
+
+  it('S4-B: walkers climb a dry pared, not a wet one', () => {
+    const day = (w: string) => { let d = 0; while (weatherAt(42, d) !== w) d++; return d; };
+    const p = mountainFeatures(42).paredes[0]!;
+    const out = p.x + p.rt + p.w + 1;
+    const dry = setup('Ana');
+    dry.time = (day('clear') + 0.5) * DAY_LENGTH;
+    put(dry, 'Ana', out, p.z);
+    expect(moveTo(dry, out - 4, p.z)).toBe(true);
+    const wet = setup('Ana');
+    wet.time = (day('rain') + 0.5) * DAY_LENGTH;
+    put(wet, 'Ana', out, p.z);
+    msgs(wet);
+    expect(moveTo(wet, out - 4, p.z)).toBe(false);
+    expect(texts(wet)).toContain('Roca mojada. Resbala');
+  });
+
+  it('the frog jumps onto the first terrace', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, -HALF + 0.5);
+    sim.getPlayer('Ana')!.frog = { x: 0, z: -HALF + 0.5 };
+    sim.handle('Ana', { t: 'mount', act: 13 });
+    expect(moveTo(sim, 0, zd(PELDANOS.first + PELDANOS.run + 4))).toBe(true);
+  });
+});
+
+describe('las Montañas: cold (S4-B)', () => {
+  it('the Pico drains warmth by day; the forest warms; a Llamarada warms the caster', () => {
+    const sim = setup('Ana');
+    sim.time = DAY_LENGTH * 0.5;
+    const { pico } = mountainFeatures(42);
+    put(sim, 'Ana', pico.x, pico.z);
+    const ana = sim.getPlayer('Ana')!;
+    ana.vitals.warmth = 50;
+    for (let i = 0; i < 100; i++) sim.step(0.1);
+    expect(ana.vitals.warmth).toBeLessThan(50);
+    ana.fuego = true;
+    const before = ana.vitals.warmth;
+    sim.handle('Ana', { t: 'power', x: pico.x, z: pico.z + 2, kind: 'fuego' });
+    expect(sim.getPlayer('Ana')!.vitals.warmth).toBeCloseTo(before + 20, 5);
+    put(sim, 'Ana', 40, 40);
+    const low = sim.getPlayer('Ana')!.vitals.warmth;
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    expect(sim.getPlayer('Ana')!.vitals.warmth).toBeGreaterThan(low);
+  });
+});
+
+describe('mountain shrines and refugios (S4-C)', () => {
+  const kind = (sim: WorldSim, k: string) => sim.shrines.find((s) => s.kind === k)!;
+  const view = (sim: WorldSim, name: string, id: number) => snap(sim, name).shrines.find((v) => v.id === id)!;
+  const use = (sim: WorldSim, name: string, id: number, part: number) => sim.handle(name, { t: 'shrine', id, part });
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+
+  it('there are 12 shrines; the Cornisa has no gate, only its height; the orb gives quartz and cleanses a mountain zone (rule change S4-D)', () => {
+    const sim = setup('Ana');
+    expect(sim.shrines).toHaveLength(12);
+    const s = kind(sim, 'cornice');
+    expect(s.id).toBe(9);
+    const ledges = corniceLedges(sim.terrain, 42);
+    for (const l of ledges) expect(sim.climbables()).toContainEqual(l);
+    const before = snap(sim, 'Ana').corrupt;
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.getPlayer('Ana')!.y = s.orb.y - 6;
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).not.toContain(9);
+    sim.getPlayer('Ana')!.y = s.y;
+    use(sim, 'Ana', s.id, 0);
+    expect(snap(sim, 'Ana').self.shrines).toContain(9);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(QUARTZ.orb);
+    const after = snap(sim, 'Ana').corrupt;
+    expect(after).toHaveLength(before.length - 1);
+    expect(before.filter((i) => !after.includes(i))[0]).toBeGreaterThanOrEqual(15);
+    expect(after).toContain(14);
+  });
+
+  it('Losas gemelas: both plates at once open it 20 s; a gust rolls the boulder onto plate 2; it rolls home after 60 s', () => {
+    const sim = setup('Ana', 'Leo');
+    const s = kind(sim, 'twins');
+    const [p1, p2, home] = s.parts as { x: number; z: number }[];
+    put(sim, 'Ana', p1!.x, p1!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    expect(view(sim, 'Ana', s.id).parts).toEqual([true, false]);
+    put(sim, 'Leo', p2!.x, p2!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    put(sim, 'Ana', s.x + 40, s.z);
+    put(sim, 'Leo', s.x + 40, s.z);
+    for (let i = 0; i < 195; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    for (let i = 0; i < 10; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(false);
+    // Solo: Viento at the boulder, then stand on plate 1.
+    const ana = sim.getPlayer('Ana')!;
+    ana.viento = true;
+    put(sim, 'Ana', home!.x, home!.z + 4);
+    sim.handle('Ana', { t: 'power', x: home!.x, z: home!.z, kind: 'viento' });
+    expect(texts(sim)).toContain('La roca rueda por el surco y cae en la losa');
+    expect(view(sim, 'Ana', s.id).block).toMatchObject({ x: expect.closeTo(p2!.x, 1), z: expect.closeTo(p2!.z, 1) });
+    put(sim, 'Ana', p1!.x, p1!.z);
+    sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).open).toBe(true);
+    for (let i = 0; i < 600; i++) sim.step(0.1);
+    expect(view(sim, 'Ana', s.id).block).toMatchObject({ x: expect.closeTo(home!.x, 1), z: expect.closeTo(home!.z, 1) });
+  });
+
+  it('Bloques: blocks do not move yet, the lever resets, the gate stays shut', () => {
+    const sim = setup('Ana');
+    const s = kind(sim, 'blocks');
+    const v = view(sim, 'Ana', s.id);
+    expect(v.blocks).toHaveLength(3);
+    put(sim, 'Ana', v.blocks![0]!.x, v.blocks![0]!.z);
+    use(sim, 'Ana', s.id, 1);
+    expect(texts(sim)).toContain('No se mueve');
+    const lever = s.parts[6]!;
+    put(sim, 'Ana', lever.x, lever.z);
+    use(sim, 'Ana', s.id, 7);
+    expect(texts(sim)).toContain('Los bloques vuelven a su sitio');
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    use(sim, 'Ana', s.id, 0);
+    expect(texts(sim)).toContain('Una verja de luz lo protege');
+  });
+
+  it('refugios are fogatas 4–5: a Llamarada lights one, the Heart sends you there by day, and a lit one keeps you warm', () => {
+    const sim = setup('Ana');
+    const spots = generateFogatas(sim.terrain, 42);
+    const r = spots[4]!;
+    expect(r.refugio).toBe(true);
+    const ana = sim.getPlayer('Ana')!;
+    ana.fuego = true;
+    put(sim, 'Ana', r.x + 2, r.z);
+    sim.handle('Ana', { t: 'power', x: r.x, z: r.z, kind: 'fuego' });
+    expect(snap(sim, 'Ana').fogatas[4]).toBe(true);
+    const high = spots[5]!;
+    (sim as unknown as { fogatas: boolean[] }).fogatas[5] = true;
+    put(sim, 'Ana', high.x + 1, high.z);
+    ana.vitals = { ...ana.vitals, warmth: 50 };
+    for (let i = 0; i < 50; i++) sim.step(0.1);
+    expect(ana.vitals.warmth).toBeGreaterThanOrEqual(50);
+  });
+
+  it('protocol version moved on', () => {
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('quartz and weapon levels 4–5 (S4-C)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const atVein = (sim: WorldSim, name: string, id: number, up = 0) => {
+    const v = sim.quartzVeins[id]!;
+    put(sim, name, v.x, v.z);
+    sim.getPlayer(name)!.y = v.y + up;
+    sim.handle(name, { t: 'quartz', id });
+  };
+
+  it('2 cuarzo per vein, per player, back after 2 days; not from below', () => {
+    const sim = setup('Ana', 'Leo');
+    expect(sim.quartzVeins).toHaveLength(10);
+    atVein(sim, 'Ana', 3, -4);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBeUndefined();
+    atVein(sim, 'Ana', 3);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(2);
+    expect(texts(sim)).toContain('Cuarzo: 2');
+    expect(snap(sim, 'Ana').self.quartz).toEqual([3]);
+    atVein(sim, 'Ana', 3);
+    expect(texts(sim)).toContain('Aún no ha vuelto a brillar');
+    atVein(sim, 'Leo', 3);
+    expect(sim.getPlayer('Leo')!.inv.quartz).toBe(2);
+    (sim as unknown as { time: number }).time += 2 * DAY_LENGTH;
+    atVein(sim, 'Ana', 3);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(4);
+    const again = new WorldSim(sim.save());
+    expect(again.getPlayer('Ana')!.quartz?.[3]).toBeDefined();
+  });
+
+  it('levels 4 and 5 cost 3 cuarzo + 10 piedra + 5 madera; level 6 needs black thorns (S5)', () => {
+    const sim = setup('Ana');
+    plantHeart(sim);
+    const p = sim.getPlayer('Ana')!;
+    p.weaponLvl = 3;
+    p.inv = { quartz: 6, stone: 30, wood: 30 };
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(4);
+    expect(texts(sim)).toContain(`El ${NAMES.heart} templa tu arma: +60 % de daño`);
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(snap(sim, 'Ana').self.weapon).toBe(5);
+    expect(p.inv).toEqual({ stone: 10, wood: 20 });
+    p.inv = { quartz: 6, stone: 30, wood: 30 };
+    sim.handle('Ana', { t: 'upgrade' });
+    expect(texts(sim)).toContain('Faltan materiales');
+    expect(snap(sim, 'Ana').self.weapon).toBe(5);
+  });
+
+  it('old saves without quartz load', () => {
+    const sim = setup('Ana');
+    const save = sim.save();
+    delete (save.players[0] as { quartz?: unknown }).quartz;
+    const again = new WorldSim(save);
+    again.connect('Ana');
+    expect(snap(again, 'Ana').self.quartz).toEqual([]);
+  });
+});
+
+describe('mountain corruption (S4-D)', () => {
+  it('new worlds have 14–17 corrupt; old saves load with them corrupt', () => {
+    const sim = setup('Ana');
+    expect(snap(sim, 'Ana').corrupt.slice(-8, -4)).toEqual([14, 15, 16, 17]); // Rule change (S5-C): Tierras zones 18–21 follow.
+    const w = newWorld(42, 'salt');
+    w.cleansed = [0, 6, 10];
+    expect(new WorldSim(w).corrupt()).toEqual(expect.arrayContaining([14, 15, 16, 17]));
+  });
+
+  it('a mountain orb cleanses the nearest corrupt 15–17, never 14; a swamp orb never touches the mountains', () => {
+    const w = newWorld(42, 'salt');
+    w.cleansed = [11, 12, 13];
+    const sim = new WorldSim(w);
+    sim.createPlayer('Ana', 'h');
+    sim.connect('Ana');
+    const s = sim.shrines.find((x) => x.kind === 'cornice')!;
+    const zs = sim.zones.filter((z) => [15, 16, 17].includes(z.id)).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z));
+    put(sim, 'Ana', s.orb.x, s.orb.z);
+    sim.getPlayer('Ana')!.y = s.y;
+    msgs(sim);
+    sim.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    expect(sim.corrupt()).not.toContain(zs[0]!.id);
+    expect(sim.corrupt()).toContain(14);
+    expect(msgs(sim).some((m) => m.t === 'toast' && m.text.includes('limpia un trozo de montaña'))).toBe(true);
+    // With 15–17 clean, a mountain orb cleanses nothing (14 is El Cucurucho's).
+    const w2 = newWorld(42, 'salt');
+    w2.cleansed = [15, 16, 17];
+    const sim2 = new WorldSim(w2);
+    sim2.createPlayer('Ana', 'h');
+    sim2.connect('Ana');
+    const before = sim2.corrupt();
+    put(sim2, 'Ana', s.orb.x, s.orb.z);
+    sim2.getPlayer('Ana')!.y = s.y;
+    sim2.handle('Ana', { t: 'shrine', id: s.id, part: 0 });
+    expect(sim2.getPlayer('Ana')!.shrines).toContain(s.id);
+    expect(sim2.corrupt()).toEqual(before);
+  });
+
+  it('Enredadera at a mountain root cleanses nothing', () => {
+    const sim = setup('Ana');
+    sim.getPlayer('Ana')!.enredadera = true;
+    const z = sim.zones.find((x) => x.id === 15)!;
+    put(sim, 'Ana', z.x - 3, z.z);
+    sim.handle('Ana', { t: 'power', x: z.x, z: z.z });
+    sim.step(3);
+    expect(sim.corrupt()).toContain(15);
+  });
+
+  it('a night in a mountain zone brings extra beasts, spawned at the Peldaños\' foot', () => {
+    const run = (clean: boolean) => {
+      const w = newWorld(42, 'salt');
+      if (clean) w.cleansed = [15];
+      const sim = new WorldSim(w);
+      sim.createPlayer('Ana', 'h');
+      sim.connect('Ana');
+      const z = sim.zones.find((x) => x.id === 15)!;
+      put(sim, 'Ana', z.x, z.z);
+      const had = new Set(sim.wolfList.map((x) => x.id));
+      stepTo(sim, 0.81);
+      return sim.wolfList.filter((x) => !x.raid && !had.has(x.id));
+    };
+    const dirty = run(true).length;
+    const fresh = run(false);
+    expect(fresh.length).toBeGreaterThan(dirty);
+    expect(fresh.filter((x) => x.kind === 'brute').every((x) => x.z > -HALF)).toBe(true);
+  });
+
+  it('entering the mountains is remembered (saved); old saves have not seen them', () => {
+    const sim = setup('Ana');
+    expect(sim.save().mountainsSeen).toBeUndefined();
+    put(sim, 'Ana', 0, -HALF - 20);
+    sim.step(0.1);
+    expect(sim.save().mountainsSeen).toBe(true);
+  });
+});
+
+describe('El Triángulo (S4-D)', () => {
+  const night = (opts: { raidN?: number; mountainsSeen?: boolean; cleansed?: number[] }, names = ['Ana']) => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, opts);
+    const sim = new WorldSim(w);
+    for (const n of names) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    const heart = plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('El Triángulo guía el asedio esta noche'));
+    stepTo(sim, 0.81);
+    return { sim, heart, warn, tri: sim.wolfList.find((x) => x.kind === 'lieut2') };
+  };
+
+  it('leads the 4th raid once the mountains are seen and zone 14 is corrupt', () => {
+    const a = night({ raidN: 3, mountainsSeen: true });
+    expect(a.warn).toBe(true);
+    expect(a.tri?.hp).toBe(340);
+    expect(a.tri?.raid).toBe(true);
+    expect(a.sim.wolfList.some((x) => x.kind === 'lieut1')).toBe(false);
+    for (const o of [{ raidN: 3 }, { raidN: 2, mountainsSeen: true }, { raidN: 3, mountainsSeen: true, cleansed: [14] }]) {
+      const b = night(o);
+      expect(b.warn).toBe(false);
+      expect(b.tri).toBeUndefined();
+    }
+  });
+
+  it('throws a 40-damage rock at a player structure every 6 s; the Heart takes none', () => {
+    const { sim, heart, tri } = night({ raidN: 3, mountainsSeen: true });
+    (sim as unknown as { wolves: Wolf[] }).wolves = [tri as Wolf];
+    put(sim, 'Ana', heart.x + 150, heart.z + 150);
+    const d = Math.hypot(tri!.x - heart.x, tri!.z - heart.z);
+    const wall = { id: 500, kind: 'wall' as const, x: heart.x + ((tri!.x - heart.x) / d) * 19, y: 0, z: heart.z + ((tri!.z - heart.z) / d) * 19, rot: 0, owner: 'Ana', hp: 1000 };
+    (sim as unknown as { structures: unknown[] }).structures.push(wall);
+    const hp0 = sim.save().structures.find((s) => s.kind === 'heart')!.hp;
+    for (let i = 0; i < 200; i++) sim.step(0.1);
+    const lost = 1000 - wall.hp;
+    expect(lost).toBeGreaterThanOrEqual(40);
+    expect(lost % 40).toBe(0);
+    expect(sim.save().structures.find((s) => s.kind === 'heart')!.hp).toBe(hp0);
+  });
+
+  it('when he falls his pack flees, the near player gets 2 cuarzo, the far one none, and a vision', () => {
+    const { sim, tri } = night({ raidN: 3, mountainsSeen: true }, ['Ana', 'Leo']);
+    put(sim, 'Ana', tri!.x + 5, tri!.z);
+    put(sim, 'Leo', tri!.x + 100, tri!.z);
+    msgs(sim);
+    (tri as Wolf).hp = 0;
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Mis rocas')))).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.quartz).toBe(2);
+    expect(sim.getPlayer('Leo')!.inv.quartz ?? 0).toBe(0);
+    for (let i = 0; i < 32; i++) sim.step(0.1);
+    expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut2')).toEqual([]);
+  });
+
+  it('protocol version moved on', () => {
+    expect(PROTOCOL_VERSION).toBe(65);
+  });
+});
+
+describe('La Flecha (S5-C)', () => {
+  const night = (opts: { raidN?: number; corruptSeen?: boolean; cleansed?: number[] }, names = ['Ana']) => {
+    const w = newWorld(42, 'salt');
+    Object.assign(w, opts);
+    const sim = new WorldSim(w);
+    for (const n of names) {
+      sim.createPlayer(n, 'h');
+      sim.connect(n);
+    }
+    const heart = plantHeart(sim);
+    stepTo(sim, RAID.warnAt + 0.01);
+    const warn = msgs(sim).some((m) => m.t === 'toast' && m.text.includes('La Flecha guía el asedio esta noche'));
+    stepTo(sim, 0.81);
+    return { sim, heart, warn, fl: sim.wolfList.find((x) => x.kind === 'lieut3') };
+  };
+
+  it('leads raid 2 (raidN % 3 === 2) once las Tierras are seen and zone 18 is corrupt', () => {
+    const a = night({ raidN: 1, corruptSeen: true });
+    expect(a.warn).toBe(true);
+    expect(a.fl?.hp).toBe(360);
+    expect(a.fl?.raid).toBe(true);
+    for (const o of [{ raidN: 1 }, { raidN: 2, corruptSeen: true }, { raidN: 1, corruptSeen: true, cleansed: [18] }]) {
+      const b = night(o);
+      expect(b.warn).toBe(false);
+      expect(b.fl).toBeUndefined();
+    }
+  });
+
+  it('shows her red line while she aims', () => {
+    const { sim, fl } = night({ raidN: 1, corruptSeen: true });
+    (sim as unknown as { wolves: Wolf[] }).wolves = [fl as Wolf];
+    put(sim, 'Ana', fl!.x + 8, fl!.z);
+    let aim: { x: number; z: number } | undefined;
+    for (let i = 0; i < 90 && !aim; i++) {
+      sim.step(0.1);
+      put(sim, 'Ana', fl!.x + 8, fl!.z);
+      aim = snap(sim, 'Ana').wolves.find((x) => x.kind === 'lieut3')?.aim;
+    }
+    expect(aim).toBeDefined();
+  });
+
+  it('when she falls the raid flees, the near player gets 2 espinas negras, the far one none, and a vision', () => {
+    const { sim, fl } = night({ raidN: 1, corruptSeen: true }, ['Ana', 'Leo']);
+    put(sim, 'Ana', fl!.x + 5, fl!.z);
+    put(sim, 'Leo', fl!.x + 100, fl!.z);
+    msgs(sim);
+    (fl as Wolf).hp = 0;
+    sim.step(0.1);
+    const out = msgs(sim);
+    expect(out.some((m) => m.t === 'vision' && m.lines.some((l) => l.includes('Mi flecha') && l.includes('Arriba se acaba')))).toBe(true);
+    expect(sim.getPlayer('Ana')!.inv.thorn).toBe(2);
+    expect(sim.getPlayer('Leo')!.inv.thorn ?? 0).toBe(0);
+    for (let i = 0; i < 32; i++) sim.step(0.1);
+    expect(sim.wolfList.filter((x) => x.raid && x.kind !== 'lieut3')).toEqual([]);
+  });
+});
+
+describe('las Tierras Corruptas: el Borde (S5-A)', () => {
+  const texts = (sim: WorldSim) => msgs(sim).flatMap((m) => (m.t === 'toast' ? [m.text] : []));
+  const moveTo = (sim: WorldSim, x: number, z: number, y = sim.terrain.heightAt(x, z)) => {
+    for (let i = 0; i < 11; i++) sim.step(0.1);
+    sim.handle('Ana', { t: 'move', x, y, z, yaw: 0, anim: 'walk' });
+    const p = sim.getPlayer('Ana')!;
+    return p.x === x && p.z === z;
+  };
+
+  it('nobody crosses the rim line on foot; inside la Ceniza you walk; los Escalones refuse walkers', () => {
+    const sim = setup('Ana');
+    put(sim, 'Ana', 0, RIM_LINE + 0.5);
+    msgs(sim);
+    expect(moveTo(sim, 0, RIM_LINE - 0.5, sim.terrain.heightAt(0, RIM_LINE + 0.5))).toBe(false);
+    expect(texts(sim)).toContain(STEEP_TEXT.rim);
+    const z = CORRUPT_LANDS.z1 - 50;
+    put(sim, 'Ana', 0, z);
+    expect(moveTo(sim, 0, z - 3)).toBe(true);
+    const s = corruptFeatures(42).steps;
+    const foot = CORRUPT_LANDS.z1 - s.d0 + 1;
+    put(sim, 'Ana', s.x, foot);
+    expect(moveTo(sim, s.x, foot - 2.5)).toBe(false);
   });
 });

@@ -72,3 +72,48 @@ describe('the whale', () => {
     expect(mountAction({ ...base, onFish: true, whale: t })).toEqual({ act: 10, label: 'Subir a la ballena' });
   });
 });
+
+describe('la Rana', () => {
+  const wildFrog = { owner: null, x: 2, y: 0, z: 0, yaw: 0 };
+  const myFrog = { owner: 'Ana', x: 3, y: 0, z: 0, yaw: 0 };
+  it('tames the wild frog only without one, not while chasing', () => {
+    expect(mountAction({ ...base, frogs: [wildFrog] })).toEqual({ act: 12, label: 'Domar a la rana' });
+    expect(mountAction({ ...base, hasFrog: true, frogs: [wildFrog] })).toBeNull();
+    expect(mountAction({ ...base, racing: true, frogs: [wildFrog] })).toBeNull();
+  });
+  it('gets on your frog and off anywhere', () => {
+    expect(mountAction({ ...base, hasFrog: true, frogs: [myFrog] })).toEqual({ act: 13, label: 'Montar la rana' });
+    expect(mountAction({ ...base, hasFrog: true, frogs: [{ ...myFrog, x: 9 }] })).toBeNull();
+    expect(mountAction({ ...base, hasFrog: true, onFrog: true })).toEqual({ act: 14, label: 'Bajar de la rana' });
+  });
+});
+
+describe('el Dragón', () => {
+  const wildDragon = { owner: null, x: 20, y: 80, z: 0, yaw: 0 };
+  const myDragon = { owner: 'Ana', x: 3, y: 0, z: 0, yaw: 0 };
+  it('leaps from the Pico when the wild dragon is out and you have none', () => {
+    expect(mountAction({ ...base, onPico: true, dragons: [wildDragon] })).toEqual({ act: 15, label: 'Saltar al dragón' });
+    expect(mountAction({ ...base, onPico: true, dragons: [] })).toBeNull();
+    expect(mountAction({ ...base, onPico: true, hasDragon: true, dragons: [wildDragon] })).toBeNull();
+  });
+  it('gets on your dragon; gets off only once landed', () => {
+    expect(mountAction({ ...base, hasDragon: true, dragons: [myDragon] })).toEqual({ act: 16, label: 'Montar el dragón' });
+    expect(mountAction({ ...base, hasDragon: true, dragons: [{ ...myDragon, x: 9 }] })).toBeNull();
+    expect(mountAction({ ...base, hasDragon: true, onDragon: true, landed: true })).toEqual({ act: 17, label: 'Bajar del dragón' });
+    expect(mountAction({ ...base, hasDragon: true, onDragon: true, landed: false })).toBeNull();
+    expect(mountAction({ ...base, tame: { ...tame, beast: 'dragon' } })).toEqual({ act: 1, label: '¡Ahora!' });
+  });
+});
+
+describe('la Estrella (S5-H)', () => {
+  const star = { owner: null, x: 2, y: 0, z: 0, yaw: 0 };
+  it('tames her when she is near and you have none; even with a deer', () => {
+    expect(mountAction({ ...base, estrella: star })).toEqual({ act: 18, label: 'Domar la Estrella' });
+    expect(mountAction({ ...base, hasSteed: true, estrella: star })).toEqual({ act: 18, label: 'Domar la Estrella' });
+    expect(mountAction({ ...base, hasStar: true, hasSteed: true, estrella: star })).toBeNull();
+    expect(mountAction({ ...base, estrella: { ...star, x: 9 } })).toBeNull();
+  });
+  it('gets off her by name', () => {
+    expect(mountAction({ ...base, riding: true, hasSteed: true, hasStar: true })).toEqual({ act: 3, label: 'Bajar de la Estrella' });
+  });
+});

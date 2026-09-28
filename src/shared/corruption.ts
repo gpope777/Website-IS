@@ -1,5 +1,10 @@
 import { createRng } from './rng';
-import { coastFeatures, HALF, inForest, WATER_LEVEL, type Terrain } from './terrain';
+import { inBog } from './swamp';
+import { generateSwampShrines } from './swamp-shrines';
+import { slopeAt } from './mountains';
+import { pillarSites } from './pillars';
+import { TOWER } from './corrupt-lands';
+import { coastFeatures, HALF, inForest, inSwamp, LAGUNA, MOUNTAINS, mountainFeatures, SWAMP, swampFeatures, WATER_LEVEL, type Terrain } from './terrain';
 
 /**
  * Corruption by zones (spec §3): purple patches of the forest, seeded like everything else.
@@ -53,7 +58,104 @@ export function generateZones(terrain: Terrain, seed: number, entrance: { x: num
 export const COAST_ZONES = { firstId: 6, root: 6, r: 16, rootR: 18 } as const;
 
 export function isCoastZone(id: number): boolean {
-  return id >= COAST_ZONES.firstId;
+  return id >= COAST_ZONES.firstId && id < SWAMP_ZONES.firstId;
+}
+
+/**
+ * Swamp zones (Slice 3 §7): fixed ids 10–13. Zone 10 is the Raíz-madre del Pantano in the Laguna Negra;
+ * 11 on a montículo, 12 in open bog, 13 on the Nenúfares shore.
+ */
+export const SWAMP_ZONES = { firstId: 10, root: 10, r: 16, rootR: 18 } as const;
+
+export function isSwampZone(id: number): boolean {
+  return id >= SWAMP_ZONES.firstId && id < MOUNTAIN_ZONES.firstId;
+}
+
+/**
+ * Mountain zones (Slice 4 §6): fixed ids 14–17. Zone 14 is the Raíz-madre de la Montaña at a fixed
+ * point (x −70, 140 m north of the rim) where the cave mouth opens (S4-E); 15 on a gentle Faldas
+ * meadow, 16 at the foot of pared 0 (forest side), 17 on the high snowfield.
+ */
+export const MOUNTAIN_ZONES = { firstId: 14, root: 14, r: 16, rootR: 18, rootX: -70, rootD: 140, gentle: 20 } as const;
+
+export function isMountainZone(id: number): boolean {
+  return id >= MOUNTAIN_ZONES.firstId && id < CORRUPT_ZONES.firstId;
+}
+
+/**
+ * Tierras Corruptas zones (Slice 5 §6): fixed ids 18–21. 18 = la Torre's foot (r 30, cleansed only when
+ * El Marchito falls); 19–21 sit on the Enredadera, Viento (the lake's middle) and Fuego Pilares-raíz and
+ * clean when their pillar breaks. The Piedra pillar has no zone of its own.
+ */
+export const CORRUPT_ZONES = { firstId: 18, tower: 18, towerR: 30, r: 18 } as const;
+
+export function isCorruptLandZone(id: number): boolean {
+  return id >= CORRUPT_ZONES.firstId;
+}
+
+/** The zone a broken pillar cleans (19–21), or null (Piedra). */
+export function pillarZone(pillar: number): number | null {
+  return pillar < 3 ? CORRUPT_ZONES.firstId + 1 + pillar : null;
+}
+
+export function generateCorruptZones(seed: number): Zone[] {
+  const s = pillarSites(seed);
+  const { r } = CORRUPT_ZONES;
+  return [
+    { id: 18, x: TOWER.x, z: TOWER.z, r: CORRUPT_ZONES.towerR },
+    { id: 19, x: s.cores[0]!.x, z: s.cores[0]!.z, r },
+    { id: 20, x: s.anchor.x, z: s.anchor.z, r },
+    { id: 21, x: s.cores[2]!.x, z: s.cores[2]!.z, r },
+  ];
+}
+
+export function generateMountainZones(terrain: Terrain, seed: number): Zone[] {
+  const { r, rootR, rootX, rootD, gentle } = MOUNTAIN_ZONES;
+  const root: Zone = { id: 14, x: rootX, z: -HALF - rootD, r: rootR };
+  const p = mountainFeatures(seed).paredes[0]!;
+  const foot = p.rt + p.w;
+  // 16: pared 0's foot, the side facing the forest (+z).
+  const z16: Zone = { id: 16, x: p.x, z: Math.min(p.z + foot, -HALF - r - 2), r };
+  const clear = (x: number, z: number, others: Zone[]) => others.every((o) => Math.hypot(o.x - x, o.z - z) >= o.r + r);
+  const rng = createRng(seed ^ 0x40e7a);
+  const gentleSpot = (id: number, d0: number, d1: number, others: Zone[]): Zone => {
+    for (let tries = 0; tries < 1500; tries++) {
+      const x = MOUNTAINS.x0 + 30 + rng() * (MOUNTAINS.x1 - MOUNTAINS.x0 - 60);
+      const z = -HALF - (d0 + rng() * (d1 - d0));
+      if (slopeAt(terrain, x, z) < gentle && clear(x, z, others)) return { id, x, z, r };
+    }
+    return { id, x: -rootX, z: -HALF - (d0 + d1) / 2, r };
+  };
+  const z15 = gentleSpot(15, 45, 100, [root, z16]);
+  const z17 = gentleSpot(17, 150, 195, [root, z15, z16]);
+  return [root, z15, z16, z17];
+}
+
+export function generateSwampZones(terrain: Terrain, seed: number): Zone[] {
+  const { r, rootR } = SWAMP_ZONES;
+  const root: Zone = { id: 10, x: LAGUNA.x, z: LAGUNA.z, r: rootR };
+  const shore = generateSwampShrines(terrain, seed)[1]!.parts[0]!;
+  const z13: Zone = { id: 13, x: shore.x, z: shore.z, r };
+  const clear = (x: number, z: number, others: Zone[]) => others.every((o) => Math.hypot(o.x - x, o.z - z) >= o.r + r);
+  // 11: the dry montículo farthest from the Laguna that keeps clear of the others.
+  let z11: Zone = { id: 11, x: SWAMP.x0 + 60, z: SWAMP.z0 + 40, r };
+  let far = -1;
+  for (const m of swampFeatures(seed).mounds) {
+    const d = Math.hypot(m.x - LAGUNA.x, m.z - LAGUNA.z);
+    if (d > far && terrain.heightAt(m.x, m.z) > WATER_LEVEL && clear(m.x, m.z, [root, z13])) [far, z11] = [d, { id: 11, x: m.x, z: m.z, r }];
+  }
+  // 12: a seeded point of open bog.
+  const rng = createRng(seed ^ 0x5a2e0);
+  let z12: Zone = { id: 12, x: (SWAMP.x0 + SWAMP.x1) / 2, z: (SWAMP.z0 + LAGUNA.z) / 2, r };
+  for (let tries = 0; tries < 800; tries++) {
+    const x = SWAMP.x0 + 25 + rng() * 110;
+    const z = SWAMP.z0 + 25 + rng() * (SWAMP.z1 - SWAMP.z0 - 50);
+    if (inSwamp(x, z) && inBog(terrain, x, z) && clear(x, z, [root, z11, z13])) {
+      z12 = { id: 12, x, z, r };
+      break;
+    }
+  }
+  return [root, z11, z12, z13];
 }
 
 export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
@@ -77,9 +179,9 @@ export function generateCoastZones(terrain: Terrain, seed: number): Zone[] {
   ];
 }
 
-/** Forest zones then coast zones: the one list client and server share. */
+/** Forest, coast, swamp, mountain and Tierras zones: the one list client and server share. */
 export function allZones(terrain: Terrain, seed: number, entrance: { x: number; z: number }): Zone[] {
-  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed)];
+  return [...generateZones(terrain, seed, entrance), ...generateCoastZones(terrain, seed), ...generateSwampZones(terrain, seed), ...generateMountainZones(terrain, seed), ...generateCorruptZones(seed)];
 }
 
 /** Extra raid brutes: +1 per 2 corrupt coast zones while the coast Raíz-madre (zone 6) is corrupt. */

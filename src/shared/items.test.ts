@@ -36,11 +36,37 @@ describe('aventura structures', () => {
 });
 
 describe('weapon upgrade', () => {
-  it('adds 15 % per level, up to 3', async () => {
-    const { weaponMult, UPGRADE } = await import('./items');
+  it('adds 15 % per level, up to 6 (S4: levels 4–5 cost quartz; S5: level 6 black thorns)', async () => {
+    const { weaponMult, UPGRADE, upgradeCost, ITEM_LABELS } = await import('./items');
+    const { NAMES } = await import('./names');
     expect(weaponMult(0)).toBe(1);
     expect(weaponMult(3)).toBeCloseTo(1.45, 6);
-    expect(weaponMult(9)).toBeCloseTo(1.45, 6);
+    expect(weaponMult(5)).toBeCloseTo(1.75, 6);
+    expect(weaponMult(6)).toBeCloseTo(1.9, 6);
+    expect(weaponMult(9)).toBeCloseTo(1.9, 6);
     expect(UPGRADE.cost.pearl).toBe(3);
+    expect(upgradeCost(2).pearl).toBe(3);
+    expect(upgradeCost(3)).toEqual({ quartz: 3, stone: 10, wood: 5 });
+    expect(upgradeCost(4).quartz).toBe(3);
+    expect(upgradeCost(5)).toEqual({ thorn: 6, quartz: 3, stone: 10 });
+    expect(UPGRADE.max).toBe(6);
+    expect(ITEM_LABELS.thorn).toBe('Espinas negras');
+    expect(ITEM_LABELS.thorn.toLowerCase()).toContain(NAMES.thorn.split(' ')[0]!);
+    expect(ITEM_LABELS.quartz.toLowerCase()).toBe(NAMES.quartz);
+  });
+});
+
+describe('Capa de corteza', () => {
+  it('takes 10 % off per level, up to 4: amber, then black thorns (S5)', async () => {
+    const { capaMult, capaCost, CAPA, ITEM_LABELS } = await import('./items');
+    const { NAMES } = await import('./names');
+    expect(capaMult(0)).toBe(1);
+    expect(capaMult(3)).toBeCloseTo(0.7, 6);
+    expect(capaMult(4)).toBeCloseTo(0.6, 6);
+    expect(capaMult(9)).toBeCloseTo(0.6, 6);
+    expect(capaCost(2)).toEqual(CAPA.cost);
+    expect(capaCost(3)).toEqual({ thorn: 4, amber: 2 });
+    expect(CAPA.cost).toEqual({ amber: 3, wood: 10, berries: 5 });
+    expect(ITEM_LABELS.amber.toLowerCase()).toBe(NAMES.amber);
   });
 });

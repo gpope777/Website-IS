@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { coastFeatures, createTerrain, HALF, WATER_LEVEL } from './terrain';
-import { allZones, coastRaidBrutes, CORRUPTION, generateCoastZones, generateZones, isCoastZone, nearestZone, raidDirFrom, taintAt, zoneAt } from './corruption';
+import { pillarSites } from './pillars';
+import { TOWER } from './corrupt-lands';
+import { allZones, CORRUPT_ZONES, generateCorruptZones, isCorruptLandZone, pillarZone, coastRaidBrutes, CORRUPTION, generateCoastZones, generateSwampZones, generateMountainZones, generateZones, isCoastZone, isMountainZone, isSwampZone, MOUNTAIN_ZONES, nearestZone, raidDirFrom, SWAMP_ZONES, taintAt, zoneAt, type Zone } from './corruption';
+import { inBog } from './swamp';
+import { generateSwampShrines } from './swamp-shrines';
+import { inCorrupt, inMountains, inSwamp, LAGUNA, mountainDepth, mountainFeatures, swampFeatures } from './terrain';
+import { slopeAt } from './mountains';
 
 describe('corruption zones', () => {
   for (const seed of [1, 42, 777, 2026]) {
@@ -50,7 +56,7 @@ describe('coast corruption zones (S2-D)', () => {
       const all = allZones(t, seed, e);
       expect(all.slice(0, forest.length)).toEqual(forest);
       const coast = generateCoastZones(t, seed);
-      expect(all.slice(forest.length)).toEqual(coast);
+      expect(all.slice(forest.length, forest.length + 4)).toEqual(coast); // Rule change (S3-D): swamp zones follow.
       expect(coast.map((z) => z.id)).toEqual([6, 7, 8, 9]);
       const { island, islets } = coastFeatures(seed);
       expect(coast[0]!.x).toBeCloseTo(island.x);
@@ -77,4 +83,93 @@ describe('coast corruption zones (S2-D)', () => {
     expect(coastRaidBrutes([7, 8, 9])).toBe(0);
     expect(coastRaidBrutes([0, 1])).toBe(0);
   });
+});
+
+describe('swamp corruption zones (S3-D)', () => {
+  for (const seed of [1, 42, 777, 2026]) {
+    it(`seed ${seed}: ids 10–13, root in the Laguna, mound, bog, Nenúfares shore; no overlap`, () => {
+      const t = createTerrain(seed);
+      const all = allZones(t, seed, { x: 100, z: -60 });
+      const sw = all.filter((z) => isSwampZone(z.id));
+      expect(sw.map((z) => z.id)).toEqual([10, 11, 12, 13]);
+      expect(all.slice(-12, -8)).toEqual(sw); // Rule change (S4-D, S5-C): mountain and Tierras zones follow.
+      expect(generateSwampZones(t, seed)).toEqual(sw);
+      const [z10, z11, z12, z13] = sw as [Zone, Zone, Zone, Zone];
+      expect(Math.hypot(z10.x - LAGUNA.x, z10.z - LAGUNA.z)).toBeLessThan(1);
+      expect(z10.r).toBe(SWAMP_ZONES.rootR);
+      const { mounds } = swampFeatures(seed);
+      expect(mounds.some((m) => Math.hypot(m.x - z11.x, m.z - z11.z) < m.r)).toBe(true);
+      expect(t.heightAt(z11.x, z11.z)).toBeGreaterThan(WATER_LEVEL);
+      expect(inBog(t, z12.x, z12.z)).toBe(true);
+      const shore = generateSwampShrines(t, seed)[1]!.parts[0]!;
+      expect(Math.hypot(z13.x - shore.x, z13.z - shore.z)).toBeLessThan(4);
+      for (const z of sw) expect(inSwamp(z.x, z.z)).toBe(true);
+      for (const a of sw) for (const b of sw) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(a.r + b.r);
+    });
+  }
+
+  it('swamp ids are not coast ids; swamp zones add no coast brutes', () => {
+    expect(isCoastZone(10)).toBe(false);
+    expect(isCoastZone(9)).toBe(true);
+    expect(isSwampZone(10)).toBe(true);
+    expect(isSwampZone(9)).toBe(false);
+    expect(coastRaidBrutes([6, 7, 10, 11])).toBe(1);
+  });
+});
+
+describe('mountain corruption zones (S4-D)', () => {
+  for (const seed of [1, 42, 777, 2026]) {
+    it(`seed ${seed}: ids 14–17, root fixed, meadow, pared foot, snowfield; no overlap`, () => {
+      const t = createTerrain(seed);
+      const all = allZones(t, seed, { x: 100, z: -60 });
+      const mz = all.filter((z) => isMountainZone(z.id));
+      expect(mz.map((z) => z.id)).toEqual([14, 15, 16, 17]);
+      expect(all.slice(-8, -4)).toEqual(mz); // Rule change (S5-C): Tierras zones follow.
+      expect(generateMountainZones(t, seed)).toEqual(mz);
+      const [z14, z15, z16, z17] = mz as [Zone, Zone, Zone, Zone];
+      expect(z14.x).toBe(MOUNTAIN_ZONES.rootX);
+      expect(mountainDepth(z14.z)).toBe(MOUNTAIN_ZONES.rootD);
+      expect(z14.r).toBe(MOUNTAIN_ZONES.rootR);
+      for (const z of mz) expect(inMountains(z.x, z.z)).toBe(true);
+      expect(mountainDepth(z15.z)).toBeGreaterThanOrEqual(45);
+      expect(mountainDepth(z15.z)).toBeLessThanOrEqual(100);
+      expect(slopeAt(t, z15.x, z15.z)).toBeLessThan(20);
+      expect(mountainDepth(z17.z)).toBeGreaterThanOrEqual(150);
+      expect(mountainDepth(z17.z)).toBeLessThanOrEqual(195);
+      expect(slopeAt(t, z17.x, z17.z)).toBeLessThan(20);
+      const p = mountainFeatures(seed).paredes[0]!;
+      expect(Math.abs(Math.hypot(z16.x - p.x, z16.z - p.z) - (p.rt + p.w))).toBeLessThan(4);
+      for (const a of mz) for (const b of mz) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(a.r + b.r);
+    });
+  }
+
+  it('mountain ids are not swamp ids', () => {
+    expect(isSwampZone(14)).toBe(false);
+    expect(isSwampZone(13)).toBe(true);
+    expect(isMountainZone(14)).toBe(true);
+    expect(isMountainZone(13)).toBe(false);
+    expect(isMountainZone(18)).toBe(false);
+    expect(isCorruptLandZone(18)).toBe(true);
+    expect(isCorruptLandZone(17)).toBe(false);
+  });
+});
+
+describe('Tierras corruption zones (S5-C)', () => {
+  for (const seed of [1, 42, 777, 2026]) {
+    it(`seed ${seed}: ids 18–21 on the tower and three pillars`, () => {
+      const t = createTerrain(seed);
+      const all = allZones(t, seed, { x: 100, z: -60 });
+      const cz = all.slice(-4);
+      expect(cz.map((z) => z.id)).toEqual([18, 19, 20, 21]);
+      expect(cz).toEqual(generateCorruptZones(seed));
+      expect(cz[0]).toEqual({ id: 18, x: TOWER.x, z: TOWER.z, r: CORRUPT_ZONES.towerR });
+      const s = pillarSites(seed);
+      expect(cz[1]).toMatchObject(s.cores[0]!);
+      expect(cz[2]).toMatchObject(s.anchor);
+      expect(cz[3]).toMatchObject(s.cores[2]!);
+      for (const z of cz) expect(inCorrupt(z.x, z.z)).toBe(true);
+      for (const a of cz) for (const b of cz) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(a.r + b.r);
+      expect([0, 1, 2, 3].map(pillarZone)).toEqual([19, 20, 21, null]);
+    });
+  }
 });

@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { creatureMesh, setRig } from './creature-mesh';
+import { deerPose } from './creature-rig';
+import type { RigUniforms } from './patches';
+import { DropInPuppet } from '../actors/drop-in-puppet';
+import type { ModelKit } from '../actors/models';
 
-const HIDE = new THREE.MeshLambertMaterial({ color: 0x8a5a33, flatShading: true });
-const BELLY = new THREE.MeshLambertMaterial({ color: 0xd9c3a0, flatShading: true });
-const HORN = new THREE.MeshLambertMaterial({ color: 0xefe6d2, flatShading: true });
 const WILD_GLOW = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.25, depthWrite: false });
 
 export interface SteedPose {
@@ -22,18 +24,29 @@ export interface SteedPose {
 
 interface Deer {
   root: THREE.Group;
-  body: THREE.Group;
-  legs: THREE.Object3D[];
-  head: THREE.Group;
+  rig: RigUniforms;
+  puppet: DropInPuppet | null;
   phase: number;
+  seed: number;
 }
 
-/** El Ciervo: a giant deer made of boxes (a drawing can replace it later). One per pose key. */
+/** El Ciervo: a low-poly deer, one mesh, legs/head/tail turned in the vertex shader (V2-E). One per pose key. */
 export class SteedMeshes {
   readonly group = new THREE.Group();
   private readonly byKey = new Map<string, Deer>();
 
-  constructor(private readonly shadows: boolean) {}
+  /** V2-E: `kit` = a dropped-in `deer.glb` (spec §9); null → the procedural one. */
+  constructor(
+    private readonly shadows: boolean,
+    private kit: ModelKit | null = null,
+  ) {}
+
+  /** A drop-in model arrived after the world was built: redraw every one with it. */
+  setKit(kit: ModelKit | null): void {
+    this.kit = kit;
+    for (const v of this.byKey.values()) v.root.removeFromParent();
+    this.byKey.clear();
+  }
 
   sync(poses: readonly SteedPose[], dt: number, now: number): void {
     const seen = new Set<string>();
@@ -48,11 +61,8 @@ export class SteedMeshes {
       d.root.position.set(p.x, p.y, p.z);
       d.root.rotation.y = p.yaw;
       d.phase += dt * Math.min(p.speed, 14) * 1.6;
-      const swing = p.speed > 0.3 ? Math.sin(d.phase) * 0.6 : 0;
-      d.legs.forEach((l, i) => (l.rotation.x = i % 3 === 0 ? swing : -swing));
-      d.head.rotation.x = p.speed > 0.3 ? 0 : 0.35 + Math.sin(now * 0.8 + p.x) * 0.25; // grazing when still
-      d.body.rotation.x = p.bucking ? Math.sin(now * 9) * 0.35 : 0;
-      d.body.position.y = p.bucking ? Math.abs(Math.sin(now * 9)) * 0.3 : 0;
+      if (d.puppet) d.puppet.update(dt, p.speed);
+      else setRig(d.rig, deerPose(d.phase, p.speed, p.bucking, now, d.seed));
     }
     for (const [k, d] of this.byKey) {
       if (seen.has(k)) continue;
@@ -63,41 +73,14 @@ export class SteedMeshes {
 
   private make(wild: boolean): Deer {
     const root = new THREE.Group();
-    const body = new THREE.Group();
-    root.add(body);
-    const box = (w: number, h: number, l: number, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = body) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), mat);
-      m.position.set(x, y, z);
-      m.castShadow = this.shadows;
-      parent.add(m);
-      return m;
-    };
-    box(0.8, 0.7, 1.8, HIDE, 0, 1.25, 0);
-    box(0.7, 0.2, 1.5, BELLY, 0, 0.92, 0);
-    const legs: THREE.Object3D[] = [];
-    for (const [x, z] of [[-0.28, 0.65], [0.28, 0.65], [-0.28, -0.65], [0.28, -0.65]] as const) {
-      const hip = new THREE.Group();
-      hip.position.set(x, 1.0, z);
-      body.add(hip);
-      box(0.16, 1.0, 0.16, HIDE, 0, -0.5, 0, hip);
-      legs.push(hip);
-    }
-    const head = new THREE.Group();
-    head.position.set(0, 1.5, 0.85);
-    body.add(head);
-    box(0.3, 0.8, 0.3, HIDE, 0, 0.35, 0.1, head).rotation.x = -0.4;
-    box(0.36, 0.34, 0.6, HIDE, 0, 0.75, 0.35, head);
-    for (const s of [-1, 1]) {
-      box(0.06, 0.6, 0.06, HORN, s * 0.14, 1.15, 0.25, head).rotation.z = s * -0.4;
-      box(0.06, 0.06, 0.4, HORN, s * 0.26, 1.3, 0.3, head);
-      box(0.06, 0.35, 0.06, HORN, s * 0.35, 1.45, 0.15, head).rotation.z = s * -0.5;
-    }
-    box(0.2, 0.2, 0.2, BELLY, 0, 1.45, -0.95); // tail
+    const c = creatureMesh('deer', this.shadows);
+    const puppet = this.kit ? new DropInPuppet(this.kit, 'deer', this.shadows) : null;
+    root.add(puppet ? puppet.root : c.mesh);
     if (wild) {
       const halo = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.05, 20), WILD_GLOW);
       halo.position.y = 0.05;
       root.add(halo);
     }
-    return { root, body, legs, head, phase: 0 };
+    return { root, rig: c.rig, puppet, phase: 0, seed: Math.random() * 6 };
   }
 }

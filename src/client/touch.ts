@@ -22,6 +22,10 @@ export interface TouchHandlers {
   /** A momentary action, expressed as a KeyboardEvent.code so it shares the keyboard path. */
   onAction: (code: string) => void;
   onPause: () => void;
+  /** P7-C: 🎒 opens the bag. */
+  onBag?: () => void;
+  /** P7-D: a dotted pill was tapped. */
+  onPillSeen?: (i: number) => void;
 }
 
 interface ButtonDef {
@@ -43,7 +47,7 @@ const PILL_BUTTONS: ButtonDef[] = [
   { code: 'KeyB', label: '🔥', sub: 'fogata', cls: 'pill' },
   { code: 'KeyV', label: '🧱', sub: 'muro', cls: 'pill' },
   { code: 'KeyG', label: '🌳', sub: 'corazón', cls: 'pill' },
-  // Places the trap chosen in the Menú (estacas / red de raíces); T and Y place each directly.
+  // Places the trap chosen in the Menú (estacas / red de raíces / hoguera); T, Y and U place each directly.
   { code: 'TouchTrap', label: '🗡️', sub: 'trampa', cls: 'pill' },
   { code: 'KeyQ', label: '🌀', sub: 'rodar', cls: 'pill' },
   { code: 'KeyZ', label: '🛡️', sub: 'bloquear', cls: 'pill', hold: 'block' },
@@ -75,6 +79,9 @@ export class TouchControls {
   private stickCentre = { x: 0, y: 0 };
 
   private powerPill: HTMLElement | null = null;
+  private readonly pills: HTMLElement[] = [];
+  private menuBtn: HTMLElement | null = null;
+  private actBtn: HTMLElement | null = null;
 
   constructor(parent: HTMLElement, private readonly input: InputState, private readonly h: TouchHandlers) {
     this.root = div('touch-layer');
@@ -96,22 +103,39 @@ export class TouchControls {
     this.stickBase.addEventListener('pointercancel', this.onStickUp);
 
     const actions = div('touch-actions');
-    for (const b of ACTION_BUTTONS) actions.appendChild(this.button(b));
+    for (const b of ACTION_BUTTONS) {
+      const el = this.button(b);
+      if (b.code === 'KeyE') this.actBtn = el;
+      actions.appendChild(el);
+    }
 
     const pills = div('touch-pills');
     for (const b of PILL_BUTTONS) {
       const el = this.button(b);
       if (b.code === 'KeyH') this.powerPill = el;
+      const i = this.pills.length;
+      // P7-D: the "new" dot goes on the first tap.
+      el.addEventListener('pointerdown', () => {
+        if (el.classList.contains('new')) this.h.onPillSeen?.(i);
+      });
+      this.pills.push(el);
       pills.appendChild(el);
     }
 
     const system = div('touch-system');
-    const menu = this.button({ code: '', label: 'MENÚ', cls: 'sys' });
+    const menu = this.button({ code: '', label: 'MENÚ', cls: 'sys menu-btn' });
+    this.menuBtn = menu;
     menu.addEventListener('pointerup', (e) => {
       e.preventDefault();
       h.onPause();
     });
-    system.appendChild(menu);
+    const bag = this.button({ code: '', label: '🎒', cls: 'sys bag-btn' });
+    bag.setAttribute('aria-label', 'Mochila');
+    bag.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      h.onBag?.();
+    });
+    system.append(menu, bag);
 
     this.root.append(look, this.stickBase, actions, pills, system);
 
@@ -139,13 +163,40 @@ export class TouchControls {
     if (e.cancelable) e.preventDefault();
   };
 
-  /** Clear every held flag, e.g. when the game pauses or a menu opens. */
+  /** P7-C: show the pills by progress; a hidden one keeps its slot (the grid never reorders). */
+  setPills(shown: readonly boolean[]): void {
+    this.pills.forEach((p, i) => {
+      const hide = !shown[i];
+      if (p.classList.contains('gone') !== hide) p.classList.toggle('gone', hide);
+    });
+  }
+
+  /** P7-D: "new" dots on MENÚ and on pills that just appeared. */
+  setDots(menu: boolean, pills: readonly boolean[]): void {
+    this.menuBtn?.classList.toggle('new', menu);
+    this.pills.forEach((p, i) => {
+      const on = !!pills[i];
+      if (p.classList.contains('new') !== on) p.classList.toggle('new', on);
+    });
+  }
+
+  /** P7-F: the tutorial's glowing controls: 'act' (A), 'stick', or pill slots by index. */
+  setHint(act: boolean, stick: boolean, pills: readonly boolean[]): void {
+    const set = (e: HTMLElement | null, on: boolean) => {
+      if (e && e.classList.contains('hint') !== on) e.classList.toggle('hint', on);
+    };
+    set(this.actBtn, act);
+    set(this.stickBase, stick);
+    this.pills.forEach((p, i) => set(p, !!pills[i]));
+  }
+
   /** The power pill's icon follows the chosen power. */
   setPowerIcon(icon: string): void {
     const span = this.powerPill?.querySelector('span');
     if (span) span.textContent = icon;
   }
 
+  /** Clear every held flag, e.g. when the game pauses or a menu opens. */
   release(): void {
     this.stickPointer = null;
     this.lookPointer = null;

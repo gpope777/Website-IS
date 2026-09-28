@@ -1,7 +1,16 @@
+import { TOWER_DUNGEON } from '../tower-dungeon';
 import { describe, expect, it } from 'vitest';
 import { DUNGEON } from '../dungeon';
-import { createElite, ELITE, stepElite } from './elite';
+import { createElite, createRockBrute, ELITE, rockFront, stepElite } from './elite';
+import { MOUNTAIN_DUNGEON } from '../mountain-dungeon';
 import { ENEMY } from './wolves';
+import { MARCHITO } from './marchito';
+import { ANTENON } from './antenon';
+import { ZANCUDO } from './zancudo';
+import { CUCURUCHO } from './cucurucho';
+import { FINAL } from './marchito-final';
+import { BOSS } from './boss';
+import { RESCUE } from '../rescue';
 
 const t = (x: number, z: number, dead = false) => ({ name: 'Ana', x, z, dead, fires: false });
 
@@ -89,5 +98,35 @@ describe('the bruto escudado (S2-F)', () => {
     stepElite(e, [], ELITE.exposedFor + 0.1);
     expect(e.exposed).toBe(0);
     expect(shieldBlocks(createElite(), 0, 0)).toBe(false);
+  });
+});
+
+describe('special enemy ids', () => {
+  it('are all distinct (and above any wolf id a world will reach)', () => {
+    const ids = [BOSS.id, MARCHITO.id, ELITE.id, ELITE.shieldId, ELITE.peatId, ELITE.rockId, ANTENON.id, ZANCUDO.id, CUCURUCHO.id, RESCUE.anchorIdBase, RESCUE.anchorIdBase + 1, RESCUE.anchorIdBase + 2, TOWER_DUNGEON.flechaId, FINAL.id, FINAL.coreId, ...FINAL.broteIds];
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids.slice(1)) expect(id).toBeGreaterThanOrEqual(900_000);
+  });
+});
+
+describe('bruto de roca (S4-E)', () => {
+  it('stands in its room with 500 PV; its slab covers the front until exposed', () => {
+    const e = createRockBrute();
+    expect(e).toMatchObject({ id: ELITE.rockId, kind: 'elite4', hp: ENEMY.elite4.hp, x: MOUNTAIN_DUNGEON.x });
+    e.yaw = 0; // facing +z
+    expect(rockFront(e, e.x, e.z + 2)).toBe(true);
+    expect(rockFront(e, e.x, e.z - 2)).toBe(false);
+    e.exposed = 1;
+    expect(rockFront(e, e.x, e.z + 2)).toBe(false);
+  });
+
+  it('a charge into the wall stuns and exposes it', () => {
+    const e = createRockBrute();
+    e.z = MOUNTAIN_DUNGEON.bossRoomZ - 3;
+    Object.assign(e, { charge: 0.9, dirX: 0, dirZ: 1, chargeReady: 0 });
+    for (let i = 0; i < 5 && e.stun === 0; i++) stepElite(e, [t(e.x, e.z - 8)], 0.1);
+    expect(e.stun).toBe(ELITE.wallStun);
+    expect(e.exposed).toBe(ELITE.wallStun);
+    expect(e.charge).toBe(0);
   });
 });

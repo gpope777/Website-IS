@@ -55,3 +55,12 @@ describe('the giant fish', () => {
     expect(fishFloor(t, deep.x, deep.z)).toBeLessThan(WATER_LEVEL - 4);
   });
 });
+
+describe('P7-E balance', () => {
+  it('8 s between rings: the widest gap, swum plainly (2.2 m/s), leaves > 2 s to turn', async () => {
+    const { FISH } = await import('./fish');
+    const { SPEED } = await import('../client/movement');
+    expect(FISH.ringTime).toBe(8);
+    expect(FISH.ringTime - (FISH.ringGap[1] - FISH.ringR) / SPEED.swim).toBeGreaterThan(2);
+  });
+});
