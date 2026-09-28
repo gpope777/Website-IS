@@ -1506,3 +1506,20 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, con auriculares y con altavoz): ¿se oye el aviso del lobo antes del mordisco, también con el lobo a tu espalda? ¿Algún sonido cansa en 10 min (pasos, tintineo de avisos, grillos)? Silenciar con `.` y desde el Menú; bajar Ambiente a 0. En el iPhone: interruptor de silencio puesto → ¿sale el aviso? Volver de otra app → ¿vuelve el sonido? Dejar un `musica-bosque.ogg` en `public/audio/` y ver que entra con fundido.
 - Lo siguiente: P7-C UI / UX.
+
+## Pulido · P7-C — UI y textos: qty(), HUD de móvil, 🎒, avisos agrupados, Menú con pestañas y Ayuda por temas — HECHO
+- Plan: `docs/superpowers/plans/2026-09-28-pulido-P7-C-ui-textos.md`.
+- Commits: d6a6527 (plan), 9625cc3 (T1 `qty()`/`costText` y barrido de plurales), 8e83930 (T2 modelos puros `hud-model.ts`, `menu-ui.ts`, ajustes nuevos), 2d16c47 (T3 HUD de móvil: zonas seguras, 🎒, avisos ≤ 3 con ×N, pastillas por progreso, panel de muerte), 72db21a (T4 Menú con pestañas), y este texto.
+- Un reinicio del contenedor cortó T4 a medias; el trabajo sin commit (Menú con pestañas en `hud.ts`, `openMenu()` en `game.ts`, estilos) era coherente con T4 y se terminó: el botón de cámara ahora alterna bien su texto tras varios toques, y la fila de ámbar en la 🎒 ya no dice "de ámbar" (test nuevo).
+- Tests: npm test 1339 (antes 1309), test:workers 12, check + build verdes. Tests actualizados por texto cambiado a propósito: los que fijaban "1 perlas" (T1). Sin cambios de protocolo, balance ni reglas.
+- Rendimiento: baja 20 lecturas, **igual que la base** y dentro del presupuesto. `baseline.json` sin tocar.
+- Capturas (Chromium headless, táctil, 390×844 y 844×390): HUD, 🎒 y las cinco pestañas. Sin solapes vistos; en vertical Ajustes se desplaza (es largo), en apaisado se oculta el título "Menú" para ganar alto. Sin errores de página.
+- Decidido por Claude — revisar:
+  - Pestañas: Jugar (Seguir, 🎒, viajes, llamadas, trampa, asedios, puestos) · Libro (Libro, Oficios, Aspecto) · Ajustes (calidad, cámara, sensibilidad 0,5–2, sacudida, vibración, sonido, tamaño de texto, marcas de forma) · Ayuda (tarjetas según lo visto y el dispositivo) · Salir (con confirmación).
+  - El Menú recuerda la última pestaña (`bosque.settings.tab`). Libro, Oficios, Aspecto y Puestos vuelven al Menú con "Volver".
+  - En PC la 🎒 está en Menú › Jugar; no hay tecla nueva.
+  - Los textos largos de ayuda del Menú viejo se sustituyen por las tarjetas de Ayuda: solo sale lo que ya has visto (nada del Pantano antes de entrar).
+- NO verificado: panel de muerte en captura (no hay forma limpia de morir en el arnés); en un teléfono real (muescas, iOS Safari); tamaño de texto Grande en todas las pantallas.
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono): abrir Menú, cambiar de pestaña, cerrar y volver (¿recuerda la pestaña?). Ajustes › Tamaño de texto Grande: ¿cabe todo? Sensibilidad al mínimo y al máximo. 🎒 con cosas. Ayuda con un sobrino nuevo: ¿solo Moverse? Morir: ¿se entiende la causa y el botón?
+- Lo siguiente: lo que diga Gabriel.
