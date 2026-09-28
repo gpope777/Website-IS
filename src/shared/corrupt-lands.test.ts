@@ -144,3 +144,16 @@ describe('espinas negras from the Tierras (S5 §7.2–7.3)', () => {
     expect(ASH.rayoCap).toBe(8);
   });
 });
+
+describe('P7-E: the land mount is called by its name', () => {
+  it('with la Estrella the call and the "none" say Estrella, never ciervo', async () => {
+    const { callText, callNone, landMount, CALL_TEXT } = await import('./corrupt-lands');
+    expect(landMount(true)).toBe('la Estrella');
+    expect(landMount(false)).toBe('el ciervo');
+    expect(callText('deer', true)).toContain('Estrella');
+    expect(callText('deer', true)).not.toContain('ciervo');
+    expect(callText('deer', false)).toBe(CALL_TEXT.deer);
+    expect(callText('frog', true)).toBe(CALL_TEXT.frog);
+    expect(callNone('deer', false)).toBe('No tienes ciervo');
+  });
+});

@@ -27,7 +27,7 @@ import { generateWild, inZone, MOUNT, ringAngle } from '../mount';
 import { FISH, fishFloor, fishRings, fishStepOk, wildFish } from '../fish';
 import { FROG, frogMoveOk, frogPads, wildFrog } from '../frog';
 import { slideMoveOk, SNOWSLIDE } from '../snowslide';
-import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, withGrieta, towerHeight, TOWER as VILLAIN_TOWER, ASH, CALL_NONE, CALL_TEXT, callSpot, thornDrop } from '../corrupt-lands';
+import { FOG_EDGE_TEXT, fogText, missingRoot, rimCrossBlocked, withGrieta, towerHeight, TOWER as VILLAIN_TOWER, ASH, callNone, callText, callSpot, thornDrop } from '../corrupt-lands';
 import { AIR, clawReach, DRAGON, dragonOut, guardTarget, dragonPos, FOG_TEXT, inFog, leapOk, picoOf, type PicoCircle } from '../dragon';
 import { AMBER, generateAmberTrees, generateSwampShrines, lilyPadCrags, SWAMP_SHRINE, type AmberTree } from '../swamp-shrines';
 import { canTame, seatOffset, WHALE, whaleStepOk, whaleWidth, wildWhale } from '../whale';
@@ -1760,10 +1760,10 @@ export class WorldSim {
     if (!f || p.dead || inAnyDungeon(p.x, p.z) || Math.hypot(f.x - p.x, f.z - p.z) > FOGATA.reach) return;
     if (!lit && !this.fogatas[FOGATA.ceniza]) return this.tell(p.name, `Esa ${NAMES.fogata} sigue apagada`);
     const key = beast === 'deer' ? 'steed' : beast;
-    if (!p[key]) return this.tell(p.name, CALL_NONE[beast]);
+    if (!p[key]) return this.tell(p.name, callNone(beast, !!p.star));
     if ((beast === 'deer' && l.riding) || (beast === 'frog' && l.frog) || (beast === 'fish' && l.fish)) return;
     p[key] = callSpot(beast, f, corruptFeatures(this.seed).lake);
-    this.tell(p.name, CALL_TEXT[beast]);
+    this.tell(p.name, callText(beast, !!p.star));
   }
 
   /** Channels land after 5 s; damage, drifting, mounting, death or night stop them. */

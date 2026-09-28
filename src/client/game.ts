@@ -108,7 +108,7 @@ import { buyHtml, nextItem, stallAction, stallHtml, stallListHtml } from './stal
 import { addLine, bumpLine, cycleLine, tradeHtml, tradeTarget } from './trade-ui';
 import { StallMeshes } from './scene/stalls';
 import { MERCHANT, STALL, type Stall, type TradeLine } from '../shared/shop';
-import { CALL_LABEL, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
+import { callLabel, fogataAction, fogataCalls, fogataTargets, swampAction } from './swamp-ui';
 import { quartzAction } from './mountain-ui';
 import { QuartzMeshes } from './scene/quartz';
 import { corniceLedges, generateMountainShrines, generateQuartzVeins, type QuartzVein } from '../shared/mountain-shrines';
@@ -1677,7 +1677,7 @@ export class Game {
         trap: TRAP_LABEL[this.trap],
         fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
         onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
-        calls: this.body ? fogataCalls(this.body, this.fogataSpots, this.fogatasLit, { deer: this.hasSteed, frog: this.hasFrog, fish: this.hasFish }, hasSkill(this.body, 'silbido')).map((beast) => ({ beast, label: CALL_LABEL[beast] })) : [],
+        calls: this.body ? fogataCalls(this.body, this.fogataSpots, this.fogatasLit, { deer: this.hasSteed, frog: this.hasFrog, fish: this.hasFish }, hasSkill(this.body, 'silbido')).map((beast) => ({ beast, label: callLabel(beast, this.hasStar) })) : [],
         onCall: (beast: string) => {
           if (beast === 'deer' || beast === 'frog' || beast === 'fish') this.conn.send({ t: 'call', beast });
         },
@@ -1751,7 +1751,7 @@ export class Game {
       const ma = this.mountAct();
       if (ma?.act === 1) return this.tapRing();
       if (ma) return this.conn.send({ t: 'mount', act: ma.act });
-      return this.hud.toast(this.onFish ? 'Aquí es hondo. Acércate a la orilla' : this.hasSteed ? 'Tu ciervo no está cerca' : 'Aún no tienes montura');
+      return this.hud.toast(this.onFish ? 'Aquí es hondo. Acércate a la orilla' : this.hasSteed ? (this.hasStar ? `${NAMES.legendary.charAt(0).toUpperCase()}${NAMES.legendary.slice(1)} no está cerca` : 'Tu ciervo no está cerca') : 'Aún no tienes montura');
     }
     this.act();
   }

@@ -93,3 +93,14 @@ export const CALL_TEXT: Record<CallBeast, string> = {
   fish: `Silbas. Tu pez ya espera en ${NAMES.blackLake}`,
 };
 export const CALL_NONE: Record<CallBeast, string> = { deer: 'No tienes ciervo', frog: 'No tienes rana', fish: 'No tienes pez' };
+
+/** P7-E: la Estrella replaces the deer (S5-H), so the land mount goes by her name when you have her. */
+export function landMount(star: boolean): string {
+  return star ? NAMES.legendary : 'el ciervo';
+}
+export function callText(beast: CallBeast, star: boolean): string {
+  return beast === 'deer' && star ? `Silbas. ${NAMES.legendary.charAt(0).toUpperCase()}${NAMES.legendary.slice(1)} llega rodando por la ceniza` : CALL_TEXT[beast];
+}
+export function callNone(beast: CallBeast, star: boolean): string {
+  return beast === 'deer' && star ? `No tienes a ${NAMES.legendary}` : CALL_NONE[beast];
+}

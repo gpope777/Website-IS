@@ -60,3 +60,7 @@ export function fogataCalls(pos: { x: number; z: number }, spots: readonly { id:
 }
 
 export const CALL_LABEL: Record<CallBeast, string> = { deer: 'Llamar al ciervo', frog: 'Llamar a la rana', fish: `Llamar al pez (a ${NAMES.blackLake})` };
+/** P7-E: la Estrella answers to her own name. */
+export function callLabel(beast: CallBeast, star: boolean): string {
+  return beast === 'deer' && star ? `Llamar a ${NAMES.legendary}` : CALL_LABEL[beast];
+}

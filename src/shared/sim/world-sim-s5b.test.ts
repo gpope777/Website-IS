@@ -198,6 +198,14 @@ describe('calling mounts at la Ceniza (S5 §4, §7.1)', () => {
     sim.drain();
     return { sim, f, p: sim.getPlayer('Ana')! };
   }
+  it('P7-E: with la Estrella the call names her', async () => {
+    const { sim, p } = await atCeniza();
+    const { callText } = await import('../corrupt-lands');
+    p.steed = { x: 10, z: 10 };
+    p.star = true;
+    sim.handle('Ana', { t: 'call', beast: 'deer' });
+    expect(texts(sim)).toContain(callText('deer', true));
+  });
   it('the deer and the frog come to the ring; the fish to the Lago Negro', async () => {
     const { sim, f, p } = await atCeniza();
     const { corruptFeatures } = await import('../terrain');

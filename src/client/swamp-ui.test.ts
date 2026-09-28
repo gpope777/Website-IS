@@ -78,3 +78,12 @@ describe('fogataCalls (S5-B)', () => {
     expect(fogataCalls({ x: 1, z: 0 }, spots, [false], all, true)).toEqual([]);
   });
 });
+
+describe('P7-E: fogata Menú names la Estrella', () => {
+  it('callLabel', async () => {
+    const { callLabel, CALL_LABEL } = await import('./swamp-ui');
+    expect(callLabel('deer', true)).toBe('Llamar a la Estrella');
+    expect(callLabel('deer', false)).toBe(CALL_LABEL.deer);
+    expect(callLabel('fish', true)).toBe(CALL_LABEL.fish);
+  });
+});
