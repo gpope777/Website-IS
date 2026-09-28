@@ -84,6 +84,9 @@ export interface Wolf {
   kind: EnemyKind;
   /** Seconds left stunned (after a parry). */
   stun: number;
+  /** P7-F: a practice wolf of this learner (outside the world's wolf list); `still` = the step-7 target. */
+  tut?: string;
+  still?: boolean;
   /** Seconds left slowed (standing on spikes): runs at SLOWED × speed. */
   slow?: number;
   /** Speed factor from La Gata Araña's aura (1 or absent: none). */

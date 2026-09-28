@@ -55,7 +55,7 @@ const self = (sim: WorldSim, who: string) => {
 
 describe('Buhonero, biomas y encargos (T6-D, server)', () => {
   it('protocol 62; decoder', () => {
-    expect(PROTOCOL_VERSION).toBe(64);
+    expect(PROTOCOL_VERSION).toBe(65);
     expect(decodeClient('{"t":"deal","id":3}')).toEqual({ t: 'deal', id: 3 });
     for (const id of ['-1', '9', '1.5', '"a"']) expect(decodeClient(`{"t":"deal","id":${id}}`)).toBeNull();
     expect(decodeClient('{"t":"deliver","stall":4,"shelf":1}')).toEqual({ t: 'deliver', stall: 4, shelf: 1 });

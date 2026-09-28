@@ -1,4 +1,5 @@
 import { NAMES, qty } from '../names';
+import { hasProgress, TUT, TUT_DONE, tutAdvance, tutStart, type TutEvent, type TutProgress, type TutState } from '../tutorial';
 import { ECHO, echoLines, pushEcho, zoneWhere, type EchoEvent, type EchoKind } from '../echo';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
@@ -176,6 +177,8 @@ export interface SavedPlayer {
   found?: ItemId[];
   /** T6-D: tratos with the Buhonero on game day `day`. Optional. */
   merchant?: { day: number; used: number };
+  /** P7-F: tutorial step 1–8, 'done' or 'skip'. Optional: absent on old saves (decided at load). */
+  tut?: TutState;
 }
 
 export interface SavedWorld {
@@ -255,6 +258,8 @@ export interface Outgoing {
 }
 
 interface Live {
+  /** P7-F: the tutorial step's counters (live only: a reconnect restarts the step's counters). */
+  tutP?: TutProgress;
   /** P7-A: last `fx` sequence sent to this player, and damage taken since the last snapshot. */
   fxSeq?: number;
   hurt?: number;
@@ -598,6 +603,8 @@ export class WorldSim {
   private outbox: Outgoing[] = [];
   /** T6-C: open trades (live-only). */
   private trades: Trade[] = [];
+  /** P7-F: practice wolves by learner (never in `wolves`: raids, allies, traps and powers don't see them). */
+  private readonly tutWolves = new Map<string, Wolf>();
   /** T6-C: a trade closed: the room saves the row right away. */
   private saveSoon = false;
   private readonly rng: () => number;
@@ -641,6 +648,7 @@ export class WorldSim {
       const f = p.found === undefined ? inferFound(p) : [];
       if (f.length) p.found = f;
     }
+    for (const p of this.players.values()) if (p.tut === undefined && this.played(p)) p.tut = 'skip';
     this.raidLevel = saved.raidLevel ?? 0;
     this.raidN = saved.raidN ?? 0;
     this.swampSeen = saved.swampSeen ?? false;
@@ -703,7 +711,7 @@ export class WorldSim {
   /** New record at world spawn. The room has already checked the PIN. */
   createPlayer(name: string, pinHash: string): SavedPlayer {
     if (this.players.has(name)) throw new Error(`player exists: ${name}`);
-    const p: SavedPlayer = { name, pinHash, x: 0, y: this.terrain.heightAt(0, 0), z: 0, yaw: 0, vitals: createVitals(), inv: {}, dead: false };
+    const p: SavedPlayer = { name, pinHash, x: 0, y: this.terrain.heightAt(0, 0), z: 0, yaw: 0, vitals: createVitals(), inv: {}, dead: false, tut: 1 };
     this.players.set(name, p);
     return p;
   }
@@ -723,6 +731,8 @@ export class WorldSim {
       this.live.set(name, l);
     }
     l.rank = rankOf(this.xpOf(p));
+    if (p.tut === undefined) p.tut = this.played(p) ? 'skip' : 1;
+    if (typeof p.tut === 'number' && l.tutP?.step !== p.tut) l.tutP = tutStart(p.tut);
     const gone = [...this.resState].filter(([, s]) => s.uses === 0).map(([id]) => id);
     if (this.ending && !p.credits) {
       // S5-G: whoever missed the kill gets the credits on their first login after.
@@ -748,6 +758,7 @@ export class WorldSim {
     if (!l) return;
     const p = this.players.get(name);
     if (p) p.left = { t: this.time, ms: nowMs };
+    this.tutWolves.delete(name);
     l.awayFor = 0;
     l.anim = 'idle';
     this.cancelTradeOf(name, `${name} se fue`);
@@ -845,6 +856,8 @@ export class WorldSim {
         return this.onTradeOk(p);
       case 'tradeCancel':
         return this.cancelTradeOf(p.name, `${p.name} no quiere`);
+      case 'tut':
+        return this.onTut(p, l, msg.act);
       case 'hello':
         return; // the room handles hello
     }
@@ -969,6 +982,7 @@ export class WorldSim {
       const bit = w.kind === 'rayo' ? stepRayo(w, targets, this.terrain, dt, this.rng) : stepWolf(w, targets, this.terrain, dt, this.rng);
       if (bit) this.bite(bit, ENEMY[w.kind].damage, w);
     }
+    this.stepTutorial(night, dt);
     this.stepBurning(dt);
     this.stepGataFall(dt);
     this.stepSpikes(dt);
@@ -1018,11 +1032,13 @@ export class WorldSim {
       if (n === name) continue;
       const o = this.players.get(n)!;
       if (!near(o.x, o.z)) continue;
-      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ...(ol.riding && o.star ? { star: true } : {}), ride: ol.dragon ? 'dragon' : ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0, ...this.lookField(o) });
+      players.push({ name: n, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: r2(o.yaw), anim: ol.anim, away: ol.awayFor !== null, dead: o.dead, ...(ol.riding && o.star ? { star: true } : {}), ride: ol.dragon ? 'dragon' : ol.riding ? 'deer' : ol.fish ? 'fish' : ol.frog ? 'frog' : this.seatOf(n) !== null ? 'whale' : null, seat: ol.seat, capa: o.capaLvl ?? 0, ...this.lookField(o), ...(typeof o.tut === 'number' ? { tut: o.tut } : {}) });
     }
     const wolves: WolfView[] = this.wolves
       .filter((w) => near(w.x, w.z))
       .map((w) => ({ id: w.id, kind: w.kind, x: r2(w.x), y: r2(w.y), z: r2(w.z), yaw: r2(w.yaw), anim: w.anim, raid: w.raid, ...(w.burn && w.hp > 0 ? { burning: true as const } : {}), ...(w.aim && w.hp > 0 ? { aim: { x: r2(w.aim.x), z: r2(w.aim.z) } } : {}), ...((w.stuck ?? 0) > 0 && w.hp > 0 ? { stuck: true as const } : {}) }));
+    const tw = this.tutWolves.get(name);
+    if (tw && near(tw.x, tw.z)) wolves.push({ id: tw.id, kind: tw.kind, x: r2(tw.x), y: r2(tw.y), z: r2(tw.z), yaw: r2(tw.yaw), anim: tw.anim, raid: false });
     const b = this.boss;
     if (b && near(b.x, b.z)) wolves.push({ id: b.id, kind: b.kind, x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw), anim: b.anim, raid: false });
     const sh = this.shield;
@@ -1293,6 +1309,11 @@ export class WorldSim {
   }
 
   private accept(p: SavedPlayer, l: Live, m: Extract<ClientMsg, { t: 'move' }>): void {
+    if (l.tutP) {
+      let turn = m.yaw - p.yaw;
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      this.tutEvent(p, l, { k: 'move', m: Math.hypot(m.x - p.x, m.z - p.z), turn });
+    }
     p.x = m.x;
     p.y = m.y;
     p.z = m.z;
@@ -1345,6 +1366,8 @@ export class WorldSim {
     this.structures.push(s);
     this.outbox.push({ to: null, msg: { t: 'built', s } });
     toast(BUILT_TEXT[kind]);
+    const pl = this.live.get(p.name);
+    if (pl) this.tutEvent(p, pl, { k: 'build', kind });
   }
 
   private onAttack(p: SavedPlayer, l: Live, id: number): void {
@@ -1807,6 +1830,8 @@ export class WorldSim {
     if (p.dead || count(p.inv, 'berries') < 1) return;
     p.inv = removeAll(p.inv, { berries: 1 });
     p.vitals = eatBerry(p.vitals);
+    const l = this.live.get(p.name);
+    if (l) this.tutEvent(p, l, { k: 'eat' });
   }
 
   private onTend(p: SavedPlayer, id: number): void {
@@ -2400,11 +2425,13 @@ export class WorldSim {
     if (fb?.core && fb.core.id === id) return fb.core;
     const br = fb?.brotes.find((x) => x.id === id && !x.broken);
     if (br) return br;
-    return this.boss && this.boss.id === id ? this.boss : this.wolves.find((x) => x.id === id);
+    if (this.boss && this.boss.id === id) return this.boss;
+    return this.wolves.find((x) => x.id === id) ?? [...this.tutWolves.values()].find((x) => x.id === id);
   }
 
   /** Hurt an enemy for a player; the folded boss shrugs it off. `ranged`: an arrow, a gust or a flame (they reach El Zancudo in the air, at half). */
   private strike(name: string, w: Wolf, dmg: number, ranged = false): void {
+    if (w.tut !== undefined) return this.strikeTut(name, w, dmg, ranged);
     if (w === this.marchito) return this.wearMarchito(name, dmg);
     if (w === this.towerFinal) return this.strikeFinal(name, dmg);
     if (w.kind === 'brote') return this.tell(name, 'Un brote no se pega: se arranca (A)');
@@ -4268,6 +4295,7 @@ export class WorldSim {
       chests: [...(p.chests ?? [])],
       weapon: p.weaponLvl ?? 0,
       deals: MERCHANT.perDay - this.dealsUsed(p),
+      ...(typeof p.tut === 'number' ? { tut: { step: p.tut, ...(this.tutWait(p) ? { wait: true as const } : {}) } } : {}),
       whaleSeat: this.seatOf(p.name),
       travel: l.travel ? Math.max(0, Math.ceil(l.travel.at - this.time - EPS)) : null,
       xp: this.xpOf(p),
@@ -4760,6 +4788,11 @@ export class WorldSim {
     if (!p) return false;
     const l = this.live.get(name);
     const out = l ? resolveHit(l.guard, this.time, dmg) : { kind: 'hit' as const, dmg };
+    if (w.tut !== undefined && l) {
+      // P7-F: the practice wolf teaches and never kills.
+      this.tutEvent(p, l, { k: out.kind === 'dodged' ? 'dodge' : out.kind === 'parried' ? 'parry' : 'bitten' });
+      if (out.kind === 'hit' || out.kind === 'blocked') out.dmg = Math.max(0, Math.min(out.dmg, (p.vitals.health - TUT.floor) / capaMult(p.capaLvl ?? 0)));
+    }
     if (out.kind === 'dodged') return false;
     if (out.kind === 'parried') {
       this.pushFx(w, 0, 'parry', name);
@@ -4782,7 +4815,7 @@ export class WorldSim {
 
   /** P7-A: remember a blow for the snapshots. */
   private pushFx(w: Wolf, dmg: number, kind: FxKind, by: string): void {
-    const max = ENEMY[w.kind].hp;
+    const max = w.tut !== undefined ? TUT.wolfHp : ENEMY[w.kind].hp;
     this.fx.push({ seq: ++this.fxSeq, at: this.time, x: w.x, z: w.z, v: { id: w.id, dmg: r2(dmg), kind, by, hp: r2(Math.max(0, Math.min(1, w.hp / max))) } });
   }
 
@@ -5181,6 +5214,111 @@ export class WorldSim {
 
   private tell(name: string, text: string): void {
     this.outbox.push({ to: name, msg: { t: 'toast', text } });
+  }
+
+  // ---------------------------------------------------------------- P7-F: the tutorial
+
+  /** Already played: never shown the tutorial. */
+  private played(p: SavedPlayer): boolean {
+    return hasProgress(p, { ownsStructure: this.structures.some((s) => s.owner === p.name) || this.stalls.some((s) => s.owner === p.name), xp: p.xp ?? 0 });
+  }
+
+  /** A raid holds every step; night holds the practice wolf's steps. */
+  private tutWait(p: SavedPlayer): boolean {
+    if (this.raid) return true;
+    return (p.tut === 6 || p.tut === 7) && isNight(dayFraction(this.time));
+  }
+
+  private tutEvent(p: SavedPlayer, l: Live, e: TutEvent): void {
+    if (typeof p.tut !== 'number' || !l.tutP || this.tutWait(p)) return;
+    const before = l.tutP.step;
+    l.tutP = tutAdvance(l.tutP, e);
+    if (l.tutP.step === before) return;
+    if (l.tutP.step > TUT.steps) {
+      p.tut = 'done';
+      l.tutP = undefined;
+      this.tutWolves.delete(p.name);
+      return this.tell(p.name, TUT_DONE);
+    }
+    p.tut = l.tutP.step;
+  }
+
+  private onTut(p: SavedPlayer, l: Live, act: 'skip' | 'repeat'): void {
+    this.tutWolves.delete(p.name);
+    if (act === 'skip') {
+      if (typeof p.tut !== 'number') return;
+      p.tut = 'skip';
+      l.tutP = undefined;
+      return;
+    }
+    p.tut = 1;
+    l.tutP = tutStart();
+  }
+
+  /** Only the learner can hurt their practice wolf; it gives no Savia, no Libro kill and no drop. */
+  private strikeTut(name: string, w: Wolf, dmg: number, ranged: boolean): void {
+    if (w.tut !== name || w.hp <= 0) return;
+    const killed = hitWolf(w, dmg);
+    this.pushFx(w, dmg, killed ? 'kill' : 'hit', name);
+    const p = this.players.get(name);
+    const l = this.live.get(name);
+    if (!p || !l) return;
+    if (ranged) this.tutEvent(p, l, { k: 'bow' });
+    if (killed) this.tutEvent(p, l, { k: 'kill' });
+  }
+
+  /** A practice wolf `d` m ahead of the learner (turning until the ground is dry and on the map). */
+  private spawnTut(p: SavedPlayer, d: number, still: boolean): void {
+    for (let i = 0; i < 8; i++) {
+      const a = p.yaw + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 4);
+      const x = p.x + Math.sin(a) * d;
+      const z = p.z + Math.cos(a) * d;
+      if (!inMap(x, z, 5) || this.terrain.heightAt(x, z) <= WATER_LEVEL) continue;
+      const w = createWolf(this.nextWolfId++, x, z, this.terrain, this.rng);
+      w.hp = TUT.wolfHp;
+      w.tut = p.name;
+      if (still) {
+        w.still = true;
+        w.yaw = Math.atan2(p.x - x, p.z - z);
+      }
+      this.tutWolves.set(p.name, w);
+      return;
+    }
+  }
+
+  private stepTutorial(night: boolean, dt: number): void {
+    for (const name of this.tutWolves.keys()) if (!this.live.has(name)) this.tutWolves.delete(name);
+    for (const [name, l] of this.live) {
+      const p = this.players.get(name);
+      if (!p || typeof p.tut !== 'number' || !l.tutP || l.awayFor !== null) continue;
+      if (p.tut === 3) this.tutEvent(p, l, { k: 'inv', inv: p.inv });
+      const h = this.heart();
+      if (p.tut === 5 && h && Math.hypot(h.x - p.x, h.z - p.z) <= TUT.heartNear) this.tutEvent(p, l, { k: 'heartNear' });
+      const step = p.tut as number | 'done';
+      const wanted = (step === 6 || step === 7) && !this.raid && !night && !p.dead;
+      let w = this.tutWolves.get(name);
+      if (w && (!wanted || Math.hypot(w.x - p.x, w.z - p.z) > TUT.leash)) {
+        this.tutWolves.delete(name);
+        w = undefined;
+      }
+      if (!wanted) continue;
+      if (!w) {
+        this.spawnTut(p, step === 6 ? TUT.wolfAt : TUT.stillAt, step === 7);
+        continue;
+      }
+      if (w.hp <= 0) {
+        w.deadFor += dt;
+        w.anim = 'dead';
+        if (step === 7 && w.deadFor >= 1.5) this.tutWolves.delete(name); // a still one next tick
+        continue;
+      }
+      if (w.still) {
+        w.anim = 'idle';
+        continue;
+      }
+      const bit = stepWolf(w, [{ name, x: p.x, z: p.z, dead: p.dead, fires: false }], this.terrain, dt, this.rng);
+      if (bit) this.bite(bit, TUT.wolfDmg, w);
+    }
   }
 
   private kill(p: SavedPlayer): void {

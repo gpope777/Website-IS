@@ -6,7 +6,7 @@ import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 import { isLook, isSkill, type Look, type SkillId } from './progression';
 
-export const PROTOCOL_VERSION = 64;
+export const PROTOCOL_VERSION = 65;
 
 /** P7-A: a blow that landed near you (hit / killing blow / parry / guarded bite). `hp` = the struck one's HP left, 0–1. */
 export type FxKind = 'hit' | 'kill' | 'parry' | 'block';
@@ -19,7 +19,7 @@ export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', '
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
-export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer or the giant fish. */ ride: 'deer' | 'fish' | 'whale' | 'frog' | 'dragon' | null; /** Sitting behind this rider on their deer. */ seat: string | null; /** Capa de corteza level (0–3): bark tint on the torso. */ capa: number; /** S5-H: riding la Estrella. */ star?: boolean; /** P4-C: colour and hat; absent = the default. */ look?: Look }
+export interface PlayerView { name: string; x: number; y: number; z: number; yaw: number; anim: Anim; away: boolean; dead: boolean; /** Riding a deer or the giant fish. */ ride: 'deer' | 'fish' | 'whale' | 'frog' | 'dragon' | null; /** Sitting behind this rider on their deer. */ seat: string | null; /** Capa de corteza level (0–3): bark tint on the torso. */ capa: number; /** S5-H: riding la Estrella. */ star?: boolean; /** P4-C: colour and hat; absent = the default. */ look?: Look; /** P7-F: learning, at this tutorial step (absent = not learning). */ tut?: number }
 export type EnemyKind = 'wolf' | 'brute' | 'boss' | 'elite' | 'elite2' | 'boss2' | 'marchito' | 'anchor' | 'lieut1' | 'elite3' | 'boss3' | 'lieut2' | 'elite4' | 'boss4' | 'rayo' | 'lieut3' | 'boss5' | 'core' | 'brote';
 export interface WolfView { id: number; kind: EnemyKind; x: number; y: number; z: number; yaw: number; anim: WolfAnim; raid: boolean; /** Burning from a Llamarada or a hoguera. */ burning?: true; /** La Flecha's red line: where her clavada ends. */ aim?: { x: number; z: number }; /** La Flecha stuck in a wall. */ stuck?: true }
 export interface Structure { id: number; kind: StructureKind; x: number; y: number; z: number; rot: number; owner: string; hp: number }
@@ -92,7 +92,7 @@ export interface PillarView { broken: boolean[]; roots: boolean[]; anchor: boole
 export interface StoryView { inv: [number, number, number]; bosses: [boolean, boolean, boolean, boolean] }
 export interface HeartView { id: number; hp: number; max: number }
 /** `fix` = the server rejected your last move; snap to x/y/z. `reviveLeft` = whole seconds a teammate can still revive you. */
-export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; /** Has Piedra (from the mountain dungeon altar). */ piedra: boolean; /** Whole seconds until Piedra can be cast again. */ stoneLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** S5-H: the steed is la Estrella. */ star: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Owns a tamed dragon (S4-G). */ dragon: boolean; /** On the dragon. */ onDragon: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null; /** P4-A: total Savia. */ xp: number; /** P4-A: Rango 1–8. */ rank: number; /** P4-B: oficios learned. */ skills: SkillId[]; /** P4-C: colour and hat worn. */ look: Look; /** P4-C: hats unlocked (1–9). */ hats: number[]; /** P4-D: the Libro's counters. */ book: BookView; /** T6-D: tratos left today with the Buhonero. */ deals?: number; /** P7-A: damage taken since the last snapshot (absent = none). */ hurt?: number }
+export interface SelfState { x: number; y: number; z: number; vitals: Vitals; inv: Inventory; dead: boolean; fix: boolean; reviveLeft: number; /** Shrine ids this player cleared (one orb each). */ shrines: number[]; /** Whole seconds until Enredadera can be cast again. */ powerLeft: number; /** Has Enredadera (from the dungeon altar). */ power: boolean; /** Has Viento (from the coast dungeon altar). */ viento: boolean; /** Whole seconds until Viento can be cast again. */ windLeft: number; /** Has Fuego (from the swamp dungeon altar). */ fuego: boolean; /** Whole seconds until Fuego can be cast again. */ fireLeft: number; /** Has Piedra (from the mountain dungeon altar). */ piedra: boolean; /** Whole seconds until Piedra can be cast again. */ stoneLeft: number; tame: TameView | null; riding: boolean; /** Owns a tamed deer. */ steed: boolean; /** S5-H: the steed is la Estrella. */ star: boolean; /** Sitting behind this rider on their deer. */ seat: string | null; /** Owns a tamed giant fish. */ fish: boolean; /** On the giant fish. */ onFish: boolean; /** The fish's ring race or the frog's lily-pad chase: next ring/pad index (they come from the seed) and its deadline in sim time. */ race: { i: number; deadline: number; beast: 'fish' | 'frog' } | null; /** Owns a tamed frog. */ frog: boolean; /** On the frog. */ onFrog: boolean; /** Owns a tamed dragon (S4-G). */ dragon: boolean; /** On the dragon. */ onDragon: boolean; /** Carrying a torch from the Candiles post. */ torch: boolean; /** Amber tree ids still regrowing for you (trees come from the seed). */ amber: number[]; /** Capa de corteza level (0–3). */ capa: number; /** Quartz vein ids still regrowing for you (veins come from the seed). */ quartz: number[]; /** Sunken chest ids this player opened (chests come from the seed). */ chests: number[]; /** Weapon upgrade level (0–5). */ weapon: number; /** Seat on the whale (0 = pilot), or null. */ whaleSeat: number | null; /** Whole seconds left of a fogata channel, or null. */ travel: number | null; /** P4-A: total Savia. */ xp: number; /** P4-A: Rango 1–8. */ rank: number; /** P4-B: oficios learned. */ skills: SkillId[]; /** P4-C: colour and hat worn. */ look: Look; /** P4-C: hats unlocked (1–9). */ hats: number[]; /** P4-D: the Libro's counters. */ book: BookView; /** T6-D: tratos left today with the Buhonero. */ deals?: number; /** P7-A: damage taken since the last snapshot (absent = none). */ hurt?: number; /** P7-F: the tutorial step (1–8) while learning; `wait` = a raid (or night, for the wolf) holds it. */ tut?: { step: number; wait?: true } }
 /** P4-D: what the Libro shows beyond the rest of SelfState. Zones and day are world facts. */
 export interface BookView { feats: number[]; bosses: number; kills: { wolf: number; brute: number; rayo: number }; raids: number; zones: number; zonesMax: number; shrinesMax: number; chestsMax: number; day: number }
 
@@ -170,7 +170,9 @@ export type ClientMsg =
   | { t: 'tradeAnswer'; yes: boolean }
   | { t: 'tradeOffer'; lines: TradeLine[] }
   | { t: 'tradeOk' }
-  | { t: 'tradeCancel' };
+  | { t: 'tradeCancel' }
+  /** P7-F: Saltar tutorial / Repetir tutorial. */
+  | { t: 'tut'; act: 'skip' | 'repeat' };
 
 /** T6-C: one side's view of an open trade. `open` false = waiting for the answer (`asker` says who waits). */
 export interface TradeView { with: string; asker: boolean; open: boolean; mine: TradeLine[]; theirs: TradeLine[]; okMine: boolean; okTheirs: boolean }
@@ -333,6 +335,8 @@ export function decodeClient(raw: string): ClientMsg | null {
       return { t: 'tradeOk' };
     case 'tradeCancel':
       return { t: 'tradeCancel' };
+    case 'tut':
+      return m.act === 'skip' || m.act === 'repeat' ? { t: 'tut', act: m.act } : null;
     case 'look':
       return isLook(m.color, m.hat) ? { t: 'look', color: m.color as number, hat: m.hat as number } : null;
     default:
