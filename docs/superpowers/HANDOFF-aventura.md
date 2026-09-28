@@ -1,7 +1,7 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
 ## ESTADO DEL PROYECTO — leer primero
-**El roadmap entero está hecho**: la Aventura por biomas (Slices 1–5: historia completa, del mundo nuevo a los créditos y el post-juego), #4 Progresión, #6 Tiendas, #2 Mundo y visuales y #7 Pulido con el tutorial (P7-A..F). Rama `aventura/resto`, **PR draft #3 esperando el OK de Gabriel para mergear** (merge a `main` = despliegue por GitHub Actions). Nada mergeado ni desplegado desde el PR #2. **PROTOCOL_VERSION = 65**; todos los campos guardados nuevos son opcionales: las partidas viejas cargan, y quien ya tiene progreso nunca ve el tutorial. Tests al cierre: **npm test 1415, test:workers 12, check + build verdes**; arnés de rendimiento en baja dentro de la base y del presupuesto.
+**El roadmap entero está hecho**: la Aventura por biomas (Slices 1–5: historia completa, del mundo nuevo a los créditos y el post-juego), #4 Progresión, #6 Tiendas, #2 Mundo y visuales y #7 Pulido con el tutorial (P7-A..F). **PR #3 mergeado a `main` el 2026-09-28 (commit `15a50f0`) y desplegado** por GitHub Actions a https://bosque.juegodk.workers.dev. Trabajo nuevo: rama desde `main`. **PROTOCOL_VERSION = 65**; todos los campos guardados nuevos son opcionales: las partidas viejas cargan, y quien ya tiene progreso nunca ve el tutorial. Tests al cierre: **npm test 1415, test:workers 12, check + build verdes**; arnés de rendimiento en baja dentro de la base y del presupuesto.
 
 **Casi nada se ha visto en un teléfono real** (todo se probó con tests y Chromium headless). Dónde leer cada parte: Slice 1 → "RESUMEN PARA LEER PRIMERO" · Slices 2–5 → "Slice N — resumen" (el del Slice 5 trae el orden de prueba de toda la historia) · "Progresión — resumen" · "Tiendas — resumen" · "Visuales — resumen" · **"Pulido — resumen"**.
 
@@ -30,7 +30,7 @@
 
 **Recursos "suelta y listo"** (opcionales; sin ellos todo es procedural): modelos `deer/fish/frog/whale/wolf/brute.glb` en `public/models/` (lista y licencias: spec de Visuales §9 y `public/models/CREDITS.md`); música `public/audio/musica-<bosque|costa|pantano|montanas|tierras|asedio|jefe>.ogg` (lista CC0/CC-BY: spec de Pulido §4.6). Basta con copiar el archivo y desplegar.
 
-**Si algo sale mal tras el merge:** revertir el commit de merge del PR #3 en `main` (`git revert -m 1 <merge>` y push, o el botón "Revert" del PR) → GitHub Actions vuelve a desplegar la versión anterior. Las partidas guardadas con campos nuevos siguen cargando en la versión vieja (los campos que no conoce se quedan ahí sin usarse); un navegador con la versión nueva abierta verá un error de versión: recargar basta. No hace falta tocar datos.
+**Si algo sale mal tras el merge:** revertir el commit de merge del PR #3 en `main` (`git revert -m 1 15a50f0` y push, o el botón "Revert" del PR) → GitHub Actions vuelve a desplegar la versión anterior. Las partidas guardadas con campos nuevos siguen cargando en la versión vieja (los campos que no conoce se quedan ahí sin usarse); un navegador con la versión nueva abierta verá un error de versión: recargar basta. No hace falta tocar datos.
 
 ---
 
