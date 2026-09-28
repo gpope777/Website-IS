@@ -8,7 +8,11 @@ export interface Puppet {
   setPose(x: number, y: number, z: number, yaw: number): void;
   update(dt: number): void;
   dispose(): void;
+  /** P7-A: a blow landed — flash (s), freeze the animation (s), thrown back along (x, z) (m), red instead of white. */
+  impact?(o: ImpactOpts): void;
 }
+
+export interface ImpactOpts { flash?: number; freeze?: number; knock?: { x: number; z: number }; red?: boolean }
 
 const textures = new Map<string, THREE.Texture>();
 function texture(url: string): THREE.Texture {
@@ -64,11 +68,40 @@ export class PaperActor implements Puppet {
     this.yaw = yaw;
   }
 
+  private tintHex = 0xffffff;
+  private flashLeft = 0;
+  private freezeLeft = 0;
+  private knock: { x: number; z: number; t: number } | null = null;
+
   setTint(hex: number): void {
+    this.tintHex = hex;
     this.mat.color.setHex(hex);
   }
 
+  impact(o: ImpactOpts): void {
+    if (o.flash) this.flashLeft = Math.max(this.flashLeft, o.flash);
+    if (o.freeze) this.freezeLeft = Math.max(this.freezeLeft, o.freeze);
+    if (o.knock) this.knock = { ...o.knock, t: 0 };
+  }
+
   update(dt: number): void {
+    const flashing = this.flashLeft > 0;
+    this.flashLeft = Math.max(0, this.flashLeft - dt);
+    this.mat.color.setHex(this.tintHex);
+    if (flashing) this.mat.color.multiplyScalar(2); // P7-A: a white flash on the drawing
+    if (this.freezeLeft > 0) {
+      this.freezeLeft -= dt;
+      dt = 0;
+    }
+    if (this.knock) {
+      if (this.anim !== 'dead') this.knock = null;
+      else {
+        this.knock.t = Math.min(0.2, this.knock.t + dt);
+        const k = this.knock.t / 0.2;
+        this.root.position.x += this.knock.x * k;
+        this.root.position.z += this.knock.z * k;
+      }
+    }
     this.t += dt;
     const t = this.t;
     const p = this.root.position;
@@ -101,6 +134,10 @@ export class PaperActor implements Puppet {
       sway = 0;
       sy = 1;
       sx = 1;
+    }
+    if (flashing) {
+      sy *= 0.9; // squashed by the blow
+      sx *= 1.1;
     }
     this.card.scale.set(this.width * sx * this.flip, this.height * sy, 1);
     this.card.position.y = bob;

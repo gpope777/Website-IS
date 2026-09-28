@@ -46,6 +46,20 @@ export class Hud {
     return !this.overlay.hidden;
   }
 
+  /** P7-A: red screen edge when hurt; a slow pulse under 25 % health. */
+  private readonly hurtEdge = el('div', 'hurt-edge');
+
+  setHurt(edge: number, low: boolean): void {
+    if (edge > 0) {
+      this.hurtEdge.style.transition = 'none';
+      this.hurtEdge.style.opacity = String(edge);
+      void this.hurtEdge.offsetWidth; // restart the fade
+      this.hurtEdge.style.transition = 'opacity 0.25s ease-out';
+      this.hurtEdge.style.opacity = '0';
+    }
+    this.hurtEdge.classList.toggle('low', low);
+  }
+
   constructor(parent: HTMLElement) {
     this.root.className = 'hud';
     const stats = el('div', 'stats');
@@ -65,7 +79,7 @@ export class Hud {
     this.prompt.hidden = true;
     this.overlay.hidden = true;
     this.stamina.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.raceLine, this.bossLine, this.stamina);
+    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.raceLine, this.bossLine, this.stamina, this.hurtEdge);
     this.ring.hidden = true;
     this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
     this.ring.addEventListener('pointerdown', (e) => {
@@ -219,7 +233,7 @@ export class Hud {
     if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
   }
 
-  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void; calls?: { beast: string; label: string }[]; onCall?: (beast: string) => void; raids?: { label: string; on: boolean } | null; onRaids?: (on: boolean) => void; onSkills?: () => void; onLook?: () => void; onBook?: () => void; tripSecs?: number; stall?: string; onStall?: () => void; onStalls?: () => void }): void {
+  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void; calls?: { beast: string; label: string }[]; onCall?: (beast: string) => void; raids?: { label: string; on: boolean } | null; onRaids?: (on: boolean) => void; onSkills?: () => void; onLook?: () => void; onBook?: () => void; tripSecs?: number; stall?: string; onStall?: () => void; onStalls?: () => void; shake?: { value: string; options: [string, string][]; onChange: (v: string) => void }; vibrate?: { on: boolean; onChange: (on: boolean) => void } }): void {
     const where = (id: number) => (id === FOGATA.lookout ? `a la cima de ${NAMES.treeTower}`.replace("de el ", "del ") : id === FOGATA.ceniza ? `a ${NAMES.ash}` : id >= FOGATA.swamp ? `al ${NAMES.refugio} ${id - FOGATA.swamp + 1}` : `a la ${NAMES.fogata} ${id + 1}`);
     const trips = (h.fogatas ?? []).map((id) => `<button class="secondary" data-a="fogata${id}">Ir ${where(id)} (${h.tripSecs ?? 5} s, de día)</button>`).join('') + (h.calls ?? []).map((c) => `<button class="secondary" data-a="call-${c.beast}">${c.label}</button>`).join('');
     const options = (Object.keys(TIER_LABELS) as Tier[])
@@ -234,6 +248,8 @@ export class Hud {
        <p>${NAMES.villain}: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
        <p>Si ${NAMES.villain} se lleva al ${NAMES.bossForestShort}: está en una jaula de raíces en el fondo del mar, junto a la isla. Rompe las tres anclas (una por islote; el ${NAMES.powerWind} pega triple) y pulsa E / A junto a la jaula</p>
        <label>Calidad gráfica</label><select data-f="tier">${options}</select>
+       ${h.shake ? `<label>Sacudida de cámara</label><select data-f="shake">${h.shake.options.map(([v, l]) => `<option value="${v}" ${v === h.shake!.value ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+       ${h.vibrate ? `<label>Vibración</label><select data-f="vibrate"><option value="1" ${h.vibrate.on ? 'selected' : ''}>Sí</option><option value="0" ${h.vibrate.on ? '' : 'selected'}>No</option></select>` : ''}
        <button data-a="resume">Seguir jugando</button>
        <p>La ${NAMES.forestRoot}: palancas, un nudo que abre la ${NAMES.powerVine}, una losa (un compañero o el bloque encima), una linterna para el brasero y un ${NAMES.eliteForest}: cuando se agache, apártate o rueda. E / A coge y suelta</p>
        <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la ${NAMES.powerVine} junto a su raíz marchita o venciendo al ${NAMES.bossForestShort}</p>
@@ -256,7 +272,9 @@ export class Hud {
       { ...Object.fromEntries((h.fogatas ?? []).map((id) => [`fogata${id}`, () => { h.onFogata?.(id); this.hideOverlay(); }])), ...Object.fromEntries((h.calls ?? []).map((c) => [`call-${c.beast}`, () => { h.onCall?.(c.beast); this.hideOverlay(); }])), skills: () => h.onSkills?.(), look: () => h.onLook?.(), book: () => h.onBook?.(), stalls: () => h.onStalls?.(), stall: () => { h.onStall?.(); this.hideOverlay(); }, raids: () => { if (h.raids) h.onRaids?.(h.raids.on); this.hideOverlay(); }, resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
     );
     this.menuOpen = true;
-    this.overlay.querySelector('select')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));
+    this.overlay.querySelector('select[data-f="tier"]')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));
+    this.overlay.querySelector('select[data-f="shake"]')?.addEventListener('change', (e) => h.shake?.onChange((e.target as HTMLSelectElement).value));
+    this.overlay.querySelector('select[data-f="vibrate"]')?.addEventListener('change', (e) => h.vibrate?.onChange((e.target as HTMLSelectElement).value === '1'));
   }
 
   /** P4-B: the Oficios panel (built by skills-ui); counts as the Menú for input. */

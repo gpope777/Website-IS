@@ -330,3 +330,8 @@ canvas { display: block; }
 .panel ul.feats li.feat { padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.08); color: var(--muted); }
 .panel ul.feats li.feat.done { background: #4a8a3c; color: #fff; }
 .panel ul.feats li.feat.done::before { content: '✔ '; }
+
+/* P7-A: red screen edge when hurt; slow pulse under 25 % health. */
+.hurt-edge { position: fixed; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 90px 30px rgba(200, 20, 10, 0.85); z-index: 5; }
+.hurt-edge.low { animation: hurt-pulse 1.2s ease-in-out infinite; }
+@keyframes hurt-pulse { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.45; } }

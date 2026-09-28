@@ -55,6 +55,9 @@ import { coastEntrance } from '../shared/coast-dungeon';
 import { VIENTO } from '../shared/viento';
 import { boost } from './movement';
 import { CameraRig } from './camera-rig';
+import { HpBars, hurtReaction, IMPACT, lowHealth, reactTo, Shake, SHAKE_SCALE } from './impact';
+import { loadSettings, saveSettings, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
+import { HpBarMeshes } from './scene/hp-bars';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
 import { raidText } from './raid-ui';
@@ -206,6 +209,13 @@ export class Game {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly rig = new CameraRig();
+  /** P7-A: impact — settings, camera shake, floating bars, my hit-stop (camera held until then). */
+  private settings: Settings = loadSettings(isTouchDevice());
+  private readonly shake = new Shake();
+  private readonly hpBars = new HpBars();
+  private hpBarMeshes: HpBarMeshes | null = null;
+  private freezeUntil = 0;
+  private readonly frozenCam = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
   private readonly input: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false, block: false };
   private readonly hud: Hud;
   private readonly conn: Connection;
@@ -931,6 +941,7 @@ export class Game {
   private onSnap(m: Extract<ServerMsg, { t: 'snap' }>): void {
     this.serverTime = m.time;
     this.applySelf(m.self);
+    this.onImpact(m);
     this.raid = m.raid;
     this.heart = m.heart;
     this.hud.setHeart(m.heart);
@@ -1250,6 +1261,83 @@ export class Game {
     return r;
   }
 
+  private setSettings(p: Partial<Settings>): void {
+    this.settings = { ...this.settings, ...p };
+    saveSettings(this.settings);
+  }
+
+  /** P7-A: shake after the rig (scaled by the setting); during my hit-stop the camera holds its last pose. */
+  private applyShake(dt: number): void {
+    const cam = this.camera;
+    if (performance.now() / 1000 < this.freezeUntil) {
+      cam.position.copy(this.frozenCam.pos);
+      cam.quaternion.copy(this.frozenCam.quat);
+      return;
+    }
+    const s = this.shake.step(dt);
+    const k = SHAKE_SCALE[this.settings.shake];
+    if (k > 0 && (s.x !== 0 || s.y !== 0)) {
+      cam.updateMatrixWorld();
+      const e = cam.matrixWorld.elements;
+      cam.position.x += (e[0]! * s.x + e[4]! * s.y) * k;
+      cam.position.y += (e[1]! * s.x + e[5]! * s.y) * k;
+      cam.position.z += (e[2]! * s.x + e[6]! * s.y) * k;
+    }
+    this.frozenCam.pos.copy(cam.position);
+    this.frozenCam.quat.copy(cam.quaternion);
+  }
+
+  /** P7-A: the floating bars over the enemies hit in the last 3 s. */
+  private syncHpBars(): void {
+    if (!this.hpBarMeshes) this.scene.add((this.hpBarMeshes = new HpBarMeshes()).root);
+    const v = new THREE.Vector3();
+    this.hpBarMeshes.sync(this.hpBars.visible(performance.now() / 1000), (id) => {
+      const a = this.wolves.get(id)?.actor;
+      if (!a) return null;
+      return v.copy(a.root.position).setY(a.root.position.y + (a instanceof PaperActor ? 2.4 : 1.1 * a.root.scale.y + 0.3));
+    }, this.camera);
+  }
+
+  /** P7-A (spec §3.2): the blows and the damage in this snapshot, on screen. */
+  private onImpact(m: Extract<ServerMsg, { t: 'snap' }>): void {
+    const now = performance.now() / 1000;
+    const kinds = new Map(m.wolves.map((w) => [w.id, w]));
+    let freeze = 0;
+    let buzz = 0;
+    for (const f of m.fx ?? []) {
+      const w = kinds.get(f.id);
+      const r = reactTo(f, this.myName, w?.kind);
+      const actor = this.wolves.get(f.id)?.actor;
+      let knock: { x: number; z: number } | undefined;
+      if (r.knock && w) {
+        const from = f.by === this.myName ? this.body : this.others.get(f.by ?? '')?.actor.root.position;
+        const d = from ? Math.hypot(w.x - from.x, w.z - from.z) : 0;
+        if (from && d > 0.01) knock = { x: ((w.x - from.x) / d) * IMPACT.knock, z: ((w.z - from.z) / d) * IMPACT.knock };
+      }
+      actor?.impact?.({ flash: r.flash ? IMPACT.flash : 0, freeze: r.freeze, knock });
+      if (r.bar && f.hp !== undefined) this.hpBars.hit(f.id, f.hp, now);
+      this.shake.add(r.shake);
+      freeze = Math.max(freeze, r.freeze);
+      buzz = Math.max(buzz, r.vibrate);
+    }
+    const hurt = hurtReaction(m.self.hurt ?? 0);
+    if (hurt.edge > 0) this.me?.impact({ flash: IMPACT.flash * 2, red: true });
+    this.shake.add(hurt.shake);
+    buzz = Math.max(buzz, hurt.vibrate);
+    this.hud.setHurt(hurt.edge, lowHealth(m.self.vitals.health) && !m.self.dead);
+    if (freeze > 0) {
+      this.me?.impact({ freeze });
+      this.freezeUntil = Math.max(this.freezeUntil, now + freeze);
+    }
+    if (buzz > 0 && this.settings.vibrate) {
+      try {
+        navigator.vibrate?.(buzz);
+      } catch {
+        /* not allowed here */
+      }
+    }
+  }
+
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
     this.hud.setVitals(self.vitals);
     this.hud.setInventory(self.inv, self.weapon, self.capa, rankLine(self.xp ?? 0, self.rank ?? 1));
@@ -1350,6 +1438,8 @@ export class Game {
         },
         onCamera: () => this.rig.toggle(),
         onLeave: () => this.onLeave(),
+        shake: { value: this.settings.shake, options: (Object.keys(SHAKE_LABELS) as ShakeSetting[]).map((k) => [k, SHAKE_LABELS[k]]), onChange: (v) => this.setSettings({ shake: v as ShakeSetting }) },
+        vibrate: { on: this.settings.vibrate, onChange: (on) => this.setSettings({ vibrate: on }) },
         trap: TRAP_LABEL[this.trap],
         fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
         onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
@@ -2063,12 +2153,10 @@ export class Game {
       this.camera.position.set(stop.x - fx * c.back, gy + c.up, stop.z - fz * c.back);
       this.camera.lookAt(stop.x + fx * c.ahead, terrain.heightAt(stop.x + fx * c.ahead, stop.z + fz * c.ahead) + c.lookY, stop.z + fz * c.ahead);
     }
-    if (this.tame) {
-      // The deer bucks: shake the camera a little.
-      const k = 0.06 + this.tame.round * 0.03;
-      this.camera.position.x += (Math.random() - 0.5) * k;
-      this.camera.position.y += (Math.random() - 0.5) * k;
-    }
+    // The deer bucks: shake the camera a little (through the shake setting, P7-A).
+    if (this.tame) this.shake.add(0.03 + this.tame.round * 0.015);
+    this.applyShake(dt);
+    this.syncHpBars();
     this.hud.setRing(this.tame ? { needle: ringNeedle(this.tame, this.serverTime), zone: this.tame.zone, width: this.tame.width, round: this.tame.round, rounds: this.tame.rounds } : null);
     this.updatePrompt();
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);

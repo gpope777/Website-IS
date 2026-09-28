@@ -5,6 +5,7 @@ import { makeHat } from './hats';
 import { COLORS } from '../../shared/progression';
 import { poseFor } from './poses';
 import type { EnemyLook } from './enemy-look';
+import type { ImpactOpts } from './paper';
 import { patchRecolor, patchRim, patchSway } from '../scene/patches';
 
 export interface ClipDef {
@@ -255,7 +256,57 @@ export class Actor {
     this.root.rotation.y = yaw;
   }
 
+  private static flashMats: { white: THREE.Material; red: THREE.Material } | null = null;
+  private flashLeft = 0;
+  private freezeLeft = 0;
+  private flashed: [THREE.Mesh, THREE.Material | THREE.Material[]][] | null = null;
+  private knock: { x: number; z: number; t: number } | null = null;
+
+  /** P7-A: white (or red) for a moment — one shared material swapped in, never a new one per actor; hit-stop; thrown back on a kill. */
+  impact(o: ImpactOpts): void {
+    if (o.flash) {
+      Actor.flashMats ??= { white: new THREE.MeshBasicMaterial({ color: 0xffffff }), red: new THREE.MeshBasicMaterial({ color: 0xff4a3a }) };
+      const mat = o.red ? Actor.flashMats.red : Actor.flashMats.white;
+      if (!this.flashed) {
+        this.flashed = [];
+        this.model.traverse((x) => {
+          const m = x as THREE.Mesh;
+          if (m.isMesh) this.flashed!.push([m, m.material]);
+        });
+      }
+      for (const [m] of this.flashed) m.material = mat;
+      this.flashLeft = Math.max(this.flashLeft, o.flash);
+    }
+    if (o.freeze) this.freezeLeft = Math.max(this.freezeLeft, o.freeze);
+    if (o.knock) this.knock = { ...o.knock, t: 0 };
+  }
+
+  private impactStep(dt: number): number {
+    if (this.flashed) {
+      this.flashLeft -= dt;
+      if (this.flashLeft <= 0) {
+        for (const [m, mat] of this.flashed) m.material = mat;
+        this.flashed = null;
+      }
+    }
+    if (this.knock) {
+      if (this.currentName !== 'dead') this.knock = null;
+      else {
+        this.knock.t = Math.min(0.2, this.knock.t + dt);
+        const k = this.knock.t / 0.2;
+        this.root.position.x += this.knock.x * k;
+        this.root.position.z += this.knock.z * k;
+      }
+    }
+    if (this.freezeLeft > 0) {
+      this.freezeLeft -= dt;
+      return 0;
+    }
+    return dt;
+  }
+
   update(dt: number): void {
+    dt = this.impactStep(dt);
     // Bones a clip does not animate (the robot's Torso; the arms in Idle) keep whatever we set: restore them first.
     for (const [b, q] of this.posed) b.quaternion.copy(q);
     this.posed.clear();
