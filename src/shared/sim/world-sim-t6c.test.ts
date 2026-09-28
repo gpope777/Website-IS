@@ -49,7 +49,7 @@ function open(sim: WorldSim) {
 
 describe('trueque directo (T6-C, server)', () => {
   it('protocol 61; decodeClient checks the five trade messages', () => {
-    expect(PROTOCOL_VERSION).toBe(63);
+    expect(PROTOCOL_VERSION).toBe(64);
     expect(decodeClient('{"t":"tradeAsk","to":"Bea"}')).toEqual({ t: 'tradeAsk', to: 'Bea' });
     expect(decodeClient('{"t":"tradeAsk","to":""}')).toBeNull();
     expect(decodeClient('{"t":"tradeAsk","to":3}')).toBeNull();

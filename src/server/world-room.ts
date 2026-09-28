@@ -118,7 +118,7 @@ export class WorldRoom extends DurableObject<Env> {
       }
       if (!existing) sim.createPlayer(msg.name, hash);
       this.names.set(ws, msg.name);
-      this.send(ws, sim.connect(msg.name));
+      this.send(ws, sim.connect(msg.name, Date.now()));
       this.startLoop();
     } finally {
       this.pending.delete(ws);
@@ -131,7 +131,7 @@ export class WorldRoom extends DurableObject<Env> {
     this.pending.delete(ws);
     this.bad.delete(ws);
     if (!name || !this.sim) return;
-    this.sim.markAway(name);
+    this.sim.markAway(name, Date.now());
     if (this.sim.activeCount() === 0) this.persist();
   }
 

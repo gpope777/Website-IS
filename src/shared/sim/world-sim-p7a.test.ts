@@ -38,8 +38,8 @@ type Out = { to: string | null; msg: ServerMsg }[];
 const visions = (out: Out) => out.filter((o) => o.msg.t === 'vision');
 
 describe('Impacto (P7-A, server)', () => {
-  it('protocol 63', () => {
-    expect(PROTOCOL_VERSION).toBe(63);
+  it('protocol 64', () => {
+    expect(PROTOCOL_VERSION).toBe(64);
   });
 
   it('a landed punch is reported once, with the HP left', () => {

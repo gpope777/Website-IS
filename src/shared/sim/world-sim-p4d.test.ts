@@ -48,7 +48,7 @@ function kill(sim: WorldSim, w: Wolf) {
 
 describe('Libro y Proezas (P4-D, server)', () => {
   it('protocol 58; a new player has an empty book', () => {
-    expect(PROTOCOL_VERSION).toBe(63);
+    expect(PROTOCOL_VERSION).toBe(64);
     const b = self(setup()).book;
     expect(b).toMatchObject({ feats: [], bosses: 0, kills: { wolf: 0, brute: 0, rayo: 0 }, raids: 0, zones: 0, shrinesMax: 12, chestsMax: 6, day: 1 });
     expect(b.zonesMax).toBeGreaterThanOrEqual(21);
