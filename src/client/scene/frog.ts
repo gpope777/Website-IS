@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { creatureMesh, setRig } from './creature-mesh';
 import { frogPose } from './creature-rig';
 import type { RigUniforms } from './patches';
+import { DropInPuppet } from '../actors/drop-in-puppet';
+import type { ModelKit } from '../actors/models';
 import { WATER_LEVEL } from '../../shared/terrain';
 
 // Lights ignore the swamp fog: the throat and the halo are the frog's lure (spec S3 §3.3).
@@ -25,6 +27,8 @@ export interface FrogPose {
 interface Frog {
   root: THREE.Group;
   rig: RigUniforms;
+  puppet: DropInPuppet | null;
+  t: number;
   throat: THREE.Object3D;
   last: { x: number; z: number };
   moving: number;
@@ -35,7 +39,18 @@ export class FrogMeshes {
   readonly group = new THREE.Group();
   private readonly byKey = new Map<string, Frog>();
 
-  constructor(private readonly shadows: boolean) {}
+  /** V2-E: `kit` = a dropped-in `frog.glb` (spec §9); null → the procedural one. */
+  constructor(
+    private readonly shadows: boolean,
+    private kit: ModelKit | null = null,
+  ) {}
+
+  /** A drop-in model arrived after the world was built: redraw every one with it. */
+  setKit(kit: ModelKit | null): void {
+    this.kit = kit;
+    for (const v of this.byKey.values()) v.root.removeFromParent();
+    this.byKey.clear();
+  }
 
   sync(poses: readonly FrogPose[], now: number): void {
     const seen = new Set<string>();
@@ -54,7 +69,9 @@ export class FrogMeshes {
       f.root.position.set(p.x, p.y, p.z);
       f.root.rotation.y = p.yaw;
       const pose = frogPose(now - f.moving < 0.3, p.wild, p.bucking, now);
-      setRig(f.rig, pose);
+      if (f.puppet) f.puppet.update(f.t ? Math.min(0.1, Math.max(0, now - f.t)) : 0, now - f.moving < 0.3 ? 3 : 0);
+      else setRig(f.rig, pose);
+      f.t = now;
       f.throat.scale.setScalar(pose.throat);
       f.throat.position.y = 0.3 + pose.lift;
     }
@@ -68,7 +85,8 @@ export class FrogMeshes {
   private make(wild: boolean): Frog {
     const root = new THREE.Group();
     const c = creatureMesh('frog', this.shadows);
-    root.add(c.mesh);
+    const puppet = this.kit ? new DropInPuppet(this.kit, 'frog', this.shadows) : null;
+    root.add(puppet ? puppet.root : c.mesh);
     // The throat stays its own unlit mesh: the frog's lure glows through the swamp fog.
     const throat = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 5).scale(0.38, 0.16, 0.24), THROAT);
     throat.position.set(0, 0.3, 1.15);
@@ -78,7 +96,7 @@ export class FrogMeshes {
       halo.position.y = 0.05;
       root.add(halo);
     }
-    return { root, rig: c.rig, throat, last: { x: 0, z: 0 }, moving: -1 };
+    return { root, rig: c.rig, puppet, t: 0, throat, last: { x: 0, z: 0 }, moving: -1 };
   }
 }
 

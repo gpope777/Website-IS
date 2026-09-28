@@ -35,7 +35,9 @@ import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
-import { loadModels, type ModelKit } from './actors/models';
+import { loadDropIns, loadModels, type DropInKits, type ModelKit } from './actors/models';
+import { dropInClips } from './actors/drop-in-puppet';
+import { paperLight, rimStrength } from './actors/actor-light';
 import type { Vitrina } from './vitrina';
 import { chargingKinds, enemyLook } from './actors/enemy-look';
 import { ChargeMarks, chargeMark } from './scene/charge-marks';
@@ -75,7 +77,7 @@ const PERF_BUILD = import.meta.env.DEV || import.meta.env.MODE === 'perf';
 const OFFER_KEY = 'bosque.tierOffer';
 
 import { DayLight } from './scene/sky';
-import { LIFE_UNIFORMS, patchCaustics, patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
+import { LIFE_UNIFORMS, PAPER_UNIFORMS, RIM_UNIFORMS, patchCaustics, patchTree, pickGlows, setGlows, WORLD_UNIFORMS } from './scene/patches';
 import { biomeOf, biomeWeights, copyLook, easeLook, lookAt, newLook } from './scene/looks';
 import { StructureMeshes } from './scene/structures';
 import { GraveMeshes } from './scene/graves';
@@ -224,6 +226,17 @@ export class Game {
   /** V2-E: the dungeon brutes winding a charge (red ring + arrow under them). */
   private chargeIds: number[] = [];
   private readonly chargeMarks = new ChargeMarks();
+  /** A fox-drawn enemy, or the dropped-in wolf.glb / brute.glb when there is one. */
+  private enemyActor(kind: import('../shared/protocol').EnemyKind): Actor {
+    const drop = kind === 'wolf' ? this.dropIns.wolf : this.dropIns.brute;
+    if (drop && (kind === 'wolf' || kind === 'brute' || kind.startsWith('elite'))) {
+      const a = new Actor(drop, dropInClips(drop, kind === 'wolf' ? 'wolf' : 'brute'));
+      a.dropIn = true;
+      return a;
+    }
+    return new Actor(this.kits!.fox, WOLF_CLIPS);
+  }
+
   private vitrinaHooks(): Partial<import('./vitrina').VitrinaEnv> {
     return {
       dressEnemy: (a, kind, x, z) => {
@@ -344,6 +357,8 @@ export class Game {
   private jumpWasHeld = false;
   private light: DayLight;
   private kits: { robot: ModelKit; fox: ModelKit } | null = null;
+  /** V2-E: models Gabriel dropped into public/models (spec §9). */
+  private dropIns: DropInKits = {};
   private seed: number | null = null;
   private terrain: Terrain | null = null;
   private spawns: ResourceSpawn[] = [];
@@ -491,6 +506,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, t.drawDistance);
     this.light = new DayLight(this.scene, t);
     Actor.shadowDiscs = !t.shadows;
+    PaperActor.paperBorder = this.tier !== 'low';
     this.weatherFx = new WeatherFx(this.scene);
     this.scene.add(this.structures.group, this.stallMeshes.group, this.graves.group, this.vineGroup);
     this.marker.rotation.x = Math.PI; // point down at the target
@@ -526,6 +542,14 @@ export class Game {
       (m) => this.onMsg(m),
       (s) => this.onStatus(s),
     );
+    // V2-E: the §9 drop-ins load alongside; any that are missing stay procedural (or the fox).
+    void loadDropIns().then((d) => {
+      this.dropIns = d;
+      this.steedMeshes?.setKit(d.deer ?? null);
+      this.fishMeshes?.setKit(d.fish ?? null);
+      this.frogMeshes?.setKit(d.frog ?? null);
+      this.whaleMesh?.setKit(d.whale ?? null);
+    });
     loadModels()
       .then((k) => (this.kits = k))
       .catch(() => this.hud.toast('No se pudieron cargar los personajes'));
@@ -722,19 +746,19 @@ export class Game {
     this.fogataMeshes = new FogataMeshes(this.fogataSpots);
     this.scene.add(this.fogataMeshes.group);
     this.dungeonMeshes = new DungeonMeshes(this.entrance, t.shadows);
-    this.steedMeshes = new SteedMeshes(t.shadows);
+    this.steedMeshes = new SteedMeshes(t.shadows, this.dropIns.deer ?? null);
     this.scene.add(this.steedMeshes.group);
     this.island = coastFeatures(seed).island;
-    this.fishMeshes = new FishMeshes(t.shadows);
+    this.fishMeshes = new FishMeshes(t.shadows, this.dropIns.fish ?? null);
     this.raceRings = new RaceRings(fishRings(this.terrain, seed, wildFish(this.terrain, seed)));
     this.scene.add(this.fishMeshes.group, this.raceRings.group);
-    this.frogMeshes = new FrogMeshes(t.shadows);
+    this.frogMeshes = new FrogMeshes(t.shadows, this.dropIns.frog ?? null);
     this.lilyPads = new LilyPads(frogPads(this.terrain, seed, wildFrog(this.terrain, seed)));
     this.scene.add(this.frogMeshes.group, this.lilyPads.group);
     this.pico = picoOf(this.terrain, seed);
     this.dragonMeshes = new DragonMeshes(this.camera, this.pico);
     this.scene.add(this.dragonMeshes.group);
-    this.whaleMesh = new WhaleMesh(t.shadows);
+    this.whaleMesh = new WhaleMesh(t.shadows, this.dropIns.whale ?? null);
     this.scene.add(this.whaleMesh.group, this.chargeMarks.group);
     this.scene.add(this.dungeonMeshes.group);
     this.coastDoor = coastEntrance(seed);
@@ -1001,7 +1025,7 @@ export class Game {
     for (const w of m.wolves) {
       if (w.kind === 'anchor') continue; // drawn by RescueMeshes; still a target (see enemies())
       const r = this.remote(this.wolves, w.id, () =>
-        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : w.kind === 'lieut3' ? new PaperActor(FLECHA_IMG, 3, this.camera, FLECHA_ASPECT) : w.kind === 'boss5' ? new PaperActor(MARCHITO_IMG, 9, this.camera, 589 / 662) : w.kind === 'brote' ? new PaperActor(MARCHITO_IMG, 2, this.camera, 589 / 662) : w.kind === 'core' ? new PaperActor(CORE_IMG, 2.5, this.camera, CORE_ASPECT) : new Actor(this.kits!.fox, WOLF_CLIPS),
+        w.kind === 'boss' ? new PaperActor(TRAGON_IMG, 4.5, this.camera) : w.kind === 'boss2' ? new PaperActor(ANTENON_IMG, 4, this.camera, ANTENON_ASPECT) : w.kind === 'marchito' ? new PaperActor(MARCHITO_IMG, MARCHITO.height, this.camera, 589 / 662) : w.kind === 'lieut1' ? new PaperActor(GATA_IMG, 2.6, this.camera, GATA_ASPECT) : w.kind === 'lieut2' ? new PaperActor(TRIANGULO_IMG, 2.8, this.camera, TRIANGULO_ASPECT) : w.kind === 'boss3' ? new PaperActor(ZANCUDO_IMG, 6 / ZANCUDO_ASPECT, this.camera, ZANCUDO_ASPECT) : w.kind === 'boss4' ? new PaperActor(CUCURUCHO_IMG, 5, this.camera, CUCURUCHO_ASPECT) : w.kind === 'rayo' ? new PaperActor(RAYO_IMG, 2, this.camera, RAYO_ASPECT) : w.kind === 'lieut3' ? new PaperActor(FLECHA_IMG, 3, this.camera, FLECHA_ASPECT) : w.kind === 'boss5' ? new PaperActor(MARCHITO_IMG, 9, this.camera, 589 / 662) : w.kind === 'brote' ? new PaperActor(MARCHITO_IMG, 2, this.camera, 589 / 662) : w.kind === 'core' ? new PaperActor(CORE_IMG, 2.5, this.camera, CORE_ASPECT) : this.enemyActor(w.kind),
       );
       // The rayo flashes white during its 0.8 s tell and goes pale when a gust grounds it (anim idle).
       if (w.kind === 'rayo' && r.actor instanceof PaperActor) r.actor.setTint(w.anim === 'attack' ? 0xffffff : w.anim === 'idle' ? 0xe8dca0 : 0xb48ad8);
@@ -1046,7 +1070,7 @@ export class Game {
         // V2-E: a colour per type (one material per look); scales as before.
         const look = enemyLook(w.kind, biomeOf(w.x, w.z), w.raid);
         if (look) {
-          r.actor.setSkin(look);
+          if (!r.actor.dropIn) r.actor.setSkin(look);
           r.actor.root.scale.setScalar(look.scale);
         }
       }
@@ -2005,6 +2029,9 @@ export class Game {
     this.lookFresh = true;
     this.windStorm = stormDim(here);
     this.light.update(frac, focus, this.skyLook, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, this.windStorm, performance.now() / 1000);
+    // V2-E: the drawings take the look's light; actors get a moonlit rim at night.
+    paperLight(this.skyLook, this.light.daylight, PAPER_UNIFORMS.paperLight.value);
+    RIM_UNIFORMS.rimK.value = rimStrength(this.light.daylight);
     // Deep in the swamp the fog hides everything past 70 m: a shorter far plane saves phones some work.
     const far = fog >= 1 ? Math.min(SWAMP_FAR, TIERS[this.tier].drawDistance) : TIERS[this.tier].drawDistance;
     if (this.camera.far !== far) {

@@ -48,6 +48,8 @@ const HAT_LIFT = 1.3;
 export class Actor {
   /** V2-B: a dark disc under the feet when the tier has no shadow map (set by the game before making actors). */
   static shadowDiscs = false;
+  /** V2-E: made from a dropped-in model (keeps its own colours: no enemy skin). */
+  dropIn = false;
   readonly root = new THREE.Group();
   private readonly mixer: THREE.AnimationMixer;
   private readonly actions = new Map<string, THREE.AnimationAction>();

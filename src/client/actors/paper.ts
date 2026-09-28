@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { patchPaper } from '../scene/patches';
 
 /** What the game needs from anything it draws for a remote entity (Actor or PaperActor). */
 export interface Puppet {
@@ -26,6 +27,8 @@ function texture(url: string): THREE.Texture {
  * when it dies. The drawing faces left, so it mirrors when walking screen-right.
  */
 export class PaperActor implements Puppet {
+  /** V2-E: the white paper edge (medium/high; set by the game from the tier). */
+  static paperBorder = false;
   readonly root = new THREE.Group();
   private readonly pivot = new THREE.Group();
   private readonly card: THREE.Mesh;
@@ -40,6 +43,7 @@ export class PaperActor implements Puppet {
   constructor(url: string, private readonly height: number, private readonly camera: THREE.Camera, aspect = 409 / 450) {
     this.width = height * aspect;
     this.mat = new THREE.MeshBasicMaterial({ map: texture(url), transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
+    patchPaper(this.mat, { border: PaperActor.paperBorder }); // lit by the look (V2-E)
     const geo = new THREE.PlaneGeometry(1, 1);
     geo.translate(0, 0.5, 0); // pivot at the feet
     this.card = new THREE.Mesh(geo, this.mat);

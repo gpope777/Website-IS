@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { LIFE_UNIFORMS, PAPER_UNIFORMS, patchCaustics, patchGrass, patchGround, patchPaper, patchRig, patchRim, patchSway, patchTree, patchWorld, pickGlows, RIM_UNIFORMS, rigUniforms, setGlows, WORLD_UNIFORMS, type ShaderLike } from './patches';
+import { LIFE_UNIFORMS, PAPER_UNIFORMS, patchCaustics, patchGrass, patchGround, patchPaper, patchRecolor, patchRig, patchRim, patchSway, patchTree, patchWorld, pickGlows, RIM_UNIFORMS, rigUniforms, setGlows, WORLD_UNIFORMS, type ShaderLike } from './patches';
 
 const fake = (): ShaderLike => ({
   vertexShader: '#include <common>\nvoid main(){\n#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <project_vertex>\n}',
@@ -187,5 +187,17 @@ describe('actor patches (V2-E)', () => {
     b.onBeforeCompile(t as never, null as never);
     expect(t.fragmentShader).not.toContain('around');
     expect(b.customProgramCacheKey()).not.toBe(a.customProgramCacheKey());
+  });
+});
+
+describe('enemy recolour (V2-E)', () => {
+  it('greys the texture and takes the material colour, once', () => {
+    const m = new THREE.MeshStandardMaterial();
+    patchRecolor(m);
+    patchRecolor(m);
+    const s: ShaderLike = { vertexShader: '', fragmentShader: '#include <map_fragment>\n', uniforms: {} };
+    m.onBeforeCompile(s as never, null as never);
+    expect(s.fragmentShader.match(/diffuseColor.rgb = diffuse \*/g)).toHaveLength(1);
+    expect(m.customProgramCacheKey()).toBe('recolor');
   });
 });
