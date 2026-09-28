@@ -335,3 +335,75 @@ canvas { display: block; }
 .hurt-edge { position: fixed; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 90px 30px rgba(200, 20, 10, 0.85); z-index: 5; }
 .hurt-edge.low { animation: hurt-pulse 1.2s ease-in-out infinite; }
 @keyframes hurt-pulse { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.45; } }
+
+/* ---------------------------------------------------------------- P7-C: phone HUD, bag, death, tabs, access */
+#app { --ui-scale: 1; }
+/* Notches and home bars: the HUD keeps clear of them. */
+.hud { top: env(safe-area-inset-top); right: env(safe-area-inset-right); bottom: env(safe-area-inset-bottom); left: env(safe-area-inset-left); }
+.stats, .log, .top-line, .prompt-line, .vision, .overlay .panel { zoom: var(--ui-scale); }
+.hud .stats, .hud .log div, .hud .top-line, .hud .prompt-line { text-shadow: 0 1px 2px #000, 0 0 2px #000; }
+.stat .val:empty { display: none; }
+.stat:has(.val:empty) { grid-template-columns: 22px 1fr; }
+
+.top-line { position: absolute; top: 12px; right: 12px; max-width: min(46vw, 420px); padding: 6px 14px; border-radius: 999px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(70, 20, 90, 0.85); color: #f3e6ff; }
+.top-line[hidden] { display: none; }
+.top-line.boss { background: rgba(40, 30, 20, 0.88); color: #ffe9c9; }
+.top-line.race { background: rgba(20, 60, 90, 0.88); color: #e6f6ff; }
+#app.touch .top-line { top: 8px; font-size: 13px; }
+
+/* Toasts: ≤ 3, newest on top, no fade animation of their own (the model expires them). */
+.log { flex-direction: column; }
+.log div { animation: none; font-size: 12px; }
+#app.touch .log { bottom: auto; top: 50px; right: 12px; width: min(220px, 46vw); }
+#app.touch .log div { font-size: 12px; }
+
+/* Touch: 🎒 by MENÚ; pills ≥ 52 px in fixed slots; A/B ≥ 76 px. */
+.touch-system .touch-btn.bag-btn { padding: 4px 14px; font-size: 20px; letter-spacing: 0; }
+.touch-pills { grid-template-columns: repeat(5, 52px); gap: 6px; }
+.touch-pills .touch-btn { width: 52px; height: 52px; font-size: 18px; }
+.touch-pills .touch-btn.gone { visibility: hidden; pointer-events: none; }
+.touch-actions .btn-b { width: 78px; height: 78px; }
+@media (max-height: 460px) {
+  .touch-pills { bottom: 176px; right: 12px; grid-template-columns: repeat(5, 52px); gap: 6px; }
+  .touch-pills .touch-btn { width: 52px; height: 52px; }
+  .touch-actions { width: 176px; height: 160px; }
+  .touch-actions .btn-a { width: 80px; height: 80px; bottom: 64px; }
+  .touch-actions .btn-b { width: 76px; height: 76px; right: 92px; }
+}
+@media (max-width: 420px) {
+  .touch-pills { right: 10px; grid-template-columns: repeat(5, 52px); gap: 6px; }
+}
+
+/* 🎒 */
+.panel .bag { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; margin: 10px 0; }
+.panel .bag-cell { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.08); }
+.panel .bag-cell .ic { grid-row: span 2; font-size: 22px; }
+.panel .bag-cell b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.panel .bag-cell small { color: var(--muted); font-size: 12px; }
+.panel .bag-cell.empty { opacity: 0.4; }
+
+/* Death: the world stays visible behind (blurred and grey; a plain veil on low graphics). */
+.overlay.dead { background: rgba(10, 10, 10, 0.35); backdrop-filter: grayscale(0.85) blur(3px); -webkit-backdrop-filter: grayscale(0.85) blur(3px); }
+.overlay.dead.veil { background: rgba(40, 40, 40, 0.72); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.overlay.dead .panel { text-align: center; width: min(420px, 92vw); background: rgba(19, 32, 26, 0.9); }
+.overlay.dead .cause { color: var(--fg); font-size: 17px; }
+.overlay.dead .revive { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.14); overflow: hidden; margin: 12px 0 4px; }
+.overlay.dead .revive i { display: block; height: 100%; width: 100%; background: #6fbf4a; transition: width 0.4s linear; }
+.overlay.dead button.big { display: block; width: 100%; min-height: 56px; font-size: 20px; margin: 10px 0 0; }
+.overlay.dead .note { font-size: 12px; }
+
+/* Shape marks (colour-blind safe, on by default): not only colour tells things apart. */
+#app.marks .stat.low > span:first-child::after { content: '!'; color: var(--health); font-weight: 800; margin-left: 1px; }
+#app.marks .top-line.boss::before { content: '■ '; }
+#app.marks .top-line.raid::before { content: '▲ '; }
+#app.marks .top-line.race::before { content: '● '; }
+#app.marks .tame-ring .zone { stroke-dasharray: 10 5; stroke-linecap: butt; }
+#app.marks .panel .skills button.skill.owned::before { content: '✔ '; }
+#app.marks .panel .skills button.skill.locked::before { content: '🔒 '; }
+#app.marks .panel .hats button.hat.locked::before { content: '🔒 '; }
+#app.marks .panel .tags span.off::before { content: '✕ '; }
+/* Landscape phones used to hide the bars: keep them, small, under MENÚ. */
+@media (max-height: 460px) {
+  .touch .stats { display: block; top: 52px; width: 150px; padding: 4px 8px; }
+  .touch .stat { margin: 2px 0; }
+}

@@ -59,7 +59,7 @@ import { HpBars, hurtReaction, IMPACT, lowHealth, reactTo, Shake, SHAKE_SCALE } 
 import { AudioEngine } from './audio/engine';
 import { actionCue, CueTracker, sendCue, toastCue } from './audio/cues';
 import { ambienceGains, busGains, dominant, musicTrack, MUTED_WARNING, surface, Unlock } from './audio/mix';
-import { loadSettings, saveSettings, VOLUME_DEFAULTS, type VolumeKey, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
+import { textScale, loadSettings, saveSettings, VOLUME_DEFAULTS, type VolumeKey, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
 import { HpBarMeshes } from './scene/hp-bars';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
@@ -126,6 +126,7 @@ import { ResourceMeshes } from './scene/vegetation';
 import { GrassField } from './scene/grass';
 import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
+import { deathCause, discover, parseSeen, pillsShown, SEEN_KEY, type Seen } from './hud-model';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
 /** Camera far plane deep in the swamp (fog far is 70 m there). */
@@ -216,6 +217,15 @@ export class Game {
   private readonly rig = new CameraRig();
   /** P7-A: impact — settings, camera shake, floating bars, my hit-stop (camera held until then). */
   private settings: Settings = loadSettings(isTouchDevice());
+  /** P7-C: what this device has met (pills and Ayuda). */
+  private seen: Set<Seen> = (() => {
+    try {
+      return parseSeen(localStorage.getItem(SEEN_KEY));
+    } catch {
+      return new Set<Seen>();
+    }
+  })();
+  private lastHurtAt = -1e9;
   /** P7-B: sound — the engine, the cue memory, the iOS unlock, footsteps and the ambience clock. */
   private audio = new AudioEngine();
   private cueTracker = new CueTracker();
@@ -549,16 +559,19 @@ export class Game {
     this.touch = isTouchDevice()
       ? new TouchControls(root, this.input, {
           onLook: (dx, dy) => {
-            if (!this.hud.overlayOpen) this.rig.look(dx, dy);
+            if (!this.hud.overlayOpen) this.rig.look(dx * this.settings.sens, dy * this.settings.sens);
           },
           onAction: (code) => {
             const a = KEY_ACTIONS[code];
             if (a) this.onAction(a);
           },
           onPause: () => this.onAction('menu'),
+          onBag: () => this.showBag(),
         })
       : null;
     root.classList.toggle('touch', !!this.touch);
+    this.hud.setAccess(textScale(this.settings.text), this.settings.marks);
+    this.touch?.setPills(pillsShown(this.seen, { heart: false, power: false }));
     if (!this.touch) {
       this.renderer.domElement.addEventListener('click', this.onClick);
       document.addEventListener('mousemove', this.onMouse);
@@ -980,7 +993,8 @@ export class Game {
     this.onSound(m);
     this.raid = m.raid;
     this.heart = m.heart;
-    this.hud.setHeart(m.heart);
+    this.hud.setHeart(m.heart, !!m.raid);
+    this.progress(m);
     if (m.heart) this.structures.setHp(m.heart.id, m.heart.hp);
     this.graves.sync(m.graves, this.myName);
     this.syncVines(m.vines);
@@ -1300,6 +1314,7 @@ export class Game {
   private setSettings(p: Partial<Settings>): void {
     this.settings = { ...this.settings, ...p };
     saveSettings(this.settings);
+    this.hud.setAccess(textScale(this.settings.text), this.settings.marks);
     this.audio.setGains(busGains(this.settings, document.hidden));
   }
 
@@ -1443,7 +1458,44 @@ export class Game {
     }
   }
 
+  /** P7-C: new things met → saved per device; pills follow. */
+  private progress(m: Extract<ServerMsg, { t: 'snap' }>): void {
+    const s = m.self;
+    let near = Infinity;
+    for (const w of m.wolves) near = Math.min(near, Math.hypot(w.x - s.x, w.z - s.z));
+    const fresh = discover(this.seen, {
+      inv: s.inv,
+      rank: s.rank ?? 1,
+      orbs: s.shrines.length,
+      power: s.power || s.viento || s.fuego || s.piedra,
+      mount: s.steed || s.frog || s.fish || s.dragon || s.riding,
+      heart: !!m.heart,
+      wolfNear: near,
+      dungeon: inAnyDungeon(s.x, s.z),
+      fogata: m.fogatas.some(Boolean),
+      shop: this.stalls.size > 0 || !!m.merchant,
+      marchito: !!m.marchito,
+    });
+    if (fresh.length) {
+      for (const k of fresh) this.seen.add(k);
+      try {
+        localStorage.setItem(SEEN_KEY, JSON.stringify([...this.seen]));
+      } catch {
+        /* private window */
+      }
+    }
+    this.touch?.setPills(pillsShown(this.seen, { heart: !!m.heart, power: s.power || s.viento || s.fuego || s.piedra }));
+  }
+
+  /** P7-C: 🎒 (touch) or Menú › Jugar › Mochila. */
+  private showBag(back?: () => void): void {
+    if (this.dead) return;
+    this.releaseInputs();
+    this.hud.showBag(back);
+  }
+
   private applySelf(self: Extract<ServerMsg, { t: 'snap' }>['self']): void {
+    if ((self.hurt ?? 0) > 0) this.lastHurtAt = performance.now();
     this.hud.setVitals(self.vitals);
     this.hud.setInventory(self.inv, self.weapon, self.capa, rankLine(self.xp ?? 0, self.rank ?? 1));
     this.skills = self.skills ?? [];
@@ -1512,10 +1564,16 @@ export class Game {
    * replace the death panel while still dead: the respawn button must stay reachable. */
   private showDeath(): void {
     this.releaseInputs();
-    this.hud.showDeath(() => {
-      this.conn.send({ t: 'respawn' });
-      this.hud.hideOverlay();
-    });
+    const v = this.lastSelf?.vitals;
+    const cause = deathCause({ lastHurtAgo: (performance.now() - this.lastHurtAt) / 1000, warmth: v?.warmth ?? 100, hunger: v?.hunger ?? 100 });
+    this.hud.showDeath(
+      () => {
+        this.conn.send({ t: 'respawn' });
+        this.hud.hideOverlay();
+      },
+      cause,
+      this.tier === 'low',
+    );
   }
 
   private releaseInputs(): void {
@@ -2549,7 +2607,7 @@ export class Game {
   };
 
   private onMouse = (e: MouseEvent): void => {
-    if (document.pointerLockElement === this.renderer.domElement) this.rig.look(e.movementX, e.movementY);
+    if (document.pointerLockElement === this.renderer.domElement) this.rig.look(e.movementX * this.settings.sens, e.movementY * this.settings.sens);
   };
 
   private onResize = (): void => {

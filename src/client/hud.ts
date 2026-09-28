@@ -1,7 +1,8 @@
 import { NAMES } from '../shared/names';
 import { FOGATA } from '../shared/fogatas';
 import { endingSteps, type EndingStep } from './ending-ui';
-import { ITEM_LABELS, ITEMS, type Inventory } from '../shared/items';
+import type { Inventory } from '../shared/items';
+import { bagRows, heartShown, reviveFrac, Toasts, toastText, topLine, vitalLabel } from './hud-model';
 import type { ErrorCode } from '../shared/protocol';
 import type { Vitals } from '../shared/survival';
 import type { NetStatus } from './net';
@@ -20,16 +21,18 @@ const FATAL: Record<ErrorCode, string> = {
 export class Hud {
   readonly root = document.createElement('div');
   private readonly bars: Record<keyof Vitals, HTMLElement> = {} as Record<keyof Vitals, HTMLElement>;
-  private readonly inv = el('div', 'inventory-line');
+  /** P7-C: the bag lives behind 🎒 (touch) or the Menú; this is what it shows. */
+  private bag: { inv: Inventory; weapon: number; capa: number; rank: string } = { inv: {}, weapon: 0, capa: 0, rank: '' };
+  private readonly toasts = new Toasts();
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
+  /** P7-C: one top-right line (jefe > asedio > carrera). */
+  private readonly top = el('div', 'top-line');
+  private lines: { boss: string | null; raid: string | null; race: string | null } = { boss: null, raid: null, race: null };
   private readonly log = el('div', 'log');
   private readonly banner = el('div', 'banner');
   private readonly prompt = el('div', 'prompt-line');
   private readonly overlay = el('div', 'overlay');
   private readonly heartRow = el('div', 'stat');
-  private readonly raidLine = el('div', 'raid-line');
-  /** The fish's ring race: ring and seconds left. */
-  private readonly raceLine = el('div', 'raid-line race-line');
-  private readonly bossLine = el('div', 'raid-line boss-line');
   private readonly stamina = el('div', 'stamina');
   /** Taming ring: tap it (or A / E / Espacio). Outside `.hud` so it can take taps above the touch layer. */
   private readonly ring = el('div', 'tame-ring');
@@ -72,14 +75,12 @@ export class Hud {
     this.heartRow.innerHTML = '<span>🌳</span><div class="bar"><i style="background:#5fd38a"></i></div><span class="val"></span>';
     this.heartRow.hidden = true;
     stats.appendChild(this.heartRow);
-    this.raidLine.hidden = true;
-    this.raceLine.hidden = true;
-    this.bossLine.hidden = true;
+    this.top.hidden = true;
     this.banner.hidden = true;
     this.prompt.hidden = true;
     this.overlay.hidden = true;
     this.stamina.hidden = true;
-    this.root.append(stats, this.inv, this.log, this.banner, this.prompt, this.raidLine, this.raceLine, this.bossLine, this.stamina, this.hurtEdge);
+    this.root.append(stats, this.log, this.banner, this.prompt, this.top, this.stamina, this.hurtEdge);
     this.ring.hidden = true;
     this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
     this.ring.addEventListener('pointerdown', (e) => {
@@ -95,7 +96,7 @@ export class Hud {
     for (const k of Object.keys(this.bars) as (keyof Vitals)[]) {
       const row = this.bars[k];
       (row.querySelector('i') as HTMLElement).style.width = `${v[k]}%`;
-      (row.querySelector('.val') as HTMLElement).textContent = String(v[k]);
+      (row.querySelector('.val') as HTMLElement).textContent = vitalLabel(v[k]);
       row.classList.toggle('low', v[k] < 25);
     }
   }
@@ -110,11 +111,18 @@ export class Hud {
   }
 
   setInventory(inv: Inventory, weapon = 0, capa = 0, rank = ''): void {
-    const parts = ITEMS.filter((i) => (inv[i] ?? 0) > 0).map((i) => `${ITEM_LABELS[i]} ${inv[i]}`);
-    if (weapon > 0) parts.push(`Arma +${weapon}`);
-    if (capa > 0) parts.push(`Capa ${capa}`);
-    const bag = parts.length ? parts.join(' · ') : 'Mochila vacía';
-    this.inv.textContent = rank ? `${rank} · ${bag}` : bag;
+    this.bag = { inv, weapon, capa, rank };
+  }
+
+  /** P7-C: 🎒 — the 7 materials, Arma, Capa and Rango. */
+  showBag(onBack?: () => void): void {
+    const rows = bagRows(this.bag.inv, this.bag.weapon, this.bag.capa, this.bag.rank);
+    this.panel(
+      `<h2>🎒 Mochila</h2><div class="bag">${rows.map((r) => `<div class="bag-cell${r.n === '0' ? ' empty' : ''}"><span class="ic">${r.icon}</span><b>${r.n}</b><small>${r.label}</small></div>`).join('')}</div>
+       <button data-a="back">${onBack ? 'Volver' : 'Seguir jugando'}</button>`,
+      { back: () => (onBack ? onBack() : this.hideOverlay()) },
+    );
+    this.menuOpen = true;
   }
 
   /** P7-B: every toast also sounds (set by the game). */
@@ -122,33 +130,57 @@ export class Hud {
 
   toast(text: string): void {
     this.onToast?.(text);
-    const d = el('div', '');
-    d.textContent = text;
-    this.log.prepend(d);
-    setTimeout(() => d.remove(), 6000);
+    this.toasts.push(text, performance.now());
+    this.renderToasts();
   }
 
-  setHeart(h: { hp: number; max: number } | null): void {
-    this.heartRow.hidden = !h;
-    if (!h) return;
+  private renderToasts(): void {
+    const now = performance.now();
+    const list = this.toasts.tick(now);
+    this.log.replaceChildren(...list.map((t) => {
+      const d = el('div', '');
+      d.textContent = toastText(t);
+      return d;
+    }));
+    clearTimeout(this.toastTimer);
+    if (list.length) this.toastTimer = setTimeout(() => this.renderToasts(), 250);
+  }
+
+  setHeart(h: { hp: number; max: number } | null, raid = false): void {
+    this.heartRow.hidden = !heartShown(h, raid);
+    if (!h || this.heartRow.hidden) return;
     (this.heartRow.querySelector('i') as HTMLElement).style.width = `${(h.hp / h.max) * 100}%`;
     (this.heartRow.querySelector('.val') as HTMLElement).textContent = h.hp > 0 ? String(h.hp) : 'marchito';
     this.heartRow.classList.toggle('low', h.hp < h.max * 0.25);
   }
 
   setRace(text: string | null): void {
-    this.raceLine.hidden = !text;
-    if (text) this.raceLine.textContent = text;
+    this.setLine('race', text);
   }
 
   setRaid(text: string | null): void {
-    this.raidLine.hidden = !text;
-    if (text) this.raidLine.textContent = text;
+    this.setLine('raid', text);
   }
 
   setBoss(text: string | null): void {
-    this.bossLine.hidden = !text;
-    if (text) this.bossLine.textContent = text;
+    this.setLine('boss', text);
+  }
+
+  private setLine(k: 'boss' | 'raid' | 'race', text: string | null): void {
+    if (this.lines[k] === text) return;
+    this.lines[k] = text;
+    const t = topLine(this.lines.boss, this.lines.raid, this.lines.race);
+    this.top.hidden = !t;
+    if (!t) return;
+    this.top.textContent = t.text;
+    this.top.className = `top-line ${t.kind}`;
+  }
+
+  /** P7-C: text size (×1.25 for Grande) and the colour-blind shape marks. */
+  setAccess(scale: number, marks: boolean): void {
+    const app = this.root.parentElement;
+    app?.style.setProperty('--ui-scale', String(scale));
+    app?.classList.toggle('marks', marks);
   }
 
   /** Show the ring (angles in radians, 0 = top, clockwise), or hide it with null. */
@@ -224,17 +256,22 @@ export class Hud {
     });
   }
 
-  showDeath(onRespawn: () => void): void {
+  /** P7-C: "Has caído." + a guessed cause + the revive countdown as a bar + a big Reaparecer; the world stays visible behind. */
+  showDeath(onRespawn: () => void, cause = '', lowTier = false): void {
     this.panel(
-      '<h2>Has caído</h2><p>Si reapareces, tu mochila se queda en una tumba aquí.</p><p id="revive-left"></p><button data-a="respawn">Reaparecer</button>',
+      `<h2>Has caído.</h2>${cause ? `<p class="cause">${cause}</p>` : ''}<div class="revive"><i></i></div><p id="revive-left"></p><button class="big" data-a="respawn">Reaparecer</button><p class="note">Tu mochila se queda en una tumba aquí.</p>`,
       { respawn: onRespawn },
     );
+    this.overlay.classList.add('dead');
+    this.overlay.classList.toggle('veil', lowTier);
   }
 
   /** Death panel only: how long a teammate still has to get you up. */
   setReviveLeft(n: number): void {
     const p = this.overlay.querySelector('#revive-left');
     if (p) p.textContent = n > 0 ? `Un compañero puede levantarte: ${n} s` : 'Nadie vino.';
+    const bar = this.overlay.querySelector<HTMLElement>('.revive i');
+    if (bar) bar.style.width = `${Math.round(reviveFrac(n) * 100)}%`;
   }
 
   showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void; calls?: { beast: string; label: string }[]; onCall?: (beast: string) => void; raids?: { label: string; on: boolean } | null; onRaids?: (on: boolean) => void; onSkills?: () => void; onLook?: () => void; onBook?: () => void; tripSecs?: number; stall?: string; onStall?: () => void; onStalls?: () => void; shake?: { value: string; options: [string, string][]; onChange: (v: string) => void }; vibrate?: { on: boolean; onChange: (on: boolean) => void }; sound?: { vols: { key: string; label: string; value: number }[]; mute: boolean; onVol: (key: string, v: number) => void; onMute: (on: boolean) => void } }): void {
@@ -297,6 +334,7 @@ export class Hud {
   }
 
   private panel(html: string, actions: Record<string, () => void>): void {
+    this.overlay.classList.remove('dead', 'veil');
     this.menuOpen = false; // only showMenu (below) sets this back to true; keeps it honest for death/fatal panels
     this.overlay.innerHTML = `<div class="panel">${html}</div>`;
     this.overlay.hidden = false;

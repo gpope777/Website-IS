@@ -22,6 +22,8 @@ export interface TouchHandlers {
   /** A momentary action, expressed as a KeyboardEvent.code so it shares the keyboard path. */
   onAction: (code: string) => void;
   onPause: () => void;
+  /** P7-C: 🎒 opens the bag. */
+  onBag?: () => void;
 }
 
 interface ButtonDef {
@@ -75,6 +77,7 @@ export class TouchControls {
   private stickCentre = { x: 0, y: 0 };
 
   private powerPill: HTMLElement | null = null;
+  private readonly pills: HTMLElement[] = [];
 
   constructor(parent: HTMLElement, private readonly input: InputState, private readonly h: TouchHandlers) {
     this.root = div('touch-layer');
@@ -102,6 +105,7 @@ export class TouchControls {
     for (const b of PILL_BUTTONS) {
       const el = this.button(b);
       if (b.code === 'KeyH') this.powerPill = el;
+      this.pills.push(el);
       pills.appendChild(el);
     }
 
@@ -111,7 +115,13 @@ export class TouchControls {
       e.preventDefault();
       h.onPause();
     });
-    system.appendChild(menu);
+    const bag = this.button({ code: '', label: '🎒', cls: 'sys bag-btn' });
+    bag.setAttribute('aria-label', 'Mochila');
+    bag.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      h.onBag?.();
+    });
+    system.append(menu, bag);
 
     this.root.append(look, this.stickBase, actions, pills, system);
 
@@ -139,13 +149,21 @@ export class TouchControls {
     if (e.cancelable) e.preventDefault();
   };
 
-  /** Clear every held flag, e.g. when the game pauses or a menu opens. */
+  /** P7-C: show the pills by progress; a hidden one keeps its slot (the grid never reorders). */
+  setPills(shown: readonly boolean[]): void {
+    this.pills.forEach((p, i) => {
+      const hide = !shown[i];
+      if (p.classList.contains('gone') !== hide) p.classList.toggle('gone', hide);
+    });
+  }
+
   /** The power pill's icon follows the chosen power. */
   setPowerIcon(icon: string): void {
     const span = this.powerPill?.querySelector('span');
     if (span) span.textContent = icon;
   }
 
+  /** Clear every held flag, e.g. when the game pauses or a menu opens. */
   release(): void {
     this.stickPointer = null;
     this.lookPointer = null;
