@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DUNGEON, inside, leverPos } from '../../shared/dungeon';
 import type { DungeonView } from '../../shared/protocol';
+import { beamOpacity, stumpTint } from './backdrop';
 
 const BARK = new THREE.MeshLambertMaterial({ color: 0x4a3322, flatShading: true });
 const ROOT = new THREE.MeshLambertMaterial({ color: 0x3b2a1c, flatShading: true });
@@ -23,11 +24,24 @@ export class DungeonMeshes {
   private readonly altarOrb: THREE.Mesh;
   private readonly hollow: THREE.Mesh;
   private readonly exit: THREE.Mesh;
+  /** P7-E: its own bark and beam, so the ending can bleach the trunk without touching the interior. */
+  private readonly bark = BARK.clone();
+  private readonly beam = BEAM.clone();
+  private purified = -1;
+
+  /** P7-E: after the ending (k = the world's purify 0..1) the trunk turns bone white and its beam fades. */
+  setPurify(k: number): void {
+    const q = Math.round(k * 20) / 20;
+    if (q === this.purified) return;
+    this.purified = q;
+    this.bark.color.setHex(stumpTint(BARK.color.getHex(), q));
+    this.beam.opacity = beamOpacity(BEAM.opacity, k);
+  }
 
   constructor(entrance: { x: number; y: number; z: number }, shadows: boolean) {
     // --- the trunk in the world
     const r = DUNGEON.trunkR;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 1.15, 26, 10, 4), BARK);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 1.15, 26, 10, 4), this.bark);
     trunk.position.set(entrance.x, entrance.y + 12, entrance.z);
     trunk.castShadow = shadows;
     const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 2.4, 1), new THREE.MeshLambertMaterial({ color: 0x3e5a2e, flatShading: true }));
@@ -47,7 +61,7 @@ export class DungeonMeshes {
     this.hollow.scale.y = 1.5;
     this.hollow.position.set(entrance.x + Math.sin(toSpawn) * (r * 1.05), entrance.y + 2.2, entrance.z + Math.cos(toSpawn) * (r * 1.05));
     this.hollow.rotation.y = toSpawn;
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 90, 8, 1, true), BEAM);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 90, 8, 1, true), this.beam);
     beam.position.set(entrance.x, entrance.y + 45, entrance.z);
     this.group.add(this.hollow, beam);
 

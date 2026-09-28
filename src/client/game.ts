@@ -2462,6 +2462,7 @@ export class Game {
     LIFE_UNIFORMS.windT.value = now;
     this.purify = this.perfStop?.purified ? 1 : this.heal.purify(now);
     LIFE_UNIFORMS.purify.value = this.purify;
+    for (const d of [this.dungeonMeshes, this.coastMeshes, this.swampMeshes]) d?.setPurify(this.purify); // P7-E: white Raíces-madre
     LIFE_UNIFORMS.purifyFrom.value.set(TOWER.x, TOWER.z);
     // V2-D: the water's sky, sun and clock; el Lago Negro clears with las Tierras.
     WATER_UNIFORMS.uTime.value = now;

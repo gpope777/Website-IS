@@ -4,6 +4,7 @@ import type { SwampDungeonView } from '../../shared/protocol';
 import { FUEGO } from '../../shared/fuego';
 import { WATER_LEVEL, type Terrain } from '../../shared/terrain';
 import { ZARZAL, ZARZAL_KNOT, zarzalAt } from '../../shared/swamp';
+import { stumpTint } from './backdrop';
 
 const BARK = new THREE.MeshLambertMaterial({ color: 0x3b3a26, flatShading: true });
 const ROOT = new THREE.MeshLambertMaterial({ color: 0x2e2a1c, flatShading: true });
@@ -32,10 +33,22 @@ export class SwampDungeonMeshes {
   /** El Zancudo's dive telegraph: a dark ring on the floor with a bright rim (unfogged). */
   private readonly shadow: THREE.Group;
 
+  /** P7-E: its own bark, so the ending can bleach the trunk without touching the interior. */
+  private readonly bark = BARK.clone();
+  private purified = -1;
+
+  /** P7-E: after the ending (k = the world's purify 0..1) the trunk turns bone white. */
+  setPurify(k: number): void {
+    const q = Math.round(k * 20) / 20;
+    if (q === this.purified) return;
+    this.purified = q;
+    this.bark.color.setHex(stumpTint(BARK.color.getHex(), q));
+  }
+
   constructor(entrance: { x: number; y: number; z: number }, shadows: boolean) {
     const r = S.trunkR;
     // Sunken: its foot is in the Laguna's bed; a hollow glows just above the water.
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 1.1, 22, 10, 3), BARK);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 1.1, 22, 10, 3), this.bark);
     trunk.position.set(entrance.x, entrance.y + 11, entrance.z);
     trunk.castShadow = shadows;
     const hollow = new THREE.Mesh(new THREE.CircleGeometry(1.5, 16), GLOW);

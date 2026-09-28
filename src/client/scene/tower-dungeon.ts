@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { boulders, MOUNTAIN_DUNGEON as M } from '../../shared/mountain-dungeon';
 import { insideTower, TOWER_DUNGEON as T, TOWER_ROCKFALL } from '../../shared/tower-dungeon';
 import type { TowerDungeonView } from '../../shared/protocol';
+import { copaBackdrop } from './backdrop';
 
 const FLOOR = new THREE.MeshLambertMaterial({ color: 0x3a2e44 });
 const WALL = new THREE.MeshLambertMaterial({ color: 0x2a2034, flatShading: true });
@@ -49,6 +50,9 @@ export class TowerDungeonMeshes {
     rim.rotation.x = Math.PI / 2;
     rim.position.set(X, F + 0.4, T.copa.z);
     this.group.add(copa, rim);
+    // P7-E: the painted backdrop (the world from the top of the Torre), 1 draw call.
+    const telon = copaBackdrop(X, F, T.copa.z);
+    if (telon) this.group.add(telon);
     // Gates: root bars across the corridor.
     // Gates: one wall of knotted root each (a single mesh; phones).
     T.gatesZ.forEach((z) => this.gates.push(box(T.halfW * 2, 9, 0.8, ROOT, X, F + 4.5, z)));
