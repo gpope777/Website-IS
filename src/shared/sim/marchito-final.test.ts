@@ -337,7 +337,7 @@ describe('balance — solo kill time', () => {
   it('a scripted solo player (weapon 5) takes between 6 and 10 min (~7.7 since P7-E)', () => {
     for (const seed of [1, 7, 42]) {
       const { total, phases } = soloKillTime(seed);
-      process.stderr.write(`solo seed ${seed}: ${(total / 60).toFixed(2)} min (${phases.map((p) => p.toFixed(0)).join(" / ")} s)\n`);
+      console.info(`solo seed ${seed}: ${(total / 60).toFixed(2)} min (${phases.map((p) => p.toFixed(0)).join(" / ")} s)\n`.trimEnd());
       expect(total).toBeGreaterThan(7 * 60); // P7-E: ~7.7 (the fight must feel ~8 min, not 6)
       expect(phases).toHaveLength(3);
       expect(total).toBeGreaterThan(6 * 60);
