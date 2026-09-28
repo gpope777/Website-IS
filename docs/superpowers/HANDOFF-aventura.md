@@ -1453,3 +1453,29 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, teléfono, `?fps=1`): montar el ciervo al trote y ver las patas; el pez y la rana; rodar/bloquear/planear; un bruto de mazmorra cargando (¿se ve el anillo?); de noche en la Costa, ¿se lee el robot?
 - Lo siguiente: #7 Pulido (con el tutorial).
+
+## Pulido · P7-A — Impacto: golpes, sacudida, barra flotante, borde rojo y cámara — HECHO
+- Plan: `docs/superpowers/plans/2026-09-28-pulido-P7-A-impacto.md`.
+- Commits: T1 servidor (`fx`, `self.hurt`, visiones por jugador, **protocolo 63**), T2 puro (`impact.ts`, `settings.ts`, `camera-clip.ts`), T3 en pantalla, T4 cámara, y este texto.
+- Tests: npm test 1224 (antes 1204), test:workers 12, check + build verdes. Los tests que fijaban `PROTOCOL_VERSION` 62 ahora fijan 63 (cambio a propósito). Partidas viejas cargan (`seen` opcional). Sin cambios de balance.
+- Rendimiento: arnés en baja (20 lecturas) **igual que la base**, todo dentro; no se tocó `baseline.json`. La pasada de 3 gamas no cabe en 10 min en el contenedor: media/alta sin medir (las barras solo existen tras un golpe; el parpadeo cambia material, no añade llamadas).
+- Cómo funciona:
+  - **Servidor:** cada golpe que entra (`strike`, anclas) apunta `{ id, dmg, kind: hit|kill, by, hp }`; en `bite`, `parry` y `block`. Lista con número de secuencia (2 s) y cada jugador guarda el último que recibió: nada se pierde entre ticks ni se repite. ≤ 6 por snapshot, solo a ≤ 40 m. `self.hurt` = lo que pasó por `hurt()` desde el último snapshot.
+  - **Pantalla:** tu golpe → el enemigo parpadea blanco 80 ms (un material blanco compartido; el papel ×2 de color y se aplasta 10 %), hit-stop 60 ms (110 en parada o golpe final) del enemigo, tu robot y la cámara; golpe final → sale despedido 0,6 m. Golpe de un amigo: solo parpadeo. Recibes daño → borde rojo (CSS) según el daño, tu robot parpadea rojo, sacudida ≤ 0,2; bajo 25 % de vida el borde late. Vibración con `navigator.vibrate` (iOS no tiene).
+  - **Barra flotante** sobre lobos, brutos y rayos 3 s tras cada golpe (4 como mucho). Los jefes siguen con su barra de arriba.
+  - **Ajustes en el Menú:** "Sacudida de cámara" (Normal / Suave / Nada; Suave por defecto en táctil) y "Vibración" (Sí/No), en `localStorage['bosque.settings']`. El corcoveo del ciervo pasa por la misma sacudida.
+  - **Cámara:** rayo contra los `colliders` (rocas, muros, pilares, estructuras) y el terreno entre medias; se acerca al momento y vuelve despacio. 3,5 m dentro de mazmorras. Fijar objetivo con τ 0,15 s.
+  - **Visiones de entrada por jugador** (Pantano, Montañas, Tierras): el primero del mundo la da a todos los conectados; quien llegue después la recibe él solo, con su nombre.
+- Decidido por Claude — revisar:
+  - `fx` lleva también `hp` (0–1): la barra es exacta aunque el asedio cambie la vida.
+  - Daño de zona (ciénaga, zarzal, espesura, ceniza) y de caída **no** cuentan en `hurt` (un borde rojo continuo no dice nada).
+  - El "empujón hacia delante" de tu golpe es la misma sacudida, pequeña (0,05).
+  - Golpes desviados ("El papel doblado aguanta") y las peleas especiales (El Marchito, el final, el Corazón Negro) no mandan `fx`.
+  - No se hace "enemigo en el tercio superior" al fijar: el pitch sigue siendo del jugador.
+  - Las verjas de mazmorra no son círculos: la cámara no choca con ellas (los 3,5 m ayudan).
+  - Un veterano de antes del 63 verá cada visión de entrada una vez más (no hay forma de saber si la vio).
+  - Las barras usan 4 materiales de frente (uno por barra, para el color) + 1 de fondo.
+- NO verificado: nada de esto se vio en un navegador ni en móvil (Chromium headless a 2 fps no sirve para juzgar el impacto); la vibración; que el borde rojo no tape nada en pantallas pequeñas.
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono, `?fps=1`): 5 golpes, 1 parada, 1 lobo muerto: ¿se nota cada uno? ¿Marea la sacudida en Suave? ¿Y en Normal? Dejarse morder: borde rojo y vibración. Pegarse a una roca o un muro girando la cámara. Un sobrino entra al Pantano después de otro: ¿le sale su visión?
+- Lo siguiente: P7-B Sonido.
