@@ -459,3 +459,4 @@ canvas { display: block; }
 .vision.echo { background: rgba(10, 34, 22, 0.9); color: #e3f6e6; border-color: rgba(120, 200, 150, 0.45); box-shadow: 0 0 24px rgba(40, 120, 70, 0.4); }
 .vision.echo p { font-style: normal; }
 .vision.echo p:first-child { font-size: 13px; opacity: 0.75; }
+@media (orientation: portrait) { #app.touch .hud > .goal-tip { top: calc(env(safe-area-inset-top) + 158px); } #app.touch .log { top: 196px; } }

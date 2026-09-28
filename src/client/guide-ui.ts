@@ -131,7 +131,8 @@ export class GuideUi {
     this.v3.set(step.target.x, (camera.position.y ?? 0), step.target.z).project(camera);
     // Behind the camera: the projected z is past 1.
     const behind = this.v3.z > 1;
-    this.hud.setArrow(edgeArrow(this.v3.x, this.v3.y, behind, w, h, EDGE_PAD));
+    // On touch the bottom ~180 px are thumbs and buttons: keep the arrow above them.
+    this.hud.setArrow(edgeArrow(this.v3.x, this.v3.y, behind, w, this.isTouch ? Math.max(200, h - 180) : h, EDGE_PAD));
   }
 
   /** Line tapped: back to full; the caller opens Ayuda. */
