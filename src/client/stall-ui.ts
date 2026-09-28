@@ -1,5 +1,5 @@
 import { count, ITEM_LABELS, ITEMS, type Inventory, type ItemId } from '../shared/items';
-import { NAMES } from '../shared/names';
+import { NAMES, qty } from '../shared/names';
 import { canBuy, canDeliver, STALL, tillTotal, type Stall } from '../shared/shop';
 
 const low = (k: ItemId) => ITEM_LABELS[k].toLowerCase();
@@ -25,7 +25,7 @@ export function stallHtml(s: Stall, inv: Inventory): string {
     .map((sh, i) => {
       const canStock = count(inv, sh.give) >= sh.n;
       const want = sh.mode === 'want';
-      const line = want ? `Busco ${sh.m} ${low(sh.want)}, pago ${sh.n} ${low(sh.give)} · pagos para ${Math.floor(sh.stock / sh.n)}` : `Vendo ${sh.n} ${low(sh.give)} por ${sh.m} ${low(sh.want)} · quedan ${sh.stock}`;
+      const line = want ? `Busco ${qty(sh.m, sh.want)}, pago ${qty(sh.n, sh.give)} · pagos para ${Math.floor(sh.stock / sh.n)}` : `Vendo ${qty(sh.n, sh.give)} por ${qty(sh.m, sh.want)} · quedan ${sh.stock}`;
       return `<div class="shelf">
         <p>${line}</p>
         <button class="secondary" data-a="mode-${i}"${sh.stock > 0 ? ' disabled' : ''}>${want ? 'Busco' : 'Vendo'}</button>
@@ -42,13 +42,13 @@ export function stallHtml(s: Stall, inv: Inventory): string {
     ${rows}
     <p>${NAMES.till}: ${tillText(s)}</p>
     <button data-a="till"${tillTotal(s) > 0 ? '' : ' disabled'}>Vaciar ${NAMES.till.toLowerCase()}</button>
-    ${s.log.length ? `<p>Últimas ventas:</p>${s.log.map((v) => `<p>${v.who} · ${v.n} ${low(v.give)} · ${v.m} ${low(v.want)} · día ${v.day}</p>`).join('')}` : ''}
+    ${s.log.length ? `<p>Últimas ventas:</p>${s.log.map((v) => `<p>${v.who} · ${qty(v.n, v.give)} · ${qty(v.m, v.want)} · día ${v.day}</p>`).join('')}` : ''}
     <button class="secondary" data-a="pick">Recoger ${NAMES.stall.toLowerCase()}</button>
     <button data-a="back">Volver</button>`;
 }
 
 const tillText = (s: Stall) => {
-  const parts = ITEMS.filter((k) => count(s.till, k) > 0).map((k) => `${count(s.till, k)} ${low(k)}`);
+  const parts = ITEMS.filter((k) => count(s.till, k) > 0).map((k) => `${qty(count(s.till, k), k)}`);
   return parts.length ? parts.join(', ') : 'vacía';
 };
 
@@ -60,13 +60,13 @@ export function buyHtml(s: Stall, inv: Inventory): string {
       if (sh.mode === 'want') {
         const w = canDeliver(s, i, inv);
         return `<div class="shelf">
-        <p>Busca ${sh.m} ${low(sh.want)}, paga ${sh.n} ${low(sh.give)} · ${Math.floor(sh.stock / sh.n)} veces${w ? ` · ${w}` : ''}</p>
+        <p>Busca ${qty(sh.m, sh.want)}, paga ${qty(sh.n, sh.give)} · ${Math.floor(sh.stock / sh.n)} veces${w ? ` · ${w}` : ''}</p>
         <button data-a="deliver-${i}"${w ? ' disabled' : ''}>Entregar</button>
       </div>`;
       }
       const why = canBuy(s, i, inv);
       return `<div class="shelf">
-        <p>${sh.n} ${low(sh.give)} por ${sh.m} ${low(sh.want)} · quedan ${sh.stock}${why ? ` · ${why}` : ''}</p>
+        <p>${qty(sh.n, sh.give)} por ${qty(sh.m, sh.want)} · quedan ${sh.stock}${why ? ` · ${why}` : ''}</p>
         <button data-a="buy-${i}"${why ? ' disabled' : ''}>Comprar</button>
       </div>`;
     })

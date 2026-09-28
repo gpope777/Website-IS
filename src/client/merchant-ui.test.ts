@@ -13,7 +13,7 @@ describe('Buhonero panel (T6-D)', () => {
     const h = merchantHtml({ wood: 5 }, 20);
     expect(h).toContain('Buhonero');
     expect(h).toContain('Te quedan 20 tratos hoy.');
-    expect(h).toContain('5 madera → 1 bayas');
+    expect(h).toContain('5 madera → 1 baya');
     expect(h).toContain('6 bayas → 5 piedra');
     expect(h).toContain('data-a="deal-0">');
     expect(h).toContain('data-a="deal-6" disabled');

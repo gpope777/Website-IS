@@ -1,4 +1,4 @@
-import { NAMES } from '../names';
+import { NAMES, qty } from '../names';
 import { CIENAGA, deepStepOk, depthAt, inCienaga, SWIM_MAX_DEPTH } from '../coast';
 import { BOG, inBog, ZARZAL, ZARZAL_KNOT, zarzalAt } from '../swamp';
 import { weatherAt, wetAt } from '../weather';
@@ -1361,7 +1361,7 @@ export class WorldSim {
     p.chests = [...opened, id];
     for (const [item, n] of Object.entries(c.loot) as [ItemId, number][]) this.gain(p, item, n);
     const mat = (Object.entries(c.loot) as [ItemId, number][]).find(([k]) => k !== 'pearl')!;
-    this.tell(p.name, `Cofre hundido: ${mat[1]} de ${ITEM_LABELS[mat[0]].toLowerCase()} y una ${NAMES.pearl}`);
+    this.tell(p.name, `Cofre hundido: ${qty(mat[1], mat[0])} y una ${NAMES.pearl}`);
   }
 
   /** P4-B Buen ojo: your amber and quartz come back sooner. */
@@ -1385,7 +1385,7 @@ export class WorldSim {
     const h = this.heart();
     if (!h || p.dead || Math.hypot(h.x - p.x, h.z - p.z) > HEART.tendReach) return;
     if (!p.skills?.length) return this.tell(p.name, 'No hay nada que olvidar');
-    if ((p.inv.berries ?? 0) < SKILL_FX.forgetCost) return this.tell(p.name, `Hacen falta ${SKILL_FX.forgetCost} bayas`);
+    if ((p.inv.berries ?? 0) < SKILL_FX.forgetCost) return this.tell(p.name, `Hacen falta ${qty(SKILL_FX.forgetCost, 'berries')}`);
     p.inv = removeAll(p.inv, { berries: SKILL_FX.forgetCost });
     p.skills = [];
     this.tell(p.name, `Olvidas tus ${NAMES.skills.toLowerCase()}. Los puntos vuelven`);
@@ -1457,7 +1457,7 @@ export class WorldSim {
     this.stalls[i] = r.stall;
     p.inv = r.inv;
     const sh = s.shelves[shelf]!;
-    const what = `${sh.n} ${ITEM_LABELS[sh.give].toLowerCase()}`;
+    const what = qty(sh.n, sh.give);
     this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(r.stall) } });
     this.tell(p.name, `Compras ${what}.`);
     const owner = this.live.get(s.owner);
@@ -1498,7 +1498,7 @@ export class WorldSim {
     p.inv = r.inv;
     p.merchant = { day: Math.floor(this.time / DAY_LENGTH), used: used + 1 };
     const d = MERCHANT.deals[id]!;
-    this.tell(p.name, `Das ${d.n} ${ITEM_LABELS[d.give].toLowerCase()}, recibes ${d.m} ${ITEM_LABELS[d.get].toLowerCase()}.`);
+    this.tell(p.name, `Das ${qty(d.n, d.give)}, recibes ${qty(d.m, d.get)}.`);
   }
 
   /** T6-D: Entregar at someone else's Encargo: paid at once from the pay set aside; whole or nothing. */
@@ -1517,9 +1517,9 @@ export class WorldSim {
     p.inv = r.inv;
     const sh = s.shelves[shelf]!;
     this.outbox.push({ to: null, msg: { t: 'stall', s: structuredClone(r.stall) } });
-    this.tell(p.name, `Entregas ${sh.m} ${ITEM_LABELS[sh.want].toLowerCase()}. Cobras ${sh.n} ${ITEM_LABELS[sh.give].toLowerCase()}.`);
+    this.tell(p.name, `Entregas ${qty(sh.m, sh.want)}. Cobras ${qty(sh.n, sh.give)}.`);
     const owner = this.live.get(s.owner);
-    if (owner && owner.awayFor === null) this.tell(s.owner, `${p.name} te trajo ${sh.m} ${ITEM_LABELS[sh.want].toLowerCase()}.`);
+    if (owner && owner.awayFor === null) this.tell(s.owner, `${p.name} te trajo ${qty(sh.m, sh.want)}.`);
     else {
       const o = this.players.get(s.owner);
       if (o) o.soldSince = (o.soldSince ?? 0) + 1;
@@ -1885,10 +1885,10 @@ export class WorldSim {
     const zn = nearestZone(this.zones, s.x, s.z, ids);
     if (mine === 'mountain') {
       this.gain(p, 'quartz', QUARTZ.orb);
-      this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${QUARTZ.orb} de ${NAMES.quartz}`);
+      this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${qty(QUARTZ.orb, 'quartz')}`);
     } else if (mine === 'swamp') {
       this.gain(p, 'amber', AMBER.orb);
-      this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${AMBER.orb} de ${NAMES.amber}`);
+      this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento y ${qty(AMBER.orb, 'amber')}`);
     } else this.tell(p.name, `${SHRINE_LABELS[s.kind]}: orbe de mejora, +20 de aliento`);
     const where = { forest: 'bosque', coast: 'costa', swamp: 'pantano', mountain: 'montaña' }[mine];
     if (zn) this.cleanse(zn.id, `La luz del santuario limpia un trozo de ${where}`);
@@ -2432,7 +2432,7 @@ export class WorldSim {
     const thorns = w.raid ? 0 : thornDrop(w.kind, w.x, w.z, w.kind === 'rayo' ? this.rng() : 0);
     if (thorns > 0 && by) {
       this.gain(by, 'thorn', thorns);
-      this.tell(name, `+${thorns} ${NAMES.thorn}`);
+      this.tell(name, `+${qty(thorns, 'thorn')}`);
     }
   }
 
@@ -3060,7 +3060,7 @@ export class WorldSim {
       for (const t of fighters) {
         const p = this.players.get(t.name)!;
         this.gain(p, 'thorn', FLECHA.thorns);
-        this.tell(t.name, `+${FLECHA.thorns} ${NAMES.thorn}`);
+        this.tell(t.name, `+${qty(FLECHA.thorns, 'thorn')}`);
       }
       return this.sayTower(`${NAMES.lieutenant3} se parte contra el suelo. La escalera sube`);
     }

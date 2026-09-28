@@ -1,5 +1,5 @@
 import { count, ITEM_LABELS, type Inventory } from '../shared/items';
-import { NAMES } from '../shared/names';
+import { NAMES, qty } from '../shared/names';
 import { MERCHANT } from '../shared/shop';
 
 const low = (k: keyof typeof ITEM_LABELS) => ITEM_LABELS[k].toLowerCase();
@@ -14,7 +14,7 @@ export function merchantHtml(inv: Inventory, left: number): string {
   const rows = MERCHANT.deals
     .map((d, i) => {
       const can = left > 0 && count(inv, d.give) >= d.n;
-      return `<div class="shelf"><p>${d.n} ${low(d.give)} → ${d.m} ${low(d.get)}</p><button data-a="deal-${i}"${can ? '' : ' disabled'}>Cambiar</button></div>`;
+      return `<div class="shelf"><p>${qty(d.n, d.give)} → ${qty(d.m, d.get)}</p><button data-a="deal-${i}"${can ? '' : ' disabled'}>Cambiar</button></div>`;
     })
     .join('');
   return `<h2>${NAMES.merchant}</h2>

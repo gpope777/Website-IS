@@ -2,7 +2,7 @@ import { weatherAt, weatherLine, wetAt, type Weather } from '../shared/weather';
 import { rankLine, rankUpText, RANK_FLASH } from './rank-ui';
 import { dawnCrossed, precipKind, stormDim, WeatherFx } from './scene/weather';
 import { AmbientLife } from './scene/ambient';
-import { NAMES } from '../shared/names';
+import { NAMES, costText } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
 import { coastFeatures, corruptFeatures, createTerrain, inMountains, inSwamp, type Islet, type Terrain, WATER_LEVEL, waterLevel } from '../shared/terrain';
@@ -1568,7 +1568,7 @@ export class Game {
         onSkills: () => this.showSkills(null),
         onLook: () => this.showLook(),
         onBook: () => this.showBook(),
-        stall: [...this.stalls.values()].some((s) => s.owner === this.myName) ? undefined : `Poner ${NAMES.stall.toLowerCase()} (8 madera, 4 piedra)`,
+        stall: [...this.stalls.values()].some((s) => s.owner === this.myName) ? undefined : `Poner ${NAMES.stall.toLowerCase()} (${costText(STALL.cost)})`,
         onStall: () => this.placeStall(),
         onStalls: this.stalls.size ? () => this.hud.showSkills(stallListHtml([...this.stalls.values()], this.body ?? { x: 0, z: 0 }), { back: () => this.hud.hideOverlay() }) : undefined,
         tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,

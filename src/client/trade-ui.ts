@@ -1,5 +1,5 @@
 import { count, ITEM_LABELS, ITEMS, type Inventory, type ItemId } from '../shared/items';
-import { NAMES } from '../shared/names';
+import { NAMES, qty } from '../shared/names';
 import type { TradeView } from '../shared/protocol';
 import { TRADE, type TradeLine } from '../shared/shop';
 
@@ -38,7 +38,7 @@ export function bumpLine(lines: readonly TradeLine[], i: number, d: number, inv:
   return lines.map((l, j) => (j === i ? { item: l.item, n: Math.max(1, Math.min(l.n + d, count(inv, l.item), TRADE.nMax)) } : { ...l }));
 }
 
-const lineText = (ls: readonly TradeLine[]) => (ls.length ? ls.map((l) => `<p>${l.n} ${low(l.item)}</p>`).join('') : '<p>Nada.</p>');
+const lineText = (ls: readonly TradeLine[]) => (ls.length ? ls.map((l) => `<p>${qty(l.n, l.item)}</p>`).join('') : '<p>Nada.</p>');
 
 /** T6-C: the trade window. Asked: Ver / No. Waiting: Cancelar. Open: two columns, Vale, Cancelar. */
 export function tradeHtml(tr: TradeView, inv: Inventory): string {
@@ -48,7 +48,7 @@ export function tradeHtml(tr: TradeView, inv: Inventory): string {
   const mine = tr.mine
     .map(
       (l, i) =>
-        `<div class="shelf"><button class="secondary" data-a="dec-${i}">−</button><button class="secondary" data-a="item-${i}">${l.n} ${low(l.item)}</button><button class="secondary" data-a="inc-${i}">+</button><button class="secondary" data-a="del-${i}">Quitar</button></div>`,
+        `<div class="shelf"><button class="secondary" data-a="dec-${i}">−</button><button class="secondary" data-a="item-${i}">${qty(l.n, l.item)}</button><button class="secondary" data-a="inc-${i}">+</button><button class="secondary" data-a="del-${i}">Quitar</button></div>`,
     )
     .join('');
   const canAdd = addLine(tr.mine, inv) !== null;

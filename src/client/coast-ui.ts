@@ -1,7 +1,7 @@
 import { CHEST, type Chest } from '../shared/coast-shrines';
 import { MOUNTAIN_SHRINE } from '../shared/mountain-shrines';
 import { UPGRADE } from '../shared/items';
-import { NAMES } from '../shared/names';
+import { NAMES, qty } from '../shared/names';
 import type { CageView, ShrineView } from '../shared/protocol';
 import { RESCUE } from '../shared/rescue';
 import { SHRINE, type Shrine } from '../shared/shrines';
@@ -21,13 +21,13 @@ export interface CoastCtx {
 }
 
 const c = UPGRADE.cost;
-const UPGRADE_LABEL = `Mejorar el arma (${c.pearl} ${NAMES.pearl}s, ${c.stone} piedra, ${c.wood} madera)`;
+const UPGRADE_LABEL = `Mejorar el arma (${qty(c.pearl, 'pearl')}, ${qty(c.stone, 'stone')}, ${qty(c.wood, 'wood')})`;
 const q = UPGRADE.costHigh;
-const UPGRADE_HIGH = `Mejorar el arma (${q.quartz} ${NAMES.quartz}, ${q.stone} piedra, ${q.wood} madera)`;
+const UPGRADE_HIGH = `Mejorar el arma (${qty(q.quartz, 'quartz')}, ${qty(q.stone, 'stone')}, ${qty(q.wood, 'wood')})`;
 const top = UPGRADE.costTop;
 /** "espina negra" → "espinas negras". */
 export const THORNS = `${NAMES.thorn.replace(' ', 's ')}s`;
-const UPGRADE_TOP = `Mejorar el arma (${top.thorn} ${THORNS}, ${top.quartz} ${NAMES.quartz}, ${top.stone} piedra)`;
+const UPGRADE_TOP = `Mejorar el arma (${qty(top.thorn, 'thorn')}, ${qty(top.quartz, 'quartz')}, ${qty(top.stone, 'stone')})`;
 
 /** A sunken chest within reach (diving), else the weapon upgrade at the Heart. The server re-checks. */
 export function coastAction(x: CoastCtx): { t: 'chest'; id: number; label: string } | { t: 'upgrade'; label: string } | null {

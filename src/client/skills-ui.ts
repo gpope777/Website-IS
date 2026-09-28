@@ -1,4 +1,4 @@
-import { NAMES } from '../shared/names';
+import { NAMES, qty } from '../shared/names';
 import { BRANCHES, canLearn, SKILL_FX, SKILL_LINES, skillPoints, type SkillId } from '../shared/progression';
 
 /** How a oficio button looks: learned, learnable now, or not yet. */
@@ -17,6 +17,6 @@ export function skillsHtml(rank: number, skills: readonly string[], atHeart: boo
     <p>Puntos: ${skillPoints(rank, skills)}</p>
     <div class="skills">${cols}</div>
     ${pick}
-    ${atHeart ? `<button class="secondary" data-a="forget">Olvidar oficios · ${SKILL_FX.forgetCost} bayas</button>` : ''}
+    ${atHeart ? `<button class="secondary" data-a="forget">Olvidar oficios · ${qty(SKILL_FX.forgetCost, 'berries')}</button>` : ''}
     <button class="secondary" data-a="back">Volver</button>`;
 }

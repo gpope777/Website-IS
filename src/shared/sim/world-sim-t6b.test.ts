@@ -60,8 +60,8 @@ describe('comprar y Caja (T6-B, server)', () => {
     expect(s.till).toEqual({ berries: 6 });
     expect(s.log[0]).toMatchObject({ who: 'Bea', give: 'pearl', n: 1, want: 'berries', m: 6, day: 1 });
     expect(out.some((o) => o.to === null && o.msg.t === 'stall')).toBe(true);
-    expect(toastsTo(out, 'Bea')).toContain('Compras 1 perlas.');
-    expect(toastsTo(out, 'Ana')).toContain('Bea compró 1 perlas en tu puesto.');
+    expect(toastsTo(out, 'Bea')).toContain('Compras 1 perla.');
+    expect(toastsTo(out, 'Ana')).toContain('Bea compró 1 perla en tu puesto.');
   });
 
   it('refusals change nothing: far, own, unknown, short', () => {

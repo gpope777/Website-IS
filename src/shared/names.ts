@@ -119,3 +119,32 @@ export const NAMES = {
   merchant: 'Buhonero',
   order: 'Encargo',
 } as const;
+
+/** P7-C: singular and plural of each material (spec §5.4). Uncountable ones repeat; ámbar takes "de". */
+type Mat = 'wood' | 'stone' | 'berries' | 'pearl' | 'amber' | 'quartz' | 'thorn';
+const plural = (w: string) => w.split(' ').map((p) => (/[aeiouáéó]$/.test(p) ? `${p}s` : `${p}es`)).join(' ');
+export const ITEM_FORMS: Record<Mat, readonly [string, string]> = {
+  wood: ['madera', 'madera'],
+  stone: ['piedra', 'piedra'],
+  berries: ['baya', 'bayas'],
+  pearl: [NAMES.pearl, plural(NAMES.pearl)],
+  amber: [NAMES.amber, `de ${NAMES.amber}`],
+  quartz: [NAMES.quartz, plural(NAMES.quartz)],
+  thorn: [NAMES.thorn, plural(NAMES.thorn)],
+};
+const MAT_ORDER: readonly Mat[] = ['wood', 'stone', 'berries', 'pearl', 'amber', 'quartz', 'thorn'];
+
+/** The material word for `n` of it ("perla", "perlas", "de ámbar"). */
+export function itemWord(n: number, item: Mat): string {
+  return ITEM_FORMS[item][n === 1 ? 0 : 1];
+}
+
+/** "1 perla", "3 perlas", "2 de ámbar". Every text with a number and a material goes through here. */
+export function qty(n: number, item: Mat): string {
+  return `${n} ${itemWord(n, item)}`;
+}
+
+/** A cost or a bundle: "8 madera, 4 piedra" (in the game's item order, zeros skipped). */
+export function costText(cost: Partial<Record<Mat, number>>): string {
+  return MAT_ORDER.filter((k) => (cost[k] ?? 0) > 0).map((k) => qty(cost[k]!, k)).join(', ');
+}

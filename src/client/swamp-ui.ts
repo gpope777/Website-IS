@@ -1,6 +1,6 @@
 import { CAPA } from '../shared/items';
 import { FOGATA } from '../shared/fogatas';
-import { NAMES } from '../shared/names';
+import { NAMES, qty } from '../shared/names';
 import { AMBER, type AmberTree } from '../shared/swamp-shrines';
 import { THORNS } from './coast-ui';
 import type { CallBeast } from '../shared/protocol';
@@ -19,9 +19,9 @@ export interface SwampCtx {
 }
 
 const c = CAPA.cost;
-const CAPA_LABEL = `${NAMES.capa} (${c.amber} ${NAMES.amber}, ${c.wood} madera, ${c.berries} bayas)`;
+const CAPA_LABEL = `${NAMES.capa} (${qty(c.amber, 'amber')}, ${qty(c.wood, 'wood')}, ${qty(c.berries, 'berries')})`;
 const ct = CAPA.costTop;
-const CAPA_TOP = `${NAMES.capa} (${ct.thorn} ${THORNS}, ${ct.amber} ${NAMES.amber})`;
+const CAPA_TOP = `${NAMES.capa} (${qty(ct.thorn, 'thorn')}, ${qty(ct.amber, 'amber')})`;
 
 /** A ripe amber tree within reach (on top of its stump for the high ones), else a Capa level at the Heart. The server re-checks. */
 export function swampAction(x: SwampCtx): { t: 'amber'; id: number; label: string } | { t: 'capa'; label: string } | null {
