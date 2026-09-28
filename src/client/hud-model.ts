@@ -119,7 +119,7 @@ const ICON: Record<(typeof ITEMS)[number], string> = { wood: '🪵', stone: '�
 
 /** 🎒: the 7 materials (icon, word, number), then Arma, Capa and Rango. */
 export function bagRows(inv: Inventory, weapon: number, capa: number, rank: string): { icon: string; label: string; n: string }[] {
-  const rows = ITEMS.map((k) => ({ icon: ICON[k], label: itemWord(inv[k] ?? 0, k), n: String(inv[k] ?? 0) }));
+  const rows = ITEMS.map((k) => ({ icon: ICON[k], label: itemWord(inv[k] ?? 0, k).replace(/^de /, ''), n: String(inv[k] ?? 0) }));
   rows.push({ icon: '🗡️', label: 'Arma', n: `+${weapon}` }, { icon: '🧥', label: 'Capa', n: String(capa) });
   if (rank) rows.push({ icon: '🌱', label: rank, n: '' });
   return rows;

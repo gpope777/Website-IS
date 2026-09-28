@@ -81,6 +81,10 @@ describe('HUD bits (P7-C)', () => {
     expect(heartShown({ hp: 500, max: 500 }, true)).toBe(true);
     expect(heartShown({ hp: 400, max: 500 }, false)).toBe(true);
   });
+  it('bagRows: amber row has no leading "de"', () => {
+    expect(bagRows({ amber: 2 }, 0, 0, '').find((r) => r.icon && r.n === '2')!.label.startsWith('de ')).toBe(false);
+  });
+
   it('bagRows: 7 materials with the right word, then Arma, Capa, Rango', () => {
     const r = bagRows({ pearl: 1, berries: 3 }, 2, 1, 'Rango 3');
     expect(r).toHaveLength(10);

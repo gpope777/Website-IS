@@ -59,7 +59,7 @@ import { HpBars, hurtReaction, IMPACT, lowHealth, reactTo, Shake, SHAKE_SCALE } 
 import { AudioEngine } from './audio/engine';
 import { actionCue, CueTracker, sendCue, toastCue } from './audio/cues';
 import { ambienceGains, busGains, dominant, musicTrack, MUTED_WARNING, surface, Unlock } from './audio/mix';
-import { textScale, loadSettings, saveSettings, VOLUME_DEFAULTS, type VolumeKey, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
+import { TEXT_LABELS, type TextSize, textScale, loadSettings, saveSettings, VOLUME_DEFAULTS, type VolumeKey, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
 import { HpBarMeshes } from './scene/hp-bars';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
@@ -126,6 +126,7 @@ import { ResourceMeshes } from './scene/vegetation';
 import { GrassField } from './scene/grass';
 import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
+import { helpCards, isMenuTab } from './menu-ui';
 import { deathCause, discover, parseSeen, pillsShown, SEEN_KEY, type Seen } from './hud-model';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
@@ -1581,26 +1582,13 @@ export class Game {
     this.touch?.release();
   }
 
-  // ---------------------------------------------------------------- actions
-
-  private onAction(a: Action): void {
-    const cue = actionCue(a);
-    if (cue && !this.dead) this.audio.play(cue);
-    if (a === 'mute') {
-      this.setSettings({ mute: !this.settings.mute });
-      return this.hud.toast(this.settings.mute ? 'Silencio' : 'Con sonido');
-    }
-    if (a === 'dismiss') return this.hud.hideVision();
-    if (a === 'menu') {
-      if (this.dead) return this.showDeath();
-      if (this.hud.menuOpen) {
-        // A pointer-lock exit and its Escape keydown can both reach us for the same press.
-        if (performance.now() - this.lockMenuOpenedAt < ESC_GUARD_MS) return;
-        return this.hud.hideOverlay();
-      }
-      this.releaseInputs();
-      if (document.pointerLockElement) document.exitPointerLock();
-      return this.hud.showMenu(this.tier, {
+  /** P7-C: the tabbed Menú, on the tab used last. Sub-screens (Libro, Oficios, Aspecto, Puestos, 🎒) come back here. */
+  private openMenu(): void {
+    const tab = isMenuTab(this.settings.tab) ? this.settings.tab : 'jugar';
+    const camera = (m: string) => (m === 'third' ? 'Cambiar a primera persona' : 'Cambiar a tercera persona');
+    this.hud.showMenu(
+      this.tier,
+      {
         onTier: (t) => {
           saveTier(t);
           location.reload();
@@ -1628,14 +1616,46 @@ export class Game {
         onBook: () => this.showBook(),
         stall: [...this.stalls.values()].some((s) => s.owner === this.myName) ? undefined : `Poner ${NAMES.stall.toLowerCase()} (${costText(STALL.cost)})`,
         onStall: () => this.placeStall(),
-        onStalls: this.stalls.size ? () => this.hud.showSkills(stallListHtml([...this.stalls.values()], this.body ?? { x: 0, z: 0 }), { back: () => this.hud.hideOverlay() }) : undefined,
+        onStalls: this.stalls.size ? () => this.hud.showSkills(stallListHtml([...this.stalls.values()], this.body ?? { x: 0, z: 0 }), { back: () => this.openMenu() }) : undefined,
         tripSecs: hasSkill(this.body ?? undefined, 'fogatero') ? SKILL_FX.channel : undefined,
         onRaids: (on: boolean) => this.conn.send({ t: 'raids', on }),
         onTrap: () => {
           this.trap = nextTrap(this.trap, this.hasFire, this.hasStone);
           this.hud.toast(`Trampa: ${TRAP_LABEL[this.trap]}`);
         },
-      });
+        onTab: (t) => this.setSettings({ tab: t }),
+        onBag: () => this.showBag(() => this.openMenu()),
+        help: helpCards(this.seen, !!this.touch),
+        camera: camera(this.rig.mode),
+        cameraNext: camera(this.rig.mode === 'third' ? 'first' : 'third'),
+        sens: { value: this.settings.sens, onChange: (v) => this.setSettings({ sens: v }) },
+        text: { value: this.settings.text, options: (Object.keys(TEXT_LABELS) as TextSize[]).map((k) => [k, TEXT_LABELS[k]]), onChange: (v) => this.setSettings({ text: v as TextSize }) },
+        marks: { on: this.settings.marks, onChange: (on) => this.setSettings({ marks: on }) },
+      },
+      tab,
+    );
+  }
+
+  // ---------------------------------------------------------------- actions
+
+  private onAction(a: Action): void {
+    const cue = actionCue(a);
+    if (cue && !this.dead) this.audio.play(cue);
+    if (a === 'mute') {
+      this.setSettings({ mute: !this.settings.mute });
+      return this.hud.toast(this.settings.mute ? 'Silencio' : 'Con sonido');
+    }
+    if (a === 'dismiss') return this.hud.hideVision();
+    if (a === 'menu') {
+      if (this.dead) return this.showDeath();
+      if (this.hud.menuOpen) {
+        // A pointer-lock exit and its Escape keydown can both reach us for the same press.
+        if (performance.now() - this.lockMenuOpenedAt < ESC_GUARD_MS) return;
+        return this.hud.hideOverlay();
+      }
+      this.releaseInputs();
+      if (document.pointerLockElement) document.exitPointerLock();
+      return this.openMenu();
     }
     if (this.dead || !this.body || this.hud.menuOpen) return;
     if (a === 'camera') return this.rig.toggle();
@@ -1984,7 +2004,7 @@ export class Game {
       mounts: { steed: s.steed, star: s.star ?? false, fish: s.fish, frog: s.frog, dragon: s.dragon },
       book: s.book,
     });
-    this.hud.showSkills(html, { back: () => this.hud.hideOverlay(), skills: () => this.showSkills(null), look: () => this.showLook() });
+    this.hud.showSkills(html, { back: () => this.openMenu(), skills: () => this.showSkills(null), look: () => this.showLook() });
   }
 
   /** P4-C: the Aspecto panel. Taps apply at once (the server re-checks the hat) and the panel redraws. */
@@ -1994,7 +2014,7 @@ export class Game {
       if (hat === 0 || this.hats.includes(hat)) this.look = { color, hat };
       this.showLook();
     };
-    const actions: Record<string, () => void> = { back: () => this.hud.hideOverlay() };
+    const actions: Record<string, () => void> = { back: () => this.openMenu() };
     for (let i = 0; i < COLORS.length; i++) actions[`color-${i}`] = () => send(i, this.look.hat);
     for (let h = 0; h <= HAT_IDS.length; h++) actions[`hat-${h}`] = () => send(this.look.color, h);
     this.hud.showSkills(lookHtml(this.look, this.hats), actions);
@@ -2003,7 +2023,7 @@ export class Game {
   /** P4-B: the Oficios panel; tapping a oficio re-draws it with its line. The server re-checks everything. */
   private showSkills(chosen: SkillId | null): void {
     const actions: Record<string, () => void> = {
-      back: () => this.hud.hideOverlay(),
+      back: () => this.openMenu(),
       forget: () => {
         this.conn.send({ t: 'forget' });
         this.hud.hideOverlay();

@@ -51,9 +51,9 @@ export function itemWord(n: number, item: ItemId): string;      // just the word
 export function costText(cost: Partial<Record<ItemId, number>>): string; // "8 madera, 4 piedra"
 ```
 
-- [ ] **Step 1: failing tests.** `qty` for every item at 0, 1, 2 (0 is plural: "0 perlas"); thorn follows `NAMES.thorn`; `costText` keeps key order and skips zeros; the grep test flags a sample hand-built plural and passes on the tree.
-- [ ] **Step 2: implement and sweep.** `shop.ts` "No te llega/Te falta", world-sim sales, deals, deliveries, trades, chest, amber/quartz yields, orb gifts, thorns, "Hacen falta N bayas"; `stall-ui`, `trade-ui`, `merchant-ui`, `coast-ui`, `swamp-ui`, `skills-ui`, the Puesto cost in the Menú. Update the tests that pinned "1 perlas".
-- [ ] **Step 3:** green, commit `feat(pulido): qty() y cantidades en singular o plural en todos los textos`.
+- [x] **Step 1: failing tests.** `qty` for every item at 0, 1, 2 (0 is plural: "0 perlas"); thorn follows `NAMES.thorn`; `costText` keeps key order and skips zeros; the grep test flags a sample hand-built plural and passes on the tree.
+- [x] **Step 2: implement and sweep.** `shop.ts` "No te llega/Te falta", world-sim sales, deals, deliveries, trades, chest, amber/quartz yields, orb gifts, thorns, "Hacen falta N bayas"; `stall-ui`, `trade-ui`, `merchant-ui`, `coast-ui`, `swamp-ui`, `skills-ui`, the Puesto cost in the Menú. Update the tests that pinned "1 perlas".
+- [x] **Step 3:** green, commit `feat(pulido): qty() y cantidades en singular o plural en todos los textos`.
 
 ### Task 2: pure UI models and settings
 
@@ -76,20 +76,20 @@ export function helpCards(seen: Set<Seen>, touch: boolean): { title: string; lin
 export function tabsHtml(active: MenuTab): string;
 ```
 
-- [ ] **Step 1: failing tests.** Settings parse/clamp (sens 0.5–2, bad text → normal). `pillsShown`: new player = none; berries → 🫐 only in slot 0; heart → 🧱 🗡️ and no 🌳; wolf → four combat pills; veteran → all but 🌳 with a Heart; always length 10. `Toasts`: 4th push drops the oldest; same text → n 2; expires at 4 s. `topLine` priority. `vitalLabel`. `heartShown`. `bagRows` skips zeros and uses `qty` words. `deathCause` each branch. `discover`. `helpCards`: new player only Moverse; touch mentions 🌀 not "Q"; PC mentions "Q"; no card names a place not seen (no "Pantano" before `swamp`).
-- [ ] **Step 2: implement.** **Step 3:** green, commit `feat(pulido): modelos puros del HUD, Ayuda por temas y ajustes nuevos`.
+- [x] **Step 1: failing tests.** Settings parse/clamp (sens 0.5–2, bad text → normal). `pillsShown`: new player = none; berries → 🫐 only in slot 0; heart → 🧱 🗡️ and no 🌳; wolf → four combat pills; veteran → all but 🌳 with a Heart; always length 10. `Toasts`: 4th push drops the oldest; same text → n 2; expires at 4 s. `topLine` priority. `vitalLabel`. `heartShown`. `bagRows` skips zeros and uses `qty` words. `deathCause` each branch. `discover`. `helpCards`: new player only Moverse; touch mentions 🌀 not "Q"; PC mentions "Q"; no card names a place not seen (no "Pantano" before `swamp`).
+- [x] **Step 2: implement.** **Step 3:** green, commit `feat(pulido): modelos puros del HUD, Ayuda por temas y ajustes nuevos`.
 
 ### Task 3: HUD, 🎒, toasts, pills, death panel, text size, marks
 
-- [ ] **Step 1:** `hud.ts`: inventory line → 🎒 panel (`showBag`), toasts through `Toasts` (≤ 3, ×N), one top-right line, vitals via `vitalLabel`, Heart row via `heartShown`, new death panel (cause, bar, big button, `.dead` class on the overlay for the blur/veil), `setScale`, `setMarks`. `touch.ts`: `setPills(boolean[])` hides with `visibility:hidden` (slot kept), 🎒 system button. `style.css`: safe-area insets on `.hud` children and `.touch-*`, pills 52 px, A/B 76 px, `--ui-scale`, `.marks` rules, death styles. `game.ts`: `discover` each snapshot → save `bosque.seen`; pills; 🎒 → bag; `I`-free key for the bag on PC? (**no new key**: 🎒 is in the Menú › Jugar on PC); death cause.
-- [ ] **Step 2:** green, commit `feat(pulido): HUD de móvil: zonas seguras, mochila 🎒, avisos agrupados, pastillas por progreso y muerte`.
+- [x] **Step 1:** `hud.ts`: inventory line → 🎒 panel (`showBag`), toasts through `Toasts` (≤ 3, ×N), one top-right line, vitals via `vitalLabel`, Heart row via `heartShown`, new death panel (cause, bar, big button, `.dead` class on the overlay for the blur/veil), `setScale`, `setMarks`. `touch.ts`: `setPills(boolean[])` hides with `visibility:hidden` (slot kept), 🎒 system button. `style.css`: safe-area insets on `.hud` children and `.touch-*`, pills 52 px, A/B 76 px, `--ui-scale`, `.marks` rules, death styles. `game.ts`: `discover` each snapshot → save `bosque.seen`; pills; 🎒 → bag; `I`-free key for the bag on PC? (**no new key**: 🎒 is in the Menú › Jugar on PC); death cause.
+- [x] **Step 2:** green, commit `feat(pulido): HUD de móvil: zonas seguras, mochila 🎒, avisos agrupados, pastillas por progreso y muerte`.
 
 ### Task 4: tabbed Menú, Ayuda, Ajustes; screenshots and perf
 
-- [ ] **Step 1:** `showMenu` rebuilt on `menu-ui.ts`: tabs bar (44 px), one tab body at a time, all old buttons migrated, Salir with confirm, Ajustes with text size / marks / sensitivity / camera, Ayuda with `helpCards`. Sub-screens (Libro, Oficios, Aspecto, Puestos) get "Volver" to the Menú. Remember the tab.
-- [ ] **Step 2:** screenshots (Playwright, `npm run dev:server`-style build + wrangler) at 390×844 and 844×390: HUD, 🎒, each tab, death panel; look at them and fix what overlaps. Perf: `npm run perf -- --tier low` equal to base.
-- [ ] **Step 3:** green, commit `feat(pulido): Menú con pestañas (Jugar, Libro, Ajustes, Ayuda, Salir) y Ayuda por temas`.
+- [x] **Step 1:** `showMenu` rebuilt on `menu-ui.ts`: tabs bar (44 px), one tab body at a time, all old buttons migrated, Salir with confirm, Ajustes with text size / marks / sensitivity / camera, Ayuda with `helpCards`. Sub-screens (Libro, Oficios, Aspecto, Puestos) get "Volver" to the Menú. Remember the tab.
+- [x] **Step 2:** screenshots (Playwright, `npm run dev:server`-style build + wrangler) at 390×844 and 844×390: HUD, 🎒, each tab, death panel; look at them and fix what overlaps. Perf: `npm run perf -- --tier low` equal to base.
+- [x] **Step 3:** green, commit `feat(pulido): Menú con pestañas (Jugar, Libro, Ajustes, Ayuda, Salir) y Ayuda por temas`.
 
 ### Task 5: Ship
 
-- [ ] HANDOFF "## Pulido · P7-C — …" (Decidido por Claude — revisar, Qué probar, NO verificado, tests updated, perf); push; one short comment on PR #3.
+- [x] HANDOFF "## Pulido · P7-C — …" (Decidido por Claude — revisar, Qué probar, NO verificado, tests updated, perf); push; one short comment on PR #3.

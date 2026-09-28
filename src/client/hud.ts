@@ -7,6 +7,41 @@ import type { ErrorCode } from '../shared/protocol';
 import type { Vitals } from '../shared/survival';
 import type { NetStatus } from './net';
 import { TIER_LABELS, type Tier } from './quality';
+import { helpHtml, tabsHtml, type HelpCard, type MenuTab } from './menu-ui';
+
+/** P7-C: what the Menú needs from the game. */
+export interface MenuHandlers {
+  onTier: (t: Tier) => void;
+  onCamera: () => void;
+  /** Button text for the camera (the view it switches to) and after a switch. */
+  camera?: string;
+  cameraNext?: string;
+  onLeave: () => void;
+  trap: string;
+  onTrap: () => void;
+  fogatas?: number[];
+  onFogata?: (id: number) => void;
+  calls?: { beast: string; label: string }[];
+  onCall?: (beast: string) => void;
+  raids?: { label: string; on: boolean } | null;
+  onRaids?: (on: boolean) => void;
+  onSkills?: () => void;
+  onLook?: () => void;
+  onBook?: () => void;
+  onBag?: () => void;
+  tripSecs?: number;
+  stall?: string;
+  onStall?: () => void;
+  onStalls?: () => void;
+  onTab?: (t: MenuTab) => void;
+  help?: readonly HelpCard[];
+  shake?: { value: string; options: [string, string][]; onChange: (v: string) => void };
+  vibrate?: { on: boolean; onChange: (on: boolean) => void };
+  sound?: { vols: { key: string; label: string; value: number }[]; mute: boolean; onVol: (key: string, v: number) => void; onMute: (on: boolean) => void };
+  sens?: { value: number; onChange: (v: number) => void };
+  text?: { value: string; options: [string, string][]; onChange: (v: string) => void };
+  marks?: { on: boolean; onChange: (on: boolean) => void };
+}
 
 const FATAL: Record<ErrorCode, string> = {
   version: 'Hay una versión nueva del juego.',
@@ -274,50 +309,85 @@ export class Hud {
     if (bar) bar.style.width = `${Math.round(reviveFrac(n) * 100)}%`;
   }
 
-  showMenu(tier: Tier, h: { onTier: (t: Tier) => void; onCamera: () => void; onLeave: () => void; trap: string; onTrap: () => void; fogatas?: number[]; onFogata?: (id: number) => void; calls?: { beast: string; label: string }[]; onCall?: (beast: string) => void; raids?: { label: string; on: boolean } | null; onRaids?: (on: boolean) => void; onSkills?: () => void; onLook?: () => void; onBook?: () => void; tripSecs?: number; stall?: string; onStall?: () => void; onStalls?: () => void; shake?: { value: string; options: [string, string][]; onChange: (v: string) => void }; vibrate?: { on: boolean; onChange: (on: boolean) => void }; sound?: { vols: { key: string; label: string; value: number }[]; mute: boolean; onVol: (key: string, v: number) => void; onMute: (on: boolean) => void } }): void {
-    const where = (id: number) => (id === FOGATA.lookout ? `a la cima de ${NAMES.treeTower}`.replace("de el ", "del ") : id === FOGATA.ceniza ? `a ${NAMES.ash}` : id >= FOGATA.swamp ? `al ${NAMES.refugio} ${id - FOGATA.swamp + 1}` : `a la ${NAMES.fogata} ${id + 1}`);
-    const trips = (h.fogatas ?? []).map((id) => `<button class="secondary" data-a="fogata${id}">Ir ${where(id)} (${h.tripSecs ?? 5} s, de día)</button>`).join('') + (h.calls ?? []).map((c) => `<button class="secondary" data-a="call-${c.beast}">${c.label}</button>`).join('');
-    const options = (Object.keys(TIER_LABELS) as Tier[])
-      .map((t) => `<option value="${t}" ${t === tier ? 'selected' : ''}>${TIER_LABELS[t]}</option>`)
-      .join('');
-    this.panel(
-      `<h2>Menú</h2>
-       <p>E golpear (o levantar a un compañero caído) · Q rodar · Z bloquear (justo a tiempo: parada) · R arco · X fijar objetivo</p>
-       <p>Empuja contra un peñasco con enredadera para trepar (gasta aliento) · Espacio/B en el aire: planeador · Espacio/B trepando: saltar · Correr en el agua: nadar rápido</p>
-       <p>Santuarios: haces de luz en el horizonte; cada uno da un orbe (+20 de aliento) · H / 🌿 ${NAMES.powerVine} (tras el primer orbe): hace crecer una enredadera trepable o cubre una roca lisa; los muros cerca de ella se regeneran · C cambia la cámara</p>
-       <p>El ciervo salvaje (un halo dorado en el bosque): E / A junto a él para domarlo; pulsa cuando la aguja cruce la zona, tres veces · E / M montar y bajar · Shift: galope</p>
-       <p>${NAMES.villain}: no se le puede matar. Golpes y paradas le quitan voluntad; si llega a 0, se va · Enter / ✕ cierra una visión</p>
-       <p>Si ${NAMES.villain} se lleva al ${NAMES.bossForestShort}: está en una jaula de raíces en el fondo del mar, junto a la isla. Rompe las tres anclas (una por islote; el ${NAMES.powerWind} pega triple) y pulsa E / A junto a la jaula</p>
-       <label>Calidad gráfica</label><select data-f="tier">${options}</select>
-       ${h.shake ? `<label>Sacudida de cámara</label><select data-f="shake">${h.shake.options.map(([v, l]) => `<option value="${v}" ${v === h.shake!.value ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
-       ${h.vibrate ? `<label>Vibración</label><select data-f="vibrate"><option value="1" ${h.vibrate.on ? 'selected' : ''}>Sí</option><option value="0" ${h.vibrate.on ? '' : 'selected'}>No</option></select>` : ''}
-       ${h.sound ? `<label>Sonido</label><select data-f="mute"><option value="0" ${h.sound.mute ? '' : 'selected'}>Con sonido</option><option value="1" ${h.sound.mute ? 'selected' : ''}>🔇 Silencio (tecla .)</option></select>${h.sound.vols.map((v) => `<label>${v.label}</label><input type="range" min="0" max="100" step="5" value="${v.value}" data-vol="${v.key}" />`).join('')}` : ''}
-       <button data-a="resume">Seguir jugando</button>
-       <p>La ${NAMES.forestRoot}: palancas, un nudo que abre la ${NAMES.powerVine}, una losa (un compañero o el bloque encima), una linterna para el brasero y un ${NAMES.eliteForest}: cuando se agache, apártate o rueda. E / A coge y suelta</p>
-       <p>Zonas moradas: el bosque marchito. De noche trae más bestias y los asedios vienen de la más cercana al Corazón. Se limpian con un orbe de santuario, con la ${NAMES.powerVine} junto a su raíz marchita o venciendo al ${NAMES.bossForestShort}</p>
-       <p>Poderes: H lanza el elegido (🌿 ${NAMES.powerVine} / 🌬️ ${NAMES.powerWind} / 🔥 ${NAMES.powerFire} / 🪨 ${NAMES.powerStone}) · J cambia · en táctil, mantén pulsado el botón de poder medio segundo para cambiar. El ${NAMES.powerWind} (altar de la ${NAMES.coastRoot}) empuja bestias (el mar se las lleva), desliza la piedra pómez, gira molinos, arranca raíces marchitas de la costa y, planeando, te sube una vez por vuelo</p>
-       <p>El ${NAMES.powerFire} (altar de la ${NAMES.swampRoot}, en medio de la Laguna Negra): 🔥 una llamarada corta. Quema bestias (los lobos huyen), enciende braseros y lámparas de gas, y quema espinas, turba y raíces marchitas del pantano</p>
-       <p>La ${NAMES.powerStone} (altar de la cueva, junto a la ${NAMES.mountainRoot}): 🪨 alza un pilar delante de ti (3 como mucho, 2 minutos). Se trepa, pisa losas, frena a los asaltantes y a las cargas, y aplasta raíces marchitas de la montaña. E / A junto a un bloque de piedra lo empuja</p>
-       <p>Trampas: T estacas (dañan y frenan) · Y red de raíces (atrapa unos segundos) · U hoguera (con el ${NAMES.powerFire}: quema a la primera bestia y espanta lobos) · I ${NAMES.tower} (con la ${NAMES.powerStone}: desde arriba las flechas llegan más lejos, y aparta a los asaltantes de su pie) · 🗡️ pone la elegida</p>
-       <p>Fogatas del ${NAMES.biomeSwamp.replace(/^el /, '')}: enciéndelas con el ${NAMES.powerFire} o una antorcha de los Candiles. De día, E / A junto a una encendida te lleva al ${NAMES.heart} en 5 s; desde el ${NAMES.heart}, este menú te lleva a ellas. Un golpe o moverte lo corta</p>
-       <p>${NAMES.ash.charAt(0).toUpperCase() + NAMES.ash.slice(1)} (${NAMES.biomeCorrupt}): su ${NAMES.fogata} se enciende igual. Junto a ella, este menú llama a tu ciervo, tu rana o tu pez. Los ${NAMES.flier.replace(' ', 's ')}s vuelan: flechas, o el ${NAMES.powerWind} los tira al suelo. Las bestias de allí sueltan ${NAMES.thorn.replace(' ', 's ')}s</p>
-       ${trips}
-       ${h.raids ? `<button class="secondary" data-a="raids">${h.raids.label}</button>` : ''}
-       ${h.stall ? `<button class="secondary" data-a="stall">${h.stall}</button>` : ''}
-       ${h.onStalls ? `<button class="secondary" data-a="stalls">Puestos</button>` : ''}
-       ${h.onBook ? `<button class="secondary" data-a="book">${NAMES.book}</button>` : ''}
-       ${h.onSkills ? `<button class="secondary" data-a="skills">${NAMES.skills}</button>` : ''}
-       ${h.onLook ? `<button class="secondary" data-a="look">${NAMES.look}</button>` : ''}
-       <button class="secondary" data-a="trap">Trampa: ${h.trap}</button>
-       <button class="secondary" data-a="camera">Cambiar cámara</button>
-       <button class="secondary" data-a="leave">Salir</button>`,
-      { ...Object.fromEntries((h.fogatas ?? []).map((id) => [`fogata${id}`, () => { h.onFogata?.(id); this.hideOverlay(); }])), ...Object.fromEntries((h.calls ?? []).map((c) => [`call-${c.beast}`, () => { h.onCall?.(c.beast); this.hideOverlay(); }])), skills: () => h.onSkills?.(), look: () => h.onLook?.(), book: () => h.onBook?.(), stalls: () => h.onStalls?.(), stall: () => { h.onStall?.(); this.hideOverlay(); }, raids: () => { if (h.raids) h.onRaids?.(h.raids.on); this.hideOverlay(); }, resume: () => this.hideOverlay(), camera: () => { h.onCamera(); this.hideOverlay(); }, trap: () => { h.onTrap(); this.hideOverlay(); }, leave: h.onLeave },
-    );
+  /** P7-C: the tabbed Menú — Jugar · Libro · Ajustes · Ayuda · Salir (spec §5.2). Tabs swap in place; the last one is remembered by the game. */
+  showMenu(tier: Tier, h: MenuHandlers, tab: MenuTab = 'jugar'): void {
+    const where = (id: number) => (id === FOGATA.lookout ? `a la cima de ${NAMES.treeTower}`.replace('de el ', 'del ') : id === FOGATA.ceniza ? `a ${NAMES.ash}` : id >= FOGATA.swamp ? `al ${NAMES.refugio} ${id - FOGATA.swamp + 1}` : `a la ${NAMES.fogata} ${id + 1}`);
+    const sel = (f: string, opts: [string, string][], v: string) => `<select data-f="${f}">${opts.map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+    const btn = (a: string, label: string) => `<button class="secondary wide" data-a="${a}">${label}</button>`;
+    let body = '';
+    if (tab === 'jugar') {
+      body = `<button class="wide" data-a="resume">Seguir jugando</button>
+        ${btn('bag', '🎒 Mochila')}
+        ${(h.fogatas ?? []).map((id) => btn(`fogata${id}`, `Ir ${where(id)} (${h.tripSecs ?? 5} s, de día)`)).join('')}
+        ${(h.calls ?? []).map((c) => btn(`call-${c.beast}`, c.label)).join('')}
+        ${btn('trap', `Trampa: ${h.trap}`)}
+        ${h.raids ? btn('raids', h.raids.label) : ''}
+        ${h.stall ? btn('stall', h.stall) : ''}
+        ${h.onStalls ? btn('stalls', 'Puestos') : ''}`;
+    } else if (tab === 'libro') {
+      body = `${h.onBook ? btn('book', NAMES.book) : ''}${h.onSkills ? btn('skills', NAMES.skills) : ''}${h.onLook ? btn('look', NAMES.look) : ''}`;
+    } else if (tab === 'ajustes') {
+      const tiers = (Object.keys(TIER_LABELS) as Tier[]).map((t): [string, string] => [t, TIER_LABELS[t]]);
+      const yes = (on: boolean) => (on ? '1' : '0');
+      body = `<div class="settings">
+        <label>Calidad gráfica</label>${sel('tier', tiers, tier)}
+        <label>Cámara</label>${btn('camera', h.camera ?? 'Cambiar cámara')}
+        ${h.sens ? `<label>Sensibilidad de cámara · <span data-o="sens">${h.sens.value.toFixed(2).replace('.', ',')}×</span></label><input type="range" min="0.5" max="2" step="0.25" value="${h.sens.value}" data-f="sens" />` : ''}
+        ${h.shake ? `<label>Sacudida de cámara</label>${sel('shake', h.shake.options, h.shake.value)}` : ''}
+        ${h.vibrate ? `<label>Vibración</label>${sel('vibrate', [['1', 'Sí'], ['0', 'No']], yes(h.vibrate.on))}` : ''}
+        ${h.sound ? `<label>Sonido</label>${sel('mute', [['0', 'Con sonido'], ['1', '🔇 Silencio (tecla .)']], yes(h.sound.mute))}${h.sound.vols.map((v) => `<label>${v.label}</label><input type="range" min="0" max="100" step="5" value="${v.value}" data-vol="${v.key}" />`).join('')}` : ''}
+        ${h.text ? `<label>Tamaño de texto</label>${sel('text', h.text.options, h.text.value)}` : ''}
+        ${h.marks ? `<label>Marcas de forma (además del color)</label>${sel('marks', [['1', 'Sí'], ['0', 'No']], yes(h.marks.on))}` : ''}
+      </div>`;
+    } else if (tab === 'ayuda') {
+      body = helpHtml(h.help ?? []);
+    } else {
+      body = `<p>¿Salir del mundo? Tu progreso ya está guardado.</p><button class="wide" data-a="leave">Salir</button>${btn('resume', 'Seguir jugando')}`;
+    }
+    const go = (fn?: () => void) => () => {
+      this.hideOverlay();
+      fn?.();
+    };
+    const actions: Record<string, () => void> = {
+      ...Object.fromEntries((h.fogatas ?? []).map((id) => [`fogata${id}`, go(() => h.onFogata?.(id))])),
+      ...Object.fromEntries((h.calls ?? []).map((c) => [`call-${c.beast}`, go(() => h.onCall?.(c.beast))])),
+      skills: () => h.onSkills?.(),
+      look: () => h.onLook?.(),
+      book: () => h.onBook?.(),
+      stalls: () => h.onStalls?.(),
+      bag: () => h.onBag?.(),
+      stall: go(h.onStall),
+      raids: go(() => h.raids && h.onRaids?.(h.raids.on)),
+      resume: go(),
+      camera: () => {
+        h.onCamera();
+        this.showMenu(tier, { ...h, camera: h.cameraNext, cameraNext: h.camera }, tab);
+      },
+      trap: go(h.onTrap),
+      leave: h.onLeave,
+    };
+    this.panel(`<h2 class="menu-title">Menú</h2>${tabsHtml(tab)}<div class="tab-body">${body}</div>`, actions);
+    this.overlay.querySelector('.panel')!.classList.add('menu');
     this.menuOpen = true;
-    this.overlay.querySelector('select[data-f="tier"]')!.addEventListener('change', (e) => h.onTier((e.target as HTMLSelectElement).value as Tier));
-    this.overlay.querySelector('select[data-f="shake"]')?.addEventListener('change', (e) => h.shake?.onChange((e.target as HTMLSelectElement).value));
-    this.overlay.querySelector('select[data-f="vibrate"]')?.addEventListener('change', (e) => h.vibrate?.onChange((e.target as HTMLSelectElement).value === '1'));
-    this.overlay.querySelector('select[data-f="mute"]')?.addEventListener('change', (e) => h.sound?.onMute((e.target as HTMLSelectElement).value === '1'));
+    for (const b of this.overlay.querySelectorAll<HTMLElement>('[data-tab]')) {
+      b.addEventListener('click', () => {
+        const t = b.dataset.tab as MenuTab;
+        h.onTab?.(t);
+        this.showMenu(tier, h, t);
+      });
+    }
+    const on = (f: string, fn: (v: string) => void, ev = 'change') => this.overlay.querySelector<HTMLInputElement>(`[data-f="${f}"]`)?.addEventListener(ev, (e) => fn((e.target as HTMLInputElement).value));
+    on('tier', (v) => h.onTier(v as Tier));
+    on('shake', (v) => h.shake?.onChange(v));
+    on('vibrate', (v) => h.vibrate?.onChange(v === '1'));
+    on('mute', (v) => h.sound?.onMute(v === '1'));
+    on('text', (v) => h.text?.onChange(v));
+    on('marks', (v) => h.marks?.onChange(v === '1'));
+    on('sens', (v) => {
+      h.sens?.onChange(Number(v));
+      const o = this.overlay.querySelector('[data-o="sens"]');
+      if (o) o.textContent = `${Number(v).toFixed(2).replace('.', ',')}×`;
+    }, 'input');
     this.overlay.querySelectorAll<HTMLInputElement>('input[data-vol]').forEach((el) => el.addEventListener('input', () => h.sound?.onVol(el.dataset.vol!, Number(el.value))));
   }
 
