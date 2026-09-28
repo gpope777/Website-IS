@@ -10,8 +10,8 @@ export const FISH = {
   ringGap: [10, 14],
   /** A ring counts when you pass within this of its centre. */
   ringR: 2.2,
-  /** Seconds to reach each ring after the previous one. */
-  ringTime: 7,
+  /** Seconds to reach each ring after the previous one (P7-E: 7 → 8; the worst gap is ~5.4 s of plain swimming). */
+  ringTime: 8,
   /** Seconds before you can race again after it gets away. */
   retry: 3,
   rounds: [

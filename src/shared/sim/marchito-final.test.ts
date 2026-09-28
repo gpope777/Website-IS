@@ -26,11 +26,12 @@ const toPhase3 = (b: FinalBoss) => {
 };
 
 describe('El Marchito final — setup', () => {
-  it('has 1200 PV alone and ×(1 + 0.35 per extra player)', () => {
-    expect(createFinal(1).max).toBe(1200);
+  it('has 1560 PV alone (×1.3, P7-E) and ×(1 + 0.35 per extra player) with friends', () => {
+    expect(createFinal(1).max).toBe(1560);
     expect(createFinal(2).max).toBe(1620);
     expect(createFinal(4).max).toBe(2460);
-    expect(finalFactor(0)).toBe(1);
+    expect(finalFactor(0)).toBe(FINAL.soloFactor);
+    expect(finalFactor(1)).toBe(1.3);
     const b = createFinal(1);
     expect(b.kind).toBe('boss5');
     expect(b.id).toBe(900_009);
@@ -78,9 +79,9 @@ describe('phase 1 — roots', () => {
   it('at 60 % he sinks: phase 2, four brotes, no damage taken', () => {
     const b = createFinal(1);
     b.bare = 5;
-    expect(hitFinal(b, 300)).toBeNull();
-    expect(hitFinal(b, 300)).toBe('phase2');
-    expect(b.hp).toBe(720);
+    expect(hitFinal(b, 312)).toBeNull();
+    expect(hitFinal(b, 312)).toBe('phase2');
+    expect(b.hp).toBe(936);
     expect(b.brotes.map((x) => x.power)).toEqual(['vine', 'wind', 'fire', 'stone']);
     expect(b.brotes.map((x) => x.id)).toEqual([900_011, 900_012, 900_013, 900_014]);
     expect(finalMult(b)).toBe(0);
@@ -125,15 +126,15 @@ describe('phase 2 — brotes', () => {
     expect(vine!.broken).toBe(false);
     const { events } = run(b, 0.6, ana);
     expect(events).toContain('pulled');
-    expect(b.hp).toBeCloseTo(1200 * (0.25 + 0.0875 * 3));
+    expect(b.hp).toBeCloseTo(1560 * (0.25 + 0.0875 * 3));
     startPull(b, 1, 'Ana');
     run(b, 1, [tgt('Ana', wind!.x + 10, wind!.z)]);
     expect(b.pull).toBeNull();
     breakBrote(b, 1);
     breakBrote(b, 2);
     expect(breakBrote(b, 3)).toBe('phase3');
-    expect(b.hp).toBeCloseTo(300);
-    expect(b.core?.max).toBe(300);
+    expect(b.hp).toBeCloseTo(390);
+    expect(b.core?.max).toBe(390);
     expect(plateSpot().x).toBeCloseTo(b.x + 9.2);
   });
   it('work on a brote comes undone if left too long (the cocoon stays burnt)', () => {
@@ -173,12 +174,12 @@ describe('phase 3 — el Corazón Negro', () => {
     toPhase3(b);
     const c = b.core!;
     hitCore(b, 100, false);
-    expect(c.hp).toBeCloseTo(300 - 10);
+    expect(c.hp).toBeCloseTo(390 - 10);
     run(b, 0.1, [tgt('Ana', c.x, c.z - 30)], [{ id: 1, x: c.x, z: c.z + 1 }]);
     expect(c.stun).toBeGreaterThan(2.5);
     hitCore(b, 100, true);
-    expect(c.hp).toBeCloseTo(300 - 10 - 150);
-    expect(b.hp).toBeCloseTo(300 * (c.hp / 300));
+    expect(c.hp).toBeCloseTo(390 - 10 - 150);
+    expect(b.hp).toBeCloseTo(390 * (c.hp / 390));
     run(b, 3.2, [tgt('Ana', c.x, c.z - 30)], [{ id: 1, x: c.x, z: c.z + 1 }]);
     expect(c.stun).toBe(0);
   });
@@ -199,7 +200,7 @@ describe('phase 3 — el Corazón Negro', () => {
     const b = createFinal(1);
     toPhase3(b);
     b.core!.stun = 3;
-    expect(hitCore(b, 299, false)).toBe(false);
+    expect(hitCore(b, 389, false)).toBe(false);
     expect(hitCore(b, 5, false)).toBe(true);
     expect(b.hp).toBe(0);
   });
@@ -212,7 +213,8 @@ describe('phase 3 — el Corazón Negro', () => {
  * - walks 4.5 m/s, needs 3 s at each brote to see what it wants; a rayo costs 6 s every 14 s in phase 2 (and ruins a pull);
  * - powers on their real cooldowns: Llamarada 5 s, Enredadera 12 s, Viento 6 s, Piedra 3 s;
  * - phase 3: a Llamarada whenever the core is within 6 m (a blow: scratches, stops a heal); waits by the body, drops a pillar on the core's way home (right one time in three), reacts to a heal in 2 s.
- * Budget (Decidido por Claude): phase 1 ~2.3 min, phase 2 ~1.5 min, phase 3 ~2.8 min → ~6.7 min (6–10 accepted).
+ * Budget (Decidido por Claude): S5-F ~6.7 min, ~6.1 after S5-G's Llamarada on the core; P7-E ×1.3 PV alone →
+ * phase 1 ~3 min, phase 2 ~1.5 min, phase 3 ~3.3 min → ~7.7 min (6–10 accepted; the target is ~8).
  */
 function soloKillTime(seed = 7): { total: number; phases: number[] } {
   const S = { melee: 20 * weaponMult(5), meleeEvery: 3, arrow: BOW.damage * weaponMult(5), arrowEvery: 2, runHit: 0.4, walk: 4.5, rayoEvery: 14, rayoCost: 6, dodge: 1.5, think: 3, react: 2, reach: 3, range: BOW.range };
@@ -332,9 +334,11 @@ function soloKillTime(seed = 7): { total: number; phases: number[] } {
 }
 
 describe('balance — solo kill time', () => {
-  it('a scripted solo player (weapon 5) takes between 6 and 10 min (~6.7)', () => {
+  it('a scripted solo player (weapon 5) takes between 6 and 10 min (~7.7 since P7-E)', () => {
     for (const seed of [1, 7, 42]) {
       const { total, phases } = soloKillTime(seed);
+      process.stderr.write(`solo seed ${seed}: ${(total / 60).toFixed(2)} min (${phases.map((p) => p.toFixed(0)).join(" / ")} s)\n`);
+      expect(total).toBeGreaterThan(7 * 60); // P7-E: ~7.7 (the fight must feel ~8 min, not 6)
       expect(phases).toHaveLength(3);
       expect(total).toBeGreaterThan(6 * 60);
       expect(total).toBeLessThan(10 * 60);

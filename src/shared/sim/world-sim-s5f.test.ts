@@ -46,14 +46,14 @@ function inCopa(...names: string[]) {
 const calm = (b: FinalBoss) => Object.assign(b, { swipeIn: 999, linesIn: 999 });
 
 describe('El Marchito wakes in the Copa (S5-F)', () => {
-  it('the first living player in wakes him with 1200 PV; two in the Copa: 1620', () => {
+  it('the first living player in wakes him with 1560 PV (×1.3 alone, P7-E); two in the Copa: 1620', () => {
     const sim = setup('Ana');
     put(sim, 'Ana', C.x, C.z - 4);
     sim.step(0.1);
     const t = toasts(sim);
     expect(t.some((x) => x.startsWith('El Marchito baja a la Copa'))).toBe(true);
     expect(t).not.toContain('La Copa está vacía. Arriba solo hay cielo');
-    expect(fv(sim)).toMatchObject({ phase: 1, hp: 1200, max: 1200 });
+    expect(fv(sim)).toMatchObject({ phase: 1, hp: 1560, max: 1560 });
     expect(snap(sim).wolves.some((w) => w.kind === 'boss5' && w.id === FINAL.id)).toBe(true);
     const two = inCopa('Ana', 'Leo');
     expect(fv(two)!.max).toBe(1620);
@@ -65,7 +65,7 @@ describe('El Marchito wakes in the Copa (S5-F)', () => {
     put(sim, 'Ana', C.x, C.z - 2.5);
     sim.handle('Ana', { t: 'attack', id: FINAL.id });
     sim.step(0.1);
-    expect(boss(sim)!.hp).toBeCloseTo(1200 - 2);
+    expect(boss(sim)!.hp).toBeCloseTo(1560 - 2);
     sim.handle('Ana', { t: 'power', kind: 'fuego', x: C.x, z: C.z });
     expect(fv(sim)!.catching).toBe(true);
     run(sim, 2.1);
@@ -119,7 +119,7 @@ describe('El Marchito wakes in the Copa (S5-F)', () => {
     expect(boss(sim)).toBeNull();
     put(sim, 'Ana', C.x, C.z - 4);
     sim.step(0.1);
-    expect(fv(sim)!.hp).toBe(1200);
+    expect(fv(sim)!.hp).toBe(1560);
   });
 
   it('decodes dungeon act 28 (pull a brote), refuses 29', () => {
@@ -173,7 +173,7 @@ describe('phase 2 — los cuatro brotes (S5-F)', () => {
     act28(sim);
     run(sim, 1.7);
     expect(b.brotes[2]!.broken).toBe(true);
-    expect(b.hp).toBeCloseTo(hp - 1200 * 0.0875);
+    expect(b.hp).toBeCloseTo(hp - 1560 * 0.0875);
   });
 
   it('two vines, three gusts and a pillar on the plate open the others', () => {

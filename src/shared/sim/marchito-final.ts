@@ -15,6 +15,8 @@ export const FINAL = {
   z: T.copa.z,
   baseHp: 1200,
   perPlayer: 0.35,
+  /** [D] P7-E: alone he has ×1.3 PV (body and core): the solo fight ran ~6.1 min against a ~8 min target. */
+  soloFactor: 1.3,
   p2At: 0.6,
   p3At: 0.25,
   body: 2.5,
@@ -126,7 +128,8 @@ export interface FinalBoss extends Wolf {
 export type FinalHit = { name: string; dmg: number; kind: 'swipe' | 'line' | 'trail' };
 
 export function finalFactor(players: number): number {
-  return 1 + FINAL.perPlayer * Math.max(0, Math.floor(players) - 1);
+  if (Math.floor(players) <= 1) return FINAL.soloFactor;
+  return 1 + FINAL.perPlayer * (Math.floor(players) - 1);
 }
 
 export function createFinal(players: number): FinalBoss {
