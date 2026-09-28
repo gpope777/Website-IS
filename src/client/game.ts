@@ -121,6 +121,7 @@ import { pillarSites, type PillarSites } from '../shared/pillars';
 import { buildPines, buildTerrainMesh, buildThorns, chunkDetailed, corruptChunks, corruptVisible, mountainChunks, terrainPatches, type MountainChunk } from './scene/terrain-mesh';
 import { inBog, swampFog, ZARZAL_KNOT, zarzalAt } from '../shared/swamp';
 import { GuideUi } from './guide-ui';
+import { TAUGHT_TIPS, tutHud } from './tutorial-ui';
 import { generateWild } from '../shared/mount';
 import { UMBRAL } from '../shared/mountains';
 import { cenizaFogata } from '../shared/corrupt-lands';
@@ -134,7 +135,7 @@ import { GrassField } from './scene/grass';
 import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
 import { helpCards, isMenuTab, type MenuTab } from './menu-ui';
-import { deathCause, discover, parseSeen, pillsShown, SEEN_KEY, type Seen } from './hud-model';
+import { deathCause, discover, parseSeen, PILLS, pillsShown, SEEN_KEY, type Seen } from './hud-model';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
 /** Camera far plane deep in the swamp (fog far is 70 m there). */
@@ -258,6 +259,8 @@ export class Game {
   private readonly touch: TouchControls | null;
   /** P7-D: Qué sigue, consejos y puntos de nuevo. */
   private readonly guide: GuideUi;
+  /** P7-F: the tutorial step on the last snapshot (null: not learning). */
+  private tutStep: number | null = null;
   private tier: Tier = loadTier();
   /** V2-A: first game (no saved tier) → frame times of the first seconds in the world. */
   private probe: number[] | null = hasSavedTier() ? null : [];
@@ -584,6 +587,10 @@ export class Game {
     this.hud.onGoalTap = () => {
       this.guide.touchLine(performance.now());
       this.openMenu('ayuda');
+    };
+    this.hud.onTutSkip = () => {
+      this.conn.send({ t: 'tut', act: 'skip' });
+      this.hud.toast('Tutorial saltado. Menú › Ayuda lo repite.');
     };
     root.classList.toggle('touch', !!this.touch);
     this.hud.setAccess(textScale(this.settings.text), this.settings.marks);
@@ -1504,8 +1511,18 @@ export class Game {
         /* private window */
       }
     }
-    const pills = pillsShown(this.seen, { heart: !!m.heart, power: s.power || s.viento || s.fuego || s.piedra });
+    // P7-F: while learning, the tutorial picks the pills, the line and what glows.
+    const tut = tutHud({ tut: s.tut ?? null, touch: !!this.touch, heart: !!m.heart, inv: s.inv, me: { x: s.x, z: s.z }, players: m.players });
+    const pills = tut.pills ?? pillsShown(this.seen, { heart: !!m.heart, power: s.power || s.viento || s.fuego || s.piedra });
     this.touch?.setPills(pills);
+    if (this.touch) {
+      const on = new Set<string>(tut.hint);
+      this.touch.setHint(on.has('act'), on.has('stick'), PILLS.map((k) => on.has(k)));
+    }
+    this.hud.setTutSkip(!!s.tut);
+    if (this.tutStep === 8 && !s.tut) this.guide.taught(TAUGHT_TIPS);
+    this.tutStep = s.tut?.step ?? null;
+    this.guide.tut = tut;
     // P7-D: the guide, tips and dots.
     const t = this.terrain;
     this.guide.heartAt = this.heartSpot();
@@ -1703,6 +1720,10 @@ export class Game {
         tips: { on: this.settings.tips, onChange: (on) => this.setSettings({ tips: on }) },
         onBag: () => this.showBag(() => this.openMenu()),
         help: helpCards(this.seen, !!this.touch),
+        onTutRepeat: () => {
+          this.conn.send({ t: 'tut', act: 'repeat' });
+          this.hud.toast('Tutorial desde el principio.');
+        },
         camera: camera(this.rig.mode),
         cameraNext: camera(this.rig.mode === 'third' ? 'first' : 'third'),
         sens: { value: this.settings.sens, onChange: (v) => this.setSettings({ sens: v }) },

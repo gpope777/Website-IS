@@ -10,6 +10,7 @@ import { ACK_KEY, ackAll, dots, lineAlpha, parseAck, parseTips, TIPS_KEY, TIP_ID
 import type { Hud } from './hud';
 import type { MenuTab } from './menu-ui';
 import type { TouchControls } from './touch';
+import type { TutHud } from './tutorial-ui';
 
 type Snap = Extract<ServerMsg, { t: 'snap' }>;
 const EDGE_PAD = 28;
@@ -32,6 +33,8 @@ const store = (k: string, v: unknown): void => {
 
 export class GuideUi {
   places: Places | null = null;
+  /** P7-F: while learning, the tutorial line replaces the step, and tips wait. */
+  tut: TutHud | null = null;
   private view: GuideView | null = null;
   private step: Step | null = null;
   private text = '';
@@ -86,7 +89,7 @@ export class GuideUi {
       for (const id of TIP_IDS) this.shown.add(id);
       store(TIPS_KEY, [...this.shown]);
     }
-    const due = tipsDue({ ...o.tip, powers }, this.shown);
+    const due = this.tut?.line ? [] : tipsDue({ ...o.tip, powers }, this.shown);
     if (due.length) {
       for (const id of due) this.shown.add(id);
       store(TIPS_KEY, [...this.shown]);
@@ -118,15 +121,19 @@ export class GuideUi {
   frame(camera: THREE.Camera, yaw: number, w: number, h: number, now: number): void {
     const v = this.view;
     const step = this.step;
-    const text = v && step ? lineText(step, v, yaw) : '';
-    const key = step ? `${step.id}|${step.text}` : '';
+    const tl = this.tut?.line ?? null;
+    const base = tl ?? (v && step ? lineText(step, v, yaw) : '');
+    const note = this.tut?.note;
+    const text = note ? (base ? `${base} · ${note}` : note) : base;
+    const key = tl ?? (step ? `${step.id}|${step.text}` : '');
     if (key !== this.text) {
       this.text = key;
       this.changedAt = now;
     }
-    this.hud.setGoal(text || null, lineAlpha(now - this.changedAt));
+    this.hud.setGoal(text || null, tl ? 1 : lineAlpha(now - this.changedAt));
     const tip = this.opts().tips ? this.queue.current(now) : null;
     this.hud.setTip(tip ? tipText(tip, this.isTouch) : null);
+    if (this.tut && !this.tut.arrow) return this.hud.setArrow(null);
     if (!v || !step?.target || Math.hypot(step.target.x - v.me.x, step.target.z - v.me.z) < 8) return this.hud.setArrow(null);
     this.v3.set(step.target.x, (camera.position.y ?? 0), step.target.z).project(camera);
     // Behind the camera: the projected z is past 1.
@@ -163,6 +170,12 @@ export class GuideUi {
     store(ACK_KEY, this.ack);
     this.cur = dots(this.last, this.ack);
     this.touch?.setDots(this.cur.menu, this.cur.pills);
+  }
+
+  /** P7-F: tips the tutorial taught are not shown again. */
+  taught(ids: readonly TipId[]): void {
+    for (const id of ids) this.shown.add(id);
+    store(TIPS_KEY, [...this.shown]);
   }
 
   /** "Repetir consejos" could clear this later; for now Ajustes › Consejos just hides them. */

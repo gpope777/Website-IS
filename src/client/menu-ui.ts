@@ -81,6 +81,8 @@ export function helpCards(seen: ReadonlySet<Seen>, touch: boolean): HelpCard[] {
   return cards.filter(([on]) => on).map(([, c]) => c);
 }
 
-export function helpHtml(cards: readonly HelpCard[]): string {
-  return cards.map((c) => `<section class="help-card"><h3>${c.title}</h3>${c.lines.map((l) => `<p>${l}</p>`).join('')}</section>`).join('');
+/** P7-F: `repeat` adds "Repetir tutorial" under the cards. */
+export function helpHtml(cards: readonly HelpCard[], repeat = false): string {
+  const html = cards.map((c) => `<section class="help-card"><h3>${c.title}</h3>${c.lines.map((l) => `<p>${l}</p>`).join('')}</section>`).join('');
+  return repeat ? `${html}<button class="secondary wide" data-a="tut-repeat">Repetir tutorial</button>` : html;
 }

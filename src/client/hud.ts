@@ -11,6 +11,8 @@ import { helpHtml, tabsHtml, type HelpCard, type MenuTab } from './menu-ui';
 
 /** P7-C: what the Menú needs from the game. */
 export interface MenuHandlers {
+  /** P7-F: Menú › Ayuda › Repetir tutorial. */
+  onTutRepeat?: () => void;
   onTier: (t: Tier) => void;
   onCamera: () => void;
   /** Button text for the camera (the view it switches to) and after a switch. */
@@ -95,6 +97,15 @@ export class Hud {
   private readonly edge = el('div', 'edge-arrow');
   private goalText = '';
   onGoalTap: () => void = () => {};
+  /** P7-F: "Saltar tutorial", top right while learning. */
+  private readonly tutSkip = el('button', 'tut-skip');
+  onTutSkip: () => void = () => {};
+
+  setTutSkip(on: boolean): void {
+    if (this.tutSkip.hidden === !on) return;
+    this.tutSkip.hidden = !on;
+    this.goal.classList.toggle('tut', on);
+  }
 
   setGoal(text: string | null, alpha = 1): void {
     const t = text ?? '';
@@ -164,13 +175,20 @@ export class Hud {
     this.goalTip.hidden = true;
     this.edge.hidden = true;
     this.edge.textContent = '▲';
+    this.tutSkip.textContent = 'Saltar tutorial';
+    this.tutSkip.hidden = true;
+    this.tutSkip.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onTutSkip();
+    });
     this.goal.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.goal.style.opacity = '1';
       this.onGoalTap();
     });
-    this.root.append(stats, this.log, this.banner, this.prompt, this.top, this.stamina, this.hurtEdge, this.goal, this.goalTip, this.edge);
+    this.root.append(stats, this.log, this.banner, this.prompt, this.top, this.stamina, this.hurtEdge, this.goal, this.goalTip, this.edge, this.tutSkip);
     this.ring.hidden = true;
     this.ring.innerHTML = '<svg viewBox="-80 -80 160 160"><circle r="60" class="track"/><path class="zone"/><line class="needle" x1="0" y1="0" x2="0" y2="-70"/></svg><span></span>';
     this.ring.addEventListener('pointerdown', (e) => {
@@ -398,7 +416,7 @@ export class Hud {
         ${h.tips ? `<label>Consejos</label>${sel('tips', [['1', 'Sí'], ['0', 'No']], yes(h.tips.on))}` : ''}
       </div>`;
     } else if (tab === 'ayuda') {
-      body = helpHtml(h.help ?? []);
+      body = helpHtml(h.help ?? [], !!h.onTutRepeat);
     } else {
       body = `<p>¿Salir del mundo? Tu progreso ya está guardado.</p><button class="wide" data-a="leave">Salir</button>${btn('resume', 'Seguir jugando')}`;
     }
@@ -422,6 +440,7 @@ export class Hud {
         this.showMenu(tier, { ...h, camera: h.cameraNext, cameraNext: h.camera }, tab);
       },
       trap: go(h.onTrap),
+      'tut-repeat': go(h.onTutRepeat),
       leave: h.onLeave,
     };
     this.panel(`<h2 class="menu-title">Menú</h2>${tabsHtml(tab, h.dots)}<div class="tab-body">${body}</div>`, actions);

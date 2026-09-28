@@ -460,3 +460,15 @@ canvas { display: block; }
 .vision.echo p { font-style: normal; }
 .vision.echo p:first-child { font-size: 13px; opacity: 0.75; }
 @media (orientation: portrait) { #app.touch .hud > .goal-tip { top: calc(env(safe-area-inset-top) + 158px); } #app.touch .log { top: 196px; } }
+/* P7-F: the tutorial — Saltar (top right), the line may wrap, the glowing control. */
+.hud > .tut-skip {
+  position: absolute; top: calc(env(safe-area-inset-top) + 52px); right: calc(env(safe-area-inset-right) + 12px);
+  padding: 6px 12px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; background: rgba(0, 0, 0, 0.5); color: #fff;
+  font: 600 12px/1.2 inherit; font-family: inherit; pointer-events: auto; cursor: pointer; zoom: var(--ui-scale);
+}
+.hud > .tut-skip[hidden] { display: none; }
+.hud > .goal.tut { white-space: normal; text-align: left; border-radius: 12px; max-width: min(58vw, 520px); }
+#app.touch .hud > .goal.tut { top: calc(env(safe-area-inset-top) + 52px); left: calc(env(safe-area-inset-left) + 184px); transform: none; max-width: calc(100vw - 340px); }
+@media (orientation: portrait) { #app.touch .hud > .goal.tut { top: calc(env(safe-area-inset-top) + 158px); left: calc(env(safe-area-inset-left) + 16px); max-width: calc(100vw - 32px); } #app.touch .hud > .tut-skip { top: calc(env(safe-area-inset-top) + 64px); } }
+.touch-btn.hint, .touch-stick.hint { animation: tut-hint 1.2s ease-in-out infinite; }
+@keyframes tut-hint { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 220, 110, 0.9); } 50% { box-shadow: 0 0 0 8px rgba(255, 220, 110, 0.15); } }

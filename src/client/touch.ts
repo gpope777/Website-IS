@@ -81,6 +81,7 @@ export class TouchControls {
   private powerPill: HTMLElement | null = null;
   private readonly pills: HTMLElement[] = [];
   private menuBtn: HTMLElement | null = null;
+  private actBtn: HTMLElement | null = null;
 
   constructor(parent: HTMLElement, private readonly input: InputState, private readonly h: TouchHandlers) {
     this.root = div('touch-layer');
@@ -102,7 +103,11 @@ export class TouchControls {
     this.stickBase.addEventListener('pointercancel', this.onStickUp);
 
     const actions = div('touch-actions');
-    for (const b of ACTION_BUTTONS) actions.appendChild(this.button(b));
+    for (const b of ACTION_BUTTONS) {
+      const el = this.button(b);
+      if (b.code === 'KeyE') this.actBtn = el;
+      actions.appendChild(el);
+    }
 
     const pills = div('touch-pills');
     for (const b of PILL_BUTTONS) {
@@ -173,6 +178,16 @@ export class TouchControls {
       const on = !!pills[i];
       if (p.classList.contains('new') !== on) p.classList.toggle('new', on);
     });
+  }
+
+  /** P7-F: the tutorial's glowing controls: 'act' (A), 'stick', or pill slots by index. */
+  setHint(act: boolean, stick: boolean, pills: readonly boolean[]): void {
+    const set = (e: HTMLElement | null, on: boolean) => {
+      if (e && e.classList.contains('hint') !== on) e.classList.toggle('hint', on);
+    };
+    set(this.actBtn, act);
+    set(this.stickBase, stick);
+    this.pills.forEach((p, i) => set(p, !!pills[i]));
   }
 
   /** The power pill's icon follows the chosen power. */
