@@ -44,8 +44,9 @@ const BLOCK: Bones = {
   LowerArmR: [1.59, 0.05, 0.2],
 };
 const BOW: Bones = {
-  UpperArmL: [-0.06, -0.37, -1.16],
-  LowerArmL: [-0.27, -0.1, -0.68],
+  // P7-E: re-solved so the elbow sits at shoulder height and the hand ~0.3 m above it (it aimed low).
+  UpperArmL: [0.6, -0.61, -1.2],
+  LowerArmL: [-0.11, -0.02, -0.56],
   UpperArmR: [0.34, -0.07, -0.56],
   LowerArmR: [2.91, -0.91, 0.43],
 };
@@ -102,7 +103,8 @@ export function poseFor(anim: string, t: number): BonePose | null {
     case 'glide':
       return { bones: GLIDE, rootX: 0.35, rootY: 0 };
     case 'slide':
-      return { bones: SLIDE, rootX: 1.4, rootY: 0.35 };
+      // P7-E: the body's middle ~0.3 m off the ground (it floated at 1.25 m).
+      return { bones: SLIDE, rootX: 1.4, rootY: -0.55 };
     default:
       return null;
   }

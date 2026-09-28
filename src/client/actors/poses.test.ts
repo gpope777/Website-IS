@@ -42,4 +42,12 @@ describe('procedural poses', () => {
     const g = poseFor('glide', 0.5)!.bones;
     expect(g.UpperLegL![0]).toBeGreaterThan(0); // legs trail behind
   });
+
+  it('P7-E: the bow arm is raised to the eye and slide lies on the ground', () => {
+    const bow = poseFor('bow', 1)!.bones;
+    expect(bow.UpperArmL![0]).toBeGreaterThan(0.3);
+    const s = poseFor('slide', 0.5)!;
+    expect(s.rootY).toBeLessThan(-0.4);
+    expect(s.rootX).toBeGreaterThan(1.2);
+  });
 });

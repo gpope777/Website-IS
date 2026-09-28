@@ -432,6 +432,7 @@ export function patchRim(mat: THREE.Material): void {
       `{
   float rim = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
   outgoingLight += rimCol * rim * rimK;
+  outgoingLight += diffuseColor.rgb * 0.09 * rimK; // P7-E: a little night lift (≈ +0.05 emissive at full night)
 }
 #include <opaque_fragment>`,
     );
