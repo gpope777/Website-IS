@@ -1,7 +1,7 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
 ## Aventura completa — estado (LEER PRIMERO)
-La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen") y **#6 Tiendas y economía también** (Puesto, Caja, trueque, Buhonero, Encargos; ver "Tiendas — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests: npm test 1111, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 62**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen" · **#6** → "Tiendas — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F), la curva de Savia (P4-A) y los precios del Buhonero (T6-D). **Lo siguiente:** #2 Mundo y visuales → #7 Pulido (con el tutorial).
+La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen") y **#6 Tiendas y economía también** (Puesto, Caja, trueque, Buhonero, Encargos; ver "Tiendas — resumen") y **#2 Mundo y visuales también** (cielo, luz, hierba, agua, vida, criaturas, poses; ver "Visuales — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests (al cierre de #2): npm test 1204, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 62**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen" · **#6** → "Tiendas — resumen" · **#2** → "Visuales — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F), la curva de Savia (P4-A) y los precios del Buhonero (T6-D). Visuales: casi nada visto en un móvil real (mirar con `?fps=1`). **Lo siguiente:** #7 Pulido (con el tutorial).
 
 **Branch:** `aventura/slice-1` (pushed to origin).
 
@@ -1262,6 +1262,33 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Qué probar: ver "Tiendas — resumen", pasos 5–7. Constantes: `MERCHANT`, `RESTOCK_MAX`, `STALL.wantMax` en `src/shared/shop.ts`.
 - Lo siguiente: #2 Mundo y visuales → #7 Pulido.
 
+## Visuales — resumen (LEER PRIMERO)
+#2 Mundo y visuales está hecho en 5 planes (spec `docs/superpowers/specs/2026-09-27-visuales-design.md`; planes `docs/superpowers/plans/2026-09-27-visuales-V2-*.md`). **Nada de protocolo, servidor, colisiones ni balance cambió: PROTOCOL_VERSION sigue en 62.** Todo procedural/shader, cero descargas.
+- **V2-A** arnés `npm run perf` (llamadas/triángulos por parada y gama), `?fps=1`, prueba de FPS en la primera partida y bajada automática de gama.
+- **V2-B** recorte por cercanía (−80 % triángulos), `BiomeLook` por bioma/hora, cúpula con sol/nubes/estrellas, noches oscuras, niebla por altura, puntos de brillo sin luces, discos de sombra en baja.
+- **V2-C** hierba por trozos con viento en todos los biomas, copas/toldos al viento, suelos por bioma, zonas marchitas en el shader, la ola que sana y las Tierras purificadas.
+- **V2-D** agua (profundidad, espuma, aguas bravas, olas en media/alta, bajo el agua, cáusticas, Lago Negro que se limpia) y vida ambiente (pájaros, luciérnagas, cangrejos, peces, partículas).
+- **V2-E** ciervo/pez/rana/ballena low-poly (1 llamada cada uno, huesos en el shader), color por tipo de enemigo + marca de carga, poses de rodar/bloquear/arco/trepar/planear/deslizar, papel iluminado con borde, borde de luna en actores de noche, modelos "suelta y listo".
+- **Decidido por Claude — revisar (lo más gordo):** recorte por cercanía en vez de regiones 4×4; hierba = una malla por trozo con alturas horneadas (sin texturas en el vértice); profundidad del agua en un mapa leído en el fragmento; noches muy oscuras (hemisférica 0,08) compensadas con brillos y el borde de luna; las poses son offsets de hueso resueltos numéricamente sobre el robot (se ven "de robot", aceptables, no bonitas); los enemigos zorro se recolorean (textura a gris × color del tipo); el Corazón y los muros no llevan borde de luna (solo actores); los papeles nunca bajan de 0,35 de luz.
+- **Cifras finales** (llamadas / triángulos, de día; noche igual o menos):
+
+| Parada | Baja | Media | Alta |
+|---|---|---|---|
+| Bosque | 61 / 186 k | 142 / 437 k | 187 / 846 k |
+| Costa | 59 / 76 k | 95 / 126 k | 97 / 198 k |
+| Bajo el agua | 53 / 70 k | 75 / 118 k | 77 / 188 k |
+| Pantano | 53 / 89 k | 82 / 196 k | 87 / 402 k |
+| Montañas | 71 / 105 k | 95 / 166 k | 103 / 252 k |
+| Tierras | 50 / 22 k | 68 / 35 k | 68 / 45 k |
+| Purificado | 54 / 56 k | 76 / 116 k | 84 / 235 k |
+| Lago Negro / limpio | 47 / 18 k · 52 / 55 k | 65 / 28 k · 75 / 122 k | 66 / 36 k · 83 / 253 k |
+| Mazmorra | 89 / 67 k | 112 / 116 k | 130 / 225 k |
+| Presupuesto §3 | 120 / 250 k | 180 / 500 k | 260 / 1 200 k |
+
+  Antes de #2 la baja iba a ~530 k triángulos en todas partes (el doble del presupuesto); ahora todo cabe. Lo más justo: bosque en media (437 k; mando: `grassPerChunk`).
+- **Qué mirar en teléfonos reales (Gabriel, con `?fps=1`):** fps en Baja en el bosque, la Costa y el Pantano (1 min cada uno); ¿salta "Bajé los gráficos."?; un ciclo día/noche entero (¿se leen lobos, el Corazón y el robot de noche?); hierba que no "salte" al caminar; bucear; limpiar una zona y ver la ola; montar el ciervo, el pez y la rana; rodar, bloquear y planear cerca de un compañero; que el teléfono no se caliente en 10 min.
+- **Modelos para soltar:** la lista está en el spec §9 y en `public/models/CREDITS.md` (`deer/fish/frog/whale/wolf/brute.glb`); sin archivo → procedural/zorro.
+
 ## Visuales · V2-A — Arnés y gamas — HECHO
 - Plan: `docs/superpowers/plans/2026-09-27-visuales-V2-A-arnes-gamas.md` (d184d0f).
 - Commits: 761f42e (T1 puro: campos nuevos de `TierSettings`, `probeVerdict`, `FpsGuard`, `lowerTier`), e73123f (T2 cliente: `?fps=1`, prueba de FPS, bajada automática, gancho `?perf=1`), 0fb394d (T3 arnés `npm run perf` + `scripts/perf/baseline.json`).
@@ -1409,3 +1436,20 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, teléfono, `?fps=1`): fps en Baja en la Costa y el Pantano; bucear y mirar el velo y que se vea la salida; ¿la espuma de las aguas bravas avisa bien?; de noche en el bosque, luciérnagas; acercarse a un cangrejo (Media).
 - Lo siguiente: V2-E (criaturas y animaciones).
+
+## Visuales · V2-E — Criaturas, poses, papel, borde de luna y "suelta y listo" — HECHO
+- Plan: `docs/superpowers/plans/2026-09-27-visuales-V2-E-criaturas-poses.md` (ff6594d).
+- Commits: 3063b14 (T1 puro: `scene/creature-rig.ts`, `actors/poses.ts`, `actors/enemy-look.ts`, `actors/drop-ins.ts`), 2644301 (T2 criaturas con huesos en el shader + arnés `--vitrina`), 69e5f52 (T3 color por tipo, marca de carga, poses), 226730a (T4 papel iluminado, borde de luna, cargador de modelos), y el de cierre (base nueva + este texto).
+- Tests: npm test 1204 (antes 1176), test:workers 12, check + build verdes. **PROTOCOL_VERSION sigue en 62.** Alturas de montura, tiempos de carga y colisiones iguales.
+- **Cifras antes → después:** llamadas bajan donde había cajas (bosque 75→61 baja, 156→142 media, 201→187 alta; Costa −6; bajo el agua −6/−12); triángulos iguales (±1 k); +1 programa en todas (rim/papel). La tabla final está en "Visuales — resumen". Sin errores de página en la pasada completa.
+- Cómo funciona:
+  - **Criaturas** (`creature-rig.ts` + `creature-mesh.ts`): una sopa de triángulos por especie (ciervo 4 patas/astas, pez con aletas, rana con ojos saltones, ballena con percebes) con atributo `part`; `patchRig` gira cada parte sobre su pivote y aplica una onda en S (pez, ballena). Ciervo: trote en pares diagonales, pasta quieto, corcovea al domar. Pez: ondula más rápido con velocidad. Rana: patas plegadas, salta al moverse, garganta brillante (malla propia sin niebla, como antes). Ballena: onda lenta y cola.
+  - **Enemigos zorro:** material compartido por tipo (lobo gris frío, bestia de ceniza en las Tierras con brasas, bruto morado, reforzado casi negro, escudado azul, turba oliva, roca gris) con la textura pasada a gris × color. Tablas/manto/losa igual. **Marca de carga:** anillo rojo + flecha bajo el bruto de cada mazmorra mientras `elite.charging`.
+  - **Poses** (`poses.ts`, se aplican tras el mixer): rodar = salto quieto + vuelta de 360° en 0,45 s encogido; bloquear = brazos cruzados + torso 10°; arco = brazo izq. al frente, der. junto a la cara; trepar = torso 25° y brazos alternos; planear = brazos abiertos + tela 4×2 que aletea con el viento (adiós cono); deslizar = tumbado con brazos por delante.
+  - **Papel:** color × luz del look (suelo 0,35 de noche) y borde blanco de papel en media/alta. **Borde de luna:** `patchRim` en robot, zorros y criaturas, 0 de día, 0,55 de noche.
+  - **Suelta y listo:** `loadDropIns()` hace HEAD de `/models/<nombre>.glb` (rechaza la respuesta HTML de la SPA); si llega, `DropInPuppet` (ciervo/pez/rana/ballena) o `Actor` con sus clips (lobo/bruto); si no, procedural/zorro. Probado solo el camino "falta" (no hay archivos).
+- Decidido por Claude — revisar: la sombra de las criaturas (media/alta) es la de la pose quieta (el pase de sombra no lleva los huesos); las poses se ven toscas en las capturas (el arco apunta algo bajo, deslizar es aproximado): retocar números en la tabla de `poses.ts`; los drop-ins de enemigo conservan sus colores (sin tinte por tipo); la vitrina del arnés es un módulo aparte que solo carga `?perf=1`.
+- Verificado en navegador: sí, capturas del arnés `npm run perf -- --vitrina` (SwiftShader, `scratch/perf/shots/*_vitrina_*`): las cuatro criaturas de día y de noche (se ven con forma, el ciervo con astas y la rana con garganta dorada); los 7 colores de enemigo distintos y el anillo rojo; cada pose (se leen bloquear, arco, rodar, deslizar; trepar y planear menos claros de perfil); los dibujos con luz de día/noche y el borde de papel; **el robot en la Costa de noche ya tiene contorno de luna** (antes silueta negra). El movimiento (patas, ondas, aleteo) no se ve en capturas.
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono, `?fps=1`): montar el ciervo al trote y ver las patas; el pez y la rana; rodar/bloquear/planear; un bruto de mazmorra cargando (¿se ve el anillo?); de noche en la Costa, ¿se lee el robot?
+- Lo siguiente: #7 Pulido (con el tutorial).
