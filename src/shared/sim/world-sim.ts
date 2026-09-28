@@ -35,7 +35,7 @@ import { blockCell, blocksCentre, blocksSolved, BLOCKS, pushBlock, corniceLedges
 import { CHEST, COAST_SHRINE, generateChests, generateCoastShrines, type Chest } from '../coast-shrines';
 import { addItem, ITEM_LABELS, BUILD_COST, type ItemId, count, STRUCTURE_HP, TEND_COST, TEND_HEAL, UPGRADE, upgradeCost, weaponMult, CAPA, capaCost, capaMult, hasAll, removeAll, type Inventory, type StructureKind } from '../items';
 import { createVitals, damage, eatBerry, isNight, RESPAWN_VITALS, tickVitals, type Vitals } from '../survival';
-import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type TowerDungeonView, type FinalView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
+import { r2, type Anim, type CallBeast, type ClientMsg, type DungeonView, type FxKind, type FxView, type GraveView, type PillarView, type PlayerView, type SelfState, type ShrineView, type TowerDungeonView, type FinalView, type ServerMsg, type SteedView, type Structure, type WhaleView, type WolfView } from '../protocol';
 import { ALLY, createAlly, stepAlly, type Ally } from './ally';
 import { BOSS, createBoss, stepBoss, type Boss } from './boss';
 import { createFarol, createZancudo, groundZancudo, overVent, stepFarol, stepZancudo, ZANCUDO, type Farol, type Zancudo } from './zancudo';
@@ -54,6 +54,8 @@ import { createWolf, ENEMY, ENEMY_LABELS, hitWolf, RAID, raiderDamage, stepRaide
 
 export const DAY_LENGTH = 6 * 60;
 export const TICK_DT = 0.1;
+/** P7-A: blows reported in snapshots — to players within `radius` m, at most `max` per snapshot, kept `keep` s. */
+export const FX = { radius: 40, max: 6, keep: 2 } as const;
 export const VIEW_RADIUS = 100;
 export const MAX_SPEED = 9;
 /** Seconds between repeated rule toasts (mud, current). */
@@ -137,6 +139,8 @@ export interface SavedPlayer {
   quartz?: Record<number, number>;
   /** Capa de corteza level 0–3. Optional: older saves have none. */
   capaLvl?: number;
+  /** P7-A: entry visions this player got (absent on old saves). */
+  seen?: ('swamp' | 'mountains' | 'corrupt')[];
   /** Has Viento (coast dungeon altar). Optional: older saves have none. */
   viento?: boolean;
   /** Has Fuego (swamp dungeon altar). Optional: older saves have none. */
@@ -248,6 +252,9 @@ export interface Outgoing {
 }
 
 interface Live {
+  /** P7-A: last `fx` sequence sent to this player, and damage taken since the last snapshot. */
+  fxSeq?: number;
+  hurt?: number;
   /** P4-D Proezas (live-only): fish race start; Nenúfares run dry from pad 0; a cold night climb. */
   raceAt?: number;
   lily?: boolean;
@@ -550,6 +557,9 @@ export class WorldSim {
   private nextWolfId = 1;
   private raid: { phase: 'warn' | 'active'; dir: number; gata?: boolean; tri?: boolean; flecha?: boolean; /** Invasion 3: ×1.5 and rayos. */ big?: boolean } | null = null;
   private raidN: number;
+  /** P7-A: blows for the snapshots (see FX). */
+  private fx: { seq: number; at: number; x: number; z: number; v: FxView }[] = [];
+  private fxSeq = 0;
   private swampSeen: boolean;
   private mountainsSeen: boolean;
   /** S5-C: someone walked las Tierras. */
@@ -829,6 +839,7 @@ export class WorldSim {
 
   step(dt: number): void {
     this.time += dt;
+    if (this.fx.length && this.fx[0]!.at < this.time - FX.keep) this.fx = this.fx.filter((f) => f.at >= this.time - FX.keep);
     this.checkRanks();
     this.checkTrades();
     const night = isNight(dayFraction(this.time));
@@ -1034,7 +1045,11 @@ export class WorldSim {
     const raid = this.raid ? { phase: this.raid.phase, dir: r2(this.raid.dir), level: this.raidLevel } : null;
     const heart = h ? { id: h.id, hp: Math.round(h.hp), max: STRUCTURE_HP.heart } : null;
     const graves = this.graves.map(({ id, owner, x, y, z }) => ({ id, owner, x, y, z }));
-    return { t: 'snap', time: r2(this.time), players, wolves, self: this.selfState(p, l), raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: this.ending ? LOOKOUT.h : towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, estrella: this.estrellaView(near), merchant: this.merchantAt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
+    const fxs = this.fx.filter((f) => f.seq > (l.fxSeq ?? 0) && Math.hypot(f.x - p.x, f.z - p.z) <= FX.radius).slice(-FX.max).map((f) => f.v);
+    l.fxSeq = this.fxSeq;
+    const hurt = l.hurt ? r2(l.hurt) : 0;
+    l.hurt = 0;
+    return { t: 'snap', ...(fxs.length ? { fx: fxs } : {}), time: r2(this.time), players, wolves, self: { ...this.selfState(p, l), ...(hurt > 0 ? { hurt } : {}) }, raid, heart, graves, vines: this.vines.map(({ id, x, z, r, base, top }) => ({ id, x, z, r, base: r2(base), top: r2(top) })), shrines: this.shrineViews(), dungeon: this.dungeonView(), ally: this.ally ? { x: r2(this.ally.x), y: r2(this.ally.y), z: r2(this.ally.z), yaw: r2(this.ally.yaw), anim: this.ally.anim } : null, ally2: this.ally2 ? { x: r2(this.ally2.x), y: r2(this.ally2.y), z: r2(this.ally2.z), yaw: r2(this.ally2.yaw), anim: this.ally2.anim } : null, ally3: this.ally3 ? { x: r2(this.ally3.x), y: r2(this.ally3.y), z: r2(this.ally3.z), yaw: r2(this.ally3.yaw), anim: this.ally3.anim } : null, ally4: this.ally4 ? { x: r2(this.ally4.x), y: r2(this.ally4.y), z: r2(this.ally4.z), yaw: r2(this.ally4.yaw), anim: this.ally4.anim } : null, escalera: this.escalera, zarzalBurnt: this.zarzalBurnt, fogatas: [...this.fogatas], steeds: this.steedViews(near), fish: this.fishViews(near), frogs: this.frogViews(near), dragons: this.dragonViews(near), fog: this.fogOpen ? 'open' : missingRoot(this) ? 'closed' : 'ready', towerH: this.ending ? LOOKOUT.h : towerHeight(Math.floor(this.time / DAY_LENGTH), this.towerDay0), whale: this.whaleView(), marchito, corrupt: this.corrupt(), pillars: this.pillarView(), towerOpen: this.towerOpen, ending: this.ending, raidsOff: this.raidsOff, estrella: this.estrellaView(near), merchant: this.merchantAt(), cage: this.invasion2 === 'taken' ? { anchors: this.anchors.map((b, i) => (b ? 0 : Math.max(1, Math.ceil(this.anchorFoes.find((a) => a.id === RESCUE.anchorIdBase + i)?.hp ?? RESCUE.anchorHp)))) } : null };
   }
 
   drain(): Outgoing[] {
@@ -2382,7 +2397,9 @@ export class WorldSim {
     if (w.kind === 'brote') return this.tell(name, 'Un brote no se pega: se arranca (A)');
     if (w.kind === 'core') return this.strikeCore(name, dmg, ranged);
     if (w.kind === 'anchor') {
-      if (hitWolf(w, dmg)) {
+      const killed = hitWolf(w, dmg);
+      this.pushFx(w, dmg, killed ? 'kill' : 'hit', name);
+      if (killed) {
         if (w === this.lakeAnchor) this.breakLakeAnchor();
         else this.breakAnchor(w);
       }
@@ -2406,7 +2423,9 @@ export class WorldSim {
       const bl = this.live.get(name);
       if (bl) this.hint(name, bl, 'El gorro para casi todo. Un pilar en su embestida, o párale');
     }
-    if (!hitWolf(w, dmg)) return;
+    const killed = hitWolf(w, dmg);
+    this.pushFx(w, dmg, killed ? 'kill' : 'hit', name);
+    if (!killed) return;
     this.xpForKill(name, w);
     this.countKill(name, w);
     this.say(`${name} derrotó ${`a ${ENEMY_LABELS[w.kind]}`.replace(/^a el /, 'al ')}`);
@@ -4497,30 +4516,7 @@ export class WorldSim {
       this.moonToldDay = day;
       this.say(`Luna llena esta noche. Algo rueda por ${NAMES.ash}`);
     }
-    const scout = this.swampSeen ? undefined : this.activeNames().find((n) => {
-      const p = this.players.get(n);
-      return !!p && !p.dead && inSwamp(p.x, p.z);
-    });
-    if (scout) {
-      this.swampSeen = true;
-      this.vision(VISION.swamp(scout));
-    }
-    const climber = this.mountainsSeen ? undefined : this.activeNames().find((n) => {
-      const p = this.players.get(n);
-      return !!p && !p.dead && inMountains(p.x, p.z);
-    });
-    if (climber) {
-      this.mountainsSeen = true;
-      this.vision(VISION.mountains(climber));
-    }
-    const walker = this.corruptSeen ? undefined : this.activeNames().find((n) => {
-      const p = this.players.get(n);
-      return !!p && !p.dead && inCorrupt(p.x, p.z);
-    });
-    if (walker) {
-      this.corruptSeen = true;
-      this.vision(VISION.corrupt(walker));
-    }
+    this.entryVisions();
     if (!this.raid && !(this.ending && this.raidsOff) && heart && heart.hp > 0 && !night && f >= RAID.warnAt && this.activeCount() > 0) {
       // Raids come from the nearest corrupt zone (spec §3); with none left, from the Raíz-madre.
       const corrupt = this.corrupt();
@@ -4739,6 +4735,7 @@ export class WorldSim {
     const out = l ? resolveHit(l.guard, this.time, dmg) : { kind: 'hit' as const, dmg };
     if (out.kind === 'dodged') return false;
     if (out.kind === 'parried') {
+      this.pushFx(w, 0, 'parry', name);
       w.stun = BLOCK.parryStun;
       if (w === this.boss) this.boss.weak = BOSS.weakFor;
       if (w === this.shield) this.shield.exposed = ELITE.exposedFor;
@@ -4751,14 +4748,24 @@ export class WorldSim {
       this.tell(name, w === this.boss ? 'Parada: el papel se desdobla' : w === this.boss2 ? 'Parada: la cáscara se abre' : w === this.boss3 ? 'Parada: cae al suelo' : w === this.boss4 ? 'Parada: el gorro se levanta' : w === this.towerFinal ? 'Parada: se tambalea y las raíces se abren' : 'Parada');
       return false;
     }
+    if (out.kind === 'blocked') this.pushFx(w, out.dmg, 'block', name);
     this.hurt(p, out.dmg);
     return true;
+  }
+
+  /** P7-A: remember a blow for the snapshots. */
+  private pushFx(w: Wolf, dmg: number, kind: FxKind, by: string): void {
+    const max = ENEMY[w.kind].hp;
+    this.fx.push({ seq: ++this.fxSeq, at: this.time, x: w.x, z: w.z, v: { id: w.id, dmg: r2(dmg), kind, by, hp: r2(Math.max(0, Math.min(1, w.hp / max))) } });
   }
 
   /** Damage a player can't dodge any more (Capa still counts). */
   private hurt(p: SavedPlayer, dmg: number): void {
     if (this.boss && this.boss.hp > 0 && inBossRoom(p.x, p.z)) this.bossHurt.add(p.name);
-    p.vitals = damage(p.vitals, dmg * capaMult(p.capaLvl ?? 0));
+    const taken = dmg * capaMult(p.capaLvl ?? 0);
+    p.vitals = damage(p.vitals, taken);
+    const l = this.live.get(p.name);
+    if (l) l.hurt = (l.hurt ?? 0) + taken;
     if (p.vitals.health <= 0) this.kill(p);
   }
 
@@ -4986,6 +4993,33 @@ export class WorldSim {
     }
     this.vision(VISION.driven(joinNames(m.taunted)));
     this.endInvasion();
+  }
+
+  /** Entry visions (P7-A: per player): the world's first visitor tells everyone online; later, whoever walks in without having seen it gets their own. */
+  private entryVisions(): void {
+    const kinds = [
+      ['swamp', inSwamp, VISION.swamp],
+      ['mountains', inMountains, VISION.mountains],
+      ['corrupt', inCorrupt, VISION.corrupt],
+    ] as const;
+    for (const [key, inside, lines] of kinds) {
+      for (const n of this.activeNames()) {
+        const p = this.players.get(n);
+        if (!p || p.dead || !inside(p.x, p.z) || p.seen?.includes(key)) continue;
+        const flag = key === 'swamp' ? 'swampSeen' : key === 'mountains' ? 'mountainsSeen' : 'corruptSeen';
+        if (!this[flag]) {
+          this[flag] = true;
+          this.vision(lines(n));
+          for (const o of this.activeNames()) {
+            const op = this.players.get(o);
+            if (op && !op.seen?.includes(key)) op.seen = [...(op.seen ?? []), key];
+          }
+          break;
+        }
+        p.seen = [...(p.seen ?? []), key];
+        this.outbox.push({ to: n, msg: { t: 'vision', lines: lines(n) } });
+      }
+    }
   }
 
   private activeNames(): string[] {
