@@ -14,3 +14,16 @@ describe('cloud noise (V2-B)', () => {
     expect(jump).toBeLessThan(40);
   });
 });
+
+describe('the moon (P7-E)', () => {
+  it('is bigger and brighter on full-moon nights (día % 8 === 0)', async () => {
+    const { moonLook } = await import('./sky-dome');
+    const full = moonLook(8);
+    const plain = moonLook(9);
+    expect(plain).toEqual({ size: 1, glow: 1 });
+    expect(full.size).toBeGreaterThan(2);
+    expect(full.glow).toBeGreaterThan(plain.glow);
+    expect(moonLook(0)).toEqual(full);
+    expect(moonLook(16)).toEqual(full);
+  });
+});

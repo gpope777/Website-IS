@@ -2258,7 +2258,7 @@ export class Game {
     this.watchFps(raw);
     this.serverTime += dt;
     const stop = this.perfStop;
-    if (stop) this.serverTime = (Math.floor(this.serverTime / DAY_LENGTH) + stop.frac) * DAY_LENGTH;
+    if (stop) this.serverTime = ((stop.day ?? Math.floor(this.serverTime / DAY_LENGTH)) + stop.frac) * DAY_LENGTH;
 
     const now = performance.now();
     const rolling = now < this.rollUntil;
@@ -2391,6 +2391,7 @@ export class Game {
     else copyLook(this.skyLook, this.lookTarget);
     this.lookFresh = true;
     this.windStorm = stormDim(here);
+    this.light.setMoonDay(Math.floor(this.serverTime / DAY_LENGTH));
     this.light.update(frac, focus, this.skyLook, this.raid ? (this.raid.phase === 'active' ? 0.55 : 0.3) : 0, fog, this.windStorm, performance.now() / 1000);
     // V2-E: the drawings take the look's light; actors get a moonlit rim at night.
     paperLight(this.skyLook, this.light.daylight, PAPER_UNIFORMS.paperLight.value);

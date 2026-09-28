@@ -10,6 +10,8 @@ export interface PerfStop {
   pitch: number;
   /** Day fraction, 0 = midnight, 0.5 = noon. */
   frac: number;
+  /** P7-E: game day to show (full moon on día % 8 === 0); default today. */
+  day?: number;
   /** V2-C: show las Tierras purified (the end-state look). */
   purified?: boolean;
   /** V2-E: hide the local robot (showcase shots). */

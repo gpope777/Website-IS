@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { TierSettings } from '../quality';
 import type { Look } from './looks';
-import { SkyDome } from './sky-dome';
+import { moonLook, SkyDome } from './sky-dome';
 
 const RAID_SKY = new THREE.Color(0x4a1f5c);
 const STORM_SKY = new THREE.Color(0x5a6068);
@@ -45,6 +45,14 @@ export class DayLight {
     this.moon.color.set(0x8fa8ff);
     this.dome = new SkyDome(tier.clouds, tier.stars);
     scene.add(this.sun, this.sun.target, this.moon, this.hemi, this.dome.mesh);
+  }
+
+  private moonDay = -1;
+  /** P7-E: the full moon (día % 8) is a big disc; set when the game day changes. */
+  setMoonDay(day: number): void {
+    if (day === this.moonDay) return;
+    this.moonDay = day;
+    this.dome.setMoon(moonLook(day));
   }
 
   /** `swamp` 0..1 closes the fog to the Pantano's (near 35, far 70). `look` = the biome's colours now (`lookAt`). */

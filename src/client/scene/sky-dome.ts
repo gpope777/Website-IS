@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { fullMoon } from '../../shared/estrella';
 import { createRng } from '../../shared/rng';
 
 /** Tileable value-noise FBM (0..255), painted once at load for the clouds (spec §5.1). */
@@ -52,6 +53,8 @@ uniform float uDay;
 uniform float uTime;
 uniform float uClouds;
 uniform float uStars;
+uniform float uMoon;
+uniform float uMoonGlow;
 uniform sampler2D uCloudTex;
 varying vec3 vDir;
 
@@ -69,7 +72,9 @@ void main() {
   col += uSunCol * (smoothstep(0.9990, 0.9995, s) * 2.0 + pow(s, 48.0) * 0.45 + pow(s, 6.0) * 0.25 * low) * up;
   // Moon: opposite the sun, pale.
   float m = max(dot(d, -uSunDir), 0.0);
-  col += vec3(0.75, 0.8, 0.95) * (smoothstep(0.9993, 0.9996, m) * 0.9 + pow(m, 200.0) * 0.12) * (1.0 - uDay);
+  // P7-E: uMoon scales the disc's angular size (full moon: bigger), uMoonGlow its halo.
+  float mr = uMoon * uMoon;
+  col += vec3(0.75, 0.8, 0.95) * (smoothstep(1.0 - 0.0007 * mr, 1.0 - 0.0004 * mr, m) * 0.9 + pow(m, 200.0 / uMoon) * 0.12 * uMoonGlow) * (1.0 - uDay);
   // Stars (high): a hashed cell grid, twinkling, only at night and above the horizon.
   if (uStars > 0.5) {
     vec3 c = floor(d * 260.0);
@@ -88,6 +93,11 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }`;
+
+/** P7-E: the moon's disc size and halo for game day `day`: full moon (día % 8, as la Estrella) is ~2.5× wider and glows. */
+export function moonLook(day: number): { size: number; glow: number } {
+  return fullMoon(day) ? { size: 2.5, glow: 3 } : { size: 1, glow: 1 };
+}
 
 /** V2-B sky dome (spec §5.1): one sphere around the camera, gradient + sun + moon (+ clouds, + stars). 1 draw call. */
 export class SkyDome {
@@ -115,6 +125,8 @@ export class SkyDome {
         uTime: { value: 0 },
         uClouds: { value: clouds },
         uStars: { value: stars ? 1 : 0 },
+        uMoon: { value: 1 },
+        uMoonGlow: { value: 1 },
         uCloudTex: { value: tex },
       },
       side: THREE.BackSide,
@@ -136,6 +148,12 @@ export class SkyDome {
     (u.uSunCol!.value as THREE.Color).copy(sunCol);
     u.uDay!.value = day;
     u.uTime!.value = t;
+  }
+
+  /** P7-E: today's moon (see `moonLook`). */
+  setMoon(m: { size: number; glow: number }): void {
+    this.mat.uniforms.uMoon!.value = m.size;
+    this.mat.uniforms.uMoonGlow!.value = m.glow;
   }
 
   /** Follows the camera; sits inside the far plane. */
