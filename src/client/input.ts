@@ -18,7 +18,7 @@ export function readMove(i: InputState): MoveInput {
   return { x: (i.right ? 1 : 0) - (i.left ? 1 : 0), z: (i.back ? 1 : 0) - (i.forward ? 1 : 0), sprint: i.sprint, jump: i.jump };
 }
 
-export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'net' | 'trap' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock' | 'power' | 'switch' | 'mount' | 'dismiss' | 'fire' | 'tower';
+export type Action = 'act' | 'eat' | 'campfire' | 'wall' | 'heart' | 'spikes' | 'net' | 'trap' | 'camera' | 'menu' | 'roll' | 'bow' | 'lock' | 'power' | 'switch' | 'mount' | 'dismiss' | 'fire' | 'tower' | 'mute';
 
 /** Also used by touch buttons, which fire these KeyboardEvent codes. */
 export const KEY_ACTIONS: Record<string, Action> = {
@@ -47,6 +47,8 @@ export const KEY_ACTIONS: Record<string, Action> = {
   KeyM: 'mount',
   Escape: 'menu',
   Enter: 'dismiss',
+  /** P7-B: Silencio (M is already mount). */
+  Period: 'mute',
 };
 
 const HOLD: Record<string, keyof Omit<InputState, 'axis'>> = {

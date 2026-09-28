@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ambienceGains, busGains, dominant, jitter, musicTrack, spatial, surface, Unlock, Voices } from './mix';
-import { actionCue, CueTracker, toastCue, type SnapLike } from './cues';
+import { actionCue, CueTracker, sendCue, toastCue, type SnapLike } from './cues';
 import { defaultSettings, parseSettings } from '../settings';
 
 describe('Voices', () => {
@@ -157,5 +157,15 @@ describe('CueTracker', () => {
     expect(toastCue('Aún no tienes montura')).toBe('no');
     expect(toastCue('Nada a tiro')).toBe('no');
     expect(toastCue('Viajando… 3 s')).toBe('toast');
+    expect(actionCue('wall')).toBeNull(); // building sounds when the place is sent
+  });
+  it('what I send', () => {
+    expect(sendCue({ t: 'attack', id: 1 })).toBe('golpe-aire');
+    expect(sendCue({ t: 'harvest', id: 1 }, 'rock')).toBe('picar');
+    expect(sendCue({ t: 'harvest', id: 1 }, 'bush')).toBe('bayas');
+    expect(sendCue({ t: 'power', x: 0, z: 0 })).toBe('enredadera');
+    expect(sendCue({ t: 'power', x: 0, z: 0, kind: 'piedra' })).toBe('piedra');
+    expect(sendCue({ t: 'place', kind: 'wall', x: 0, z: 0, rot: 0 })).toBe('construir');
+    expect(sendCue({ t: 'travel', to: 'heart' })).toBe('viaje');
   });
 });

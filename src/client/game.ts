@@ -56,7 +56,10 @@ import { VIENTO } from '../shared/viento';
 import { boost } from './movement';
 import { CameraRig } from './camera-rig';
 import { HpBars, hurtReaction, IMPACT, lowHealth, reactTo, Shake, SHAKE_SCALE } from './impact';
-import { loadSettings, saveSettings, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
+import { AudioEngine } from './audio/engine';
+import { actionCue, CueTracker, sendCue, toastCue } from './audio/cues';
+import { ambienceGains, busGains, dominant, musicTrack, MUTED_WARNING, surface, Unlock } from './audio/mix';
+import { loadSettings, saveSettings, VOLUME_DEFAULTS, type VolumeKey, SHAKE_LABELS, type Settings, type ShakeSetting } from './settings';
 import { HpBarMeshes } from './scene/hp-bars';
 import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
@@ -197,6 +200,8 @@ interface Arrow {
   t: number;
 }
 
+const VOLUME_LABEL: Record<VolumeKey, string> = { master: 'Volumen general', sfx: 'Efectos', amb: 'Ambiente', music: 'Música' };
+
 /** Suppresses a stray Escape keydown that some browsers echo right after the same
  * Escape already exited pointer lock (which we turn into opening the menu ourselves). */
 const ESC_GUARD_MS = 300;
@@ -211,6 +216,18 @@ export class Game {
   private readonly rig = new CameraRig();
   /** P7-A: impact — settings, camera shake, floating bars, my hit-stop (camera held until then). */
   private settings: Settings = loadSettings(isTouchDevice());
+  /** P7-B: sound — the engine, the cue memory, the iOS unlock, footsteps and the ambience clock. */
+  private audio = new AudioEngine();
+  private cueTracker = new CueTracker();
+  private unlocker = new Unlock();
+  private musicProbed = false;
+  private stride = 0;
+  private wasGround = true;
+  private wasGliding = false;
+  private ambIn = 0;
+  private bossNear = false;
+  private lastPos = { x: 0, z: 0 };
+  private lastRes = { moving: false, running: false, swimming: false, climbing: false, gliding: false };
   private readonly shake = new Shake();
   private readonly hpBars = new HpBars();
   private hpBarMeshes: HpBarMeshes | null = null;
@@ -524,6 +541,9 @@ export class Game {
     this.scene.add(this.marker);
 
     this.hud = new Hud(root);
+    this.hud.onToast = (text) => this.audio.play(toastCue(text));
+    for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.addEventListener(ev, this.onGesture, true);
+    document.addEventListener('visibilitychange', this.onVisibility);
     this.hud.onRingTap = () => this.tapRing();
     this.keyboard = new Keyboard(this.input, (a) => this.onAction(a));
     this.touch = isTouchDevice()
@@ -552,6 +572,13 @@ export class Game {
       (m) => this.onMsg(m),
       (s) => this.onStatus(s),
     );
+    // P7-B: my own requests sound the moment they leave (swing, harvest, power, build…).
+    const send = this.conn.send.bind(this.conn);
+    this.conn.send = (m) => {
+      const id = sendCue(m, m.t === 'harvest' ? this.spawns.find((r) => r.id === m.id)?.kind : undefined);
+      if (id) this.audio.play(id);
+      send(m);
+    };
     // V2-E: the §9 drop-ins load alongside; any that are missing stay procedural (or the fox).
     void loadDropIns().then((d) => {
       this.dropIns = d;
@@ -658,6 +685,10 @@ export class Game {
     document.removeEventListener('mousemove', this.onMouse);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     removeEventListener('resize', this.onResize);
+    for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.removeEventListener(ev, this.onGesture, true);
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    this.audio.setGains({ master: 0, sfx: 0, ui: 0, ambient: 0, music: 0 });
+    this.audio.pause(true);
     if (document.pointerLockElement) document.exitPointerLock();
     this.renderer.dispose();
     this.root.innerHTML = '';
@@ -695,7 +726,10 @@ export class Game {
       case 'rankUp': {
         const a = m.name === this.myName ? this.me : this.others.get(m.name)?.actor;
         if (a instanceof Actor) a.flash(RANK_FLASH);
-        if (m.name === this.myName) this.hud.showVision([rankUpText(m.rank)], 3000, false);
+        if (m.name === this.myName) {
+          this.hud.showVision([rankUpText(m.rank)], 3000, false);
+          this.audio.play('rango');
+        }
         return;
       }
       case 'hit':
@@ -703,6 +737,7 @@ export class Game {
         this.structures.setHp(m.id, m.hp);
         return;
       case 'wrecked':
+        this.audio.play('muro-roto');
         this.structures.remove(m.id);
         for (let i = 0; i < 3; i++) this.colliders.remove(`s${m.id}:${i}`);
         if (this.stoneStructs.some((s) => s.id === m.id)) {
@@ -942,6 +977,7 @@ export class Game {
     this.serverTime = m.time;
     this.applySelf(m.self);
     this.onImpact(m);
+    this.onSound(m);
     this.raid = m.raid;
     this.heart = m.heart;
     this.hud.setHeart(m.heart);
@@ -1264,6 +1300,75 @@ export class Game {
   private setSettings(p: Partial<Settings>): void {
     this.settings = { ...this.settings, ...p };
     saveSettings(this.settings);
+    this.audio.setGains(busGains(this.settings, document.hidden));
+  }
+
+  /** P7-B: any touch, click or key unlocks audio (iOS needs it inside a gesture); still silent after 2 → warn. */
+  private onGesture = (): void => {
+    const ok = this.audio.unlock();
+    this.audio.setGains(busGains(this.settings, document.hidden));
+    if (this.audio.ctx && !this.musicProbed) {
+      this.musicProbed = true;
+      void this.audio.probeMusic();
+    }
+    if (this.unlocker.gesture(ok) === 'warn' && !this.settings.mute && isTouchDevice()) this.hud.toast(MUTED_WARNING);
+  };
+
+  private onVisibility = (): void => {
+    this.audio.setGains(busGains(this.settings, document.hidden));
+    this.audio.pause(document.hidden);
+  };
+
+  /** P7-B (spec §4.2): blows, hurt, wind-ups (always audible), the horn, the laugh, the heartbeat. */
+  private onSound(m: Extract<ServerMsg, { t: 'snap' }>): void {
+    if (!this.audio.running) return;
+    const d = m.dungeon;
+    const tells: string[] = [];
+    if (d.elite?.charging) tells.push('forest:elite');
+    if (d.coast.boss?.tell) tells.push(`coast:${d.coast.boss.tell}`);
+    if (d.coast.elite?.charging) tells.push('coast:elite');
+    if (d.mountain.boss?.windup) tells.push('mountain:windup');
+    if (d.mountain.elite?.charging) tells.push('mountain:elite');
+    if (d.tower.flecha?.aiming) tells.push('tower:flecha');
+    this.bossNear = m.wolves.some((w) => w.kind === 'marchito' || w.kind === 'core' || w.kind.startsWith('boss'));
+    const cues = this.cueTracker.snap({ wolves: m.wolves, fx: m.fx, self: m.self, raid: m.raid, marchito: m.marchito, tells }, this.myName, performance.now() / 1000);
+    for (const c of cues) this.audio.play(c.id, c.x !== undefined && c.z !== undefined ? { x: c.x, z: c.z } : undefined);
+  }
+
+  /** P7-B: footsteps, jump/land, glider, then (≤ 4 Hz) ambience and music. */
+  private soundFrame(res: { moving: boolean; running: boolean; swimming: boolean; climbing: boolean; gliding: boolean }, dt: number, here: Weather | null, frac: number): void {
+    const b = this.body;
+    if (!b || !this.audio.running) return;
+    this.audio.listener(b.x, b.z, this.rig.yaw);
+    // Distance from the last frame (the mounted branches report `moving: false`).
+    const moved = Math.min(3, Math.hypot(b.x - this.lastPos.x, b.z - this.lastPos.z));
+    this.lastPos = { x: b.x, z: b.z };
+    const riding = this.riding || this.onFrog;
+    const flying = this.onDragon || this.whaleSeat !== null || this.onFish;
+    if (!this.dead && !flying && moved > 0.2 * dt && (b.onGround || res.swimming || res.climbing || riding)) {
+      this.stride += moved;
+      const every = riding ? 2.4 : res.climbing ? 0.8 : res.swimming ? 1.6 : res.running ? 1.7 : 1.3;
+      if (this.stride >= every) {
+        this.stride = 0;
+        const y = this.terrain?.heightAt(b.x, b.z) ?? b.y;
+        this.audio.play(riding ? 'galope' : res.climbing ? 'trepar' : res.swimming ? 'nadar' : `paso-${surface(biomeOf(b.x, b.z), y, false)}`);
+      }
+    }
+    if (this.wasGround && !b.onGround && b.vy > 2 && !res.swimming && !res.climbing) this.audio.play('salto');
+    if (!this.wasGround && b.onGround && !res.swimming) this.audio.play('aterrizaje');
+    if (res.gliding && !this.wasGliding) this.audio.play('planeador');
+    this.wasGround = b.onGround;
+    this.wasGliding = res.gliding;
+    this.ambIn -= dt;
+    if (this.ambIn > 0) return;
+    const step = 0.25 - this.ambIn;
+    this.ambIn = 0.25;
+    const w = biomeWeights(b.x, b.z);
+    const gy = this.terrain?.heightAt(b.x, b.z) ?? b.y;
+    const rain = precipKind(here, gy) !== null;
+    this.audio.ambience(ambienceGains(w, { day: frac > 0.25 && frac < 0.75, height: b.y, rain, storm: here === 'storm', ending: this.ending }), { indoors: inAnyDungeon(b.x, b.z), storm: here === 'storm', dt: step });
+    const boss = this.bossNear;
+    this.audio.music(musicTrack(this.audio.have, { biome: dominant(w), raid: this.raid?.phase === 'active', boss }));
   }
 
   /** P7-A: shake after the rig (scaled by the setting); during my hit-stop the camera holds its last pose. */
@@ -1421,6 +1526,12 @@ export class Game {
   // ---------------------------------------------------------------- actions
 
   private onAction(a: Action): void {
+    const cue = actionCue(a);
+    if (cue && !this.dead) this.audio.play(cue);
+    if (a === 'mute') {
+      this.setSettings({ mute: !this.settings.mute });
+      return this.hud.toast(this.settings.mute ? 'Silencio' : 'Con sonido');
+    }
     if (a === 'dismiss') return this.hud.hideVision();
     if (a === 'menu') {
       if (this.dead) return this.showDeath();
@@ -1440,6 +1551,12 @@ export class Game {
         onLeave: () => this.onLeave(),
         shake: { value: this.settings.shake, options: (Object.keys(SHAKE_LABELS) as ShakeSetting[]).map((k) => [k, SHAKE_LABELS[k]]), onChange: (v) => this.setSettings({ shake: v as ShakeSetting }) },
         vibrate: { on: this.settings.vibrate, onChange: (on) => this.setSettings({ vibrate: on }) },
+        sound: {
+          vols: (Object.keys(VOLUME_DEFAULTS) as VolumeKey[]).map((key) => ({ key, label: VOLUME_LABEL[key], value: this.settings[key] })),
+          mute: this.settings.mute,
+          onVol: (key, v) => this.setSettings({ [key]: v } as Partial<Settings>),
+          onMute: (on) => this.setSettings({ mute: on }),
+        },
         trap: TRAP_LABEL[this.trap],
         fogatas: fogataTargets(this.fogatasLit, this.atHeart()),
         onFogata: (id: number) => this.conn.send({ t: 'travel', to: id }),
@@ -2030,6 +2147,7 @@ export class Game {
       this.hud.toast('Tobogán. B para levantarte');
     }
     this.hud.setStamina(b.stamina / b.staminaMax, b.tired);
+    this.lastRes = res;
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';
     if (now < this.attackUntil) anim = 'attack';
@@ -2162,6 +2280,7 @@ export class Game {
     this.villainTower?.update(this.camera.position, this.towerH, this.camera.far);
     this.light.dome.follow(this.camera, this.camera.far);
     this.worldShaders(b.x, b.z, dt);
+    this.soundFrame(this.lastRes, dt, here, frac);
     this.life?.update({ x: b.x, z: b.z, groundY: terrain.heightAt(b.x, b.z), biome: biomeOf(b.x, b.z), frac, purified: this.purify > 0.5, precip: precipKind(here, terrain.heightAt(b.x, b.z)) !== null, daylight: this.light.daylight, t: performance.now() / 1000, dt, px: this.renderer.domElement.height, cam: this.camera.position });
     this.packNear();
     if (this.guardian?.root.visible) this.guardian.update(dt);

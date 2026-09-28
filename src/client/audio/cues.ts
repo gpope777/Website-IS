@@ -1,6 +1,7 @@
 /** P7-B (spec §4.2): what the game says → which sound. Pure; the engine plays the cues. */
 import type { Action } from '../input';
-import type { EnemyKind, FxView, WolfAnim } from '../../shared/protocol';
+import type { ClientMsg, EnemyKind, FxView, WolfAnim } from '../../shared/protocol';
+import type { ResourceKind } from '../../shared/resources';
 import type { SfxId } from './sfx';
 
 export interface Cue { id: SfxId; x?: number; z?: number }
@@ -71,13 +72,6 @@ export class CueTracker {
 const ACTION: Partial<Record<Action, SfxId>> = {
   roll: 'rodar',
   bow: 'arco-tensar',
-  campfire: 'construir',
-  wall: 'construir',
-  heart: 'construir',
-  spikes: 'construir',
-  net: 'construir',
-  fire: 'construir',
-  tower: 'construir',
   menu: 'menu',
   switch: 'boton',
   camera: 'boton',
@@ -93,4 +87,33 @@ export const POWER_CUE: Record<'enredadera' | 'viento' | 'fuego' | 'piedra', Sfx
 /** "No puedes" toasts sound dull; the rest get the soft toast chime. */
 export function toastCue(text: string): SfxId {
   return /^(Aún no|No |Nada|Falta|Te falta|Necesitas)/.test(text) ? 'no' : 'toast';
+}
+
+const HARVEST: Record<ResourceKind, SfxId> = { tree: 'talar', rock: 'picar', bush: 'bayas' };
+
+/** What my own requests sound like, the moment I send them (the server's answer comes back as fx/toasts). */
+export function sendCue(m: ClientMsg, harvest?: ResourceKind): SfxId | null {
+  switch (m.t) {
+    case 'attack':
+      return 'golpe-aire';
+    case 'harvest':
+      return harvest ? HARVEST[harvest] : 'talar';
+    case 'place':
+      return 'construir';
+    case 'power':
+      return POWER_CUE[m.kind ?? 'enredadera'];
+    case 'chest':
+      return 'cofre';
+    case 'fogata':
+      return 'fogata';
+    case 'travel':
+      return 'viaje';
+    case 'buy':
+    case 'deal':
+      return 'venta';
+    case 'mount':
+      return m.act === 1 ? 'doma-tic' : null;
+    default:
+      return null;
+  }
 }
