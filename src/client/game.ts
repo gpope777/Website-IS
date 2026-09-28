@@ -35,6 +35,7 @@ import { BOW } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
+import type { Body as HeroBody } from './actors/hero-clips';
 import { loadDropIns, loadModels, type DropInKits, type ModelKit } from './actors/models';
 import { dropInClips } from './actors/drop-in-puppet';
 import { paperLight, rimStrength } from './actors/actor-light';
@@ -406,7 +407,7 @@ export class Game {
   private island: Islet | null = null;
   private jumpWasHeld = false;
   private light: DayLight;
-  private kits: { robot: ModelKit; fox: ModelKit } | null = null;
+  private kits: { heroes: Record<HeroBody, ModelKit>; fox: ModelKit } | null = null;
   /** V2-E: models Gabriel dropped into public/models (spec §9). */
   private dropIns: DropInKits = {};
   private seed: number | null = null;
@@ -1086,7 +1087,8 @@ export class Game {
     }
     if (!this.kits) return;
     for (const p of m.players) {
-      const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
+      // Task 2: `look.body` doesn't exist yet (Task 3 adds it) — every remote player wears the caballero for now.
+      const r = this.remote(this.others, p.name, () => new Actor(this.kits!.heroes.caballero, PLAYER_CLIPS, p.name, 'caballero'));
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
       r.ride = p.ride === 'deer' && !p.dead;
@@ -2353,7 +2355,8 @@ export class Game {
     }
 
     if (!this.me && this.kits) {
-      this.me = new Actor(this.kits.robot, PLAYER_CLIPS);
+      // Task 2: `look.body` doesn't exist yet (Task 3 adds it) — everyone wears the caballero for now.
+      this.me = new Actor(this.kits.heroes.caballero, PLAYER_CLIPS, undefined, 'caballero');
       this.scene.add(this.me.root);
     }
     const wild = this.steeds.find((s) => s.owner === null);

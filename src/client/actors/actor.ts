@@ -4,6 +4,7 @@ import type { ModelKit } from './models';
 import { makeHat } from './hats';
 import { COLORS } from '../../shared/progression';
 import { poseFor } from './poses';
+import { partVisible, type Body } from './hero-clips';
 import type { EnemyLook } from './enemy-look';
 import type { ImpactOpts } from './paper';
 import { patchRecolor, patchRim, patchSway } from '../scene/patches';
@@ -16,22 +17,8 @@ export interface ClipDef {
   at?: number;
 }
 
-export const PLAYER_CLIPS: Record<string, ClipDef> = {
-  idle: { clip: 'Idle' },
-  walk: { clip: 'Walking' },
-  run: { clip: 'Running' },
-  jump: { clip: 'Jump', once: true },
-  swim: { clip: 'Walking', speed: 0.5 },
-  attack: { clip: 'Punch', once: true },
-  // V2-E: the robot kit has no roll/guard/bow/climb/glide/slide clips: the closest clip + bone poses (poses.ts).
-  roll: { clip: 'Jump', at: 0.35 },
-  block: { clip: 'Idle' },
-  bow: { clip: 'Idle' },
-  climb: { clip: 'Walking', speed: 0.5 },
-  glide: { clip: 'Jump', at: 0.35 },
-  slide: { clip: 'Jump', at: 0.35 },
-  dead: { clip: 'Death', once: true },
-};
+/** Task 2: the hero (KayKit) replaces the robot; `PLAYER_CLIPS` keeps its name for `game.ts`/`vitrina.ts`. */
+export { HERO_CLIPS as PLAYER_CLIPS } from './hero-clips';
 
 export const WOLF_CLIPS: Record<string, ClipDef> = {
   idle: { clip: 'Survey' },
@@ -57,11 +44,17 @@ export class Actor {
   private current: THREE.AnimationAction | null = null;
   private currentName = '';
 
-  constructor(kit: ModelKit, private readonly clips: Record<string, ClipDef>, label?: string) {
+  /** Task 2: which KayKit body this actor wears, or null for the robot/fox/wolf kits. */
+  readonly body: Body | null;
+
+  constructor(kit: ModelKit, private readonly clips: Record<string, ClipDef>, label?: string, body?: Body) {
+    this.body = body ?? null;
     const model = SkeletonUtils.clone(kit.scene);
     model.scale.setScalar(kit.scale);
     model.rotation.y = kit.yawOffset;
     model.traverse((o) => {
+      // R3: parts are separate meshes/groups (weapons, shields, helmets); hide the ones this body doesn't show.
+      if (body && o.name) o.visible = partVisible(body, o.name, 0);
       if (!(o as THREE.Mesh).isMesh) return;
       o.castShadow = true;
       const mat = (o as THREE.Mesh).material;
@@ -81,30 +74,41 @@ export class Actor {
   private hat: THREE.Mesh | null = null;
   private lookKey = '0:0';
 
-  /** P4-C: colour (a per-actor copy of `Main`, made on the first non-default colour) and a hat on the `Head` bone. */
+  /**
+   * P4-C: colour (a per-actor copy of `Main`, made on the first non-default colour) and a hat on the head bone.
+   * Task 2: for a hero actor (`this.body` set), colour tint is skipped (Task 6 recolours the atlas instead) and a
+   * worn hat re-hides the body's own helmet/hat via `partVisible`.
+   */
   setLook(color: number, hat: number): void {
     const key = `${color}:${hat}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
-    this.model.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh || Array.isArray(m.material)) return;
-      const mat = m.material as THREE.MeshStandardMaterial;
-      const original = (m.userData.main as THREE.MeshStandardMaterial | undefined) ?? (mat.name === 'Main' ? mat : null);
-      if (!original) return;
-      m.userData.main = original;
-      if (color === 0) {
-        m.material = original;
-        return;
-      }
-      if (!this.tint) {
-        this.tint = original.clone();
-        this.tint.userData = {};
-        patchRim(this.tint);
-      }
-      this.tint.color.setHex(COLORS[color] ?? COLORS[0]!);
-      m.material = this.tint;
-    });
+    if (this.body) {
+      const body = this.body;
+      this.model.traverse((o) => {
+        if (o.name) o.visible = partVisible(body, o.name, hat);
+      });
+    } else {
+      this.model.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || Array.isArray(m.material)) return;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        const original = (m.userData.main as THREE.MeshStandardMaterial | undefined) ?? (mat.name === 'Main' ? mat : null);
+        if (!original) return;
+        m.userData.main = original;
+        if (color === 0) {
+          m.material = original;
+          return;
+        }
+        if (!this.tint) {
+          this.tint = original.clone();
+          this.tint.userData = {};
+          patchRim(this.tint);
+        }
+        this.tint.color.setHex(COLORS[color] ?? COLORS[0]!);
+        m.material = this.tint;
+      });
+    }
     if (this.hat) this.hat.removeFromParent();
     this.hat = makeHat(hat);
     if (this.hat) this.attachHat(this.hat);
@@ -113,17 +117,33 @@ export class Actor {
   private attachHat(hat: THREE.Mesh): void {
     let head: THREE.Object3D | undefined;
     this.model.traverse((o) => {
-      if (!head && o.name === 'Head' && o.children.some((c) => c.name === 'Head_end')) head = o;
+      if (!head && o.name === 'head') head = o;
     });
-    if (!head) {
+    if (head) {
+      this.root.updateMatrixWorld(true);
+      const s = new THREE.Vector3();
+      head.getWorldScale(s);
+      const rs = new THREE.Vector3();
+      this.root.getWorldScale(rs);
+      hat.scale.setScalar((2.2 * rs.x) / s.x);
+      hat.position.set(0, 0.55, 0);
+      hat.quaternion.identity();
+      head.add(hat);
+      return;
+    }
+    let robotHead: THREE.Object3D | undefined;
+    this.model.traverse((o) => {
+      if (!robotHead && o.name === 'Head' && o.children.some((c) => c.name === 'Head_end')) robotHead = o;
+    });
+    if (!robotHead) {
       hat.position.y = 1.85;
       this.root.add(hat);
       return;
     }
-    const tip = head.children.find((c) => c.name === 'Head_end');
+    const tip = robotHead.children.find((c) => c.name === 'Head_end');
     this.root.updateMatrixWorld(true);
     const s = new THREE.Vector3();
-    head.getWorldScale(s);
+    robotHead.getWorldScale(s);
     const rs = new THREE.Vector3();
     this.root.getWorldScale(rs);
     hat.scale.setScalar((HAT_SIZE * rs.x) / s.x);
@@ -131,7 +151,7 @@ export class Actor {
       hat.position.copy(tip.position).multiplyScalar(HAT_LIFT);
       hat.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.position.clone().normalize());
     }
-    head.add(hat);
+    robotHead.add(hat);
   }
 
   private glider: THREE.Object3D | null = null;
@@ -167,8 +187,9 @@ export class Actor {
     this.torch.visible = on;
   }
 
-  play(anim: string): void {
-    if (anim === this.currentName) return;
+  /** `restart: true` replays the same action from the start (spec §0.1: repeated attack taps must not freeze on the last frame). */
+  play(anim: string, opts?: { restart?: boolean }): void {
+    if (anim === this.currentName && !opts?.restart) return;
     if (anim === 'glide' && !this.glider) this.root.add((this.glider = makeGlider()));
     if (this.glider) this.glider.visible = anim === 'glide';
     const def = this.clips[anim] ?? this.clips.idle!;
