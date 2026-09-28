@@ -22,7 +22,6 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.2.8",
-    "@types/node": "^20.19.43",
     "@types/three": "^0.185.0",
     "playwright-core": "1.56.1",
     "typescript": "^5.9.3",

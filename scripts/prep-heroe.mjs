@@ -66,14 +66,46 @@ function sizeOf(file) {
   return fs.statSync(file).size;
 }
 
+// Downsamples a square PNG with a box filter (average of each non-overlapping source
+// block). The atlas is a grid of flat-per-row cells (see detectGrid below); as long as the
+// target size evenly divides the source size, each output pixel's source block sits
+// entirely inside one cell, so cell boundaries stay crisp (no blur across a colour edge).
+function downsamplePNG(pngBytes, targetSize) {
+  const src = PNG.sync.read(Buffer.from(pngBytes));
+  if (src.width !== src.height) throw new Error(`expected a square atlas, got ${src.width}x${src.height}`);
+  const factor = src.width / targetSize;
+  if (!Number.isInteger(factor)) throw new Error(`${targetSize} must evenly divide ${src.width}`);
+  const dst = new PNG({ width: targetSize, height: targetSize });
+  for (let y = 0; y < targetSize; y++) {
+    for (let x = 0; x < targetSize; x++) {
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      for (let sy = y * factor; sy < (y + 1) * factor; sy++) {
+        for (let sx = x * factor; sx < (x + 1) * factor; sx++) {
+          const si = (src.width * sy + sx) << 2;
+          r += src.data[si]; g += src.data[si + 1]; b += src.data[si + 2]; a += src.data[si + 3]; n++;
+        }
+      }
+      const di = (targetSize * y + x) << 2;
+      dst.data[di] = Math.round(r / n);
+      dst.data[di + 1] = Math.round(g / n);
+      dst.data[di + 2] = Math.round(b / n);
+      dst.data[di + 3] = Math.round(a / n);
+    }
+  }
+  return PNG.sync.write(dst);
+}
+
 // ---------------------------------------------------------------------------------------
-// Bodies: mesh + skeleton + texture, no animations.
+// Bodies: mesh + skeleton + texture (downsized to 128x128, spec §1), no animations.
 // ---------------------------------------------------------------------------------------
 async function buildBody(srcName, body) {
   const io = new NodeIO().registerExtensions([KHRMeshQuantization]);
   const doc = await io.read(path.join(resolvedSourceDir, `${srcName}.glb`));
   const root = doc.getRoot();
   root.listAnimations().forEach(disposeAnimation);
+  for (const texture of root.listTextures()) {
+    texture.setImage(new Uint8Array(downsamplePNG(texture.getImage(), 128)));
+  }
   await doc.transform(
     prune(),
     dedup(),
