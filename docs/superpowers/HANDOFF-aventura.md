@@ -1,7 +1,40 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
-## Aventura completa — estado (LEER PRIMERO)
-La historia entera está hecha: del mundo nuevo a los créditos y el post-juego. **#4 Progresión también está hecha** (Savia y Rango, Oficios, Aspecto, Libro y Proezas; ver "Progresión — resumen") y **#6 Tiendas y economía también** (Puesto, Caja, trueque, Buhonero, Encargos; ver "Tiendas — resumen") y **#2 Mundo y visuales también** (cielo, luz, hierba, agua, vida, criaturas, poses; ver "Visuales — resumen"). Rama `aventura/resto`, PR draft #3 (el Slice 1–2 fue el #2). **Nada mergeado ni desplegado; casi nada probado en navegador real.** Tests (al cierre de #2): npm test 1204, test:workers 12, check + build verdes; **PROTOCOL_VERSION = 62**; todos los campos guardados nuevos son opcionales (las partidas viejas cargan). Resúmenes por slice: **Slice 1** → "RESUMEN PARA LEER PRIMERO" (planes A–H + cierre) · **Slice 2** → "Slice 2 — resumen" · **Slice 3** → "Slice 3 — resumen" · **Slice 4** → "Slice 4 — resumen" · **Slice 5** → "Slice 5 — resumen" (incluye el orden de prueba de toda la historia) · **#4** → "Progresión — resumen" · **#6** → "Tiendas — resumen" · **#2** → "Visuales — resumen". Lo más gordo a revisar: los asedios siguen tras el final (anulación del spec, S5-G), el balance de El Marchito (S5-F), la curva de Savia (P4-A) y los precios del Buhonero (T6-D). Visuales: casi nada visto en un móvil real (mirar con `?fps=1`). **Lo siguiente:** #7 Pulido (con el tutorial).
+## ESTADO DEL PROYECTO — leer primero
+**El roadmap entero está hecho**: la Aventura por biomas (Slices 1–5: historia completa, del mundo nuevo a los créditos y el post-juego), #4 Progresión, #6 Tiendas, #2 Mundo y visuales y #7 Pulido con el tutorial (P7-A..F). Rama `aventura/resto`, **PR draft #3 esperando el OK de Gabriel para mergear** (merge a `main` = despliegue por GitHub Actions). Nada mergeado ni desplegado desde el PR #2. **PROTOCOL_VERSION = 65**; todos los campos guardados nuevos son opcionales: las partidas viejas cargan, y quien ya tiene progreso nunca ve el tutorial. Tests al cierre: **npm test 1415, test:workers 12, check + build verdes**; arnés de rendimiento en baja dentro de la base y del presupuesto.
+
+**Casi nada se ha visto en un teléfono real** (todo se probó con tests y Chromium headless). Dónde leer cada parte: Slice 1 → "RESUMEN PARA LEER PRIMERO" · Slices 2–5 → "Slice N — resumen" (el del Slice 5 trae el orden de prueba de toda la historia) · "Progresión — resumen" · "Tiendas — resumen" · "Visuales — resumen" · **"Pulido — resumen"**.
+
+**Qué mirar en teléfonos reales, por prioridad** (con `?fps=1`, los dos móviles + PC):
+1. **Tutorial con un sobrino nuevo, sin ayuda** (P7-F): ¿termina en ≤ 12 min? ¿dónde se atasca? ¿"Saltar tutorial" se pulsa sin querer? Y Gabriel con su partida vieja: no debe verlo.
+2. **Rendimiento y calor** (V2): fps en Baja en bosque, Costa y Pantano; noche con asedio; ¿salta "Bajé los gráficos."?; que el móvil no se caliente en 10 min.
+3. **HUD en el móvil más pequeño** (P7-C/D/F): pulgares, muesca, texto Grande; la línea "Qué sigue" y la flecha de borde; la línea del tutorial bajo las barras.
+4. **Sonido** (P7-B): nada se ha oído nunca. Aviso del lobo antes del mordisco; iPhone con el interruptor de silencio; ¿cansa algo en 10 min?
+5. **Impacto** (P7-A): 5 golpes, 1 parada, 1 lobo muerto; sacudida Suave vs Normal; borde rojo y vibración.
+6. **Co-op** (C, S2-E, T6-C, P7-F): revivir; ballena con 2; trueque directo; un aprendiz con un veterano y dos aprendices a la vez.
+7. **Balance que más duda**: El Marchito en solitario (~8 min, P7-E) y con 2; curva de Savia (¿Rango 8 antes del Marchito?, P4-A); precios del Buhonero (T6-D); asedios tras el final encendidos (S5-G, anulación del spec); pez 8 s entre anillos.
+8. **Historia de punta a punta** siguiendo el orden del "Slice 5 — resumen" (atajo: `ending: true` para el post-juego).
+
+**Lista de prueba del spec de Pulido (§12)**, en el mundo de pruebas con una partida nueva por sobrino y la vieja de Gabriel:
+1. Primer arranque (sobrino de 10, sin ayuda): ¿termina el tutorial en ≤ 12 min? ¿Dónde se atasca? ¿Salta algo sin querer?
+2. Veterano (Gabriel): entra con su partida → no ve el tutorial; ve "El eco del bosque"; el rastreador dice algo con sentido.
+3. Sonido: con auriculares y con altavoz: ¿se oye el aviso del lobo antes del mordisco? ¿Algún sonido cansa en 10 min? Silenciar desde el Menú.
+4. Impacto: 5 golpes, 1 parada, 1 muerte de lobo: ¿se nota cada uno? ¿La sacudida marea en Suave? ¿Y en Normal?
+5. HUD en el móvil más pequeño: ¿algo tapado por pulgares o muesca? Texto Grande: ¿cabe todo?
+6. Menú: encontrar Oficios, cambiar sombrero, viajar a una fogata, poner el Puesto — sin preguntar.
+7. Rastreador: seguirlo 20 min sin ayuda: ¿lleva a un sitio real? ¿Se entiende la flecha?
+8. Co-op: un aprendiz con un veterano al lado; dos aprendices a la vez.
+9. Daltonismo: con el filtro de escala de grises del móvil: ¿se distinguen los brotes del Marchito y las zonas?
+10. Rendimiento: fps en el bosque de noche con asedio, antes y después de #7 (≤ 1 fps de diferencia en baja).
+11. Textos: buscar "1 perlas" o parecidos en estantes, Buhonero y Encargos.
+
+**Recursos "suelta y listo"** (opcionales; sin ellos todo es procedural): modelos `deer/fish/frog/whale/wolf/brute.glb` en `public/models/` (lista y licencias: spec de Visuales §9 y `public/models/CREDITS.md`); música `public/audio/musica-<bosque|costa|pantano|montanas|tierras|asedio|jefe>.ogg` (lista CC0/CC-BY: spec de Pulido §4.6). Basta con copiar el archivo y desplegar.
+
+**Si algo sale mal tras el merge:** revertir el commit de merge del PR #3 en `main` (`git revert -m 1 <merge>` y push, o el botón "Revert" del PR) → GitHub Actions vuelve a desplegar la versión anterior. Las partidas guardadas con campos nuevos siguen cargando en la versión vieja (los campos que no conoce se quedan ahí sin usarse); un navegador con la versión nueva abierta verá un error de versión: recargar basta. No hace falta tocar datos.
+
+---
+
+# Historia del proyecto (de aquí para abajo, por orden)
 
 **Branch:** `aventura/slice-1` (pushed to origin).
 
@@ -1454,6 +1487,18 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Qué probar (Gabriel, teléfono, `?fps=1`): montar el ciervo al trote y ver las patas; el pez y la rana; rodar/bloquear/planear; un bruto de mazmorra cargando (¿se ve el anillo?); de noche en la Costa, ¿se lee el robot?
 - Lo siguiente: #7 Pulido (con el tutorial).
 
+## Pulido — resumen (LEER PRIMERO)
+#7 Pulido está hecho en 6 planes (spec `docs/superpowers/specs/2026-09-28-pulido-design.md`; planes `docs/superpowers/plans/2026-09-28-pulido-P7-*.md`). Protocolo 62 → 65 (63 en P7-A, 64 en P7-D, 65 en P7-F); tests 1204 → 1415. Rejilla táctil sigue en 10. Sin cambios de balance salvo el commit aparte de P7-E.
+- **P7-A Impacto** (v63): `fx` y `self.hurt` en el snapshot; parpadeo, hit-stop, sacudida (Normal / Suave / Nada), vibración, barra flotante, borde rojo, cámara que choca con muros, visiones de entrada por jugador.
+- **P7-B Sonido**: sintetizador propio, 57 efectos, avisos que nunca se cortan, ambiente por bioma, música "suelta y listo", volúmenes y silencio; cero descargas.
+- **P7-C UI y textos**: `qty()` y barrido de plurales, HUD de móvil (zonas seguras, 🎒, avisos ≤ 3), pastillas según lo que tienes, Menú en pestañas, Ayuda por temas, panel de muerte.
+- **P7-D Guía** (v64): "Qué sigue" (28 pasos de historia, mundo vs. jugador), flecha de borde, 25 consejos, puntos ●, "El eco del bosque".
+- **P7-E Bug-bash**: la Estrella por su nombre, luna llena, telón de la Copa, Raíces-madre blancas, poses, robot de noche; balance aparte (Marchito en solitario ×1,3, pez 8 s).
+- **P7-F Tutorial** (v65): 8 pasos que se hacen, lobo de práctica de cada aprendiz, Saltar / Repetir, co-op; nunca a quien ya jugó.
+- **Decidido por Claude — revisar (lo más gordo):** 57 efectos procedurales en vez de música/muestras; números de daño no (barra + parpadeo); hit-stop solo en tu golpe; protocolo 64/65 en vez de "63/64" del spec; rumbo relativo a la cámara (no hay brújula); consejos una vez por dispositivo; "voluntad +30 %" leído como PV del Marchito en solitario; curva de Savia sin tocar; tutorial: Corazón y fogata a su coste real (5/3 y 20/10, no "3 y 2"), la noche solo frena el lobo (pasos 6–7), un asedio frena todo, el lobo de práctica no mata ni da Savia y solo lo ve su dueño, "Repetir" en Ayuda (no en Ajustes), cualquier cosa en la mochila cuenta como "ya jugó".
+- **NO verificado en ninguna parte de #7:** nada en un teléfono real; nada oído (el contenedor no tiene audio); vibración; iOS Safari (audio, muescas); la tarjeta del eco con 30 min reales; el panel de muerte en captura; el tutorial jugado de verdad de punta a punta en un navegador (las capturas fuerzan cada paso desde el guardado); el lobo de práctica visto moviéndose; media/alta del arnés tras P7-C..F (solo baja).
+- **Orden de prueba:** la lista §12 del spec, copiada arriba en "ESTADO DEL PROYECTO".
+
 ## Pulido · P7-A — Impacto: golpes, sacudida, barra flotante, borde rojo y cámara — HECHO
 - Plan: `docs/superpowers/plans/2026-09-28-pulido-P7-A-impacto.md`.
 - Commits: T1 servidor (`fx`, `self.hurt`, visiones por jugador, **protocolo 63**), T2 puro (`impact.ts`, `settings.ts`, `camera-clip.ts`), T3 en pantalla, T4 cámara, y este texto.
@@ -1576,3 +1621,32 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Verificado en navegador: capturas Chromium headless (SwiftShader): luna llena en el día 8 frente al 9 (disco con halo arriba a la izquierda; el 9 sin nada visible en ese encuadre); la Copa mirando al este y al sur con montañas y copas en el telón; la Raíz-madre del Bosque blanca con `purified`; `--vitrina pose:bow,pose:slide` (arco a la altura del hombro, deslizar en el suelo) y el robot de noche en la Costa (se lee, con contorno). Rendimiento `npm run perf -- --tier low`: todo dentro de la base y del presupuesto.
 - NO verificado: nada en un móvil real; la luna llena en movimiento (solo capturas fijas); el telón con la pelea encendida (rayos, brotes); la transición de 60 s del blanco (solo el estado final).
 - Qué probar (Gabriel): con `ending: true`, esperar a la noche del día 8 y mirar al cielo; silbar a la Estrella desde la Ceniza; subir a la Copa y mirar alrededor; pasar junto a la Raíz-madre del Bosque tras el final. **Cronometrar El Marchito en solitario (objetivo ~8 min)** y con 2. Disparar el arco y deslizar por la nieve. El pez: ¿8 s se sienten justos? Constantes: `FINAL.soloFactor` en `src/shared/sim/marchito-final.ts`, `FISH.ringTime` en `src/shared/fish.ts`, `moonLook` en `src/client/scene/sky-dome.ts`, `BACKDROP` en `src/client/scene/backdrop.ts`, tabla de `src/client/actors/poses.ts`.
+
+## Pulido · P7-F — Tutorial: 8 pasos haciendo, lobo de práctica, Saltar / Repetir y co-op — HECHO
+- Plan: `docs/superpowers/plans/2026-09-28-pulido-P7-F-tutorial.md` (d12c2ae).
+- Commits: d67aa0c (T1 puro `src/shared/tutorial.ts`), e7f0ea1 (T2 servidor, lobo de práctica, **protocolo 65**), f9dc560 (T3 cliente: `tutorial-ui.ts`, línea, Saltar, control que brilla, pastillas, Repetir en Ayuda), y este texto.
+- Tests: npm test 1415 (antes 1380), test:workers 12, check + build verdes. Los tests que fijaban `PROTOCOL_VERSION` 64 ahora fijan 65 (cambio a propósito). Partidas viejas cargan (`tut` opcional). Sin cambios de balance ni de reglas para quien no está aprendiendo.
+- Rendimiento: `npm run perf -- --tier low`: 20 lecturas, **igual que la base** y dentro del presupuesto (la línea, Saltar y el brillo son DOM; el lobo de práctica es un zorro más, solo en la pantalla de su dueño). `baseline.json` sin tocar.
+- Cómo funciona:
+  - **Quién lo ve:** un registro nuevo empieza en el paso 1. Al cargar y al conectar, quien no tiene `tut` y tiene **cualquier** progreso (orbe, poder, montura, Savia, oficio, muerte de lobo, cofre, arma/Capa, algo construido, un Puesto o algo en la mochila) pasa a `tut: 'skip'` y no lo ve nunca. Se guarda en el servidor: sigue al jugador entre móvil y PC.
+  - **Los 8 pasos** (avanzan al hacerlo, el servidor los cuenta): 1 andar 10 m y girar 90° · 2 comer una baya · 3 tener 5 madera y 3 piedra (lo que te pase un amigo cuenta) · 4 poner una fogata · 5 plantar el Corazón (20/10) o, si el mundo ya tiene uno, llegar a ≤ 15 m de él · 6 lobo de práctica: una parada, 2 esquivas, 3 mordiscos o matarlo · 7 una flecha al lobo (si murió, sale uno quieto a 12 m) · 8 andar 30 m hacia el santuario → "Tutorial hecho." y la línea "Qué sigue" de P7-D.
+  - **Pantalla:** la línea "N/8 · …" en el sitio de "Qué sigue" (bajo las barras en vertical, a su derecha en apaisado; puede ocupar dos renglones); **Saltar tutorial** arriba a la derecha; el control del paso late con un anillo amarillo (stick, A, 🫐, 🔥, 🌳, 🌀+🛡️, 🎯+🏹); en PC la línea dice la tecla. Pastillas mientras aprendes: 🫐 desde el 2, 🔥 desde el 4, 🌳 en el 5, 🌀 🛡️ desde el 6, 🏹 🎯 desde el 7; 🧱 🗡️ 🌿 después, con la regla de P7-C. Los consejos de P7-D esperan; al terminar, los que ya enseñó el tutorial (mirar, bayas, fogata, parada, rodar, arco) se dan por vistos. La flecha de borde solo sale en el paso 8.
+  - **Lobo de práctica:** fuera de la lista de lobos del mundo (asedios, aliados, trampas, poderes y el alba no lo ven); 40 PV, muerde 4, no huye del fuego, solo persigue a su dueño, **nunca deja por debajo de 10 de vida**; solo su dueño lo ve y lo daña; matarlo no da Savia, ni cuenta en el Libro, ni suelta espinas, ni se anuncia. Se va al saltar, al terminar, al salir o si te alejas > 60 m (vuelve si el paso lo pide).
+  - **Espera:** un asedio frena cualquier paso ("Primero, aguanta."); la noche solo frena los pasos 6–7 (no hay lobo de práctica de noche).
+  - **Co-op:** `PlayerView.tut`: un veterano a ≤ 30 m ve "… · Leo está aprendiendo (4/8)" tras su línea; el aprendiz ve "(Bea puede ayudarte)". Cada paso es de quien aprende; dos aprendices = dos tutoriales y dos lobos.
+  - **Saltar / Repetir:** `{ t: 'tut', act: 'skip' | 'repeat' }`. Repetir está en Menú › Ayuda (debajo de las tarjetas) y vuelve al paso 1; lo que ya está hecho en el mundo (el Corazón cerca) pasa solo.
+- Decidido por Claude — revisar:
+  - Paso 3 pide **5 madera y 3 piedra** (lo que cuesta una fogata), no "3 y 2" del spec; paso 5 cuesta los 20/10 de siempre (el más largo del tutorial: ~30 golpes de recurso). Si se hace largo, bajar el coste del Corazón solo en el tutorial sería una regla nueva: no se hizo.
+  - "Colocarlo ≤ 60 m del spawn" es una pista en la línea ("cerca de aquí"), no una regla.
+  - La noche no frena los pasos 1–5 (si no, un jugador que entra de noche se queda quieto una noche entera).
+  - El "tocón con diana" del spec es el mismo lobo de práctica quieto (sin modelo nuevo).
+  - El lobo de práctica **no mata** (tope de 10 de vida) — el spec no lo decía; así un niño no pierde la mochila en el tutorial.
+  - "Repetir tutorial" en Ayuda y no en Ajustes (una sola casa).
+  - "Saltar tutorial" es un toque, sin confirmación (se puede repetir desde Ayuda).
+  - Cualquier cosa en la mochila o construida cuenta como "ya jugó" (más estricto que el spec).
+  - Los contadores del paso (metros, giros, esquivas) viven solo en memoria: al reconectar el paso vuelve a empezar su cuenta (el paso guardado no se pierde).
+- Capturas (Chromium headless SwiftShader, táctil, 390×844 y 844×390, `scratch/p7f/`; cada paso forzado con export/import del guardado del servidor local y recargando): los 8 pasos se leen, con "Saltar tutorial" arriba a la derecha y el anillo en el control del paso; las pastillas crecen paso a paso; en el 6 se ve el lobo gris detrás del robot (que parpadea rojo: le muerde); "6/8 · Primero, aguanta." de noche; Ayuda con "Repetir tutorial" al final; tras Repetir vuelve el 1/8; tras Saltar la línea pasa a "✨ Santuario del Bosque · 90 m ↓" y las pastillas normales. Un primer intento tapaba las barras con la línea (vertical y apaisado): arreglado y vuelto a capturar. Sin errores de página.
+- NO verificado: el tutorial jugado de verdad de punta a punta en un navegador (tests del servidor sí lo recorren entero); el anillo latiendo (las capturas son fijas); el lobo de práctica moviéndose y la parada a mano; el aviso de co-op en pantalla (solo en tests puros); nada en un teléfono real; cuánto tarda de verdad (objetivo ≤ 12 min, sin medir).
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono): un sobrino con una partida nueva, sin ayuda, cronometrando; ¿se atasca en el 5 (20 madera)? ¿Pulsa "Saltar" sin querer? Gabriel entra con su partida: no debe salir. Un aprendiz al lado de Gabriel: ¿se ven los dos avisos? Dos aprendices a la vez. Menú › Ayuda › Repetir tutorial. Constantes: `TUT` en `src/shared/tutorial.ts`.
+- **Con esto #7 y todo el roadmap están hechos.** Lo siguiente: la lista de "ESTADO DEL PROYECTO" en teléfonos reales y el OK de Gabriel al PR #3.
