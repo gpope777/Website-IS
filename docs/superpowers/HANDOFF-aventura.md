@@ -1523,3 +1523,31 @@ Subproyecto #4 hecho en 4 planes (spec `docs/superpowers/specs/2026-09-27-progre
 - Bloqueos: ninguno.
 - Qué probar (Gabriel, teléfono): abrir Menú, cambiar de pestaña, cerrar y volver (¿recuerda la pestaña?). Ajustes › Tamaño de texto Grande: ¿cabe todo? Sensibilidad al mínimo y al máximo. 🎒 con cosas. Ayuda con un sobrino nuevo: ¿solo Moverse? Morir: ¿se entiende la causa y el botón?
 - Lo siguiente: lo que diga Gabriel.
+
+## Pulido · P7-D — Guía: "Qué sigue", flecha de borde, consejos, puntos de nuevo y El eco del bosque — HECHO
+- Plan: `docs/superpowers/plans/2026-09-28-pulido-P7-D-guia.md`.
+- Commits: b97ac51 (plan), f5ef06f (T1 servidor: `snap.story`, registro del eco, `SavedPlayer.left`, **protocolo 64**), 86a89ce (T2 `src/shared/guide.ts`), 86dc01e (T3 `guide-model.ts`: consejos, puntos, ajustes), a0c2ead (T4 cableado en HUD/Menú/táctil), un arreglo de colocación tras las capturas, y este texto.
+- Tests: npm test 1371 (antes 1339), test:workers 12, check + build verdes. Los tests que fijaban `PROTOCOL_VERSION` 63 ahora fijan 64 (cambio a propósito). Partidas viejas cargan (`left` opcional). Sin cambios de balance ni de reglas.
+- Rendimiento: baja 20 lecturas, **igual que la base** y dentro del presupuesto (la línea y la flecha son DOM: cero llamadas de dibujo). `baseline.json` sin tocar.
+- Cómo funciona:
+  - **`nextStep(view)`** (pura) recorre 28 pasos en orden de historia: Corazón → santuarios del Bosque → Raíz-madre → Enredadera → ciervo → Invasión 1 → pez → santuarios de la Costa → Invasión 2 (dos textos: "vuelve al Corazón" / "rompe las anclas") → ballena → Viento → El Antenón → rana → santuarios del Pantano → Fuego → El Zancudo → nudo del Zarzal → santuarios de la Montaña → Piedra → El Cucurucho → Escalera → dragón → niebla → fogata de la Ceniza → Pilares-raíz → Invasión 3 → la Torre → la Estrella. El primero sin hacer gana. **Pasos del mundo** (jefes, invasiones, ballena, Zarzal, Escalera, niebla, pilares, final) cuentan si los hizo cualquiera; **pasos del jugador** (orbes, poderes, monturas) solo si los hiciste tú. Un test recorre una partida simulada de mundo nuevo a créditos y otro la de un recién llegado a un mundo terminado (solo le salen pasos suyos).
+  - Secundarios (uno como mucho): puntos de oficio, luna llena, zona morada a ≤ 150 m (esta última también si el paso de historia está a > 300 m).
+  - **Línea** arriba al centro: "✨ Santuario del Bosque · 90 m ↑ (Bea está allí)"; el rumbo es relativo a la cámara (8 flechas), "aquí" a < 8 m. Se atenúa al 40 % a los 8 s; tocarla abre Menú › Ayuda. **Flecha de borde** (▲ girada) cuando el objetivo no se ve; en táctil se queda por encima de los botones.
+  - **Consejos** (25, uno cada vez, 6 s, una vez por dispositivo en `bosque.tips`): mirar, bayas, fogata, planeador, noche, frío, parada, rodar, arco, poca vida, Corazón, asedio, orbe, cambiar poder, cada poder, montura, mazmorra, fogata de viaje, Puesto, El Marchito, barro, Zarzal. Un veterano (Rango > 1 u orbe) los recibe todos como vistos la primera vez.
+  - **Puntos ●** en MENÚ, en las pestañas Libro (puntos de oficio) y Ayuda (tarjeta nueva) y en una pastilla que acaba de aparecer; se quitan al abrir/tocar (`bosque.ack`). La primera carga lo da todo por visto.
+  - **El eco del bosque:** el DO guarda en memoria los últimos 20 hitos (zona limpia, jefe, montura, ballena, asedio aguantado, invasión, pilar, Rango, final) con quién estaba. Al entrar, si faltabas > 30 min de reloj real y otros hicieron algo (o tu Puesto vendió), sale una tarjeta verde "Mientras no estabas:" + ≤ 3 líneas agrupadas ("Bea limpió 2 zonas del Pantano.", "Tu puesto vendió 4 veces."), ✕ o 6 s. Sustituye al aviso suelto de ventas cuando sale.
+  - Ajustes: "Mostrar Qué sigue" y "Consejos" (Sí/No).
+- Decidido por Claude — revisar:
+  - **Protocolo 63 → 64** (el spec decía "campos en 63", pero 63 ya salió en P7-A). **El tutorial (P7-F) pasa a 65.**
+  - `snap.story` = invasiones 1–3 y los 4 jefes purificados (lo único que el cliente no veía); el resto ya llegaba.
+  - Rumbo relativo a la cámara, no brújula (no hay mapa donde leer el norte).
+  - La flecha es DOM, no un sprite.
+  - No hay "Tu Caja tiene 12 bayas" (el contenido de la Caja no llega al cliente) ni el "brillo de 1 minuto" de los sitios que cambiaron (coste 3D; queda pendiente).
+  - El registro del eco se pierde si el DO se reinicia; una partida vieja (sin `left`) no ve eco la primera vez.
+  - Varios nombres de un mismo hito van juntos ("Bea y Leo aguantaron un asedio."); lo que hiciste tú, aunque fuera con otros, no sale.
+  - Objetivo en mazmorra = su puerta; ciervo = el salvaje a la vista o su claro de la semilla.
+- Capturas (Chromium headless, táctil, 390×844 y 844×390, mundo con Corazón importado): la línea "✨ Santuario del Bosque · 90 m ↑" arriba al centro bajo MENÚ/🎒 sin tapar las barras; consejo "De noche atacan el Corazón. 🧱 pone muros." debajo de las barras en vertical (antes las tapaba: arreglado) y centrado en apaisado; tras girar la cámara, "90 m ↓" y la flecha en el borde (abajo en vertical por encima de los botones, arriba a la derecha en apaisado). Ajustes se ve bien; los dos interruptores nuevos quedan al final de la lista (hay que desplazar). Sin errores de página propios (solo `setPointerCapture` de los arrastres sintéticos del arnés).
+- NO verificado: la tarjeta del eco en pantalla (necesita 30 min reales entre dos jugadores; cubierta por tests del servidor); los puntos ● en captura; el consejo "mirar" de un jugador nuevo (a los 6 s ya se ha ido cuando el arnés está listo); nada en un móvil real; el recorrido de 20 min siguiendo la línea (§12.7).
+- Bloqueos: ninguno.
+- Qué probar (Gabriel, teléfono): partida nueva → ¿la línea dice qué hacer y la flecha lleva? Seguirla 20 min. Girar: ¿la flecha cambia de borde con sentido? Con un sobrino más adelantado: ¿te sigue pidiendo tu orbe/montura pero no su jefe? Salir 31 min mientras otro juega y volver: ¿tarjeta del eco? Ajustes › Consejos No.
+- Lo siguiente: P7-E Bug-bash.

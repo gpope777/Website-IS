@@ -55,9 +55,9 @@ export function echoLines(log: readonly EchoEvent[], me: string, since: number, 
 // world-sim.ts: connect(name, nowMs = 0); markAway(name, nowMs = 0)
 ```
 
-- [ ] **Step 1: failing tests.** `echoLines`: groups same who+kind ("Bea limpió 2 zonas"), skips your own events and older ones, priority ending > boss > invasion > pillar > whale > mount > zone > raid > rank, ≤ 3 lines with the sale line last ("Tu puesto vendió 4 veces"), empty when nothing. Sim: `snap.story` reflects invasions/bosses; a tame / cleanse / boss / Rango up by Bea is logged; Ana away 31 min (real) with Bea's events → one `echo` with Bea's line and no separate sales toast; away 10 min → no echo; old save without `left` → no echo, sales toast as before; log never above 20. Protocol pins → 64.
-- [ ] **Step 2: implement.** `story` in the snapshot; `echo()` calls at the existing milestone spots (`cleanse`, `purified*`, tame finish, whale, raid held, invasions over, pillar, `gainXp` rank up, `winFinal`); `left` on `markAway`; room passes `Date.now()`.
-- [ ] **Step 3:** green, commit `feat(pulido): story en el snapshot, registro del eco y protocolo 64`.
+- [x] **Step 1: failing tests.** `echoLines`: groups same who+kind ("Bea limpió 2 zonas"), skips your own events and older ones, priority ending > boss > invasion > pillar > whale > mount > zone > raid > rank, ≤ 3 lines with the sale line last ("Tu puesto vendió 4 veces"), empty when nothing. Sim: `snap.story` reflects invasions/bosses; a tame / cleanse / boss / Rango up by Bea is logged; Ana away 31 min (real) with Bea's events → one `echo` with Bea's line and no separate sales toast; away 10 min → no echo; old save without `left` → no echo, sales toast as before; log never above 20. Protocol pins → 64.
+- [x] **Step 2: implement.** `story` in the snapshot; `echo()` calls at the existing milestone spots (`cleanse`, `purified*`, tame finish, whale, raid held, invasions over, pillar, `gainXp` rank up, `winFinal`); `left` on `markAway`; room passes `Date.now()`.
+- [x] **Step 3:** green, commit `feat(pulido): story en el snapshot, registro del eco y protocolo 64`.
 
 ### Task 2: pure `guide.ts` — `nextStep`, bearing, edge arrow
 
@@ -73,8 +73,8 @@ export function bearing(me, yaw: number, t): { m: number; arrow: string };
 export function edgeArrow(ndcX: number, ndcY: number, behind: boolean, w: number, h: number, pad: number): { x: number; y: number; deg: number } | null;
 ```
 
-- [ ] **Step 1: failing tests.** **Walk test**: a simulated save from a new world, applying each step's "done" mutation in story order, must yield exactly the 28 story ids in order and then `null` (or a secondary). Each step's target is the right place (nearest missing shrine; nearest unbroken pillar; door for dungeon steps). **Co-op**: with every world step done by someone else, a fresh player's first step is "Santuarios del Bosque" and never a world step; player steps stay until *you* do them. Invasion 2 shows two texts by state. Secondaries: oficio points only when the story is done or far; full moon; nearest zone ≤ 150 m. `lineText`: "aquí" under 8 m, friend note at ≤ 30 m, touch vs PC key in "Planta el Corazón (🌳 / G)". `bearing` 8 arrows around the camera. `edgeArrow`: on screen → null, behind → bottom edge, clamps to the padded rectangle. No step text has "!".
-- [ ] **Step 2: implement.** **Step 3:** green, commit `feat(pulido): guide.ts: el siguiente paso de la historia, rumbo y flecha de borde`.
+- [x] **Step 1: failing tests.** **Walk test**: a simulated save from a new world, applying each step's "done" mutation in story order, must yield exactly the 28 story ids in order and then `null` (or a secondary). Each step's target is the right place (nearest missing shrine; nearest unbroken pillar; door for dungeon steps). **Co-op**: with every world step done by someone else, a fresh player's first step is "Santuarios del Bosque" and never a world step; player steps stay until *you* do them. Invasion 2 shows two texts by state. Secondaries: oficio points only when the story is done or far; full moon; nearest zone ≤ 150 m. `lineText`: "aquí" under 8 m, friend note at ≤ 30 m, touch vs PC key in "Planta el Corazón (🌳 / G)". `bearing` 8 arrows around the camera. `edgeArrow`: on screen → null, behind → bottom edge, clamps to the padded rectangle. No step text has "!".
+- [x] **Step 2: implement.** **Step 3:** green, commit `feat(pulido): guide.ts: el siguiente paso de la historia, rumbo y flecha de borde`.
 
 ### Task 3: pure client models — tips, dots, dimming; settings
 
@@ -89,15 +89,15 @@ export function dots(o: { skillPts: number; cards: string[]; pills: boolean[] },
 export function lineAlpha(changedAgo: number): number;  // 1 until 8 s, then 0.4
 ```
 
-- [ ] **Step 1: failing tests.** Settings default `guide: true, tips: true` and parse bad values. `tipsDue` once per id, device text (touch vs PC), `TIPS` all end without "!" and ≤ 70 chars. `TipQueue` 6 s, FIFO. `dots`: Libro dot with points; Ayuda dot on a new card, cleared once acked; a pill turning on is dotted until acked; first-load ack of everything = no dots. `lineAlpha`.
-- [ ] **Step 2: implement.** **Step 3:** green, commit `feat(pulido): consejos de primera vez, puntos de nuevo y ajustes de la guía`.
+- [x] **Step 1: failing tests.** Settings default `guide: true, tips: true` and parse bad values. `tipsDue` once per id, device text (touch vs PC), `TIPS` all end without "!" and ≤ 70 chars. `TipQueue` 6 s, FIFO. `dots`: Libro dot with points; Ayuda dot on a new card, cleared once acked; a pill turning on is dotted until acked; first-load ack of everything = no dots. `lineAlpha`.
+- [x] **Step 2: implement.** **Step 3:** green, commit `feat(pulido): consejos de primera vez, puntos de nuevo y ajustes de la guía`.
 
 ### Task 4: wiring — the line, the arrow, tips, dots, the echo card; screenshots and perf
 
-- [ ] **Step 1:** `game.ts`: build `Places` once after the seed; each snapshot → `GuideView` → `nextStep` → `hud.setGoal(text, changed)`; each frame project the target → `edgeArrow` → `hud.setArrow`; tips via `TipQueue`; dots → menu/tabs/pills; `echo` message → `hud.showEcho(lines)`. `hud.ts`: `.goal` line at the top centre (tap → Menú › Ayuda), `.goal-tip` under it, `.edge-arrow`, `.dot`; echo card reuses the vision card (✕, 6 s). Ajustes: "Mostrar Qué sigue" and "Consejos" toggles. `style.css`: safe-area aware, 14 px (× `--ui-scale`), text shadow.
-- [ ] **Step 2:** screenshots (Playwright, 390×844 and 844×390, touch): the line with a target, the arrow with the target behind, a tip, the Menú dot, the echo card (a second player acting while the first is away, with `left.ms` faked old). Perf: `npm run perf -- --tier low` equal to base.
-- [ ] **Step 3:** green, commit `feat(pulido): línea Qué sigue, flecha de borde, consejos, puntos y el eco del bosque`.
+- [x] **Step 1:** `game.ts`: build `Places` once after the seed; each snapshot → `GuideView` → `nextStep` → `hud.setGoal(text, changed)`; each frame project the target → `edgeArrow` → `hud.setArrow`; tips via `TipQueue`; dots → menu/tabs/pills; `echo` message → `hud.showEcho(lines)`. `hud.ts`: `.goal` line at the top centre (tap → Menú › Ayuda), `.goal-tip` under it, `.edge-arrow`, `.dot`; echo card reuses the vision card (✕, 6 s). Ajustes: "Mostrar Qué sigue" and "Consejos" toggles. `style.css`: safe-area aware, 14 px (× `--ui-scale`), text shadow.
+- [x] **Step 2:** screenshots (Playwright, 390×844 and 844×390, touch): the line with a target, the arrow with the target behind, a tip, the Menú dot, the echo card (a second player acting while the first is away, with `left.ms` faked old). Perf: `npm run perf -- --tier low` equal to base.
+- [x] **Step 3:** green, commit `feat(pulido): línea Qué sigue, flecha de borde, consejos, puntos y el eco del bosque`.
 
 ### Task 5: Ship
 
-- [ ] HANDOFF "## Pulido · P7-D — …" (Decidido por Claude — revisar, Qué probar, NO verificado, tests updated, perf, protocol 64 and P7-F → 65); push; one short comment on PR #3.
+- [x] HANDOFF "## Pulido · P7-D — …" (Decidido por Claude — revisar, Qué probar, NO verificado, tests updated, perf, protocol 64 and P7-F → 65); push; one short comment on PR #3.
