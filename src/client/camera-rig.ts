@@ -1,5 +1,10 @@
 import type * as THREE from 'three';
 import type { Terrain } from '../shared/terrain';
+import { clipDistance } from './camera-clip';
+import type { Circle } from './movement';
+
+/** P7-A: orbit distance outdoors and inside dungeons (small rooms). */
+export const CAM_DIST = { out: 4.5, indoors: 3.5 } as const;
 
 export type CamMode = 'third' | 'first';
 
@@ -10,7 +15,8 @@ export class CameraRig {
   mode: CamMode = 'third';
   yaw = 0;
   pitch = -0.25;
-  private readonly dist = 4.5;
+  /** P7-A: the distance actually used (pulled in at once by walls, eased back out). */
+  private cur: number = CAM_DIST.out;
   /** Flying the dragon: the camera eases out to FAR_K × dist and a little higher. */
   far = false;
   private k = 1;
@@ -26,19 +32,31 @@ export class CameraRig {
     this.pitch = Math.min(this.pitch, 0.6);
   }
 
-  apply(cam: THREE.PerspectiveCamera, target: { x: number; y: number; z: number }, terrain: Terrain): void {
+  apply(cam: THREE.PerspectiveCamera, target: { x: number; y: number; z: number }, terrain: Terrain, circles: readonly Circle[] = [], indoors = false): void {
     if (this.mode === 'first') {
       cam.position.set(target.x, target.y + 1.7, target.z);
       cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
       return;
     }
     this.k += ((this.far ? FAR_K : 1) - this.k) * 0.05;
-    const dist = this.dist * this.k;
+    const want = (indoors ? CAM_DIST.indoors : CAM_DIST.out) * this.k;
     const eyeY = target.y + 1.6 + (this.k - 1) * 1.5;
     const cp = Math.cos(this.pitch);
-    const x = target.x + Math.sin(this.yaw) * cp * dist;
-    const z = target.z + Math.cos(this.yaw) * cp * dist;
-    const y = Math.max(eyeY - Math.sin(this.pitch) * dist, terrain.heightAt(x, z) + 0.4);
+    const wx = target.x + Math.sin(this.yaw) * cp * want;
+    const wz = target.z + Math.cos(this.yaw) * cp * want;
+    const wy = Math.max(eyeY - Math.sin(this.pitch) * want, terrain.heightAt(wx, wz) + 0.4);
+    // P7-A: along the eye → wanted-camera line, stop short of rocks, walls, pillars and hills.
+    const dx = wx - target.x;
+    const dy = wy - eyeY;
+    const dz = wz - target.z;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const dir = { x: dx / len, y: dy / len, z: dz / len };
+    const safe = this.far ? len : clipDistance({ x: target.x, y: eyeY, z: target.z }, dir, len, circles, (x, z) => terrain.heightAt(x, z));
+    this.cur = safe < this.cur ? safe : this.cur + (safe - this.cur) * 0.1;
+    const d = Math.min(this.cur, len);
+    const x = target.x + dir.x * d;
+    const z = target.z + dir.z * d;
+    const y = Math.max(eyeY + dir.y * d, terrain.heightAt(x, z) + 0.4);
     cam.position.set(x, y, z);
     cam.lookAt(target.x, eyeY, target.z);
   }

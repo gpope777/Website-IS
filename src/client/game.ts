@@ -17,7 +17,7 @@ import { WhaleMesh } from './scene/whale';
 import { seatOffset, WHALE } from '../shared/whale';
 import { cragsNear, generateCrags, type Crag } from '../shared/crags';
 import { generateShrines, SHRINE, type Shrine } from '../shared/shrines';
-import { clampStep, generateEntrance, withDungeon } from '../shared/dungeon';
+import { clampStep, generateEntrance, inAnyDungeon, withDungeon } from '../shared/dungeon';
 import { antenonBarText, bossBarText, clawPick, cucuruchoBarText, zancudoBarText, coastDungeonAction, dungeonAction, eliteBarText, emptyDungeonView, marchitoBarText, mountainDungeonAction, peatBarText, rockBarText, shieldBarText, swampDungeonAction, flechaBarText, finalBarText, towerDungeonAction } from './dungeon-ui';
 import { MountainDungeonMeshes } from './scene/mountain-dungeon';
 import { TowerDungeonMeshes } from './scene/tower-dungeon';
@@ -1566,7 +1566,7 @@ export class Game {
       // Soft lock: ease the camera so it sits behind us looking at the target.
       const want = yawTo(b.x, b.z, locked.x, locked.z) + Math.PI;
       const diff = Math.atan2(Math.sin(want - this.rig.yaw), Math.cos(want - this.rig.yaw));
-      this.rig.yaw += diff * Math.min(1, dt * 4);
+      this.rig.yaw += diff * (1 - Math.exp(-dt / 0.15)); // P7-A: τ 0.15 s
     }
     for (const a of this.arrows) {
       a.t += dt;
@@ -2143,7 +2143,7 @@ export class Game {
     this.flameFx.update(dt);
     this.gustFx.update(dt);
     this.rig.far = this.onDragon || this.tame?.beast === 'dragon'; // flying: pull the camera back (no extra draw distance)
-    this.rig.apply(this.camera, b, terrain);
+    this.rig.apply(this.camera, b, terrain, this.colliders.near(b.x, b.z), inAnyDungeon(b.x, b.z));
     if (stop?.cam) {
       // V2-E harness close-up: the camera `cam.back` m behind the stop at `cam.up` m, looking `cam.ahead` m past it.
       const c = stop.cam;
