@@ -32,6 +32,26 @@ export const WOLF_CLIPS: Record<string, ClipDef> = {
 const HAT_SIZE = 2;
 const HAT_LIFT = 1.3;
 
+/**
+ * Review fix (Task 2): forces `next` — an action `play()` found already playing (a restart, or a same-clip
+ * alias) — back to a clean, full-weight, running state, and fully stops whatever it was still crossfading
+ * from. `AnimationAction.reset()` alone is not enough: it cancels the fade schedule (`stopFading()`) but
+ * leaves `weight`/`_effectiveWeight` at whatever the in-flight crossfade had reached, and never touches the
+ * other action — so a same-clip restart mid-fade (rapid repeated attack taps, Task 4) would otherwise leave
+ * the old pose blended in for the rest of its already-scheduled ~0.2 s fade-out instead of resetting cleanly.
+ * Exported (rather than kept private) so it can be unit-tested directly against real `THREE.AnimationAction`s
+ * without needing a full `Actor`/GLTF model.
+ */
+export function settleRestartedAction(next: THREE.AnimationAction, fadingFrom: THREE.AnimationAction | null): void {
+  next.stopFading();
+  next.setEffectiveWeight(1);
+  next.enabled = true;
+  if (fadingFrom && fadingFrom !== next) {
+    fadingFrom.stop();
+    fadingFrom.setEffectiveWeight(0);
+  }
+}
+
 /** An animated, independently skinned copy of a model kit, with an optional floating name tag. */
 export class Actor {
   /** V2-B: a dark disc under the feet when the tier has no shadow map (set by the game before making actors). */
@@ -43,6 +63,8 @@ export class Actor {
   private readonly actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
   private currentName = '';
+  /** The action `current` is still crossfading out of, if any (review fix: see `settleRestartedAction`). */
+  private fadingFrom: THREE.AnimationAction | null = null;
 
   /** Task 2: which KayKit body this actor wears, or null for the robot/fox/wolf kits. */
   readonly body: Body | null;
@@ -197,13 +219,24 @@ export class Actor {
     if (!next) return;
     this.currentName = anim;
     next.reset();
+    if (next === this.current) {
+      // Review fix: replaying the already-current action (an explicit restart, or a same-clip alias like
+      // 'attack'/'attack1') must not leave it mid-crossfade. `reset()` only cancels the fade schedule
+      // (`stopFading()`) — it does not restore weight = 1, nor does it touch the action it was fading from,
+      // which would otherwise keep bleeding through for the rest of its already-scheduled fade-out.
+      settleRestartedAction(next, this.fadingFrom);
+      this.fadingFrom = null;
+    }
     next.setEffectiveTimeScale(def.at !== undefined ? 0 : (def.speed ?? 1));
     if (def.at !== undefined) next.time = def.at;
     this.animT = 0;
     next.setLoop(def.once ? THREE.LoopOnce : THREE.LoopRepeat, def.once ? 1 : Infinity);
     next.clampWhenFinished = !!def.once;
     next.play();
-    if (this.current && this.current !== next) next.crossFadeFrom(this.current, 0.2, false);
+    if (this.current && this.current !== next) {
+      next.crossFadeFrom(this.current, 0.2, false);
+      this.fadingFrom = this.current;
+    }
     this.current = next;
   }
 
