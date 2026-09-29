@@ -190,6 +190,32 @@ export class Actor {
 
   private glow: THREE.Mesh | null = null;
   private glowLeft = 0;
+  private chargeGlow: THREE.Mesh | null = null;
+
+  /** KayKit's right-hand attachment bone (also used by swing effects). */
+  hand(): THREE.Object3D | null {
+    let hand: THREE.Object3D | null = null;
+    this.model.traverse((o) => {
+      if (!hand && (o.name === 'handslotr' || o.name === 'handslot.r')) hand = o;
+    });
+    return hand;
+  }
+
+  /** Charge feedback for hold-to-spin: a small additive gold light at the weapon hand. */
+  setCharge(k: number): void {
+    if (!this.chargeGlow && k > 0) {
+      this.chargeGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }),
+      );
+      (this.hand() ?? this.root).add(this.chargeGlow);
+    }
+    if (!this.chargeGlow) return;
+    this.chargeGlow.visible = k > 0;
+    const s = 0.5 + k;
+    this.chargeGlow.scale.setScalar(s);
+    (this.chargeGlow.material as THREE.MeshBasicMaterial).opacity = 0.25 + k * 0.55;
+  }
 
   /** P4-A: a short green glow round the robot (a Rango up), seen by everyone. Its own material: models share theirs. */
   flash(seconds: number): void {

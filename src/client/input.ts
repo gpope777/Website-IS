@@ -72,7 +72,7 @@ export function clearHold(input: InputState): void {
 }
 
 export class Keyboard {
-  constructor(private readonly input: InputState, private readonly onAction: (a: Action) => void) {
+  constructor(private readonly input: InputState, private readonly onAction: (a: Action) => void, private readonly onAttackDown?: () => void, private readonly onAttackUp?: () => void) {
     addEventListener('keydown', this.down);
     addEventListener('keyup', this.up);
     addEventListener('blur', this.clear);
@@ -92,11 +92,21 @@ export class Keyboard {
       e.preventDefault();
       return;
     }
+    if ((e.code === 'KeyE' || e.code === 'KeyF') && !e.repeat && this.onAttackDown) {
+      e.preventDefault();
+      this.onAttackDown?.();
+      return;
+    }
     const action = KEY_ACTIONS[e.code];
     if (action && !e.repeat) this.onAction(action);
   };
 
   private up = (e: KeyboardEvent): void => {
+    if ((e.code === 'KeyE' || e.code === 'KeyF') && this.onAttackUp) {
+      e.preventDefault();
+      this.onAttackUp?.();
+      return;
+    }
     const hold = HOLD[e.code];
     if (hold) this.input[hold] = false;
   };

@@ -21,6 +21,8 @@ export interface TouchHandlers {
   onLook: (dx: number, dy: number) => void;
   /** A momentary action, expressed as a KeyboardEvent.code so it shares the keyboard path. */
   onAction: (code: string) => void;
+  onAttackDown?: () => void;
+  onAttackUp?: () => void;
   onPause: () => void;
   /** P7-C: 🎒 opens the bag. */
   onBag?: () => void;
@@ -318,6 +320,20 @@ export class TouchControls {
         b.classList.remove('active');
       };
       b.addEventListener('pointerdown', down);
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
+    } else if (def.code === 'KeyE' && this.h.onAttackDown && this.h.onAttackUp) {
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        b.setPointerCapture(e.pointerId);
+        b.classList.add('active');
+        this.h.onAttackDown?.();
+      });
+      const up = (e: PointerEvent) => {
+        e.preventDefault();
+        b.classList.remove('active');
+        this.h.onAttackUp?.();
+      };
       b.addEventListener('pointerup', up);
       b.addEventListener('pointercancel', up);
     } else if (def.code === 'KeyH') {

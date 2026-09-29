@@ -31,11 +31,11 @@ import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
 import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type FogState, type HeartView, type PillarView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
 import { DAY_LENGTH, dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
-import { BOW } from '../shared/sim/combat';
+import { BOW, SPIN } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
-import type { Body as HeroBody } from './actors/hero-clips';
+import { HERO_CLIPS, type Body as HeroBody } from './actors/hero-clips';
 import { loadDropIns, loadModels, type DropInKits, type ModelKit } from './actors/models';
 import { dropInClips } from './actors/drop-in-puppet';
 import { paperLight, rimStrength } from './actors/actor-light';
@@ -66,6 +66,7 @@ import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
 import { raidText } from './raid-ui';
 import { clearHold, Keyboard, nextPower, POWER_ICON, readMove, type Action, type InputState, KEY_ACTIONS, type PowerChoice } from './input';
+import { Combo, type Swing } from './combo';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
 import { STEEP_TEXT, withEscalera } from '../shared/mountains';
@@ -523,7 +524,12 @@ export class Game {
   private raid: RaidView | null = null;
   /** Trap the touch pill places (Menú toggle). */
   private trap: TrapKind = 'spikes';
-  private attackUntil = 0;
+  private readonly combo = new Combo(PUNCH.cooldown, 0.8, SPIN.cooldown);
+  private swingAnim: { anim: Anim; until: number } | null = null;
+  private attackDownUsed = false;
+  private mouseAttack = false;
+  private castUntil = 0;
+  private hurtUntil = 0;
   private lockId: number | null = null;
   private rollUntil = 0;
   private rollReadyAt = 0;
@@ -569,7 +575,7 @@ export class Game {
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.addEventListener(ev, this.onGesture, true);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.hud.onRingTap = () => this.tapRing();
-    this.keyboard = new Keyboard(this.input, (a) => this.onAction(a));
+    this.keyboard = new Keyboard(this.input, (a) => this.onAction(a), () => this.onAttackDown(), () => this.onAttackUp());
     this.touch = isTouchDevice()
       ? new TouchControls(root, this.input, {
           onLook: (dx, dy) => {
@@ -579,6 +585,8 @@ export class Game {
             const a = KEY_ACTIONS[code];
             if (a) this.onAction(a);
           },
+          onAttackDown: () => this.onAttackDown(),
+          onAttackUp: () => this.onAttackUp(),
           onPause: () => this.onAction('menu'),
           onBag: () => this.showBag(),
           onPillSeen: (i) => this.guide.ackPill(i),
@@ -597,7 +605,8 @@ export class Game {
     this.hud.setAccess(textScale(this.settings.text), this.settings.marks);
     this.touch?.setPills(pillsShown(this.seen, { heart: false, power: false }));
     if (!this.touch) {
-      this.renderer.domElement.addEventListener('click', this.onClick);
+      this.renderer.domElement.addEventListener('pointerdown', this.onMouseDown);
+      this.renderer.domElement.addEventListener('pointerup', this.onMouseUp);
       document.addEventListener('mousemove', this.onMouse);
     }
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
@@ -720,6 +729,8 @@ export class Game {
     this.keyboard.dispose();
     this.touch?.dispose();
     document.removeEventListener('mousemove', this.onMouse);
+    this.renderer.domElement.removeEventListener('pointerdown', this.onMouseDown);
+    this.renderer.domElement.removeEventListener('pointerup', this.onMouseUp);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     removeEventListener('resize', this.onResize);
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.removeEventListener(ev, this.onGesture, true);
@@ -766,6 +777,8 @@ export class Game {
         const a = m.name === this.myName ? this.me : this.others.get(m.name)?.actor;
         if (a instanceof Actor) a.flash(RANK_FLASH);
         if (m.name === this.myName) {
+          this.swingAnim = { anim: 'cheer', until: performance.now() + 1500 };
+          this.me?.play('cheer', { restart: true });
           this.hud.showVision([rankUpText(m.rank)], 3000, false);
           this.audio.play('rango');
         }
@@ -1470,7 +1483,10 @@ export class Game {
       buzz = Math.max(buzz, r.vibrate);
     }
     const hurt = hurtReaction(m.self.hurt ?? 0);
-    if (hurt.edge > 0) this.me?.impact({ flash: IMPACT.flash * 2, red: true });
+    if (hurt.edge > 0) {
+      this.me?.impact({ flash: IMPACT.flash * 2, red: true });
+      this.hurtUntil = performance.now() + 400;
+    }
     this.shake.add(hurt.shake);
     buzz = Math.max(buzz, hurt.vibrate);
     this.hud.setHurt(hurt.edge, lowHealth(m.self.vitals.health) && !m.self.dead);
@@ -1776,7 +1792,10 @@ export class Game {
       if (ma) return this.conn.send({ t: 'mount', act: ma.act });
       return this.hud.toast(this.onFish ? 'Aquí es hondo. Acércate a la orilla' : this.hasSteed ? (this.hasStar ? `${NAMES.legendary.charAt(0).toUpperCase()}${NAMES.legendary.slice(1)} no está cerca` : 'Tu ciervo no está cerca') : 'Aún no tienes montura');
     }
-    this.act();
+    if (a === 'act') {
+      this.onAttackDown();
+      this.onAttackUp();
+    }
   }
 
   // ---------------------------------------------------------------- combat
@@ -1850,6 +1869,10 @@ export class Game {
       this.blockSent = this.input.block;
       this.conn.send({ t: 'block', on: this.blockSent });
     }
+    const now = performance.now() / 1000;
+    const buffered = this.combo.tick(now);
+    if (buffered) this.strikeNow(buffered);
+    this.me?.setCharge(this.combo.charge(now));
     const enemies = this.enemies();
     if (this.lockId !== null && !keepLock(this.lockId, b.x, b.z, enemies)) this.lockId = null;
     const locked = this.lockId !== null ? enemies.find((e) => e.id === this.lockId) : undefined;
@@ -1884,11 +1907,11 @@ export class Game {
     }
   };
 
-  /** One button does everything: punch the nearest wolf, else gather the nearest resource. */
-  private act(): void {
+  /** Context half of A/E/F. Returns true when the press was consumed; combat runs otherwise. */
+  private act(): boolean {
     const b = this.body!;
     const ma = this.mountAct();
-    if (ma?.act === 1) return this.tapRing();
+    if (ma?.act === 1) { this.tapRing(); return true; }
     if (this.onDragon && !b.onGround) {
       // S5-D: in the air the attack is a claw at a rayo, and nothing else.
       const foes = [...this.rayoIds].flatMap((id) => {
@@ -1896,63 +1919,111 @@ export class Game {
         return p ? [{ id, kind: 'rayo', x: p.x, y: p.y, z: p.z }] : [];
       });
       const id = clawPick({ x: b.x, y: b.y, z: b.z }, foes);
-      this.attackUntil = performance.now() + 450;
-      if (id !== null) return this.conn.send({ t: 'attack', id });
-      return this.hud.toast('Zarpazo al aire. Solo alcanzas a los rayos');
+      this.swingAnim = { anim: 'attack1', until: performance.now() + 450 };
+      this.me?.play('attack1', { restart: true });
+      if (id !== null) this.conn.send({ t: 'attack', id });
+      else this.hud.toast('Zarpazo al aire. Solo alcanzas a los rayos');
+      return true;
     }
     const fallen = this.fallenMate();
-    if (fallen) return this.conn.send({ t: 'revive', name: fallen });
+    if (fallen) { this.conn.send({ t: 'revive', name: fallen }); return true; }
     const sp = this.shrinePart();
-    if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
+    if (sp) { this.conn.send({ t: 'shrine', id: sp.id, part: sp.part }); return true; }
     const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending);
-    if (da) return this.conn.send({ t: 'dungeon', act: da.act });
+    if (da) { this.conn.send({ t: 'dungeon', act: da.act }); return true; }
     const ca = this.coastAct();
-    if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
+    if (ca?.t === 'chest') { this.conn.send({ t: 'chest', id: ca.id }); return true; }
     const sa = this.swampAct();
-    if (sa?.t === 'amber') return this.conn.send({ t: 'amber', id: sa.id });
+    if (sa?.t === 'amber') { this.conn.send({ t: 'amber', id: sa.id }); return true; }
     const qa = this.quartzAct();
-    if (qa) return this.conn.send({ t: 'quartz', id: qa.id });
+    if (qa) { this.conn.send({ t: 'quartz', id: qa.id }); return true; }
     const fa = this.fogataAct();
-    if (fa?.t === 'fogata') return this.conn.send({ t: 'fogata', id: fa.id });
-    if (fa?.t === 'travel') return this.conn.send({ t: 'travel', to: 'heart' });
-    if (fa?.t === 'hint') return this.hud.toast(fa.label);
-    if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
+    if (fa?.t === 'fogata') { this.conn.send({ t: 'fogata', id: fa.id }); return true; }
+    if (fa?.t === 'travel') { this.conn.send({ t: 'travel', to: 'heart' }); return true; }
+    if (fa?.t === 'hint') { this.hud.toast(fa.label); return true; }
+    if (this.rescueAct()) { this.conn.send({ t: 'rescue' }); return true; }
     const pa = this.pillarAct();
-    if (pa) return this.conn.send({ t: 'pillar', id: pa.id });
-    if (this.guardianAct()) return this.hud.toast(guardianLine(this.guardianSays++));
-    this.attackUntil = performance.now() + 450;
-    const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
-    if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
-      this.face(locked);
-      return this.conn.send({ t: 'attack', id: locked.id });
-    }
-    let best: { id: number; d: number } | null = null;
-    for (const e of this.enemies()) {
-      const d = Math.hypot(e.x - b.x, e.z - b.z);
-      if (d <= PUNCH.reach && (!best || d < best.d)) best = { id: e.id, d };
-    }
-    if (best) return this.conn.send({ t: 'attack', id: best.id });
-    if (ma) return this.conn.send({ t: 'mount', act: ma.act });
-    if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
-    if (ca?.t === 'upgrade') return this.conn.send({ t: 'upgrade' });
-    if (sa?.t === 'capa') return this.conn.send({ t: 'capa' });
+    if (pa) { this.conn.send({ t: 'pillar', id: pa.id }); return true; }
+    if (this.guardianAct()) { this.hud.toast(guardianLine(this.guardianSays++)); return true; }
+    return false;
+  }
+
+  /** Actions that have lower priority than a melee target, matching the old A-button order. */
+  private actFallback(): boolean {
+    const b = this.body!;
+    const ma = this.mountAct();
+    const ca = this.coastAct();
+    const sa = this.swampAct();
+    if (ma) { this.conn.send({ t: 'mount', act: ma.act }); return true; }
+    if (this.canTend()) { this.conn.send({ t: 'tend', id: this.heart!.id }); return true; }
+    if (ca?.t === 'upgrade') { this.conn.send({ t: 'upgrade' }); return true; }
+    if (sa?.t === 'capa') { this.conn.send({ t: 'capa' }); return true; }
     const st = stallAction(b, [...this.stalls.values()], this.myName);
     if (st) {
       this.releaseInputs();
       if (document.pointerLockElement) document.exitPointerLock();
-      return this.showStall(st.s.id);
+      this.showStall(st.s.id);
+      return true;
     }
     if (merchantAction(b, this.merchantSpot)) {
       this.releaseInputs();
       if (document.pointerLockElement) document.exitPointerLock();
       this.stallOpen = null;
-      return this.showMerchant();
+      this.showMerchant();
+      return true;
     }
     const res = this.nearestResource();
-    if (res) return this.conn.send({ t: 'harvest', id: res.id });
+    if (res) { this.conn.send({ t: 'harvest', id: res.id }); return true; }
     // T6-C: nothing else under A: Cambiar with the nearest player.
     const to = tradeTarget(b, [...this.others].map(([name, r]) => ({ name, x: r.actor.root.position.x, z: r.actor.root.position.z, down: r.anim === 'dead' })));
-    if (to && !this.trade) this.conn.send({ t: 'tradeAsk', to });
+    if (to && !this.trade) { this.conn.send({ t: 'tradeAsk', to }); return true; }
+    return false;
+  }
+
+  private onAttackDown(): void {
+    if (this.dead || !this.body || this.hud.menuOpen) return;
+    this.attackDownUsed = this.act();
+    if (!this.attackDownUsed) this.combo.press(performance.now() / 1000);
+  }
+
+  private onAttackUp(): void {
+    if (this.attackDownUsed) {
+      this.attackDownUsed = false;
+      return;
+    }
+    const swing = this.combo.release(performance.now() / 1000);
+    if (this.dead || !this.body || this.hud.menuOpen) return;
+    if (swing) this.strikeNow(swing);
+  }
+
+  private strikeNow(swing: Swing): void {
+    const now = performance.now();
+    const anim: Anim = swing.kind === 'spin' ? 'spin' : `attack${swing.step}`;
+    const clip = HERO_CLIPS[anim]?.clip;
+    const seconds = this.kits?.heroes.caballero.clips.find((c) => c.name === clip)?.duration ?? 0.6;
+    this.swingAnim = { anim, until: now + seconds * 1000 };
+    this.me?.play(anim, { restart: true });
+    if (swing.kind === 'spin') {
+      this.conn.send({ t: 'spin' });
+      return;
+    }
+    const b = this.body!;
+    const enemies = this.enemies();
+    const locked = this.lockId !== null ? enemies.find((e) => e.id === this.lockId) : undefined;
+    let target = locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach ? locked : undefined;
+    if (!target) {
+      let distance = Infinity;
+      for (const enemy of enemies) {
+        const d = Math.hypot(enemy.x - b.x, enemy.z - b.z);
+        if (d <= PUNCH.reach && d < distance) { target = enemy; distance = d; }
+      }
+    }
+    if (!target) {
+      this.actFallback();
+      return;
+    }
+    this.face(target);
+    this.conn.send({ t: 'attack', id: target.id, n: swing.step });
   }
 
   /** T6-C: the trade window follows the server; null closes it. */
@@ -2173,6 +2244,7 @@ export class Game {
 
   private power(): void {
     const b = this.body!;
+    this.castUntil = performance.now() + 600;
     if (this.powerKind === 'piedra') {
       // Aim ahead; the server snaps the pillar 4 m out on its 2 m grid.
       const x = b.x + Math.sin(b.facing) * PIEDRA.ahead;
@@ -2328,10 +2400,12 @@ export class Game {
     this.lastRes = res;
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';
-    if (now < this.attackUntil) anim = 'attack';
+    if (this.swingAnim && now < this.swingAnim.until) anim = this.swingAnim.anim;
+    if (now < this.castUntil) anim = 'cast';
+    if (now < this.hurtUntil && !blocking && !rolling) anim = 'hurt';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
-    if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.onDragon || this.whaleSeat !== null) anim = 'idle';
+    if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.onDragon || this.whaleSeat !== null) anim = 'seat';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
     if (stop) {
@@ -2721,13 +2795,21 @@ export class Game {
 
   // ---------------------------------------------------------------- desktop mouse
 
-  private onClick = (): void => {
+  private onMouseDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
     if (this.hud.menuOpen) return;
     if (document.pointerLockElement !== this.renderer.domElement) {
       void this.renderer.domElement.requestPointerLock();
       return;
     }
-    this.onAction('act');
+    this.mouseAttack = true;
+    this.onAttackDown();
+  };
+
+  private onMouseUp = (e: PointerEvent): void => {
+    if (e.button !== 0 || !this.mouseAttack) return;
+    this.mouseAttack = false;
+    this.onAttackUp();
   };
 
   private onMouse = (e: MouseEvent): void => {
