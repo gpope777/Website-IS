@@ -94,6 +94,8 @@ export const NAMES = {
   /** P4-C: colour and hat. */
   look: 'Aspecto',
   colorNames: ['Naranja', 'Azul', 'Verde', 'Rojo', 'Morado', 'Hueso', 'Carbón', 'Rosa'],
+  bodyNames: ['Caballero', 'Bárbaro', 'Maga', 'Pícaro'],
+  skinNames: ['Original', 'Clara', 'Media', 'Morena', 'Oscura'],
   hatNames: {
     hoja: 'Hoja',
     caracola: 'Caracola',

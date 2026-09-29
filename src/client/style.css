@@ -313,6 +313,7 @@ canvas { display: block; }
 .panel .skills button.skill.locked { background: rgba(255,255,255,0.08); color: var(--muted); }
 
 .panel .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin: 8px 0; }
+.panel .swatches.skins { grid-template-columns: repeat(5, minmax(36px, 52px)); }
 .panel .swatches button.swatch { margin: 0; min-height: 36px; aspect-ratio: 1; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); padding: 0; }
 .panel .swatches button.swatch.on { border: 3px solid var(--fg); }
 .panel .hats { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: 10px 0; }
@@ -320,6 +321,8 @@ canvas { display: block; }
 .panel .hats button.hat.on { background: #4a8a3c; color: #fff; }
 .panel .hats button.hat.locked { background: rgba(255,255,255,0.08); color: var(--muted); }
 .panel .hats button.hat small { display: block; font-size: 10px; }
+.panel .hats.bodies { grid-template-columns: repeat(4, 1fr); }
+.panel .look-preview { float: right; width: 112px; height: 150px; margin: 0 0 8px 14px; border-radius: 10px; background: radial-gradient(circle at 50% 70%, rgba(111,191,74,0.22), rgba(255,255,255,0.04) 55%, transparent 56%); }
 
 /* P4-D: el Libro */
 .panel .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; margin: 4px 0 10px; }

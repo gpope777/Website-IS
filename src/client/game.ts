@@ -36,7 +36,7 @@ import { BOW, SPIN } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
-import { HERO_CLIPS, type Body as HeroBody } from './actors/hero-clips';
+import { BODIES, HERO_CLIPS, type Body as HeroBody } from './actors/hero-clips';
 import { loadDropIns, loadModels, type DropInKits, type ModelKit } from './actors/models';
 import { dropInClips } from './actors/drop-in-puppet';
 import { paperLight, rimStrength } from './actors/actor-light';
@@ -102,7 +102,7 @@ import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
-import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '../shared/progression';
+import { BODY_COUNT, COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, SKIN_COUNT, type Look, type SkillId } from '../shared/progression';
 import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
 import { bookHtml } from './book-ui';
@@ -226,6 +226,7 @@ export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly swingFx = new SwingFx(this.scene);
+  private lookPreview: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; actor: Actor; body: HeroBody } | null = null;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly rig = new CameraRig();
   /** P7-A: impact — settings, camera shake, floating bars, my hit-stop (camera held until then). */
@@ -548,7 +549,7 @@ export class Game {
   /** P4-B: my oficios and Rango (from the snapshot). */
   private skills: SkillId[] = [];
   /** P4-C: worn colour/hat and the hats unlocked. */
-  private look = { color: 0, hat: 0 };
+  private look: Look = { color: 0, hat: 0 };
   private hats: number[] = [];
   /** P4-D: the last own snapshot (the Libro reads it). */
   private lastSelf: Extract<ServerMsg, { t: 'snap' }>['self'] | null = null;
@@ -741,6 +742,8 @@ export class Game {
     this.audio.pause(true);
     if (document.pointerLockElement) document.exitPointerLock();
     this.renderer.dispose();
+    this.lookPreview?.actor.dispose();
+    this.lookPreview?.renderer.dispose();
     this.root.innerHTML = '';
   }
 
@@ -1102,8 +1105,13 @@ export class Game {
     }
     if (!this.kits) return;
     for (const p of m.players) {
-      // Task 2: `look.body` doesn't exist yet (Task 3 adds it) — every remote player wears the caballero for now.
-      const r = this.remote(this.others, p.name, () => new Actor(this.kits!.heroes.caballero, PLAYER_CLIPS, p.name, 'caballero'));
+      const body = BODIES[p.look?.body ?? 0] ?? BODIES[0]!;
+      const r = this.remote(this.others, p.name, () => new Actor(this.kits!.heroes[body], PLAYER_CLIPS, p.name, body));
+      if (r.actor instanceof Actor && r.actor.body !== body) {
+        r.actor.dispose();
+        r.actor = new Actor(this.kits.heroes[body], PLAYER_CLIPS, p.name, body);
+        this.scene.add(r.actor.root);
+      }
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
       r.ride = p.ride === 'deer' && !p.dead;
@@ -1116,7 +1124,7 @@ export class Game {
       r.seen = m.time;
       if (r.actor instanceof Actor) {
         r.actor.setCapa(p.capa);
-        r.actor.setLook(p.look?.color ?? 0, p.look?.hat ?? 0);
+        r.actor.setLook(p.look ?? { color: 0, hat: 0 });
       }
     }
     this.cage = m.cage ?? null;
@@ -2186,15 +2194,48 @@ export class Game {
 
   /** P4-C: the Aspecto panel. Taps apply at once (the server re-checks the hat) and the panel redraws. */
   private showLook(): void {
-    const send = (color: number, hat: number) => {
-      this.conn.send({ t: 'look', color, hat });
-      if (hat === 0 || this.hats.includes(hat)) this.look = { color, hat };
+    const send = (next: Look) => {
+      this.conn.send({ t: 'look', color: next.color, hat: next.hat, body: next.body ?? 0, skin: next.skin ?? 0 });
+      if (next.hat === 0 || this.hats.includes(next.hat)) this.look = next;
       this.showLook();
     };
     const actions: Record<string, () => void> = { back: () => this.openMenu() };
-    for (let i = 0; i < COLORS.length; i++) actions[`color-${i}`] = () => send(i, this.look.hat);
-    for (let h = 0; h <= HAT_IDS.length; h++) actions[`hat-${h}`] = () => send(this.look.color, h);
+    for (let i = 0; i < COLORS.length; i++) actions[`color-${i}`] = () => send({ ...this.look, color: i });
+    for (let h = 0; h <= HAT_IDS.length; h++) actions[`hat-${h}`] = () => send({ ...this.look, hat: h });
+    for (let i = 0; i < BODY_COUNT; i++) actions[`body-${i}`] = () => send({ ...this.look, body: i });
+    for (let i = 0; i < SKIN_COUNT; i++) actions[`skin-${i}`] = () => send({ ...this.look, skin: i });
     this.hud.showSkills(lookHtml(this.look, this.hats), actions);
+    this.showLookPreview();
+  }
+
+  /** A tiny isolated renderer keeps the preview visible above the opaque menu DOM. Decidido por Claude - revisar. */
+  private showLookPreview(): void {
+    if (!this.kits) return;
+    const slot = this.root.querySelector<HTMLElement>('.look-preview');
+    if (!slot) return;
+    const body = BODIES[this.look.body ?? 0] ?? BODIES[0]!;
+    if (!this.lookPreview || this.lookPreview.body !== body) {
+      this.lookPreview?.actor.dispose();
+      this.lookPreview?.renderer.dispose();
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(1.5, devicePixelRatio));
+      renderer.setSize(112, 150, false);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x28402f, 2.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+      sun.position.set(2, 3, 3);
+      scene.add(sun);
+      const camera = new THREE.PerspectiveCamera(32, 112 / 150, 0.1, 10);
+      camera.position.set(0, 1.15, 3.2);
+      camera.lookAt(0, 0.95, 0);
+      const actor = new Actor(this.kits.heroes[body], PLAYER_CLIPS, undefined, body);
+      actor.play('idle');
+      scene.add(actor.root);
+      this.lookPreview = { renderer, scene, camera, actor, body };
+    }
+    this.lookPreview.actor.setLook(this.look);
+    slot.replaceChildren(this.lookPreview.renderer.domElement);
   }
 
   /** P4-B: the Oficios panel; tapping a oficio re-draws it with its line. The server re-checks everything. */
@@ -2434,9 +2475,10 @@ export class Game {
       }
     }
 
-    if (!this.me && this.kits) {
-      // Task 2: `look.body` doesn't exist yet (Task 3 adds it) — everyone wears the caballero for now.
-      this.me = new Actor(this.kits.heroes.caballero, PLAYER_CLIPS, undefined, 'caballero');
+    const myBody = BODIES[this.look.body ?? 0] ?? BODIES[0]!;
+    if (this.kits && (!this.me || this.me.body !== myBody)) {
+      this.me?.dispose();
+      this.me = new Actor(this.kits.heroes[myBody], PLAYER_CLIPS, undefined, myBody);
       this.scene.add(this.me.root);
     }
     const wild = this.steeds.find((s) => s.owner === null);
@@ -2445,7 +2487,7 @@ export class Game {
       else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : this.onFrog || this.tame?.beast === 'frog' ? FROG.height : this.onDragon ? DRAGON.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.setCapa(this.capa);
-      this.me.setLook(this.look.color, this.look.hat);
+      this.me.setLook(this.look);
       this.me.setTorch(this.torch);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third' && !this.perfStop?.hideMe;
@@ -2521,6 +2563,11 @@ export class Game {
     this.flameFx.update(dt);
     this.gustFx.update(dt);
     this.swingFx.update(dt);
+    if (this.lookPreview?.renderer.domElement.isConnected) {
+      this.lookPreview.actor.root.rotation.y += dt * 0.6;
+      this.lookPreview.actor.update(dt);
+      this.lookPreview.renderer.render(this.lookPreview.scene, this.lookPreview.camera);
+    }
     this.rig.far = this.onDragon || this.tame?.beast === 'dragon'; // flying: pull the camera back (no extra draw distance)
     this.rig.apply(this.camera, b, terrain, this.colliders.near(b.x, b.z), inAnyDungeon(b.x, b.z));
     if (stop?.cam) {

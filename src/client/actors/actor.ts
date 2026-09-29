@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import type { ModelKit } from './models';
 import { makeHat } from './hats';
-import { COLORS } from '../../shared/progression';
+import { COLORS, type Look } from '../../shared/progression';
 import { poseFor } from './poses';
-import { partVisible, type Body } from './hero-clips';
+import { BODIES, partVisible, type Body } from './hero-clips';
+import { ATLAS_GRID, HERO_PALETTE } from './hero-palette';
+import { heroTextureKey, recolor, SKINS } from './hero-look';
 import type { EnemyLook } from './enemy-look';
 import type { ImpactOpts } from './paper';
 import { patchRecolor, patchRim, patchSway } from '../scene/patches';
@@ -95,20 +97,64 @@ export class Actor {
   private tint: THREE.MeshStandardMaterial | null = null;
   private hat: THREE.Mesh | null = null;
   private lookKey = '0:0';
+  private static readonly heroTextures = new Map<string, THREE.Texture>();
+  private readonly heroMats: THREE.MeshStandardMaterial[] = [];
 
   /**
    * P4-C: colour (a per-actor copy of `Main`, made on the first non-default colour) and a hat on the head bone.
    * Task 2: for a hero actor (`this.body` set), colour tint is skipped (Task 6 recolours the atlas instead) and a
    * worn hat re-hides the body's own helmet/hat via `partVisible`.
    */
-  setLook(color: number, hat: number): void {
-    const key = `${color}:${hat}`;
+  setLook(look: Look): void {
+    const { color, hat } = look;
+    const skin = look.skin ?? 0;
+    const key = `${color}:${hat}:${skin}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
     if (this.body) {
+      for (const mat of this.heroMats) mat.dispose();
+      this.heroMats.length = 0;
       const body = this.body;
       this.model.traverse((o) => {
         if (o.name) o.visible = partVisible(body, o.name, hat);
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+        const current = mesh.material as THREE.MeshStandardMaterial;
+        const base = (mesh.userData.heroBase as THREE.MeshStandardMaterial | undefined) ?? current;
+        mesh.userData.heroBase = base;
+        if (color === 0 && skin === 0) {
+          mesh.material = base;
+          return;
+        }
+        const bodyIndex = BODIES.indexOf(body);
+        const textureKey = heroTextureKey(bodyIndex, color, skin);
+        let texture = Actor.heroTextures.get(textureKey);
+        if (!texture && base.map?.image) {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 128;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(base.map.image as CanvasImageSource, 0, 0, 128, 128);
+            const data = ctx.getImageData(0, 0, 128, 128);
+            if (color > 0) recolor(data.data, 128, 128, HERO_PALETTE[body].cloth, ATLAS_GRID, COLORS[color] ?? COLORS[0]!);
+            if (skin > 0) recolor(data.data, 128, 128, HERO_PALETTE[body].skin, ATLAS_GRID, SKINS[skin] ?? SKINS[0]!);
+            ctx.putImageData(data, 0, 0);
+            texture = new THREE.CanvasTexture(canvas);
+            texture.flipY = false;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestMipmapLinearFilter;
+            Actor.heroTextures.set(textureKey, texture);
+          }
+        }
+        if (texture) {
+          const mat = base.clone();
+          mat.userData = {};
+          mat.map = texture;
+          patchRim(mat);
+          mesh.material = mat;
+          this.heroMats.push(mat);
+        }
       });
     } else {
       this.model.traverse((o) => {
@@ -402,6 +448,7 @@ export class Actor {
   dispose(): void {
     this.mixer.stopAllAction();
     this.tint?.dispose();
+    for (const mat of this.heroMats) mat.dispose();
     this.tint = null;
     this.root.removeFromParent();
   }
