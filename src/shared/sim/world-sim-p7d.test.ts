@@ -25,8 +25,8 @@ const echoes = (sim: WorldSim, who: string) => sim.drain().flatMap((o) => (o.to 
 const toasts = (sim: WorldSim, who: string) => sim.drain().flatMap((o) => (o.to === who && o.msg.t === 'toast' ? [o.msg.text] : []));
 
 describe('Guía y eco (P7-D, server)', () => {
-  it('protocol 65', () => {
-    expect(PROTOCOL_VERSION).toBe(65);
+  it('protocol 66', () => {
+    expect(PROTOCOL_VERSION).toBe(66);
   });
 
   it('the snapshot carries the story', () => {

@@ -50,8 +50,8 @@ const give = (p: SavedPlayer, inv: SavedPlayer['inv']) => {
 };
 
 describe('Tutorial (P7-F, server)', () => {
-  it('protocol 65 and the tut message', () => {
-    expect(PROTOCOL_VERSION).toBe(65);
+  it('protocol 66 and the tut message', () => {
+    expect(PROTOCOL_VERSION).toBe(66);
     expect(decodeClient('{"t":"tut","act":"skip"}')).toEqual({ t: 'tut', act: 'skip' });
     expect(decodeClient('{"t":"tut","act":"repeat"}')).toEqual({ t: 'tut', act: 'repeat' });
     expect(decodeClient('{"t":"tut","act":"done"}')).toBeNull();

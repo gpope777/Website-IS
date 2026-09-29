@@ -160,11 +160,16 @@ export const COLORS: readonly number[] = [0xc9951e, 0x3f7fd0, 0x4fae4a, 0xc84040
 /** P4-C: hat n (1–9) is HAT_IDS[n − 1]; 0 = none. 7–9 are the Proeza hats (P4-D). */
 export const HAT_IDS = ['hoja', 'caracola', 'ambar', 'cuarzo', 'aureola', 'estrella', 'papel', 'nieve', 'marchita'] as const;
 export type HatId = (typeof HAT_IDS)[number];
-export interface Look { color: number; hat: number }
+export interface Look { color: number; hat: number; body?: number; skin?: number }
 export const DEFAULT_LOOK: Look = { color: 0, hat: 0 };
+export const BODY_COUNT = 4;
+export const SKIN_COUNT = 5;
 
 const isIndex = (n: unknown, max: number): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= max;
-export const isLook = (color: unknown, hat: unknown): boolean => isIndex(color, COLORS.length - 1) && isIndex(hat, HAT_IDS.length);
+export const isLook = (color: unknown, hat: unknown, body?: unknown, skin?: unknown): boolean =>
+  isIndex(color, COLORS.length - 1) && isIndex(hat, HAT_IDS.length)
+  && (body === undefined || isIndex(body, BODY_COUNT - 1))
+  && (skin === undefined || isIndex(skin, SKIN_COUNT - 1));
 
 /** What each hat asks (the Aspecto screen). */
 export const HAT_HINTS: Record<HatId, string> = {
