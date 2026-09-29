@@ -140,7 +140,7 @@ import { GrassField } from './scene/grass';
 import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
 import { helpCards, isMenuTab, type MenuTab } from './menu-ui';
-import { deathCause, discover, parseSeen, PILLS, pillsShown, SEEN_KEY, type Seen } from './hud-model';
+import { CONTROLS, controlsDim, deathCause, discover, parseSeen, pillsShown, SEEN_KEY, type Seen } from './hud-model';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
 /** Camera far plane deep in the swamp (fog far is 70 m there). */
@@ -539,6 +539,7 @@ export class Game {
   private lockId: number | null = null;
   private rollUntil = 0;
   private rollReadyAt = 0;
+  private touchRollAt = 0;
   private bowUntil = 0;
   private blockSent = false;
   private readonly marker = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 8), new THREE.MeshBasicMaterial({ color: 0xff5a4d }));
@@ -589,11 +590,22 @@ export class Game {
             if (!this.hud.overlayOpen) this.rig.look(dx * this.settings.sens, dy * this.settings.sens);
           },
           onAction: (code) => {
+            if (code.startsWith('PowerSet:')) {
+              this.powerKind = code.slice('PowerSet:'.length) as PowerChoice;
+              this.touch?.setPowerIcon(POWER_ICON[this.powerKind]);
+              this.power();
+              return;
+            }
             const a = KEY_ACTIONS[code];
             if (a) this.onAction(a);
           },
           onAttackDown: () => this.onAttackDown(),
           onAttackUp: () => this.onAttackUp(),
+          onRollDown: () => { this.touchRollAt = performance.now(); this.input.block = true; },
+          onRollUp: () => { const tap = performance.now() - this.touchRollAt < 200; this.input.block = false; if (tap) this.roll(); },
+          onPowerWheel: () => this.powerWheel(),
+          onBagWheel: () => this.bagWheel(),
+          onTapWorld: (x, y) => this.tapWorld(x, y),
           onPause: () => this.onAction('menu'),
           onBag: () => this.showBag(),
           onPillSeen: (i) => this.guide.ackPill(i),
@@ -1552,7 +1564,8 @@ export class Game {
     this.touch?.setPills(pills);
     if (this.touch) {
       const on = new Set<string>(tut.hint);
-      this.touch.setHint(on.has('act'), on.has('stick'), PILLS.map((k) => on.has(k)));
+      this.touch.setHint(CONTROLS.map((k) => on.has(k)), on.has('stick'));
+      this.touch.setDim(controlsDim({ power: s.power || s.viento || s.fuego || s.piedra, bow: true, tools: true }));
     }
     this.hud.setTutSkip(!!s.tut);
     if (this.tutStep === 8 && !s.tut) this.guide.taught(TAUGHT_TIPS);
@@ -1936,6 +1949,40 @@ export class Game {
       mount: this.mountAct(), tend: this.canTend(), upgrade: coast?.t === 'upgrade', capa: swamp?.t === 'capa',
       stall: !!stallAction(b, [...this.stalls.values()], this.myName),
     };
+  }
+
+  private powerWheel(): { icon: string; text: string; code: string }[] {
+    const out: { icon: string; text: string; code: string }[] = [];
+    if (this.hasPower) out.push({ icon: '🌿', text: NAMES.powerVine, code: 'PowerSet:enredadera' });
+    if (this.hasWind) out.push({ icon: '🌬️', text: NAMES.powerWind, code: 'PowerSet:viento' });
+    if (this.hasFire) out.push({ icon: '🔥', text: NAMES.powerFire, code: 'PowerSet:fuego' });
+    if (this.hasStone) out.push({ icon: '🪨', text: NAMES.powerStone, code: 'PowerSet:piedra' });
+    out.push({ icon: '🏹', text: 'Arco', code: 'KeyR' });
+    return out;
+  }
+
+  private bagWheel(): { icon: string; text: string; code: string }[] {
+    const shown = pillsShown(this.seen, { heart: !!this.heart, power: this.hasPower || this.hasWind || this.hasFire || this.hasStone });
+    const all = [
+      { icon: '🫐', text: 'Comer', code: 'Digit1' }, { icon: '🔥', text: 'Fogata', code: 'KeyB' },
+      { icon: '🧱', text: 'Muro', code: 'KeyV' }, { icon: '🌳', text: NAMES.heart, code: 'KeyG' },
+      { icon: '🗡️', text: 'Trampa', code: 'TouchTrap' },
+    ];
+    return all.filter((_, i) => shown[i]);
+  }
+
+  private tapWorld(x: number, y: number): boolean {
+    let best: { id: number; d: number } | null = null;
+    const p = new THREE.Vector3();
+    for (const [id, remote] of this.wolves) {
+      p.copy(remote.actor.root.position).project(this.camera);
+      const sx = (p.x * 0.5 + 0.5) * innerWidth;
+      const sy = (-p.y * 0.5 + 0.5) * innerHeight;
+      const d = Math.hypot(sx - x, sy - y);
+      if (p.z >= -1 && p.z <= 1 && d < 56 && (!best || d < best.d)) best = { id, d };
+    }
+    this.lockId = best && best.id !== this.lockId ? best.id : null;
+    return !!best;
   }
 
   /** Context half of A/E/F. Returns true when the press was consumed; combat runs otherwise. */
@@ -2826,7 +2873,19 @@ export class Game {
   }
 
   private updatePrompt(): void {
-    if (this.touch || this.dead) return this.hud.setPrompt(null);
+    if (this.touch) {
+      this.hud.setPrompt(null);
+      if (this.dead || !this.body) return this.touch.setActIcon(null);
+      const b = this.body;
+      const enemyNear = [...this.wolves.values()].some((w) => {
+        const p = w.actor.root.position;
+        return Math.hypot(p.x - b.x, p.z - b.z) < 3.5;
+      });
+      const options = actOptions(this.actProbe());
+      this.touch.setActIcon(enemyNear ? null : options.length > 1 ? '⋯' : options.length === 1 ? OPTION_LABEL[options[0]!.k].icon : null);
+      return;
+    }
+    if (this.dead) return this.hud.setPrompt(null);
     const fallen = this.body && this.fallenMate();
     if (fallen) return this.hud.setPrompt(`E · Levantar a ${fallen}`);
     const ma = this.mountAct();

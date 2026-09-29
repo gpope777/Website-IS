@@ -211,6 +211,36 @@ canvas { display: block; }
 .touch-actions .btn-x { right: 100px; bottom: 100px; width: 66px; height: 66px; font-size: 20px; background: rgba(240, 190, 60, 0.28); border-color: rgba(240, 190, 60, 0.7); }
 @media (max-width: 700px) { .touch-actions .btn-x { right: 86px; bottom: 84px; width: 56px; height: 56px; } }
 
+/* Six-control mobile layout: five play controls plus MENÚ. The movement stick
+   appears under the left thumb, leaving the world unobstructed while idle. */
+.touch-stick {
+  position: fixed; left: 0; top: 0; bottom: auto; width: 132px; height: 132px;
+  opacity: 0; pointer-events: none; transform: translate(-50%, -50%);
+}
+.touch-stick.floating { opacity: 1; }
+.touch-actions {
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: 230px; height: 210px;
+}
+.touch-actions .touch-btn { width: 58px; height: 58px; font-size: 20px; }
+.touch-actions .btn-attack { right: 0; bottom: 54px; width: 82px; height: 82px; font-size: 27px; background: rgba(224,90,79,.3); border-color: rgba(224,90,79,.72); }
+.touch-actions .btn-jump { right: 82px; bottom: 0; background: rgba(79,163,217,.28); border-color: rgba(79,163,217,.7); }
+.touch-actions .btn-roll { right: 88px; bottom: 72px; background: rgba(240,190,60,.25); }
+.touch-actions .btn-power { right: 12px; bottom: 146px; }
+.touch-actions .btn-bag { right: 112px; bottom: 142px; }
+.touch-btn.dim { opacity: .35; }
+@media (max-height: 460px) {
+  .touch-stick { width: 112px; height: 112px; }
+  .touch-actions { right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); width: 210px; height: 174px; }
+  .touch-actions .touch-btn { width: 52px; height: 52px; }
+  .touch-actions .btn-attack { width: 72px; height: 72px; bottom: 42px; }
+  .touch-actions .btn-jump { right: 74px; }
+  .touch-actions .btn-roll { right: 78px; bottom: 57px; }
+  .touch-actions .btn-power { right: 8px; bottom: 120px; }
+  .touch-actions .btn-bag { right: 100px; bottom: 116px; }
+}
+
 /* ---------------------------------------------------------------- compass */
 .compass {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: min(420px, 60vw); height: 34px;

@@ -145,9 +145,13 @@ export function tutLine(step: number, o: { touch: boolean; heart: boolean; ownHe
         ? 'Este mundo ya tiene Corazón. Ve a verlo: es la casa de todos.'
         : `Planta el Corazón con ${k('🌳', 'G')}, cerca de aquí: ${costText(BUILD_COST.heart)}. ${have(BUILD_COST.heart)}`);
     case 6:
-      return n + `Un lobo de práctica. ${k('A', 'E')} golpea, ${k('🌀', 'Q')} esquiva, ${k('🛡️', 'Z')} justo antes del mordisco para.`;
+      return n + (o.touch
+        ? 'Lobo de práctica: ⚔ golpea. Toca Rodar para esquivar; mantenlo antes del mordisco para parar.'
+        : 'Un lobo de práctica. E golpea, Q esquiva, Z justo antes del mordisco para.');
     case 7:
-      return n + `${k('🎯', 'X')} fija. ${k('🏹', 'R')} dispara. Dale con una flecha.`;
+      return n + (o.touch
+        ? 'Toca al lobo para fijarlo. Mantén Poder, elige 🏹 y dale con una flecha.'
+        : 'X fija. R dispara. Dale con una flecha.');
     case 8:
       return n + '¿Ves un haz de luz? Es un santuario. Anda hacia él.';
     default:
