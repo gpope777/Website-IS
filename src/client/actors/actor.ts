@@ -342,7 +342,7 @@ export class Actor {
   private flashed: [THREE.Mesh, THREE.Material | THREE.Material[]][] | null = null;
   private knock: { x: number; z: number; t: number } | null = null;
 
-  /** P7-A: white (or red) for a moment — one shared material swapped in, never a new one per actor; hit-stop; thrown back on a kill. */
+  /** P7-A/H1: flash, hit-stop and a short stagger/knock, without allocating per impact. */
   impact(o: ImpactOpts): void {
     if (o.flash) {
       Actor.flashMats ??= { white: new THREE.MeshBasicMaterial({ color: 0xffffff }), red: new THREE.MeshBasicMaterial({ color: 0xff4a3a }) };
@@ -370,13 +370,12 @@ export class Actor {
       }
     }
     if (this.knock) {
-      if (this.currentName !== 'dead') this.knock = null;
-      else {
-        this.knock.t = Math.min(0.2, this.knock.t + dt);
-        const k = this.knock.t / 0.2;
-        this.root.position.x += this.knock.x * k;
-        this.root.position.z += this.knock.z * k;
-      }
+      const duration = this.currentName === 'dead' ? 0.2 : 0.15;
+      this.knock.t = Math.min(duration, this.knock.t + dt);
+      const k = this.knock.t / duration;
+      this.root.position.x += this.knock.x * k;
+      this.root.position.z += this.knock.z * k;
+      if (this.knock.t >= duration) this.knock = null;
     }
     if (this.freezeLeft > 0) {
       this.freezeLeft -= dt;
@@ -393,6 +392,7 @@ export class Actor {
     this.mixer.update(dt);
     this.animT += dt;
     this.applyPose(this.holdPoseAt ?? this.animT);
+    if (this.knock && this.currentName !== 'dead') this.model.rotation.x -= 0.25 * (1 - this.knock.t / 0.15);
     if (this.glow && this.glowLeft > 0) {
       this.glowLeft -= dt;
       if (this.glowLeft <= 0) this.glow.visible = false;

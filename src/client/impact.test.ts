@@ -5,7 +5,7 @@ import { defaultSettings, parseSettings } from './settings';
 
 describe('reactTo', () => {
   it('my hit: flash, short freeze, small push, buzz, bar', () => {
-    expect(reactTo({ id: 1, dmg: 20, kind: 'hit', by: 'Ana', hp: 0.5 }, 'Ana', 'wolf')).toEqual({ flash: true, freeze: 0.06, shake: 0.05, vibrate: 15, knock: false, bar: true });
+    expect(reactTo({ id: 1, dmg: 20, kind: 'hit', by: 'Ana', hp: 0.5 }, 'Ana', 'wolf')).toEqual({ flash: true, freeze: 0.06, shake: 0.05, vibrate: 15, knock: true, bar: true });
   });
   it('my kill and my parry: the long freeze', () => {
     const k = reactTo({ id: 1, dmg: 20, kind: 'kill', by: 'Ana', hp: 0 }, 'Ana', 'wolf');

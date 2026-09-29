@@ -7,6 +7,7 @@ export const IMPACT = {
   freezeHit: 0.06,
   freezeBig: 0.11,
   knock: 0.6,
+  stagger: 0.3,
   knockTime: 0.2,
   barFor: 3,
   bars: 4,
@@ -27,7 +28,7 @@ export interface Reaction { flash: boolean; freeze: number; shake: number; vibra
 export function reactTo(fx: FxView, me: string, kind: EnemyKind | undefined): Reaction {
   const mine = fx.by === me;
   const bar = !!kind && BAR_KINDS.includes(kind) && fx.kind !== 'parry' && fx.kind !== 'block';
-  const r: Reaction = { flash: fx.kind === 'hit' || fx.kind === 'kill', freeze: 0, shake: 0, vibrate: 0, knock: fx.kind === 'kill', bar };
+  const r: Reaction = { flash: fx.kind === 'hit' || fx.kind === 'kill', freeze: 0, shake: 0, vibrate: 0, knock: mine && (fx.kind === 'hit' || fx.kind === 'kill'), bar };
   if (!mine) return r;
   r.freeze = fx.kind === 'parry' || fx.kind === 'kill' ? IMPACT.freezeBig : fx.kind === 'hit' ? IMPACT.freezeHit : 0;
   r.shake = IMPACT.shake[fx.kind];

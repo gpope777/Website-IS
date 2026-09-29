@@ -2,6 +2,7 @@ import { weatherAt, weatherLine, wetAt, type Weather } from '../shared/weather';
 import { rankLine, rankUpText, RANK_FLASH } from './rank-ui';
 import { dawnCrossed, precipKind, stormDim, WeatherFx } from './scene/weather';
 import { AmbientLife } from './scene/ambient';
+import { SwingFx } from './scene/swing-fx';
 import { NAMES, costText } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
@@ -224,6 +225,7 @@ const BURN_MAT = new THREE.MeshBasicMaterial({ color: 0xff8a2a, fog: false });
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
+  private readonly swingFx = new SwingFx(this.scene);
   private readonly camera: THREE.PerspectiveCamera;
   private readonly rig = new CameraRig();
   /** P7-A: impact — settings, camera shake, floating bars, my hit-stop (camera held until then). */
@@ -1474,9 +1476,12 @@ export class Game {
       if (r.knock && w) {
         const from = f.by === this.myName ? this.body : this.others.get(f.by ?? '')?.actor.root.position;
         const d = from ? Math.hypot(w.x - from.x, w.z - from.z) : 0;
-        if (from && d > 0.01) knock = { x: ((w.x - from.x) / d) * IMPACT.knock, z: ((w.z - from.z) / d) * IMPACT.knock };
+        const amount = f.kind === 'kill' ? IMPACT.knock : IMPACT.stagger;
+        if (from && d > 0.01) knock = { x: ((w.x - from.x) / d) * amount, z: ((w.z - from.z) / d) * amount };
       }
       actor?.impact?.({ flash: r.flash ? IMPACT.flash : 0, freeze: r.freeze, knock });
+      if (f.by === this.myName && w && (f.kind === 'hit' || f.kind === 'kill')) this.swingFx.sparks(new THREE.Vector3(w.x, w.y + 0.8, w.z));
+      if (f.kind === 'parry' && this.body) this.swingFx.sparks(new THREE.Vector3(this.body.x, this.body.y + 1, this.body.z), true);
       if (r.bar && f.hp !== undefined) this.hpBars.hit(f.id, f.hp, now);
       this.shake.add(r.shake);
       freeze = Math.max(freeze, r.freeze);
@@ -2003,6 +2008,7 @@ export class Game {
     const seconds = this.kits?.heroes.caballero.clips.find((c) => c.name === clip)?.duration ?? 0.6;
     this.swingAnim = { anim, until: now + seconds * 1000 };
     this.me?.play(anim, { restart: true });
+    this.swingFx.startTrail(this.me?.hand() ?? null, swing.kind === 'swing' && swing.step < 3 ? 0xffffff : 0xffd24a, seconds);
     if (swing.kind === 'spin') {
       this.conn.send({ t: 'spin' });
       return;
@@ -2514,6 +2520,7 @@ export class Game {
     this.towerMeshes?.animate(this.serverTime, this.stoneStructs.filter((s) => s.kind === 'pillar'));
     this.flameFx.update(dt);
     this.gustFx.update(dt);
+    this.swingFx.update(dt);
     this.rig.far = this.onDragon || this.tame?.beast === 'dragon'; // flying: pull the camera back (no extra draw distance)
     this.rig.apply(this.camera, b, terrain, this.colliders.near(b.x, b.z), inAnyDungeon(b.x, b.z));
     if (stop?.cam) {
