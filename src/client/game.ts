@@ -68,6 +68,8 @@ import { Hud } from './hud';
 import { raidText } from './raid-ui';
 import { clearHold, Keyboard, nextPower, POWER_ICON, readMove, type Action, type InputState, KEY_ACTIONS, type PowerChoice } from './input';
 import { Combo, type Swing } from './combo';
+import { actOptions, OPTION_LABEL, type ActOption, type ActProbe } from './act-options';
+import { Wheel } from './wheel';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
 import { STEEP_TEXT, withEscalera } from '../shared/mountains';
@@ -259,6 +261,7 @@ export class Game {
   private readonly frozenCam = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
   private readonly input: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false, block: false };
   private readonly hud: Hud;
+  private readonly wheel: Wheel;
   private readonly conn: Connection;
   private readonly keyboard: Keyboard;
   private readonly touch: TouchControls | null;
@@ -574,6 +577,7 @@ export class Game {
     this.scene.add(this.marker);
 
     this.hud = new Hud(root);
+    this.wheel = new Wheel(root);
     this.hud.onToast = (text) => this.audio.play(toastCue(text));
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.addEventListener(ev, this.onGesture, true);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -1920,6 +1924,20 @@ export class Game {
     }
   };
 
+  private actProbe(): ActProbe {
+    const b = this.body!;
+    const coast = this.coastAct();
+    const swamp = this.swampAct();
+    return {
+      fallen: this.fallenMate(),
+      shrinePart: this.shrinePart(),
+      dungeon: dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending),
+      coast, swamp, quartz: this.quartzAct(), fogata: this.fogataAct(), rescue: !!this.rescueAct(), pillar: this.pillarAct(), guardian: !!this.guardianAct(),
+      mount: this.mountAct(), tend: this.canTend(), upgrade: coast?.t === 'upgrade', capa: swamp?.t === 'capa',
+      stall: !!stallAction(b, [...this.stalls.values()], this.myName),
+    };
+  }
+
   /** Context half of A/E/F. Returns true when the press was consumed; combat runs otherwise. */
   private act(): boolean {
     const b = this.body!;
@@ -1938,46 +1956,47 @@ export class Game {
       else this.hud.toast('Zarpazo al aire. Solo alcanzas a los rayos');
       return true;
     }
-    const fallen = this.fallenMate();
-    if (fallen) { this.conn.send({ t: 'revive', name: fallen }); return true; }
-    const sp = this.shrinePart();
-    if (sp) { this.conn.send({ t: 'shrine', id: sp.id, part: sp.part }); return true; }
-    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending);
-    if (da) { this.conn.send({ t: 'dungeon', act: da.act }); return true; }
-    const ca = this.coastAct();
-    if (ca?.t === 'chest') { this.conn.send({ t: 'chest', id: ca.id }); return true; }
-    const sa = this.swampAct();
-    if (sa?.t === 'amber') { this.conn.send({ t: 'amber', id: sa.id }); return true; }
-    const qa = this.quartzAct();
-    if (qa) { this.conn.send({ t: 'quartz', id: qa.id }); return true; }
-    const fa = this.fogataAct();
-    if (fa?.t === 'fogata') { this.conn.send({ t: 'fogata', id: fa.id }); return true; }
-    if (fa?.t === 'travel') { this.conn.send({ t: 'travel', to: 'heart' }); return true; }
-    if (fa?.t === 'hint') { this.hud.toast(fa.label); return true; }
-    if (this.rescueAct()) { this.conn.send({ t: 'rescue' }); return true; }
-    const pa = this.pillarAct();
-    if (pa) { this.conn.send({ t: 'pillar', id: pa.id }); return true; }
-    if (this.guardianAct()) { this.hud.toast(guardianLine(this.guardianSays++)); return true; }
+    const probe = this.actProbe();
+    const options = actOptions(probe);
+    const priority = options.find((o) => o.k === 'revive' || o.k === 'shrine' || o.k === 'dungeon');
+    if (priority) { this.runOption(priority); return true; }
+    if (probe.fogata?.t === 'hint') { this.hud.toast(probe.fogata.label); return true; }
+    if (this.enemies().some((e) => Math.hypot(e.x - b.x, e.z - b.z) <= PUNCH.reach)) return false;
+    if (options.length === 1) { this.runOption(options[0]!); return true; }
+    if (options.length > 1) {
+      this.wheel.open(innerWidth / 2, innerHeight / 2, options.map((o) => OPTION_LABEL[o.k]), (i) => { if (i !== null) this.runOption(options[i]!); });
+      return true;
+    }
     return false;
+  }
+
+  private runOption(option: ActOption): void {
+    switch (option.k) {
+      case 'revive': return this.conn.send({ t: 'revive', name: option.name });
+      case 'shrine': return this.conn.send({ t: 'shrine', id: option.id, part: option.part });
+      case 'dungeon': return this.conn.send({ t: 'dungeon', act: option.act });
+      case 'chest': return this.conn.send({ t: 'chest', id: option.id });
+      case 'amber': return this.conn.send({ t: 'amber', id: option.id });
+      case 'quartz': return this.conn.send({ t: 'quartz', id: option.id });
+      case 'fogata': return this.conn.send({ t: 'fogata', id: option.id });
+      case 'travel': return this.conn.send({ t: 'travel', to: 'heart' });
+      case 'rescue': return this.conn.send({ t: 'rescue' });
+      case 'pillar': return this.conn.send({ t: 'pillar', id: option.id });
+      case 'guardian': this.hud.toast(guardianLine(this.guardianSays++)); return;
+      case 'mount': return this.conn.send({ t: 'mount', act: option.act });
+      case 'tend': return this.conn.send({ t: 'tend', id: this.heart!.id });
+      case 'upgrade': return this.conn.send({ t: 'upgrade' });
+      case 'capa': return this.conn.send({ t: 'capa' });
+      case 'stall': {
+        const st = this.body && stallAction(this.body, [...this.stalls.values()], this.myName);
+        if (st) this.showStall(st.s.id);
+      }
+    }
   }
 
   /** Actions that have lower priority than a melee target, matching the old A-button order. */
   private actFallback(): boolean {
     const b = this.body!;
-    const ma = this.mountAct();
-    const ca = this.coastAct();
-    const sa = this.swampAct();
-    if (ma) { this.conn.send({ t: 'mount', act: ma.act }); return true; }
-    if (this.canTend()) { this.conn.send({ t: 'tend', id: this.heart!.id }); return true; }
-    if (ca?.t === 'upgrade') { this.conn.send({ t: 'upgrade' }); return true; }
-    if (sa?.t === 'capa') { this.conn.send({ t: 'capa' }); return true; }
-    const st = stallAction(b, [...this.stalls.values()], this.myName);
-    if (st) {
-      this.releaseInputs();
-      if (document.pointerLockElement) document.exitPointerLock();
-      this.showStall(st.s.id);
-      return true;
-    }
     if (merchantAction(b, this.merchantSpot)) {
       this.releaseInputs();
       if (document.pointerLockElement) document.exitPointerLock();

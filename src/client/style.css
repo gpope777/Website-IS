@@ -323,6 +323,10 @@ canvas { display: block; }
 .panel .hats button.hat small { display: block; font-size: 10px; }
 .panel .hats.bodies { grid-template-columns: repeat(4, 1fr); }
 .panel .look-preview { float: right; width: 112px; height: 150px; margin: 0 0 8px 14px; border-radius: 10px; background: radial-gradient(circle at 50% 70%, rgba(111,191,74,0.22), rgba(255,255,255,0.04) 55%, transparent 56%); }
+.wheel { position: fixed; z-index: 40; width: 200px; height: 200px; margin: -100px; border-radius: 50%; background: rgba(8,16,12,.9); border: 2px solid rgba(255,255,255,.18); pointer-events: auto; }
+.wheel button { position: absolute; left: 50%; top: 50%; width: 74px; min-height: 54px; margin: 0; padding: 5px; border-radius: 12px; font-size: calc(16px * var(--ui-scale)); line-height: 1.05; background: #26372d; color: var(--fg); border: 1px solid rgba(255,255,255,.15); }
+.wheel button b, .wheel button span { display: block; }
+.wheel button.on { background: #6fbf4a; color: #081008; transform-origin: center; }
 
 /* P4-D: el Libro */
 .panel .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; margin: 4px 0 10px; }
