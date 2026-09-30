@@ -1,7 +1,17 @@
 # Handoff — Aventura, Plan A (2026-09-26)
 
 ## ESTADO DEL PROYECTO — leer primero
-**El roadmap entero está hecho**: la Aventura por biomas (Slices 1–5: historia completa, del mundo nuevo a los créditos y el post-juego), #4 Progresión, #6 Tiendas, #2 Mundo y visuales y #7 Pulido con el tutorial (P7-A..F). **PR #3 mergeado a `main` el 2026-09-28 (commit `15a50f0`) y desplegado** por GitHub Actions a https://bosque.juegodk.workers.dev. Trabajo nuevo: rama desde `main`. **PROTOCOL_VERSION = 65**; todos los campos guardados nuevos son opcionales: las partidas viejas cargan, y quien ya tiene progreso nunca ve el tutorial. Tests al cierre: **npm test 1415, test:workers 12, check + build verdes**; arnés de rendimiento en baja dentro de la base y del presupuesto.
+**El roadmap entero está hecho**: la Aventura por biomas (Slices 1–5: historia completa, del mundo nuevo a los créditos y el post-juego), #4 Progresión, #6 Tiendas, #2 Mundo y visuales y #7 Pulido con el tutorial (P7-A..F). **PR #3 mergeado a `main` el 2026-09-28 (commit `15a50f0`) y desplegado** por GitHub Actions a https://bosque.juegodk.workers.dev. La mejora de héroes, pelea y controles está terminada en `heroe/pelea-controles`, pendiente de revisión/merge. **PROTOCOL_VERSION = 66**; todos los campos guardados nuevos son opcionales y las partidas viejas cargan. Tests al cierre: **npm test 1447, test:workers 12, check + build verdes**; las 60 lecturas del arnés de rendimiento están dentro del presupuesto.
+
+## Héroe, pelea y controles — HECHO (rama `heroe/pelea-controles`)
+- Cuatro cuerpos KayKit con animaciones sustituyen al robot; Aspecto permite personaje, color y piel. El servidor replica `body`, `color`, `skin`, combo y giro en `look` (protocolo 66).
+- Combate: combo de tres golpes con búfer, ataque cargado en giro, estela, chispas y tambaleo. Se corrigió el reinicio rápido de una misma animación para que no mezcle posturas.
+- Acción contextual: cuando hay varias opciones aparece una rueda radial de hasta seis; combate conserva prioridad salvo revivir, santuario y mazmorra.
+- Móvil: seis controles estables (⚔, Saltar, Rodar/guardia, Poder, Mochila y MENÚ), stick flotante bajo el pulgar, toque sobre enemigo para fijar y ruedas al mantener Poder/Mochila. Los textos del tutorial se adaptaron.
+- Navegador local verificado con `?touch=1`: héroe visible, seis controles sin taparlo, ataque y Mochila operativos, sin errores de consola. No sustituye la prueba en teléfono físico.
+- Rendimiento: los presupuestos pasan en baja/media/alta. KayKit añade 4.118 triángulos en ocho lecturas donde el héroe está visible; se actualizó la base a propósito. Máximos: baja 81 llamadas / 171.244 triángulos, media 120 / 421.333, alta 167 / 854.142.
+- El arnés ahora lanza Vite/Wrangler mediante sus entradas Node y funciona también en Windows (antes fallaba al ejecutar `npx`).
+- Pendiente humano: probar gestos mantenidos y rueda radial en iOS/Android reales, spam de ataque/latencia, y legibilidad de los cinco botones en la pantalla más pequeña.
 
 **Casi nada se ha visto en un teléfono real** (todo se probó con tests y Chromium headless). Dónde leer cada parte: Slice 1 → "RESUMEN PARA LEER PRIMERO" · Slices 2–5 → "Slice N — resumen" (el del Slice 5 trae el orden de prueba de toda la historia) · "Progresión — resumen" · "Tiendas — resumen" · "Visuales — resumen" · **"Pulido — resumen"**.
 

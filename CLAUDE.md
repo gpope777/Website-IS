@@ -8,8 +8,8 @@ Juego co-op en navegador (Three.js + Cloudflare Workers/Durable Objects) para Ga
 3. Planes ejecutados (uno por plan, con tasks TDD): `docs/superpowers/plans/`.
 
 ## Estado (2026-09-28)
-Roadmap completo y en `main` (PR #2 y #3 mergeados): Aventura Slices 1–5 (Bosque, Costa, Pantano, Montañas, Tierras Corruptas, final y post-juego), #4 Progresión, #6 Tiendas, #2 Visuales, #7 Pulido + tutorial. `PROTOCOL_VERSION` 65. Tests: `npm test` ~1415, `npm run test:workers` 12.
-**Casi nada se ha probado en un teléfono real ni jugado de punta a punta**; el balance son valores iniciales. Lo siguiente es el playtest de Gabriel y ajustar según lo que reporte.
+Roadmap completo y en `main` (PR #2 y #3 mergeados): Aventura Slices 1–5 (Bosque, Costa, Pantano, Montañas, Tierras Corruptas, final y post-juego), #4 Progresión, #6 Tiendas, #2 Visuales, #7 Pulido + tutorial. La rama `heroe/pelea-controles` añade cuatro héroes KayKit, combo/giro y efectos, Aspecto, acción radial y seis controles móviles. `PROTOCOL_VERSION` 66. Tests: `npm test` 1447, `npm run test:workers` 12; check/build y los tres niveles del arnés de rendimiento verdes.
+**Casi nada se ha probado en un teléfono real ni jugado de punta a punta**; el balance son valores iniciales. La rama nueva sí se revisó en Chromium local con `?touch=1`, pero el siguiente paso sigue siendo el playtest de Gabriel en teléfono y ajustar según lo que reporte.
 
 ## Arquitectura
 - `src/shared` — reglas y simulación puras (sin DOM), autoritativas en el servidor. `sim/world-sim.ts` es el núcleo. `protocol.ts`: todo mensaje del cliente pasa por `decodeClient`.
