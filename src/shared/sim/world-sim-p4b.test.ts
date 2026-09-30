@@ -44,7 +44,7 @@ function heartAt(sim: WorldSim, x: number, z: number) {
 
 describe('Oficios (P4-B): learn and forget', () => {
   it('is protocol 56 and decodes learn / forget', () => {
-    expect(PROTOCOL_VERSION).toBe(65);
+    expect(PROTOCOL_VERSION).toBe(66);
     expect(decodeClient(JSON.stringify({ t: 'learn', id: 'pies' }))).toEqual({ t: 'learn', id: 'pies' });
     expect(decodeClient(JSON.stringify({ t: 'learn', id: 'volar' }))).toBeNull();
     expect(decodeClient(JSON.stringify({ t: 'forget' }))).toEqual({ t: 'forget' });

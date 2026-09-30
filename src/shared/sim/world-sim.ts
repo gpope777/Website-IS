@@ -48,7 +48,7 @@ import { FOGATA, generateFogatas, type Fogata } from '../fogatas';
 import { creditLines, ENDING, endingCards, endingWave, lateCards, LOOKOUT, lookoutTop, withLookout } from '../ending';
 import { ESTRELLA, estrellaAt, estrellaOut, fullMoon } from '../estrella';
 import { createMarchito, heartWill, joinNames, MARCHITO, marchitoWill, stepChanneler, pickDefenses, stepMarchito, stepThief, thiefWill, VISION, type Marchito } from './marchito';
-import { BLOCK, BOW, inCone, newGuard, resolveHit, ROLL, type Guard } from './combat';
+import { BLOCK, BOW, COMBO, inCone, newGuard, nextComboStep, resolveHit, ROLL, SPIN, type Guard } from './combat';
 import { RAYO, rayoLow, stepRayo } from './rayo';
 import { biomeRestock, buy, canPlaceStall, collectTill, deliver, MERCHANT, merchantDeal, newStall, offerInv, RARE, pickUp, restock, setShelf, STALL, takeShelf, trade, TRADE, type ShopResult, type Stall, type TradeLine } from '../shop';
 import { addKillXp, BOSS_KINDS, bossesOf, canLearn, FEAT_FAST, FEAT_HAT, FEAT_HEART, DEFAULT_LOOK, HAT_HINTS, HAT_IDS, hasSkill, hatUnlocked, isLook, killXp, PROGRESS, rankOf, SKILL_FX, SKILL_IDS, totalXp, unlockedHats, type Look, type SkillId } from '../progression';
@@ -163,8 +163,8 @@ export interface SavedPlayer {
   killDay?: { day: number; xp: number };
   /** P4-B: oficios learned (ids from SKILL_IDS). Optional. */
   skills?: string[];
-  /** P4-C: colour and hat. Optional: older saves wear the default. */
-  look?: { color: number; hat: number };
+  /** P4-C/H1: colour, hat, body and skin. Optional fields keep older saves valid. */
+  look?: Look;
   /** P4-D: boss kinds beaten (BOSS_KINDS). Optional: old saves infer the dungeon ones from the powers. */
   bosses?: string[];
   /** P4-D: kills by strike (wolf, brute, rayo). Optional. */
@@ -282,6 +282,9 @@ interface Live {
   lastAcceptedAt: number;
   harvestReadyAt: number;
   punchReadyAt: number;
+  comboStep: number;
+  comboAt: number;
+  spinReadyAt: number;
   fix: boolean;
   /** Live-only combat state (roll i-frames, guard, bow cooldown). Never saved. */
   guard: Guard;
@@ -727,7 +730,7 @@ export class WorldSim {
       l.anchorAt = this.time;
       l.lastAcceptedAt = this.time;
     } else {
-      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, windReadyAt: 0, boostCeil: -Infinity, boostUntil: 0, boosted: false, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false, frog: false, dragon: false };
+      l = { anim: 'idle', awayFor: null, anchorX: p.x, anchorZ: p.z, anchorAt: this.time, lastAcceptedAt: this.time, harvestReadyAt: 0, punchReadyAt: 0, comboStep: 0, comboAt: -99, spinReadyAt: 0, fix: false, guard: newGuard(), deadAt: null, powerReadyAt: 0, windReadyAt: 0, boostCeil: -Infinity, boostUntil: 0, boosted: false, tame: null, tameReadyAt: 0, riding: false, rodeUntil: 0, graceCap: MAX_SPEED, hintAt: 0, seat: null, race: null, raceReadyAt: 0, fish: false, frog: false, dragon: false };
       this.live.set(name, l);
     }
     l.rank = rankOf(this.xpOf(p));
@@ -778,6 +781,8 @@ export class WorldSim {
         return this.onPlace(p, msg.kind, msg.x, msg.z, msg.rot);
       case 'attack':
         return this.onAttack(p, l, msg.id);
+      case 'spin':
+        return this.onSpin(p, l);
       case 'eat':
         return this.onEat(p);
       case 'respawn':
@@ -827,7 +832,7 @@ export class WorldSim {
       case 'forget':
         return this.onForget(p);
       case 'look':
-        return this.onLook(p, msg.color, msg.hat);
+        return this.onLook(p, msg.color, msg.hat, msg.body, msg.skin);
       case 'stallPlace':
         return this.onStallPlace(p, msg.x, msg.z, msg.rot);
       case 'stallSet':
@@ -1384,9 +1389,47 @@ export class WorldSim {
     if (Math.hypot(w.x - p.x, w.z - p.z) > PUNCH.reach) return;
     if (w.kind === 'rayo' && !rayoLow(w, this.terrain.heightAt(w.x, w.z))) return this.hint(p.name, l, 'Vuela alto. Flechas, o viento');
     if (w === this.lakeAnchor && !this.diving(p, w)) return this.hint(p.name, l, 'Está en el fondo. Bucea con el pez');
+    const step = nextComboStep(l.comboStep, l.comboAt, this.time, PUNCH.cooldown);
+    l.comboStep = step;
+    l.comboAt = this.time;
     l.punchReadyAt = this.time + PUNCH.cooldown;
-    l.anim = 'attack';
+    l.anim = `attack${step}` as Anim;
     this.strike(p.name, w, PUNCH.damage * weaponMult(p.weaponLvl ?? 0));
+    if (step === 3) this.stagger(p, w);
+  }
+
+  private stagger(p: SavedPlayer, w: Wolf): void {
+    if ((w.kind !== 'wolf' && w.kind !== 'brute') || w.hp <= 0 || w.tut !== undefined) return;
+    w.stun = Math.max(w.stun, COMBO.stun);
+    const dx = w.x - p.x;
+    const dz = w.z - p.z;
+    const d = Math.hypot(dx, dz) || 1;
+    w.x += (dx / d) * COMBO.knock;
+    w.z += (dz / d) * COMBO.knock;
+    w.y = this.terrain.heightAt(w.x, w.z);
+  }
+
+  private onSpin(p: SavedPlayer, l: Live): void {
+    if (p.dead || l.riding || l.fish || l.frog || l.dragon || l.seat || this.time + EPS < l.spinReadyAt) return;
+    l.spinReadyAt = this.time + SPIN.cooldown;
+    l.punchReadyAt = this.time + PUNCH.cooldown;
+    l.comboStep = 0;
+    l.anim = 'spin';
+    const seen = new Set<number>();
+    for (const w of this.hittableEnemies()) {
+      if (seen.has(w.id) || w.hp <= 0 || Math.hypot(w.x - p.x, w.z - p.z) > SPIN.reach) continue;
+      seen.add(w.id);
+      this.strike(p.name, w, PUNCH.damage * weaponMult(p.weaponLvl ?? 0));
+    }
+  }
+
+  private hittableEnemies(): Wolf[] {
+    const fb = this.towerFinal;
+    return [
+      ...this.wolves, ...this.anchorFoes, ...(this.lakeAnchor ? [this.lakeAnchor] : []),
+      ...[this.marchito, this.elite, this.shield, this.peat, this.rock, this.boss, this.boss2, this.boss3, this.boss4, this.towerFlecha, fb, fb?.core].filter((w): w is Wolf => !!w),
+      ...(fb?.brotes.filter((b) => !b.broken) ?? []),
+    ];
   }
 
   private onChest(p: SavedPlayer, id: number): void {
@@ -1686,21 +1729,23 @@ export class WorldSim {
     this.closeTrade(t, 'Hecho.');
   }
 
-  private onLook(p: SavedPlayer, color: number, hat: number): void {
+  private onLook(p: SavedPlayer, color: number, hat: number, body?: number, skin?: number): void {
     if (!hatUnlocked({ ...p, ending: this.ending }, hat)) return this.tell(p.name, HAT_HINTS[HAT_IDS[hat - 1]!]);
-    p.look = { color, hat };
+    p.look = { color, hat, ...(body !== undefined ? { body } : {}), ...(skin !== undefined ? { skin } : {}) };
   }
 
   /** P4-C: others only hear about a look that isn't the default. */
   private lookField(p: SavedPlayer): { look?: Look } {
     const l = this.lookOf(p);
-    return l.color || l.hat ? { look: l } : {};
+    return l.color || l.hat || l.body || l.skin ? { look: l } : {};
   }
 
   /** P4-C: the saved look, or the default if the save holds something odd. */
   private lookOf(p: SavedPlayer): Look {
     const l = p.look;
-    return l && isLook(l.color, l.hat) && hatUnlocked({ ...p, ending: this.ending }, l.hat) ? { color: l.color, hat: l.hat } : { ...DEFAULT_LOOK };
+    return l && isLook(l.color, l.hat, l.body, l.skin) && hatUnlocked({ ...p, ending: this.ending }, l.hat)
+      ? { color: l.color, hat: l.hat, ...(l.body !== undefined ? { body: l.body } : {}), ...(l.skin !== undefined ? { skin: l.skin } : {}) }
+      : { ...DEFAULT_LOOK };
   }
 
   private onUpgrade(p: SavedPlayer): void {

@@ -6,7 +6,7 @@ import { FOGATA } from './fogatas';
 import { QUARTZ } from './mountain-shrines';
 import { isLook, isSkill, type Look, type SkillId } from './progression';
 
-export const PROTOCOL_VERSION = 65;
+export const PROTOCOL_VERSION = 66;
 
 /** P7-A: a blow that landed near you (hit / killing blow / parry / guarded bite). `hp` = the struck one's HP left, 0–1. */
 export type FxKind = 'hit' | 'kill' | 'parry' | 'block';
@@ -15,7 +15,7 @@ export interface FxView { id: number; dmg: number; kind: FxKind; by?: string; hp
 /** S5-A: the muro de niebla's state in the snapshot. */
 export type FogState = 'closed' | 'ready' | 'open';
 
-export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'roll', 'block', 'bow', 'climb', 'glide', 'slide'] as const;
+export const ANIMS = ['idle', 'walk', 'run', 'jump', 'swim', 'attack', 'attack1', 'attack2', 'attack3', 'spin', 'roll', 'block', 'blockHit', 'parry', 'bow', 'cast', 'hurt', 'climb', 'glide', 'slide', 'cheer', 'seat', 'land'] as const;
 export type Anim = (typeof ANIMS)[number];
 export type WolfAnim = 'idle' | 'walk' | 'run' | 'attack' | 'dead';
 
@@ -106,7 +106,8 @@ export type ClientMsg =
   | { t: 'move'; x: number; y: number; z: number; yaw: number; anim: Anim }
   | { t: 'harvest'; id: number }
   | { t: 'place'; kind: StructureKind; x: number; z: number; rot: number }
-  | { t: 'attack'; id: number }
+  | { t: 'attack'; id: number; n?: 1 | 2 | 3 }
+  | { t: 'spin' }
   | { t: 'eat' }
   | { t: 'respawn' }
   | { t: 'tend'; id: number }
@@ -148,7 +149,7 @@ export type ClientMsg =
   | { t: 'learn'; id: SkillId }
   /** P4-B: at the Heart, 5 bayas, every oficio point back. */
   | { t: 'forget' }
-  | { t: 'look'; color: number; hat: number }
+  | { t: 'look'; color: number; hat: number; body?: number; skin?: number }
   /** T6-A: build your Puesto at (x, z). */
   | { t: 'stallPlace'; x: number; z: number; rot: number }
   /** T6-A: set shelf `shelf` of your Puesto to "n give por m want". */
@@ -241,7 +242,11 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'harvest':
       return id(m.id) ? { t: 'harvest', id: m.id } : null;
     case 'attack':
-      return id(m.id) ? { t: 'attack', id: m.id } : null;
+      return id(m.id) && (m.n === undefined || m.n === 1 || m.n === 2 || m.n === 3)
+        ? { t: 'attack', id: m.id, ...(m.n !== undefined ? { n: m.n } : {}) }
+        : null;
+    case 'spin':
+      return { t: 'spin' };
     case 'tend':
       return id(m.id) ? { t: 'tend', id: m.id } : null;
     case 'place': {
@@ -338,7 +343,9 @@ export function decodeClient(raw: string): ClientMsg | null {
     case 'tut':
       return m.act === 'skip' || m.act === 'repeat' ? { t: 'tut', act: m.act } : null;
     case 'look':
-      return isLook(m.color, m.hat) ? { t: 'look', color: m.color as number, hat: m.hat as number } : null;
+      return isLook(m.color, m.hat, m.body, m.skin)
+        ? { t: 'look', color: m.color as number, hat: m.hat as number, ...(m.body !== undefined ? { body: m.body as number } : {}), ...(m.skin !== undefined ? { skin: m.skin as number } : {}) }
+        : null;
     default:
       return null;
   }

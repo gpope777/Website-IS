@@ -2,6 +2,7 @@ import { weatherAt, weatherLine, wetAt, type Weather } from '../shared/weather';
 import { rankLine, rankUpText, RANK_FLASH } from './rank-ui';
 import { dawnCrossed, precipKind, stormDim, WeatherFx } from './scene/weather';
 import { AmbientLife } from './scene/ambient';
+import { SwingFx } from './scene/swing-fx';
 import { NAMES, costText } from '../shared/names';
 import * as THREE from 'three';
 import { HARVEST, generateResources, type ResourceSpawn } from '../shared/resources';
@@ -31,10 +32,11 @@ import { MOUNT } from '../shared/mount';
 import { SteedMeshes, type SteedPose } from './scene/steeds';
 import { PROTOCOL_VERSION, r2, type Anim, type DungeonView, type FogState, type HeartView, type PillarView, type RaidView, type ServerMsg, type ShrineView, type SteedView, type Structure, type TameView, type WhaleView } from '../shared/protocol';
 import { DAY_LENGTH, dayFraction, HEART, PUNCH, REACH, REVIVE } from '../shared/sim/world-sim';
-import { BOW } from '../shared/sim/combat';
+import { BOW, SPIN } from '../shared/sim/combat';
 import { keepLock, LOCK, pickTarget, yawTo, type AimTarget } from './aim';
 import type { ItemId, StructureKind } from '../shared/items';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
+import { BODIES, HERO_CLIPS, type Body as HeroBody } from './actors/hero-clips';
 import { loadDropIns, loadModels, type DropInKits, type ModelKit } from './actors/models';
 import { dropInClips } from './actors/drop-in-puppet';
 import { paperLight, rimStrength } from './actors/actor-light';
@@ -65,6 +67,9 @@ import { ColliderGrid } from './colliders';
 import { Hud } from './hud';
 import { raidText } from './raid-ui';
 import { clearHold, Keyboard, nextPower, POWER_ICON, readMove, type Action, type InputState, KEY_ACTIONS, type PowerChoice } from './input';
+import { Combo, type Swing } from './combo';
+import { actOptions, OPTION_LABEL, type ActOption, type ActProbe } from './act-options';
+import { Wheel } from './wheel';
 import { InterpBuffer, INTERP_DELAY } from './interp';
 import type { JoinInfo } from './join';
 import { STEEP_TEXT, withEscalera } from '../shared/mountains';
@@ -99,7 +104,7 @@ import { FogataMeshes } from './scene/fogatas';
 import { generateFogatas, type Fogata } from '../shared/fogatas';
 import { generateAmberTrees, generateSwampShrines, lilyPadCrags, type AmberTree } from '../shared/swamp-shrines';
 import { AmberMeshes } from './scene/amber';
-import { COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, type SkillId } from '../shared/progression';
+import { BODY_COUNT, COLORS, HAT_IDS, hasSkill, SKILL_FX, SKILL_IDS, SKIN_COUNT, type Look, type SkillId } from '../shared/progression';
 import { skillsHtml } from './skills-ui';
 import { lookHtml } from './look-ui';
 import { bookHtml } from './book-ui';
@@ -135,7 +140,7 @@ import { GrassField } from './scene/grass';
 import { FRONT_HEALED, HealWaves } from './scene/heal';
 import { TouchControls, isTouchDevice } from './touch';
 import { helpCards, isMenuTab, type MenuTab } from './menu-ui';
-import { deathCause, discover, parseSeen, PILLS, pillsShown, SEEN_KEY, type Seen } from './hud-model';
+import { CONTROLS, controlsDim, deathCause, discover, parseSeen, pillsShown, SEEN_KEY, type Seen } from './hud-model';
 import { nextTrap, TRAP_LABEL, type TrapKind } from './trap';
 
 /** Camera far plane deep in the swamp (fog far is 70 m there). */
@@ -222,6 +227,8 @@ const BURN_MAT = new THREE.MeshBasicMaterial({ color: 0xff8a2a, fog: false });
 export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
+  private readonly swingFx = new SwingFx(this.scene);
+  private lookPreview: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; actor: Actor; body: HeroBody } | null = null;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly rig = new CameraRig();
   /** P7-A: impact — settings, camera shake, floating bars, my hit-stop (camera held until then). */
@@ -254,6 +261,7 @@ export class Game {
   private readonly frozenCam = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
   private readonly input: InputState = { forward: false, back: false, left: false, right: false, sprint: false, jump: false, block: false };
   private readonly hud: Hud;
+  private readonly wheel: Wheel;
   private readonly conn: Connection;
   private readonly keyboard: Keyboard;
   private readonly touch: TouchControls | null;
@@ -406,7 +414,7 @@ export class Game {
   private island: Islet | null = null;
   private jumpWasHeld = false;
   private light: DayLight;
-  private kits: { robot: ModelKit; fox: ModelKit } | null = null;
+  private kits: { heroes: Record<HeroBody, ModelKit>; fox: ModelKit } | null = null;
   /** V2-E: models Gabriel dropped into public/models (spec §9). */
   private dropIns: DropInKits = {};
   private seed: number | null = null;
@@ -522,10 +530,16 @@ export class Game {
   private raid: RaidView | null = null;
   /** Trap the touch pill places (Menú toggle). */
   private trap: TrapKind = 'spikes';
-  private attackUntil = 0;
+  private readonly combo = new Combo(PUNCH.cooldown, 0.8, SPIN.cooldown);
+  private swingAnim: { anim: Anim; until: number } | null = null;
+  private attackDownUsed = false;
+  private mouseAttack = false;
+  private castUntil = 0;
+  private hurtUntil = 0;
   private lockId: number | null = null;
   private rollUntil = 0;
   private rollReadyAt = 0;
+  private touchRollAt = 0;
   private bowUntil = 0;
   private blockSent = false;
   private readonly marker = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 8), new THREE.MeshBasicMaterial({ color: 0xff5a4d }));
@@ -539,7 +553,7 @@ export class Game {
   /** P4-B: my oficios and Rango (from the snapshot). */
   private skills: SkillId[] = [];
   /** P4-C: worn colour/hat and the hats unlocked. */
-  private look = { color: 0, hat: 0 };
+  private look: Look = { color: 0, hat: 0 };
   private hats: number[] = [];
   /** P4-D: the last own snapshot (the Libro reads it). */
   private lastSelf: Extract<ServerMsg, { t: 'snap' }>['self'] | null = null;
@@ -564,20 +578,34 @@ export class Game {
     this.scene.add(this.marker);
 
     this.hud = new Hud(root);
+    this.wheel = new Wheel(root);
     this.hud.onToast = (text) => this.audio.play(toastCue(text));
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.addEventListener(ev, this.onGesture, true);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.hud.onRingTap = () => this.tapRing();
-    this.keyboard = new Keyboard(this.input, (a) => this.onAction(a));
+    this.keyboard = new Keyboard(this.input, (a) => this.onAction(a), () => this.onAttackDown(), () => this.onAttackUp());
     this.touch = isTouchDevice()
       ? new TouchControls(root, this.input, {
           onLook: (dx, dy) => {
             if (!this.hud.overlayOpen) this.rig.look(dx * this.settings.sens, dy * this.settings.sens);
           },
           onAction: (code) => {
+            if (code.startsWith('PowerSet:')) {
+              this.powerKind = code.slice('PowerSet:'.length) as PowerChoice;
+              this.touch?.setPowerIcon(POWER_ICON[this.powerKind]);
+              this.power();
+              return;
+            }
             const a = KEY_ACTIONS[code];
             if (a) this.onAction(a);
           },
+          onAttackDown: () => this.onAttackDown(),
+          onAttackUp: () => this.onAttackUp(),
+          onRollDown: () => { this.touchRollAt = performance.now(); this.input.block = true; },
+          onRollUp: () => { const tap = performance.now() - this.touchRollAt < 200; this.input.block = false; if (tap) this.roll(); },
+          onPowerWheel: () => this.powerWheel(),
+          onBagWheel: () => this.bagWheel(),
+          onTapWorld: (x, y) => this.tapWorld(x, y),
           onPause: () => this.onAction('menu'),
           onBag: () => this.showBag(),
           onPillSeen: (i) => this.guide.ackPill(i),
@@ -596,7 +624,8 @@ export class Game {
     this.hud.setAccess(textScale(this.settings.text), this.settings.marks);
     this.touch?.setPills(pillsShown(this.seen, { heart: false, power: false }));
     if (!this.touch) {
-      this.renderer.domElement.addEventListener('click', this.onClick);
+      this.renderer.domElement.addEventListener('pointerdown', this.onMouseDown);
+      this.renderer.domElement.addEventListener('pointerup', this.onMouseUp);
       document.addEventListener('mousemove', this.onMouse);
     }
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
@@ -719,6 +748,8 @@ export class Game {
     this.keyboard.dispose();
     this.touch?.dispose();
     document.removeEventListener('mousemove', this.onMouse);
+    this.renderer.domElement.removeEventListener('pointerdown', this.onMouseDown);
+    this.renderer.domElement.removeEventListener('pointerup', this.onMouseUp);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     removeEventListener('resize', this.onResize);
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.removeEventListener(ev, this.onGesture, true);
@@ -727,6 +758,8 @@ export class Game {
     this.audio.pause(true);
     if (document.pointerLockElement) document.exitPointerLock();
     this.renderer.dispose();
+    this.lookPreview?.actor.dispose();
+    this.lookPreview?.renderer.dispose();
     this.root.innerHTML = '';
   }
 
@@ -765,6 +798,8 @@ export class Game {
         const a = m.name === this.myName ? this.me : this.others.get(m.name)?.actor;
         if (a instanceof Actor) a.flash(RANK_FLASH);
         if (m.name === this.myName) {
+          this.swingAnim = { anim: 'cheer', until: performance.now() + 1500 };
+          this.me?.play('cheer', { restart: true });
           this.hud.showVision([rankUpText(m.rank)], 3000, false);
           this.audio.play('rango');
         }
@@ -1086,7 +1121,13 @@ export class Game {
     }
     if (!this.kits) return;
     for (const p of m.players) {
-      const r = this.remote(this.others, p.name, () => new Actor(this.kits!.robot, PLAYER_CLIPS, p.name));
+      const body = BODIES[p.look?.body ?? 0] ?? BODIES[0]!;
+      const r = this.remote(this.others, p.name, () => new Actor(this.kits!.heroes[body], PLAYER_CLIPS, p.name, body));
+      if (r.actor instanceof Actor && r.actor.body !== body) {
+        r.actor.dispose();
+        r.actor = new Actor(this.kits.heroes[body], PLAYER_CLIPS, p.name, body);
+        this.scene.add(r.actor.root);
+      }
       r.buf.push({ t: m.time, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       r.anim = p.dead ? 'dead' : p.away ? 'idle' : p.ride || p.seat ? 'idle' : p.anim;
       r.ride = p.ride === 'deer' && !p.dead;
@@ -1099,7 +1140,7 @@ export class Game {
       r.seen = m.time;
       if (r.actor instanceof Actor) {
         r.actor.setCapa(p.capa);
-        r.actor.setLook(p.look?.color ?? 0, p.look?.hat ?? 0);
+        r.actor.setLook(p.look ?? { color: 0, hat: 0 });
       }
     }
     this.cage = m.cage ?? null;
@@ -1459,16 +1500,22 @@ export class Game {
       if (r.knock && w) {
         const from = f.by === this.myName ? this.body : this.others.get(f.by ?? '')?.actor.root.position;
         const d = from ? Math.hypot(w.x - from.x, w.z - from.z) : 0;
-        if (from && d > 0.01) knock = { x: ((w.x - from.x) / d) * IMPACT.knock, z: ((w.z - from.z) / d) * IMPACT.knock };
+        const amount = f.kind === 'kill' ? IMPACT.knock : IMPACT.stagger;
+        if (from && d > 0.01) knock = { x: ((w.x - from.x) / d) * amount, z: ((w.z - from.z) / d) * amount };
       }
       actor?.impact?.({ flash: r.flash ? IMPACT.flash : 0, freeze: r.freeze, knock });
+      if (f.by === this.myName && w && (f.kind === 'hit' || f.kind === 'kill')) this.swingFx.sparks(new THREE.Vector3(w.x, w.y + 0.8, w.z));
+      if (f.kind === 'parry' && this.body) this.swingFx.sparks(new THREE.Vector3(this.body.x, this.body.y + 1, this.body.z), true);
       if (r.bar && f.hp !== undefined) this.hpBars.hit(f.id, f.hp, now);
       this.shake.add(r.shake);
       freeze = Math.max(freeze, r.freeze);
       buzz = Math.max(buzz, r.vibrate);
     }
     const hurt = hurtReaction(m.self.hurt ?? 0);
-    if (hurt.edge > 0) this.me?.impact({ flash: IMPACT.flash * 2, red: true });
+    if (hurt.edge > 0) {
+      this.me?.impact({ flash: IMPACT.flash * 2, red: true });
+      this.hurtUntil = performance.now() + 400;
+    }
     this.shake.add(hurt.shake);
     buzz = Math.max(buzz, hurt.vibrate);
     this.hud.setHurt(hurt.edge, lowHealth(m.self.vitals.health) && !m.self.dead);
@@ -1517,7 +1564,8 @@ export class Game {
     this.touch?.setPills(pills);
     if (this.touch) {
       const on = new Set<string>(tut.hint);
-      this.touch.setHint(on.has('act'), on.has('stick'), PILLS.map((k) => on.has(k)));
+      this.touch.setHint(CONTROLS.map((k) => on.has(k)), on.has('stick'));
+      this.touch.setDim(controlsDim({ power: s.power || s.viento || s.fuego || s.piedra, bow: true, tools: true }));
     }
     this.hud.setTutSkip(!!s.tut);
     if (this.tutStep === 8 && !s.tut) this.guide.taught(TAUGHT_TIPS);
@@ -1774,7 +1822,10 @@ export class Game {
       if (ma) return this.conn.send({ t: 'mount', act: ma.act });
       return this.hud.toast(this.onFish ? 'Aquí es hondo. Acércate a la orilla' : this.hasSteed ? (this.hasStar ? `${NAMES.legendary.charAt(0).toUpperCase()}${NAMES.legendary.slice(1)} no está cerca` : 'Tu ciervo no está cerca') : 'Aún no tienes montura');
     }
-    this.act();
+    if (a === 'act') {
+      this.onAttackDown();
+      this.onAttackUp();
+    }
   }
 
   // ---------------------------------------------------------------- combat
@@ -1848,6 +1899,10 @@ export class Game {
       this.blockSent = this.input.block;
       this.conn.send({ t: 'block', on: this.blockSent });
     }
+    const now = performance.now() / 1000;
+    const buffered = this.combo.tick(now);
+    if (buffered) this.strikeNow(buffered);
+    this.me?.setCharge(this.combo.charge(now));
     const enemies = this.enemies();
     if (this.lockId !== null && !keepLock(this.lockId, b.x, b.z, enemies)) this.lockId = null;
     const locked = this.lockId !== null ? enemies.find((e) => e.id === this.lockId) : undefined;
@@ -1882,11 +1937,59 @@ export class Game {
     }
   };
 
-  /** One button does everything: punch the nearest wolf, else gather the nearest resource. */
-  private act(): void {
+  private actProbe(): ActProbe {
+    const b = this.body!;
+    const coast = this.coastAct();
+    const swamp = this.swampAct();
+    return {
+      fallen: this.fallenMate(),
+      shrinePart: this.shrinePart(),
+      dungeon: dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending),
+      coast, swamp, quartz: this.quartzAct(), fogata: this.fogataAct(), rescue: !!this.rescueAct(), pillar: this.pillarAct(), guardian: !!this.guardianAct(),
+      mount: this.mountAct(), tend: this.canTend(), upgrade: coast?.t === 'upgrade', capa: swamp?.t === 'capa',
+      stall: !!stallAction(b, [...this.stalls.values()], this.myName),
+    };
+  }
+
+  private powerWheel(): { icon: string; text: string; code: string }[] {
+    const out: { icon: string; text: string; code: string }[] = [];
+    if (this.hasPower) out.push({ icon: '🌿', text: NAMES.powerVine, code: 'PowerSet:enredadera' });
+    if (this.hasWind) out.push({ icon: '🌬️', text: NAMES.powerWind, code: 'PowerSet:viento' });
+    if (this.hasFire) out.push({ icon: '🔥', text: NAMES.powerFire, code: 'PowerSet:fuego' });
+    if (this.hasStone) out.push({ icon: '🪨', text: NAMES.powerStone, code: 'PowerSet:piedra' });
+    out.push({ icon: '🏹', text: 'Arco', code: 'KeyR' });
+    return out;
+  }
+
+  private bagWheel(): { icon: string; text: string; code: string }[] {
+    const shown = pillsShown(this.seen, { heart: !!this.heart, power: this.hasPower || this.hasWind || this.hasFire || this.hasStone });
+    const all = [
+      { icon: '🫐', text: 'Comer', code: 'Digit1' }, { icon: '🔥', text: 'Fogata', code: 'KeyB' },
+      { icon: '🧱', text: 'Muro', code: 'KeyV' }, { icon: '🌳', text: NAMES.heart, code: 'KeyG' },
+      { icon: '🗡️', text: 'Trampa', code: 'TouchTrap' },
+    ];
+    return all.filter((_, i) => shown[i]);
+  }
+
+  private tapWorld(x: number, y: number): boolean {
+    let best: { id: number; d: number } | null = null;
+    const p = new THREE.Vector3();
+    for (const [id, remote] of this.wolves) {
+      p.copy(remote.actor.root.position).project(this.camera);
+      const sx = (p.x * 0.5 + 0.5) * innerWidth;
+      const sy = (-p.y * 0.5 + 0.5) * innerHeight;
+      const d = Math.hypot(sx - x, sy - y);
+      if (p.z >= -1 && p.z <= 1 && d < 56 && (!best || d < best.d)) best = { id, d };
+    }
+    this.lockId = best && best.id !== this.lockId ? best.id : null;
+    return !!best;
+  }
+
+  /** Context half of A/E/F. Returns true when the press was consumed; combat runs otherwise. */
+  private act(): boolean {
     const b = this.body!;
     const ma = this.mountAct();
-    if (ma?.act === 1) return this.tapRing();
+    if (ma?.act === 1) { this.tapRing(); return true; }
     if (this.onDragon && !b.onGround) {
       // S5-D: in the air the attack is a claw at a rayo, and nothing else.
       const foes = [...this.rayoIds].flatMap((id) => {
@@ -1894,63 +1997,113 @@ export class Game {
         return p ? [{ id, kind: 'rayo', x: p.x, y: p.y, z: p.z }] : [];
       });
       const id = clawPick({ x: b.x, y: b.y, z: b.z }, foes);
-      this.attackUntil = performance.now() + 450;
-      if (id !== null) return this.conn.send({ t: 'attack', id });
-      return this.hud.toast('Zarpazo al aire. Solo alcanzas a los rayos');
+      this.swingAnim = { anim: 'attack1', until: performance.now() + 450 };
+      this.me?.play('attack1', { restart: true });
+      if (id !== null) this.conn.send({ t: 'attack', id });
+      else this.hud.toast('Zarpazo al aire. Solo alcanzas a los rayos');
+      return true;
     }
-    const fallen = this.fallenMate();
-    if (fallen) return this.conn.send({ t: 'revive', name: fallen });
-    const sp = this.shrinePart();
-    if (sp) return this.conn.send({ t: 'shrine', id: sp.id, part: sp.part });
-    const da = dungeonAction(b, this.entrance, this.dungeon, this.hasPower, this.myName) ?? coastDungeonAction(b, this.coastDoor, this.dungeon.coast, this.hasWind) ?? swampDungeonAction(b, this.swampDoor, this.dungeon.swamp, this.hasFire) ?? mountainDungeonAction(b, this.mountainDoor, this.dungeon.mountain, this.hasStone) ?? towerDungeonAction(b, this.towerDoor, this.towerOpen, this.dungeon.tower.final, this.ending);
-    if (da) return this.conn.send({ t: 'dungeon', act: da.act });
-    const ca = this.coastAct();
-    if (ca?.t === 'chest') return this.conn.send({ t: 'chest', id: ca.id });
-    const sa = this.swampAct();
-    if (sa?.t === 'amber') return this.conn.send({ t: 'amber', id: sa.id });
-    const qa = this.quartzAct();
-    if (qa) return this.conn.send({ t: 'quartz', id: qa.id });
-    const fa = this.fogataAct();
-    if (fa?.t === 'fogata') return this.conn.send({ t: 'fogata', id: fa.id });
-    if (fa?.t === 'travel') return this.conn.send({ t: 'travel', to: 'heart' });
-    if (fa?.t === 'hint') return this.hud.toast(fa.label);
-    if (this.rescueAct()) return this.conn.send({ t: 'rescue' });
-    const pa = this.pillarAct();
-    if (pa) return this.conn.send({ t: 'pillar', id: pa.id });
-    if (this.guardianAct()) return this.hud.toast(guardianLine(this.guardianSays++));
-    this.attackUntil = performance.now() + 450;
-    const locked = this.lockId !== null ? this.enemies().find((e) => e.id === this.lockId) : undefined;
-    if (locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach) {
-      this.face(locked);
-      return this.conn.send({ t: 'attack', id: locked.id });
+    const probe = this.actProbe();
+    const options = actOptions(probe);
+    const priority = options.find((o) => o.k === 'revive' || o.k === 'shrine' || o.k === 'dungeon');
+    if (priority) { this.runOption(priority); return true; }
+    if (probe.fogata?.t === 'hint') { this.hud.toast(probe.fogata.label); return true; }
+    if (this.enemies().some((e) => Math.hypot(e.x - b.x, e.z - b.z) <= PUNCH.reach)) return false;
+    if (options.length === 1) { this.runOption(options[0]!); return true; }
+    if (options.length > 1) {
+      this.wheel.open(innerWidth / 2, innerHeight / 2, options.map((o) => OPTION_LABEL[o.k]), (i) => { if (i !== null) this.runOption(options[i]!); });
+      return true;
     }
-    let best: { id: number; d: number } | null = null;
-    for (const e of this.enemies()) {
-      const d = Math.hypot(e.x - b.x, e.z - b.z);
-      if (d <= PUNCH.reach && (!best || d < best.d)) best = { id: e.id, d };
+    return false;
+  }
+
+  private runOption(option: ActOption): void {
+    switch (option.k) {
+      case 'revive': return this.conn.send({ t: 'revive', name: option.name });
+      case 'shrine': return this.conn.send({ t: 'shrine', id: option.id, part: option.part });
+      case 'dungeon': return this.conn.send({ t: 'dungeon', act: option.act });
+      case 'chest': return this.conn.send({ t: 'chest', id: option.id });
+      case 'amber': return this.conn.send({ t: 'amber', id: option.id });
+      case 'quartz': return this.conn.send({ t: 'quartz', id: option.id });
+      case 'fogata': return this.conn.send({ t: 'fogata', id: option.id });
+      case 'travel': return this.conn.send({ t: 'travel', to: 'heart' });
+      case 'rescue': return this.conn.send({ t: 'rescue' });
+      case 'pillar': return this.conn.send({ t: 'pillar', id: option.id });
+      case 'guardian': this.hud.toast(guardianLine(this.guardianSays++)); return;
+      case 'mount': return this.conn.send({ t: 'mount', act: option.act });
+      case 'tend': return this.conn.send({ t: 'tend', id: this.heart!.id });
+      case 'upgrade': return this.conn.send({ t: 'upgrade' });
+      case 'capa': return this.conn.send({ t: 'capa' });
+      case 'stall': {
+        const st = this.body && stallAction(this.body, [...this.stalls.values()], this.myName);
+        if (st) this.showStall(st.s.id);
+      }
     }
-    if (best) return this.conn.send({ t: 'attack', id: best.id });
-    if (ma) return this.conn.send({ t: 'mount', act: ma.act });
-    if (this.canTend()) return this.conn.send({ t: 'tend', id: this.heart!.id });
-    if (ca?.t === 'upgrade') return this.conn.send({ t: 'upgrade' });
-    if (sa?.t === 'capa') return this.conn.send({ t: 'capa' });
-    const st = stallAction(b, [...this.stalls.values()], this.myName);
-    if (st) {
-      this.releaseInputs();
-      if (document.pointerLockElement) document.exitPointerLock();
-      return this.showStall(st.s.id);
-    }
+  }
+
+  /** Actions that have lower priority than a melee target, matching the old A-button order. */
+  private actFallback(): boolean {
+    const b = this.body!;
     if (merchantAction(b, this.merchantSpot)) {
       this.releaseInputs();
       if (document.pointerLockElement) document.exitPointerLock();
       this.stallOpen = null;
-      return this.showMerchant();
+      this.showMerchant();
+      return true;
     }
     const res = this.nearestResource();
-    if (res) return this.conn.send({ t: 'harvest', id: res.id });
+    if (res) { this.conn.send({ t: 'harvest', id: res.id }); return true; }
     // T6-C: nothing else under A: Cambiar with the nearest player.
     const to = tradeTarget(b, [...this.others].map(([name, r]) => ({ name, x: r.actor.root.position.x, z: r.actor.root.position.z, down: r.anim === 'dead' })));
-    if (to && !this.trade) this.conn.send({ t: 'tradeAsk', to });
+    if (to && !this.trade) { this.conn.send({ t: 'tradeAsk', to }); return true; }
+    return false;
+  }
+
+  private onAttackDown(): void {
+    if (this.dead || !this.body || this.hud.menuOpen) return;
+    this.attackDownUsed = this.act();
+    if (!this.attackDownUsed) this.combo.press(performance.now() / 1000);
+  }
+
+  private onAttackUp(): void {
+    if (this.attackDownUsed) {
+      this.attackDownUsed = false;
+      return;
+    }
+    const swing = this.combo.release(performance.now() / 1000);
+    if (this.dead || !this.body || this.hud.menuOpen) return;
+    if (swing) this.strikeNow(swing);
+  }
+
+  private strikeNow(swing: Swing): void {
+    const now = performance.now();
+    const anim: Anim = swing.kind === 'spin' ? 'spin' : `attack${swing.step}`;
+    const clip = HERO_CLIPS[anim]?.clip;
+    const seconds = this.kits?.heroes.caballero.clips.find((c) => c.name === clip)?.duration ?? 0.6;
+    this.swingAnim = { anim, until: now + seconds * 1000 };
+    this.me?.play(anim, { restart: true });
+    this.swingFx.startTrail(this.me?.hand() ?? null, swing.kind === 'swing' && swing.step < 3 ? 0xffffff : 0xffd24a, seconds);
+    if (swing.kind === 'spin') {
+      this.conn.send({ t: 'spin' });
+      return;
+    }
+    const b = this.body!;
+    const enemies = this.enemies();
+    const locked = this.lockId !== null ? enemies.find((e) => e.id === this.lockId) : undefined;
+    let target = locked && Math.hypot(locked.x - b.x, locked.z - b.z) <= PUNCH.reach ? locked : undefined;
+    if (!target) {
+      let distance = Infinity;
+      for (const enemy of enemies) {
+        const d = Math.hypot(enemy.x - b.x, enemy.z - b.z);
+        if (d <= PUNCH.reach && d < distance) { target = enemy; distance = d; }
+      }
+    }
+    if (!target) {
+      this.actFallback();
+      return;
+    }
+    this.face(target);
+    this.conn.send({ t: 'attack', id: target.id, n: swing.step });
   }
 
   /** T6-C: the trade window follows the server; null closes it. */
@@ -2107,15 +2260,48 @@ export class Game {
 
   /** P4-C: the Aspecto panel. Taps apply at once (the server re-checks the hat) and the panel redraws. */
   private showLook(): void {
-    const send = (color: number, hat: number) => {
-      this.conn.send({ t: 'look', color, hat });
-      if (hat === 0 || this.hats.includes(hat)) this.look = { color, hat };
+    const send = (next: Look) => {
+      this.conn.send({ t: 'look', color: next.color, hat: next.hat, body: next.body ?? 0, skin: next.skin ?? 0 });
+      if (next.hat === 0 || this.hats.includes(next.hat)) this.look = next;
       this.showLook();
     };
     const actions: Record<string, () => void> = { back: () => this.openMenu() };
-    for (let i = 0; i < COLORS.length; i++) actions[`color-${i}`] = () => send(i, this.look.hat);
-    for (let h = 0; h <= HAT_IDS.length; h++) actions[`hat-${h}`] = () => send(this.look.color, h);
+    for (let i = 0; i < COLORS.length; i++) actions[`color-${i}`] = () => send({ ...this.look, color: i });
+    for (let h = 0; h <= HAT_IDS.length; h++) actions[`hat-${h}`] = () => send({ ...this.look, hat: h });
+    for (let i = 0; i < BODY_COUNT; i++) actions[`body-${i}`] = () => send({ ...this.look, body: i });
+    for (let i = 0; i < SKIN_COUNT; i++) actions[`skin-${i}`] = () => send({ ...this.look, skin: i });
     this.hud.showSkills(lookHtml(this.look, this.hats), actions);
+    this.showLookPreview();
+  }
+
+  /** A tiny isolated renderer keeps the preview visible above the opaque menu DOM. Decidido por Claude - revisar. */
+  private showLookPreview(): void {
+    if (!this.kits) return;
+    const slot = this.root.querySelector<HTMLElement>('.look-preview');
+    if (!slot) return;
+    const body = BODIES[this.look.body ?? 0] ?? BODIES[0]!;
+    if (!this.lookPreview || this.lookPreview.body !== body) {
+      this.lookPreview?.actor.dispose();
+      this.lookPreview?.renderer.dispose();
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(1.5, devicePixelRatio));
+      renderer.setSize(112, 150, false);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x28402f, 2.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+      sun.position.set(2, 3, 3);
+      scene.add(sun);
+      const camera = new THREE.PerspectiveCamera(32, 112 / 150, 0.1, 10);
+      camera.position.set(0, 1.15, 3.2);
+      camera.lookAt(0, 0.95, 0);
+      const actor = new Actor(this.kits.heroes[body], PLAYER_CLIPS, undefined, body);
+      actor.play('idle');
+      scene.add(actor.root);
+      this.lookPreview = { renderer, scene, camera, actor, body };
+    }
+    this.lookPreview.actor.setLook(this.look);
+    slot.replaceChildren(this.lookPreview.renderer.domElement);
   }
 
   /** P4-B: the Oficios panel; tapping a oficio re-draws it with its line. The server re-checks everything. */
@@ -2171,6 +2357,7 @@ export class Game {
 
   private power(): void {
     const b = this.body!;
+    this.castUntil = performance.now() + 600;
     if (this.powerKind === 'piedra') {
       // Aim ahead; the server snaps the pillar 4 m out on its 2 m grid.
       const x = b.x + Math.sin(b.facing) * PIEDRA.ahead;
@@ -2326,10 +2513,12 @@ export class Game {
     this.lastRes = res;
     let anim: Anim | 'dead' = animFor(res, b);
     if (blocking) anim = 'block';
-    if (now < this.attackUntil) anim = 'attack';
+    if (this.swingAnim && now < this.swingAnim.until) anim = this.swingAnim.anim;
+    if (now < this.castUntil) anim = 'cast';
+    if (now < this.hurtUntil && !blocking && !rolling) anim = 'hurt';
     if (now < this.bowUntil - BOW.cooldown * 1000 + 500) anim = 'bow';
     if (rolling) anim = 'roll';
-    if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.onDragon || this.whaleSeat !== null) anim = 'idle';
+    if (this.riding || this.seat || this.tame || this.onFish || this.onFrog || this.onDragon || this.whaleSeat !== null) anim = 'seat';
     if (this.dead) anim = 'dead';
     this.stepCombat(dt);
     if (stop) {
@@ -2352,8 +2541,10 @@ export class Game {
       }
     }
 
-    if (!this.me && this.kits) {
-      this.me = new Actor(this.kits.robot, PLAYER_CLIPS);
+    const myBody = BODIES[this.look.body ?? 0] ?? BODIES[0]!;
+    if (this.kits && (!this.me || this.me.body !== myBody)) {
+      this.me?.dispose();
+      this.me = new Actor(this.kits.heroes[myBody], PLAYER_CLIPS, undefined, myBody);
       this.scene.add(this.me.root);
     }
     const wild = this.steeds.find((s) => s.owner === null);
@@ -2362,7 +2553,7 @@ export class Game {
       else this.me.setPose(b.x, b.y + (this.whaleSeat !== null ? WHALE.height : this.riding || this.seat ? MOUNT.height : this.onFish || this.tame?.beast === 'fish' ? FISH.height : this.onFrog || this.tame?.beast === 'frog' ? FROG.height : this.onDragon ? DRAGON.height : 0), b.z, b.facing);
       this.me.play(anim);
       this.me.setCapa(this.capa);
-      this.me.setLook(this.look.color, this.look.hat);
+      this.me.setLook(this.look);
       this.me.setTorch(this.torch);
       this.me.update(dt);
       this.me.root.visible = this.rig.mode === 'third' && !this.perfStop?.hideMe;
@@ -2437,6 +2628,12 @@ export class Game {
     this.towerMeshes?.animate(this.serverTime, this.stoneStructs.filter((s) => s.kind === 'pillar'));
     this.flameFx.update(dt);
     this.gustFx.update(dt);
+    this.swingFx.update(dt);
+    if (this.lookPreview?.renderer.domElement.isConnected) {
+      this.lookPreview.actor.root.rotation.y += dt * 0.6;
+      this.lookPreview.actor.update(dt);
+      this.lookPreview.renderer.render(this.lookPreview.scene, this.lookPreview.camera);
+    }
     this.rig.far = this.onDragon || this.tame?.beast === 'dragon'; // flying: pull the camera back (no extra draw distance)
     this.rig.apply(this.camera, b, terrain, this.colliders.near(b.x, b.z), inAnyDungeon(b.x, b.z));
     if (stop?.cam) {
@@ -2676,7 +2873,19 @@ export class Game {
   }
 
   private updatePrompt(): void {
-    if (this.touch || this.dead) return this.hud.setPrompt(null);
+    if (this.touch) {
+      this.hud.setPrompt(null);
+      if (this.dead || !this.body) return this.touch.setActIcon(null);
+      const b = this.body;
+      const enemyNear = [...this.wolves.values()].some((w) => {
+        const p = w.actor.root.position;
+        return Math.hypot(p.x - b.x, p.z - b.z) < 3.5;
+      });
+      const options = actOptions(this.actProbe());
+      this.touch.setActIcon(enemyNear ? null : options.length > 1 ? '⋯' : options.length === 1 ? OPTION_LABEL[options[0]!.k].icon : null);
+      return;
+    }
+    if (this.dead) return this.hud.setPrompt(null);
     const fallen = this.body && this.fallenMate();
     if (fallen) return this.hud.setPrompt(`E · Levantar a ${fallen}`);
     const ma = this.mountAct();
@@ -2718,13 +2927,21 @@ export class Game {
 
   // ---------------------------------------------------------------- desktop mouse
 
-  private onClick = (): void => {
+  private onMouseDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
     if (this.hud.menuOpen) return;
     if (document.pointerLockElement !== this.renderer.domElement) {
       void this.renderer.domElement.requestPointerLock();
       return;
     }
-    this.onAction('act');
+    this.mouseAttack = true;
+    this.onAttackDown();
+  };
+
+  private onMouseUp = (e: PointerEvent): void => {
+    if (e.button !== 0 || !this.mouseAttack) return;
+    this.mouseAttack = false;
+    this.onAttackUp();
   };
 
   private onMouse = (e: MouseEvent): void => {

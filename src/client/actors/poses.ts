@@ -1,11 +1,12 @@
 /**
- * V2-E: the robot has no roll/block/bow/climb/glide/slide clips (spec §6.4). Each is the closest clip plus
- * bone offsets (Euler X, Y, Z in the bone's own frame, multiplied after the mixer) and a whole-model tilt.
- * Numbers live in one table so they can be tuned from the harness PNGs (`npm run perf -- --vitrina`).
+ * KayKit has no climb/glide/slide clips (spec §1.1: roll/block/bow now play real clips instead). Each of the
+ * three remaining anims is the closest clip plus bone offsets (Euler X, Y, Z in the bone's own frame, multiplied
+ * after the mixer) and a whole-model tilt. Numbers live in one table so they can be tuned from the harness PNGs
+ * (`npm run perf -- --vitrina`).
  */
 export type V3 = [number, number, number];
-export type PoseAnim = 'roll' | 'block' | 'bow' | 'climb' | 'glide' | 'slide';
-export const POSE_ANIMS: readonly PoseAnim[] = ['roll', 'block', 'bow', 'climb', 'glide', 'slide'];
+export type PoseAnim = 'climb' | 'glide' | 'slide';
+export const POSE_ANIMS: readonly PoseAnim[] = ['climb', 'glide', 'slide'];
 
 export interface BonePose {
   bones: Record<string, V3>;
@@ -15,62 +16,33 @@ export interface BonePose {
   rootY: number;
 }
 
-/** How long a roll takes (s): one full turn. */
-export const ROLL_S = 0.45;
-/** The bow's right hand opens this long when the shot goes (the anim restarting). */
-export const BOW_RELEASE_S = 0.15;
-
-// Offsets solved against robot.glb (three.js bone names: dots dropped) so the hands land where each pose wants them
-// (block: crossed before the chest; bow: left arm straight ahead, right hand by the face; climb: one hand high, the
-// other at the shoulder; glide: arms out; slide: arms past the head; roll: hands at the knees). Legs: −X = thigh forward,
-// +X on the shin = knee bent. Torso/Head: +X = lean forward.
+// Offsets solved against robot.glb, bone names carried over to KayKit's runtime spellings — three.js's GLTFLoader
+// runs every node name through PropertyBinding.sanitizeNodeName, which drops '.', so the source skeleton's
+// `upperarm.l` etc. become `upperarml` at runtime (verified against public/models/heroe-caballero.glb in
+// hero-clips.test.ts). Values solved for the robot; re-tune with the vitrina in Task 9 — Decidido por Claude —
+// revisar. Legs: −X = thigh forward, +X on the shin = knee bent. Chest/head: +X = lean forward.
 type Bones = Record<string, V3>;
-const ROLL: Bones = {
-  UpperArmL: [0.01, -0.22, 1.17],
-  LowerArmL: [-0.5, -0.71, 0.59],
-  UpperArmR: [0.82, -0.19, -0.91],
-  LowerArmR: [-0.68, -0.61, -0.42],
-  UpperLegL: [-1.3, 0, 0],
-  UpperLegR: [-1.3, 0, 0],
-  LowerLegL: [1.8, 0, 0],
-  LowerLegR: [1.8, 0, 0],
-  Head: [0.5, 0, 0],
-};
-const BLOCK: Bones = {
-  Torso: [0.17, 0, 0],
-  UpperArmL: [-0.11, 1.2, -0.13],
-  LowerArmL: [1.27, 0.48, -0.02],
-  UpperArmR: [-0.35, -0.83, -0.41],
-  LowerArmR: [1.59, 0.05, 0.2],
-};
-const BOW: Bones = {
-  // P7-E: re-solved so the elbow sits at shoulder height and the hand ~0.3 m above it (it aimed low).
-  UpperArmL: [0.6, -0.61, -1.2],
-  LowerArmL: [-0.11, -0.02, -0.56],
-  UpperArmR: [0.34, -0.07, -0.56],
-  LowerArmR: [2.91, -0.91, 0.43],
-};
-const CLIMB_A: Bones = { UpperArmL: [-1.71, 0.92, -0.73], LowerArmL: [0.68, 0.26, -1.01], UpperArmR: [-0.99, -0.63, -0.12], LowerArmR: [1.7, 0.05, 0.24] };
-const CLIMB_B: Bones = { UpperArmL: [-0.02, -0.03, -0.77], LowerArmL: [1.37, 0.17, -0.22], UpperArmR: [-0.62, -0.3, 1.67], LowerArmR: [0.67, -0.04, 0.13] };
+const CLIMB_A: Bones = { upperarml: [-1.71, 0.92, -0.73], lowerarml: [0.68, 0.26, -1.01], upperarmr: [-0.99, -0.63, -0.12], lowerarmr: [1.7, 0.05, 0.24] };
+const CLIMB_B: Bones = { upperarml: [-0.02, -0.03, -0.77], lowerarml: [1.37, 0.17, -0.22], upperarmr: [-0.62, -0.3, 1.67], lowerarmr: [0.67, -0.04, 0.13] };
 const GLIDE: Bones = {
-  UpperArmL: [0.97, -0.3, -0.28],
-  LowerArmL: [-1.89, -0.08, 0.28],
-  UpperArmR: [1.61, -0.75, -0.44],
-  LowerArmR: [0.84, 0.04, 0],
-  UpperLegL: [0.35, 0, 0],
-  UpperLegR: [0.35, 0, 0],
-  LowerLegL: [0.2, 0, 0],
-  LowerLegR: [0.2, 0, 0],
+  upperarml: [0.97, -0.3, -0.28],
+  lowerarml: [-1.89, -0.08, 0.28],
+  upperarmr: [1.61, -0.75, -0.44],
+  lowerarmr: [0.84, 0.04, 0],
+  upperlegl: [0.35, 0, 0],
+  upperlegr: [0.35, 0, 0],
+  lowerlegl: [0.2, 0, 0],
+  lowerlegr: [0.2, 0, 0],
 };
 // Slide: both hands past the head = climb's raised arm on each side (the direct solve on Jump could not reach).
 const SLIDE: Bones = {
-  UpperArmL: [-1.71, 0.92, -0.73],
-  LowerArmL: [0.68, 0.26, -1.01],
-  UpperArmR: [-0.62, -0.3, 1.67],
-  LowerArmR: [0.67, -0.04, 0.13],
-  UpperLegL: [0.2, 0, 0],
-  UpperLegR: [0.2, 0, 0],
-  Head: [-0.9, 0, 0],
+  upperarml: [-1.71, 0.92, -0.73],
+  lowerarml: [0.68, 0.26, -1.01],
+  upperarmr: [-0.62, -0.3, 1.67],
+  lowerarmr: [0.67, -0.04, 0.13],
+  upperlegl: [0.2, 0, 0],
+  upperlegr: [0.2, 0, 0],
+  head: [-0.9, 0, 0],
 };
 
 function mix(a: Bones, b: Bones, k: number): Bones {
@@ -86,18 +58,9 @@ function mix(a: Bones, b: Bones, k: number): Bones {
 /** The bone offsets for `anim` at `t` s since it started, or null when the clip plays as is. */
 export function poseFor(anim: string, t: number): BonePose | null {
   switch (anim) {
-    case 'roll': {
-      const k = Math.min(1, Math.max(0, t / ROLL_S));
-      return { bones: k < 1 ? ROLL : {}, rootX: k < 1 ? k * Math.PI * 2 : 0, rootY: k < 1 ? Math.sin(k * Math.PI) * 0.25 : 0 };
-    }
-    case 'block':
-      return { bones: BLOCK, rootX: 0, rootY: 0 };
-    case 'bow':
-      // The right hand opens (half-way back to the clip) for a moment when the shot goes.
-      return { bones: t < BOW_RELEASE_S ? mix(BOW, { UpperArmL: BOW.UpperArmL!, LowerArmL: BOW.LowerArmL! }, 0.5) : BOW, rootX: 0, rootY: 0 };
     case 'climb': {
       const bones = mix(CLIMB_A, CLIMB_B, (Math.sin(t * 5) + 1) / 2);
-      bones.Torso = [0.44, 0, 0];
+      bones.chest = [0.44, 0, 0];
       return { bones, rootX: 0, rootY: 0 };
     }
     case 'glide':

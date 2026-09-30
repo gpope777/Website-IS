@@ -1,6 +1,7 @@
 /** V2-E: a client-only showcase for the perf harness (`npm run perf -- --vitrina`): nothing here is sent or saved. */
 import * as THREE from 'three';
 import { Actor, PLAYER_CLIPS, WOLF_CLIPS } from './actors/actor';
+import type { Body as HeroBody } from './actors/hero-clips';
 import type { ModelKit } from './actors/models';
 import { PaperActor } from './actors/paper';
 import { FishMeshes } from './scene/fish';
@@ -11,7 +12,7 @@ import { WhaleMesh } from './scene/whale';
 export interface VitrinaEnv {
   scene: THREE.Scene;
   camera: THREE.Camera;
-  kits: { robot: ModelKit; fox: ModelKit };
+  kits: { heroes: Record<HeroBody, ModelKit>; fox: ModelKit };
   heightAt(x: number, z: number): number;
   /** Extra per-kind setup for fox enemies (colour, scale, boards), from the game. */
   dressEnemy?(a: Actor, kind: string, x: number, z: number): void;
@@ -92,7 +93,7 @@ export class Vitrina {
       });
     } else if (what.startsWith('pose:')) {
       const anim = what.slice(5);
-      const a = new Actor(this.env.kits.robot, PLAYER_CLIPS);
+      const a = new Actor(this.env.kits.heroes.caballero, PLAYER_CLIPS);
       const at = P(0, -3.2);
       a.setPose(at.x, at.y + (anim === 'glide' ? 0.5 : 0), at.z, Y(Math.PI / 2));
       a.play(anim);

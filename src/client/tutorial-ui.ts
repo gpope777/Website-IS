@@ -2,10 +2,9 @@
 import type { Inventory } from '../shared/items';
 import { TUT, tutLine, tutPills } from '../shared/tutorial';
 import type { TipId } from './guide-model';
-import { PILLS } from './hud-model';
 
 /** A control that glows: the A button, the stick, or a pill by its P7-C name. */
-export type HintTarget = 'act' | 'stick' | (typeof PILLS)[number];
+export type HintTarget = 'attack' | 'jump' | 'roll' | 'power' | 'bag' | 'stick';
 
 export interface TutHudView {
   tut: { step: number; wait?: boolean } | null;
@@ -37,17 +36,17 @@ function hintFor(step: number, v: TutHudView): HintTarget[] {
     case 1:
       return ['stick'];
     case 2:
-      return (v.inv.berries ?? 0) > 0 ? ['eat'] : ['act'];
+      return (v.inv.berries ?? 0) > 0 ? ['bag'] : ['attack'];
     case 3:
-      return ['act'];
+      return ['attack'];
     case 4:
-      return ['campfire'];
+      return ['bag'];
     case 5:
-      return v.heart ? [] : ['heart'];
+      return v.heart ? [] : ['bag'];
     case 6:
-      return ['roll', 'block'];
+      return ['roll'];
     case 7:
-      return ['lock', 'bow'];
+      return ['power'];
     default:
       return [];
   }

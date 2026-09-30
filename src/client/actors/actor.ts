@@ -2,8 +2,11 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import type { ModelKit } from './models';
 import { makeHat } from './hats';
-import { COLORS } from '../../shared/progression';
+import { COLORS, type Look } from '../../shared/progression';
 import { poseFor } from './poses';
+import { BODIES, partVisible, type Body } from './hero-clips';
+import { ATLAS_GRID, HERO_PALETTE } from './hero-palette';
+import { heroTextureKey, recolor, SKINS } from './hero-look';
 import type { EnemyLook } from './enemy-look';
 import type { ImpactOpts } from './paper';
 import { patchRecolor, patchRim, patchSway } from '../scene/patches';
@@ -16,22 +19,8 @@ export interface ClipDef {
   at?: number;
 }
 
-export const PLAYER_CLIPS: Record<string, ClipDef> = {
-  idle: { clip: 'Idle' },
-  walk: { clip: 'Walking' },
-  run: { clip: 'Running' },
-  jump: { clip: 'Jump', once: true },
-  swim: { clip: 'Walking', speed: 0.5 },
-  attack: { clip: 'Punch', once: true },
-  // V2-E: the robot kit has no roll/guard/bow/climb/glide/slide clips: the closest clip + bone poses (poses.ts).
-  roll: { clip: 'Jump', at: 0.35 },
-  block: { clip: 'Idle' },
-  bow: { clip: 'Idle' },
-  climb: { clip: 'Walking', speed: 0.5 },
-  glide: { clip: 'Jump', at: 0.35 },
-  slide: { clip: 'Jump', at: 0.35 },
-  dead: { clip: 'Death', once: true },
-};
+/** Task 2: the hero (KayKit) replaces the robot; `PLAYER_CLIPS` keeps its name for `game.ts`/`vitrina.ts`. */
+export { HERO_CLIPS as PLAYER_CLIPS } from './hero-clips';
 
 export const WOLF_CLIPS: Record<string, ClipDef> = {
   idle: { clip: 'Survey' },
@@ -45,6 +34,26 @@ export const WOLF_CLIPS: Record<string, ClipDef> = {
 const HAT_SIZE = 2;
 const HAT_LIFT = 1.3;
 
+/**
+ * Review fix (Task 2): forces `next` — an action `play()` found already playing (a restart, or a same-clip
+ * alias) — back to a clean, full-weight, running state, and fully stops whatever it was still crossfading
+ * from. `AnimationAction.reset()` alone is not enough: it cancels the fade schedule (`stopFading()`) but
+ * leaves `weight`/`_effectiveWeight` at whatever the in-flight crossfade had reached, and never touches the
+ * other action — so a same-clip restart mid-fade (rapid repeated attack taps, Task 4) would otherwise leave
+ * the old pose blended in for the rest of its already-scheduled ~0.2 s fade-out instead of resetting cleanly.
+ * Exported (rather than kept private) so it can be unit-tested directly against real `THREE.AnimationAction`s
+ * without needing a full `Actor`/GLTF model.
+ */
+export function settleRestartedAction(next: THREE.AnimationAction, fadingFrom: THREE.AnimationAction | null): void {
+  next.stopFading();
+  next.setEffectiveWeight(1);
+  next.enabled = true;
+  if (fadingFrom && fadingFrom !== next) {
+    fadingFrom.stop();
+    fadingFrom.setEffectiveWeight(0);
+  }
+}
+
 /** An animated, independently skinned copy of a model kit, with an optional floating name tag. */
 export class Actor {
   /** V2-B: a dark disc under the feet when the tier has no shadow map (set by the game before making actors). */
@@ -56,12 +65,20 @@ export class Actor {
   private readonly actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
   private currentName = '';
+  /** The action `current` is still crossfading out of, if any (review fix: see `settleRestartedAction`). */
+  private fadingFrom: THREE.AnimationAction | null = null;
 
-  constructor(kit: ModelKit, private readonly clips: Record<string, ClipDef>, label?: string) {
+  /** Task 2: which KayKit body this actor wears, or null for the robot/fox/wolf kits. */
+  readonly body: Body | null;
+
+  constructor(kit: ModelKit, private readonly clips: Record<string, ClipDef>, label?: string, body?: Body) {
+    this.body = body ?? null;
     const model = SkeletonUtils.clone(kit.scene);
     model.scale.setScalar(kit.scale);
     model.rotation.y = kit.yawOffset;
     model.traverse((o) => {
+      // R3: parts are separate meshes/groups (weapons, shields, helmets); hide the ones this body doesn't show.
+      if (body && o.name) o.visible = partVisible(body, o.name, 0);
       if (!(o as THREE.Mesh).isMesh) return;
       o.castShadow = true;
       const mat = (o as THREE.Mesh).material;
@@ -80,31 +97,86 @@ export class Actor {
   private tint: THREE.MeshStandardMaterial | null = null;
   private hat: THREE.Mesh | null = null;
   private lookKey = '0:0';
+  private static readonly heroTextures = new Map<string, THREE.Texture>();
+  private readonly heroMats: THREE.MeshStandardMaterial[] = [];
 
-  /** P4-C: colour (a per-actor copy of `Main`, made on the first non-default colour) and a hat on the `Head` bone. */
-  setLook(color: number, hat: number): void {
-    const key = `${color}:${hat}`;
+  /**
+   * P4-C: colour (a per-actor copy of `Main`, made on the first non-default colour) and a hat on the head bone.
+   * Task 2: for a hero actor (`this.body` set), colour tint is skipped (Task 6 recolours the atlas instead) and a
+   * worn hat re-hides the body's own helmet/hat via `partVisible`.
+   */
+  setLook(look: Look): void {
+    const { color, hat } = look;
+    const skin = look.skin ?? 0;
+    const key = `${color}:${hat}:${skin}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
-    this.model.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh || Array.isArray(m.material)) return;
-      const mat = m.material as THREE.MeshStandardMaterial;
-      const original = (m.userData.main as THREE.MeshStandardMaterial | undefined) ?? (mat.name === 'Main' ? mat : null);
-      if (!original) return;
-      m.userData.main = original;
-      if (color === 0) {
-        m.material = original;
-        return;
-      }
-      if (!this.tint) {
-        this.tint = original.clone();
-        this.tint.userData = {};
-        patchRim(this.tint);
-      }
-      this.tint.color.setHex(COLORS[color] ?? COLORS[0]!);
-      m.material = this.tint;
-    });
+    if (this.body) {
+      for (const mat of this.heroMats) mat.dispose();
+      this.heroMats.length = 0;
+      const body = this.body;
+      this.model.traverse((o) => {
+        if (o.name) o.visible = partVisible(body, o.name, hat);
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+        const current = mesh.material as THREE.MeshStandardMaterial;
+        const base = (mesh.userData.heroBase as THREE.MeshStandardMaterial | undefined) ?? current;
+        mesh.userData.heroBase = base;
+        if (color === 0 && skin === 0) {
+          mesh.material = base;
+          return;
+        }
+        const bodyIndex = BODIES.indexOf(body);
+        const textureKey = heroTextureKey(bodyIndex, color, skin);
+        let texture = Actor.heroTextures.get(textureKey);
+        if (!texture && base.map?.image) {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 128;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(base.map.image as CanvasImageSource, 0, 0, 128, 128);
+            const data = ctx.getImageData(0, 0, 128, 128);
+            if (color > 0) recolor(data.data, 128, 128, HERO_PALETTE[body].cloth, ATLAS_GRID, COLORS[color] ?? COLORS[0]!);
+            if (skin > 0) recolor(data.data, 128, 128, HERO_PALETTE[body].skin, ATLAS_GRID, SKINS[skin] ?? SKINS[0]!);
+            ctx.putImageData(data, 0, 0);
+            texture = new THREE.CanvasTexture(canvas);
+            texture.flipY = false;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestMipmapLinearFilter;
+            Actor.heroTextures.set(textureKey, texture);
+          }
+        }
+        if (texture) {
+          const mat = base.clone();
+          mat.userData = {};
+          mat.map = texture;
+          patchRim(mat);
+          mesh.material = mat;
+          this.heroMats.push(mat);
+        }
+      });
+    } else {
+      this.model.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || Array.isArray(m.material)) return;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        const original = (m.userData.main as THREE.MeshStandardMaterial | undefined) ?? (mat.name === 'Main' ? mat : null);
+        if (!original) return;
+        m.userData.main = original;
+        if (color === 0) {
+          m.material = original;
+          return;
+        }
+        if (!this.tint) {
+          this.tint = original.clone();
+          this.tint.userData = {};
+          patchRim(this.tint);
+        }
+        this.tint.color.setHex(COLORS[color] ?? COLORS[0]!);
+        m.material = this.tint;
+      });
+    }
     if (this.hat) this.hat.removeFromParent();
     this.hat = makeHat(hat);
     if (this.hat) this.attachHat(this.hat);
@@ -113,17 +185,33 @@ export class Actor {
   private attachHat(hat: THREE.Mesh): void {
     let head: THREE.Object3D | undefined;
     this.model.traverse((o) => {
-      if (!head && o.name === 'Head' && o.children.some((c) => c.name === 'Head_end')) head = o;
+      if (!head && o.name === 'head') head = o;
     });
-    if (!head) {
+    if (head) {
+      this.root.updateMatrixWorld(true);
+      const s = new THREE.Vector3();
+      head.getWorldScale(s);
+      const rs = new THREE.Vector3();
+      this.root.getWorldScale(rs);
+      hat.scale.setScalar((2.2 * rs.x) / s.x);
+      hat.position.set(0, 0.55, 0);
+      hat.quaternion.identity();
+      head.add(hat);
+      return;
+    }
+    let robotHead: THREE.Object3D | undefined;
+    this.model.traverse((o) => {
+      if (!robotHead && o.name === 'Head' && o.children.some((c) => c.name === 'Head_end')) robotHead = o;
+    });
+    if (!robotHead) {
       hat.position.y = 1.85;
       this.root.add(hat);
       return;
     }
-    const tip = head.children.find((c) => c.name === 'Head_end');
+    const tip = robotHead.children.find((c) => c.name === 'Head_end');
     this.root.updateMatrixWorld(true);
     const s = new THREE.Vector3();
-    head.getWorldScale(s);
+    robotHead.getWorldScale(s);
     const rs = new THREE.Vector3();
     this.root.getWorldScale(rs);
     hat.scale.setScalar((HAT_SIZE * rs.x) / s.x);
@@ -131,7 +219,7 @@ export class Actor {
       hat.position.copy(tip.position).multiplyScalar(HAT_LIFT);
       hat.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.position.clone().normalize());
     }
-    head.add(hat);
+    robotHead.add(hat);
   }
 
   private glider: THREE.Object3D | null = null;
@@ -148,6 +236,32 @@ export class Actor {
 
   private glow: THREE.Mesh | null = null;
   private glowLeft = 0;
+  private chargeGlow: THREE.Mesh | null = null;
+
+  /** KayKit's right-hand attachment bone (also used by swing effects). */
+  hand(): THREE.Object3D | null {
+    let hand: THREE.Object3D | null = null;
+    this.model.traverse((o) => {
+      if (!hand && (o.name === 'handslotr' || o.name === 'handslot.r')) hand = o;
+    });
+    return hand;
+  }
+
+  /** Charge feedback for hold-to-spin: a small additive gold light at the weapon hand. */
+  setCharge(k: number): void {
+    if (!this.chargeGlow && k > 0) {
+      this.chargeGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }),
+      );
+      (this.hand() ?? this.root).add(this.chargeGlow);
+    }
+    if (!this.chargeGlow) return;
+    this.chargeGlow.visible = k > 0;
+    const s = 0.5 + k;
+    this.chargeGlow.scale.setScalar(s);
+    (this.chargeGlow.material as THREE.MeshBasicMaterial).opacity = 0.25 + k * 0.55;
+  }
 
   /** P4-A: a short green glow round the robot (a Rango up), seen by everyone. Its own material: models share theirs. */
   flash(seconds: number): void {
@@ -167,8 +281,9 @@ export class Actor {
     this.torch.visible = on;
   }
 
-  play(anim: string): void {
-    if (anim === this.currentName) return;
+  /** `restart: true` replays the same action from the start (spec §0.1: repeated attack taps must not freeze on the last frame). */
+  play(anim: string, opts?: { restart?: boolean }): void {
+    if (anim === this.currentName && !opts?.restart) return;
     if (anim === 'glide' && !this.glider) this.root.add((this.glider = makeGlider()));
     if (this.glider) this.glider.visible = anim === 'glide';
     const def = this.clips[anim] ?? this.clips.idle!;
@@ -176,13 +291,24 @@ export class Actor {
     if (!next) return;
     this.currentName = anim;
     next.reset();
+    if (next === this.current) {
+      // Review fix: replaying the already-current action (an explicit restart, or a same-clip alias like
+      // 'attack'/'attack1') must not leave it mid-crossfade. `reset()` only cancels the fade schedule
+      // (`stopFading()`) — it does not restore weight = 1, nor does it touch the action it was fading from,
+      // which would otherwise keep bleeding through for the rest of its already-scheduled fade-out.
+      settleRestartedAction(next, this.fadingFrom);
+      this.fadingFrom = null;
+    }
     next.setEffectiveTimeScale(def.at !== undefined ? 0 : (def.speed ?? 1));
     if (def.at !== undefined) next.time = def.at;
     this.animT = 0;
     next.setLoop(def.once ? THREE.LoopOnce : THREE.LoopRepeat, def.once ? 1 : Infinity);
     next.clampWhenFinished = !!def.once;
     next.play();
-    if (this.current && this.current !== next) next.crossFadeFrom(this.current, 0.2, false);
+    if (this.current && this.current !== next) {
+      next.crossFadeFrom(this.current, 0.2, false);
+      this.fadingFrom = this.current;
+    }
     this.current = next;
   }
 
@@ -262,7 +388,7 @@ export class Actor {
   private flashed: [THREE.Mesh, THREE.Material | THREE.Material[]][] | null = null;
   private knock: { x: number; z: number; t: number } | null = null;
 
-  /** P7-A: white (or red) for a moment — one shared material swapped in, never a new one per actor; hit-stop; thrown back on a kill. */
+  /** P7-A/H1: flash, hit-stop and a short stagger/knock, without allocating per impact. */
   impact(o: ImpactOpts): void {
     if (o.flash) {
       Actor.flashMats ??= { white: new THREE.MeshBasicMaterial({ color: 0xffffff }), red: new THREE.MeshBasicMaterial({ color: 0xff4a3a }) };
@@ -290,13 +416,12 @@ export class Actor {
       }
     }
     if (this.knock) {
-      if (this.currentName !== 'dead') this.knock = null;
-      else {
-        this.knock.t = Math.min(0.2, this.knock.t + dt);
-        const k = this.knock.t / 0.2;
-        this.root.position.x += this.knock.x * k;
-        this.root.position.z += this.knock.z * k;
-      }
+      const duration = this.currentName === 'dead' ? 0.2 : 0.15;
+      this.knock.t = Math.min(duration, this.knock.t + dt);
+      const k = this.knock.t / duration;
+      this.root.position.x += this.knock.x * k;
+      this.root.position.z += this.knock.z * k;
+      if (this.knock.t >= duration) this.knock = null;
     }
     if (this.freezeLeft > 0) {
       this.freezeLeft -= dt;
@@ -313,6 +438,7 @@ export class Actor {
     this.mixer.update(dt);
     this.animT += dt;
     this.applyPose(this.holdPoseAt ?? this.animT);
+    if (this.knock && this.currentName !== 'dead') this.model.rotation.x -= 0.25 * (1 - this.knock.t / 0.15);
     if (this.glow && this.glowLeft > 0) {
       this.glowLeft -= dt;
       if (this.glowLeft <= 0) this.glow.visible = false;
@@ -322,6 +448,7 @@ export class Actor {
   dispose(): void {
     this.mixer.stopAllAction();
     this.tint?.dispose();
+    for (const mat of this.heroMats) mat.dispose();
     this.tint = null;
     this.root.removeFromParent();
   }

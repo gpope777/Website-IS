@@ -21,6 +21,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const VITE_BIN = join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+const WRANGLER_BIN = join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 const OUT = join(ROOT, 'scratch', 'perf');
 const BASELINE = join(ROOT, 'scripts', 'perf', 'baseline.json');
 const PORT = 8799;
@@ -129,11 +131,11 @@ async function main() {
 
   mkdirSync(OUT, { recursive: true });
   console.log('Construyendo el cliente (--mode perf)…');
-  execFileSync('npx', ['vite', 'build', '--mode', 'perf', '--outDir', join(OUT, 'dist'), '--emptyOutDir', '--logLevel', 'warn'], { cwd: ROOT, stdio: 'inherit' });
+  execFileSync(process.execPath, [VITE_BIN, 'build', '--mode', 'perf', '--outDir', join(OUT, 'dist'), '--emptyOutDir', '--logLevel', 'warn'], { cwd: ROOT, stdio: 'inherit' });
   const state = join(OUT, 'state');
   rmSync(state, { recursive: true, force: true });
   console.log('Arrancando wrangler dev…');
-  const w = spawn('npx', ['wrangler', 'dev', '--port', String(PORT), '--ip', '127.0.0.1', '--assets', join(OUT, 'dist'), '--persist-to', state, '--var', `ADMIN_TOKEN:${TOKEN}`, '--show-interactive-dev-session=false'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  const w = spawn(process.execPath, [WRANGLER_BIN, 'dev', '--port', String(PORT), '--ip', '127.0.0.1', '--assets', join(OUT, 'dist'), '--persist-to', state, '--var', `ADMIN_TOKEN:${TOKEN}`, '--show-interactive-dev-session=false'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(w);
   let wlog = '';
   w.stdout.on('data', (d) => (wlog += d));

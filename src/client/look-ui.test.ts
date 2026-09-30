@@ -13,5 +13,9 @@ describe('Aspecto screen (P4-C)', () => {
     expect(h).toContain('class="hat locked" data-a="hat-1"');
     expect(h).toContain('Se gana con Rango 2');
     expect(h).toContain('data-a="back"');
+    expect(h.match(/data-a="body-/g)).toHaveLength(4);
+    expect(h).toContain('class="hat on" data-a="body-0"');
+    expect(h.match(/data-a="skin-/g)).toHaveLength(5);
+    expect(h).toContain('class="look-preview"');
   });
 });

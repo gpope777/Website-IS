@@ -52,6 +52,12 @@ export function parseSeen(raw: string | null): Set<Seen> {
 
 /** The 10 pill slots, in the fixed order of `touch.ts`. */
 export const PILLS = ['eat', 'campfire', 'wall', 'heart', 'trap', 'roll', 'block', 'bow', 'lock', 'power'] as const;
+export const CONTROLS = ['attack', 'jump', 'roll', 'power', 'bag'] as const;
+
+/** Fixed five action controls; unavailable abilities dim rather than moving or disappearing. */
+export function controlsDim(s: { power: boolean; bow: boolean; tools: boolean }): boolean[] {
+  return [false, false, false, !s.power && !s.bow, false];
+}
 
 /** Which of the 10 slots show (a hidden pill keeps its gap: thumbs remember places). */
 export function pillsShown(seen: ReadonlySet<Seen>, o: { heart: boolean; power: boolean }): boolean[] {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bagRows, deathCause, discover, heartShown, parseSeen, pillsShown, PILLS, reviveFrac, Toasts, toastText, topLine, vitalLabel, type DiscoverView, type Seen } from './hud-model';
+import { bagRows, controlsDim, deathCause, discover, heartShown, parseSeen, pillsShown, PILLS, reviveFrac, Toasts, toastText, topLine, vitalLabel, type DiscoverView, type Seen } from './hud-model';
 
 const view = (o: Partial<DiscoverView> = {}): DiscoverView => ({ inv: {}, rank: 1, orbs: 0, power: false, mount: false, heart: false, wolfNear: Infinity, dungeon: false, fogata: false, shop: false, marchito: false, ...o });
 
@@ -35,6 +35,13 @@ describe('pillsShown (P7-C)', () => {
   it('a wolf → the four fight pills; a power → 🌿', () => {
     const s = pillsShown(new Set<Seen>(['wolf']), { heart: false, power: true });
     expect(s.slice(5)).toEqual([true, true, true, true, true]);
+  });
+});
+
+describe('mobile controls', () => {
+  it('dims only power when neither power nor bow is owned', () => {
+    expect(controlsDim({ power: false, bow: false, tools: true })).toEqual([false, false, false, true, false]);
+    expect(controlsDim({ power: false, bow: true, tools: true })).toEqual([false, false, false, false, false]);
   });
 });
 

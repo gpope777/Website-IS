@@ -1,4 +1,5 @@
 import type { InputState } from './input';
+import { Wheel } from './wheel';
 
 /**
  * True on phones/tablets. Checks, in order: an explicit `?touch=1|0` override,
@@ -21,6 +22,13 @@ export interface TouchHandlers {
   onLook: (dx: number, dy: number) => void;
   /** A momentary action, expressed as a KeyboardEvent.code so it shares the keyboard path. */
   onAction: (code: string) => void;
+  onAttackDown?: () => void;
+  onAttackUp?: () => void;
+  onRollDown?: () => void;
+  onRollUp?: () => void;
+  onPowerWheel?: () => { icon: string; text: string; code: string }[];
+  onBagWheel?: () => { icon: string; text: string; code: string }[];
+  onTapWorld?: (x: number, y: number) => boolean;
   onPause: () => void;
   /** P7-C: 🎒 opens the bag. */
   onBag?: () => void;
@@ -38,27 +46,15 @@ interface ButtonDef {
 }
 
 const ACTION_BUTTONS: ButtonDef[] = [
-  { code: 'KeyE', label: 'A', sub: 'acción', cls: 'btn-a' },
-  { code: 'Space', label: 'B', sub: 'saltar', cls: 'btn-b', hold: 'jump' },
-];
-
-const PILL_BUTTONS: ButtonDef[] = [
-  { code: 'Digit1', label: '🫐', sub: 'comer', cls: 'pill' },
-  { code: 'KeyB', label: '🔥', sub: 'fogata', cls: 'pill' },
-  { code: 'KeyV', label: '🧱', sub: 'muro', cls: 'pill' },
-  { code: 'KeyG', label: '🌳', sub: 'corazón', cls: 'pill' },
-  // Places the trap chosen in the Menú (estacas / red de raíces / hoguera); T, Y and U place each directly.
-  { code: 'TouchTrap', label: '🗡️', sub: 'trampa', cls: 'pill' },
-  { code: 'KeyQ', label: '🌀', sub: 'rodar', cls: 'pill' },
-  { code: 'KeyZ', label: '🛡️', sub: 'bloquear', cls: 'pill', hold: 'block' },
-  { code: 'KeyR', label: '🏹', sub: 'arco', cls: 'pill' },
-  { code: 'KeyX', label: '🎯', sub: 'fijar', cls: 'pill' },
-  // The camera toggle lives in the Menú (and on C); its pill went to the power.
-  { code: 'KeyH', label: '🌿', sub: 'poder', cls: 'pill' },
+  { code: 'KeyE', label: '⚔', sub: 'atacar', cls: 'btn-attack' },
+  { code: 'Space', label: '↑', sub: 'saltar', cls: 'btn-jump', hold: 'jump' },
+  { code: 'TouchRoll', label: '🌀', sub: 'rodar', cls: 'btn-roll' },
+  { code: 'KeyH', label: '🌿', sub: 'poder', cls: 'btn-power' },
+  { code: 'TouchBag', label: '🎒', sub: 'mochila', cls: 'btn-bag' },
 ];
 
 /** Holding the power pill this long switches powers. */
-const POWER_HOLD_MS = 500;
+const POWER_HOLD_MS = 300;
 const STICK_RADIUS = 52; // px the knob can travel from centre
 const DEAD_ZONE = 0.12;
 const SPRINT_ZONE = 0.92;
@@ -74,17 +70,21 @@ export class TouchControls {
   private stickPointer: number | null = null;
   private lookPointer: number | null = null;
   private lookLast = { x: 0, y: 0 };
+  private lookDown = { x: 0, y: 0, at: 0 };
   private readonly stickBase: HTMLElement;
   private readonly knob: HTMLElement;
   private stickCentre = { x: 0, y: 0 };
 
   private powerPill: HTMLElement | null = null;
-  private readonly pills: HTMLElement[] = [];
+  private readonly controls = new Map<string, HTMLElement>();
+  private dottedPills: boolean[] = [];
+  private readonly wheel: Wheel;
   private menuBtn: HTMLElement | null = null;
   private actBtn: HTMLElement | null = null;
 
   constructor(parent: HTMLElement, private readonly input: InputState, private readonly h: TouchHandlers) {
     this.root = div('touch-layer');
+    this.wheel = new Wheel(parent);
     parent.appendChild(this.root);
 
     // Look zone sits underneath everything else and covers the whole screen.
@@ -106,20 +106,13 @@ export class TouchControls {
     for (const b of ACTION_BUTTONS) {
       const el = this.button(b);
       if (b.code === 'KeyE') this.actBtn = el;
-      actions.appendChild(el);
-    }
-
-    const pills = div('touch-pills');
-    for (const b of PILL_BUTTONS) {
-      const el = this.button(b);
       if (b.code === 'KeyH') this.powerPill = el;
-      const i = this.pills.length;
-      // P7-D: the "new" dot goes on the first tap.
-      el.addEventListener('pointerdown', () => {
-        if (el.classList.contains('new')) this.h.onPillSeen?.(i);
+      this.controls.set(b.code, el);
+      if (b.code === 'TouchBag' || b.code === 'KeyH') el.addEventListener('pointerdown', () => {
+        const range = b.code === 'TouchBag' ? [0, 1, 2, 3, 4] : [5, 6, 7, 8, 9];
+        for (const i of range.filter((n) => this.dottedPills[n])) this.h.onPillSeen?.(i);
       });
-      this.pills.push(el);
-      pills.appendChild(el);
+      actions.appendChild(el);
     }
 
     const system = div('touch-system');
@@ -129,15 +122,9 @@ export class TouchControls {
       e.preventDefault();
       h.onPause();
     });
-    const bag = this.button({ code: '', label: '🎒', cls: 'sys bag-btn' });
-    bag.setAttribute('aria-label', 'Mochila');
-    bag.addEventListener('pointerup', (e) => {
-      e.preventDefault();
-      h.onBag?.();
-    });
-    system.append(menu, bag);
+    system.append(menu);
 
-    this.root.append(look, this.stickBase, actions, pills, system);
+    this.root.append(look, this.stickBase, actions, system);
 
     // iOS Safari ignores `user-scalable=no`: double-tap and pinch still zoom the page and there is
     // no way back for the player. Cancel those gestures at the source while the controls exist.
@@ -165,29 +152,33 @@ export class TouchControls {
 
   /** P7-C: show the pills by progress; a hidden one keeps its slot (the grid never reorders). */
   setPills(shown: readonly boolean[]): void {
-    this.pills.forEach((p, i) => {
-      const hide = !shown[i];
-      if (p.classList.contains('gone') !== hide) p.classList.toggle('gone', hide);
-    });
+    void shown; // wheel contents are supplied lazily by game.ts
   }
 
   /** P7-D: "new" dots on MENÚ and on pills that just appeared. */
   setDots(menu: boolean, pills: readonly boolean[]): void {
+    this.dottedPills = [...pills];
     this.menuBtn?.classList.toggle('new', menu);
-    this.pills.forEach((p, i) => {
-      const on = !!pills[i];
-      if (p.classList.contains('new') !== on) p.classList.toggle('new', on);
-    });
+    this.controls.get('TouchBag')?.classList.toggle('new', pills.slice(0, 5).some(Boolean));
+    this.controls.get('KeyH')?.classList.toggle('new', pills.slice(5).some(Boolean));
   }
 
   /** P7-F: the tutorial's glowing controls: 'act' (A), 'stick', or pill slots by index. */
-  setHint(act: boolean, stick: boolean, pills: readonly boolean[]): void {
+  setHint(controls: readonly boolean[], stick: boolean): void {
     const set = (e: HTMLElement | null, on: boolean) => {
       if (e && e.classList.contains('hint') !== on) e.classList.toggle('hint', on);
     };
-    set(this.actBtn, act);
+    for (const [i, code] of ['KeyE', 'Space', 'TouchRoll', 'KeyH', 'TouchBag'].entries()) set(this.controls.get(code) ?? null, !!controls[i]);
     set(this.stickBase, stick);
-    this.pills.forEach((p, i) => set(p, !!pills[i]));
+  }
+
+  setActIcon(icon: string | null): void {
+    const span = this.actBtn?.querySelector('span');
+    if (span) span.textContent = icon ?? '⚔';
+  }
+
+  setDim(dim: readonly boolean[]): void {
+    for (const [i, code] of ['KeyE', 'Space', 'TouchRoll', 'KeyH', 'TouchBag'].entries()) this.controls.get(code)?.classList.toggle('dim', !!dim[i]);
   }
 
   /** The power pill's icon follows the chosen power. */
@@ -204,7 +195,8 @@ export class TouchControls {
     this.input.jump = false;
     this.input.block = false;
     this.knob.style.transform = '';
-    this.stickBase.classList.remove('active');
+    this.stickBase.classList.remove('active', 'floating');
+    this.wheel.close();
   }
 
   dispose(): void {
@@ -212,6 +204,7 @@ export class TouchControls {
     document.removeEventListener('gesturestart', this.blockGesture);
     document.removeEventListener('gesturechange', this.blockGesture);
     document.removeEventListener('dblclick', this.blockGesture);
+    this.wheel.close();
     this.root.remove();
   }
 
@@ -275,14 +268,26 @@ export class TouchControls {
   // ---------------------------------------------------------------- look
 
   private onLookDown = (e: PointerEvent): void => {
+    if (e.clientX < innerWidth / 2 && this.stickPointer === null) {
+      e.preventDefault();
+      this.stickPointer = e.pointerId;
+      this.stickCentre = { x: e.clientX, y: e.clientY };
+      this.stickBase.style.left = `${e.clientX}px`;
+      this.stickBase.style.top = `${e.clientY}px`;
+      this.stickBase.classList.add('floating', 'active');
+      this.moveStick(e.clientX, e.clientY);
+      return;
+    }
     if (this.lookPointer !== null) return;
     e.preventDefault();
     this.lookPointer = e.pointerId;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     this.lookLast = { x: e.clientX, y: e.clientY };
+    this.lookDown = { x: e.clientX, y: e.clientY, at: performance.now() };
   };
 
   private onLookMove = (e: PointerEvent): void => {
+    if (e.pointerId === this.stickPointer) return this.moveStick(e.clientX, e.clientY);
     if (e.pointerId !== this.lookPointer) return;
     e.preventDefault();
     const dx = e.clientX - this.lookLast.x;
@@ -292,8 +297,16 @@ export class TouchControls {
   };
 
   private onLookUp = (e: PointerEvent): void => {
+    if (e.pointerId === this.stickPointer) {
+      this.stickPointer = null;
+      this.setAxis(0, 0);
+      this.knob.style.transform = '';
+      this.stickBase.classList.remove('active', 'floating');
+      return;
+    }
     if (e.pointerId !== this.lookPointer) return;
     this.lookPointer = null;
+    if (performance.now() - this.lookDown.at <= 250 && Math.hypot(e.clientX - this.lookDown.x, e.clientY - this.lookDown.y) < 12) this.h.onTapWorld?.(e.clientX, e.clientY);
   };
 
   // ---------------------------------------------------------------- buttons
@@ -320,16 +333,35 @@ export class TouchControls {
       b.addEventListener('pointerdown', down);
       b.addEventListener('pointerup', up);
       b.addEventListener('pointercancel', up);
+    } else if (def.code === 'KeyE' && this.h.onAttackDown && this.h.onAttackUp) {
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        b.setPointerCapture(e.pointerId);
+        b.classList.add('active');
+        this.h.onAttackDown?.();
+      });
+      const up = (e: PointerEvent) => {
+        e.preventDefault();
+        b.classList.remove('active');
+        this.h.onAttackUp?.();
+      };
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
+    } else if (def.code === 'TouchRoll') {
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('active'); this.h.onRollDown?.(); });
+      const up = (e: PointerEvent) => { e.preventDefault(); b.classList.remove('active'); this.h.onRollUp?.(); };
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
     } else if (def.code === 'KeyH') {
-      // The power pill: a tap casts, holding it 0.5 s switches powers (Gabriel's call: no second pill).
       let timer: ReturnType<typeof setTimeout> | null = null;
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        b.setPointerCapture(e.pointerId);
         b.classList.add('active');
         timer = setTimeout(() => {
           timer = null;
-          b.classList.remove('active');
-          this.h.onAction('TouchSwitch');
+          const items = this.h.onPowerWheel?.() ?? [];
+          this.wheel.open(e.clientX, e.clientY, items, (i) => { if (i !== null) this.h.onAction(items[i]!.code); });
         }, POWER_HOLD_MS);
       });
       const up = (cast: boolean) => (e: PointerEvent) => {
@@ -342,6 +374,23 @@ export class TouchControls {
       };
       b.addEventListener('pointerup', up(true));
       b.addEventListener('pointercancel', up(false));
+    } else if (def.code === 'TouchBag') {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('active');
+        timer = setTimeout(() => {
+          timer = null;
+          const items = this.h.onBagWheel?.() ?? [];
+          this.wheel.open(e.clientX, e.clientY, items, (i) => { if (i !== null) this.h.onAction(items[i]!.code); });
+        }, POWER_HOLD_MS);
+      });
+      const up = (open: boolean) => (e: PointerEvent) => {
+        e.preventDefault(); b.classList.remove('active');
+        if (!timer) return;
+        clearTimeout(timer); timer = null;
+        if (open) this.h.onBag?.();
+      };
+      b.addEventListener('pointerup', up(true)); b.addEventListener('pointercancel', up(false));
     } else if (def.code) {
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
